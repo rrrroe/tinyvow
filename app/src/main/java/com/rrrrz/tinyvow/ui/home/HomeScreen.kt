@@ -1,7 +1,11 @@
 package com.rrrrz.tinyvow.ui.home
 
+import android.Manifest
 import android.content.Intent
+import android.os.Build
 import android.provider.Settings
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -26,6 +30,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -33,6 +38,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -52,12 +58,17 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.rrrrz.tinyvow.R
 import com.rrrrz.tinyvow.data.apps.InstalledAppRepository
 import com.rrrrz.tinyvow.data.apps.ManagedApp
+import com.rrrrz.tinyvow.data.notification.NotificationPermissionChecker
 import com.rrrrz.tinyvow.data.settings.ManagedAppPreferences
+import com.rrrrz.tinyvow.data.reminder.LimitReminderScheduler
 import com.rrrrz.tinyvow.data.usage.UsageAccessStateChecker
 import com.rrrrz.tinyvow.data.usage.UsageAccessStatus
 import com.rrrrz.tinyvow.data.usage.UsageStatsUsageRepository
+import com.rrrrz.tinyvow.domain.limit.DailyLimitEvaluation
+import com.rrrrz.tinyvow.domain.limit.DailyTimeLimitPolicy
 import com.rrrrz.tinyvow.ui.theme.TinyVowTheme
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.flowOf
 
 @Composable
 fun HomeRoute(
@@ -68,21 +79,45 @@ fun HomeRoute(
     val coroutineScope = rememberCoroutineScope()
     val checker = remember(context) { UsageAccessStateChecker(context) }
     val appRepository = remember(context) { InstalledAppRepository(context) }
+    val notificationPermissionChecker = remember(context) { NotificationPermissionChecker(context) }
     val preferences = remember(context) { ManagedAppPreferences(context) }
+    val reminderScheduler = remember(context) { LimitReminderScheduler(context) }
     val usageRepository = remember(context) { UsageStatsUsageRepository(context) }
+    val limitPolicy = remember { DailyTimeLimitPolicy() }
 
     var usageAccessStatus by remember { mutableStateOf(checker.getStatus()) }
+    var notificationPermissionGranted by remember {
+        mutableStateOf(notificationPermissionChecker.isGranted())
+    }
     var installedApps by remember { mutableStateOf<List<ManagedApp>>(emptyList()) }
     var isLoadingApps by remember { mutableStateOf(false) }
     var isLoadingUsage by remember { mutableStateOf(false) }
     var todayUsageMillis by remember { mutableLongStateOf(0L) }
     var usageRefreshTick by remember { mutableIntStateOf(0) }
     val selectedPackageName by preferences.selectedPackageName.collectAsState(initial = null)
+    val dailyLimitMinutesFlow = remember(selectedPackageName) {
+        selectedPackageName?.let(preferences::dailyLimitMinutes) ?: flowOf(null)
+    }
+    val dailyLimitMinutes by dailyLimitMinutesFlow.collectAsState(initial = null)
+    val limitEvaluation = remember(todayUsageMillis, dailyLimitMinutes) {
+        dailyLimitMinutes?.let { limitMinutes ->
+            limitPolicy.evaluate(
+                usageMillis = todayUsageMillis,
+                limitMillis = limitMinutes * 60_000L,
+            )
+        }
+    }
+    val notificationPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission(),
+    ) {
+        notificationPermissionGranted = notificationPermissionChecker.isGranted()
+    }
 
     DisposableEffect(lifecycleOwner, checker) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 usageAccessStatus = checker.getStatus()
+                notificationPermissionGranted = notificationPermissionChecker.isGranted()
                 usageRefreshTick++
             }
         }
@@ -127,17 +162,36 @@ fun HomeRoute(
         }
     }
 
+    LaunchedEffect(usageAccessStatus, dailyLimitMinutes, selectedPackageName, notificationPermissionGranted) {
+        if (
+            usageAccessStatus == UsageAccessStatus.GRANTED &&
+            selectedPackageName != null &&
+            dailyLimitMinutes != null &&
+            notificationPermissionGranted
+        ) {
+            reminderScheduler.schedule()
+        }
+    }
+
     HomeScreen(
         usageAccessStatus = usageAccessStatus,
+        notificationPermissionGranted = notificationPermissionGranted,
         installedApps = installedApps,
         selectedApp = installedApps.firstOrNull { it.packageName == selectedPackageName },
         isLoadingApps = isLoadingApps,
         isLoadingUsage = isLoadingUsage,
         todayUsageMillis = todayUsageMillis,
+        dailyLimitMinutes = dailyLimitMinutes,
+        limitEvaluation = limitEvaluation,
         onOpenUsageAccessSettings = {
             val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             context.startActivity(intent)
+        },
+        onRequestNotificationPermission = {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
         },
         onSelectApp = { app ->
             coroutineScope.launch {
@@ -147,6 +201,18 @@ fun HomeRoute(
         onRefreshUsage = {
             usageRefreshTick++
         },
+        onSaveDailyLimit = { minutes ->
+            val packageName = selectedPackageName ?: return@HomeScreen
+            coroutineScope.launch {
+                preferences.setDailyLimitMinutes(packageName, minutes)
+            }
+        },
+        onClearDailyLimit = {
+            val packageName = selectedPackageName ?: return@HomeScreen
+            coroutineScope.launch {
+                preferences.clearDailyLimitMinutes(packageName)
+            }
+        },
         modifier = modifier,
     )
 }
@@ -154,14 +220,20 @@ fun HomeRoute(
 @Composable
 fun HomeScreen(
     usageAccessStatus: UsageAccessStatus,
+    notificationPermissionGranted: Boolean,
     installedApps: List<ManagedApp>,
     selectedApp: ManagedApp?,
     isLoadingApps: Boolean,
     isLoadingUsage: Boolean,
     todayUsageMillis: Long,
+    dailyLimitMinutes: Int?,
+    limitEvaluation: DailyLimitEvaluation?,
     onOpenUsageAccessSettings: () -> Unit,
+    onRequestNotificationPermission: () -> Unit,
     onSelectApp: (ManagedApp) -> Unit,
     onRefreshUsage: () -> Unit,
+    onSaveDailyLimit: (Int) -> Unit,
+    onClearDailyLimit: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val usageAccessGranted = usageAccessStatus == UsageAccessStatus.GRANTED
@@ -198,9 +270,15 @@ fun HomeScreen(
             )
 
             if (usageAccessGranted) {
+                ReminderStatusCard(
+                    notificationPermissionGranted = notificationPermissionGranted,
+                    onRequestNotificationPermission = onRequestNotificationPermission,
+                )
                 UsageOverviewCard(
                     selectedApp = selectedApp,
                     todayUsageMillis = todayUsageMillis,
+                    dailyLimitMinutes = dailyLimitMinutes,
+                    limitEvaluation = limitEvaluation,
                     isLoadingUsage = isLoadingUsage,
                     onRefreshUsage = onRefreshUsage,
                 )
@@ -209,6 +287,12 @@ fun HomeScreen(
                     selectedApp = selectedApp,
                     isLoadingApps = isLoadingApps,
                     onSelectApp = onSelectApp,
+                )
+                DailyLimitCard(
+                    selectedApp = selectedApp,
+                    dailyLimitMinutes = dailyLimitMinutes,
+                    onSaveDailyLimit = onSaveDailyLimit,
+                    onClearDailyLimit = onClearDailyLimit,
                 )
             } else {
                 GuidanceCard(
@@ -232,6 +316,61 @@ fun HomeScreen(
             )
 
             Spacer(modifier = Modifier.height(12.dp))
+        }
+    }
+}
+
+@Composable
+private fun ReminderStatusCard(
+    notificationPermissionGranted: Boolean,
+    onRequestNotificationPermission: () -> Unit,
+) {
+    val statusColor = if (notificationPermissionGranted) {
+        MaterialTheme.colorScheme.primary
+    } else {
+        MaterialTheme.colorScheme.error
+    }
+
+    ElevatedCard(
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.elevatedCardColors(
+            containerColor = MaterialTheme.colorScheme.surface,
+        ),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(
+                text = stringResource(R.string.reminder_card_title),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                text = if (notificationPermissionGranted) {
+                    stringResource(R.string.reminder_card_enabled)
+                } else {
+                    stringResource(R.string.reminder_card_disabled)
+                },
+                style = MaterialTheme.typography.bodyMedium,
+                color = statusColor,
+                fontWeight = FontWeight.Medium,
+            )
+            Text(
+                text = stringResource(R.string.reminder_card_desc),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (!notificationPermissionGranted) {
+                Button(
+                    onClick = onRequestNotificationPermission,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(text = stringResource(R.string.reminder_card_action))
+                }
+            }
         }
     }
 }
@@ -304,9 +443,17 @@ private fun PermissionCard(
 private fun UsageOverviewCard(
     selectedApp: ManagedApp?,
     todayUsageMillis: Long,
+    dailyLimitMinutes: Int?,
+    limitEvaluation: DailyLimitEvaluation?,
     isLoadingUsage: Boolean,
     onRefreshUsage: () -> Unit,
 ) {
+    val budgetColor = when {
+        limitEvaluation?.isExceeded == true -> MaterialTheme.colorScheme.error
+        limitEvaluation != null -> MaterialTheme.colorScheme.primary
+        else -> MaterialTheme.colorScheme.onSurfaceVariant
+    }
+
     ElevatedCard(
         shape = RoundedCornerShape(28.dp),
         colors = CardDefaults.elevatedCardColors(
@@ -353,6 +500,39 @@ private fun UsageOverviewCard(
                 )
             }
 
+            if (dailyLimitMinutes != null && limitEvaluation != null) {
+                Text(
+                    text = stringResource(
+                        R.string.daily_limit_summary,
+                        dailyLimitMinutes,
+                    ),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = if (limitEvaluation.isExceeded) {
+                        stringResource(
+                            R.string.daily_limit_exceeded,
+                            formatUsageDuration(limitEvaluation.exceededMillis),
+                        )
+                    } else {
+                        stringResource(
+                            R.string.daily_limit_remaining,
+                            formatUsageDuration(limitEvaluation.remainingMillis),
+                        )
+                    },
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = budgetColor,
+                    fontWeight = FontWeight.Medium,
+                )
+            } else {
+                Text(
+                    text = stringResource(R.string.daily_limit_missing),
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+
             Text(
                 text = stringResource(R.string.usage_card_hint),
                 style = MaterialTheme.typography.bodyMedium,
@@ -365,6 +545,77 @@ private fun UsageOverviewCard(
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Text(text = stringResource(R.string.usage_refresh_action))
+            }
+        }
+    }
+}
+
+@Composable
+private fun DailyLimitCard(
+    selectedApp: ManagedApp?,
+    dailyLimitMinutes: Int?,
+    onSaveDailyLimit: (Int) -> Unit,
+    onClearDailyLimit: () -> Unit,
+) {
+    var sliderMinutes by remember(selectedApp?.packageName, dailyLimitMinutes) {
+        mutableFloatStateOf((dailyLimitMinutes ?: 60).coerceIn(5, 240).toFloat())
+    }
+
+    ElevatedCard(
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.elevatedCardColors(
+            containerColor = MaterialTheme.colorScheme.surface,
+        ),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(
+                text = stringResource(R.string.limit_card_title),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                text = selectedApp?.let {
+                    stringResource(R.string.limit_card_desc_selected, it.appName)
+                } ?: stringResource(R.string.limit_card_desc_empty),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                text = stringResource(
+                    R.string.limit_slider_value,
+                    sliderMinutes.toInt(),
+                ),
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+            )
+
+            Slider(
+                value = sliderMinutes,
+                onValueChange = { sliderMinutes = it },
+                valueRange = 5f..240f,
+                steps = 46,
+                enabled = selectedApp != null,
+            )
+
+            Button(
+                onClick = { onSaveDailyLimit(sliderMinutes.toInt()) },
+                enabled = selectedApp != null,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(text = stringResource(R.string.limit_save_action))
+            }
+
+            OutlinedButton(
+                onClick = onClearDailyLimit,
+                enabled = selectedApp != null && dailyLimitMinutes != null,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(text = stringResource(R.string.limit_clear_action))
             }
         }
     }
@@ -490,6 +741,7 @@ private fun GuidanceCard(
     }
 }
 
+@Composable
 private fun formatUsageDuration(durationMillis: Long): String {
     val totalSeconds = durationMillis / 1_000
     val totalMinutes = durationMillis / 60_000
@@ -498,11 +750,15 @@ private fun formatUsageDuration(durationMillis: Long): String {
     val seconds = totalSeconds % 60
 
     return when {
-        hours > 0 && minutes > 0 -> "${hours}小时 ${minutes}分钟"
-        hours > 0 -> "${hours}小时"
-        totalMinutes > 0L -> "${minutes}分钟"
-        totalSeconds > 0L -> "${seconds}秒"
-        else -> "0秒"
+        hours > 0 && minutes > 0 -> stringResource(
+            R.string.duration_hours_minutes,
+            hours,
+            minutes,
+        )
+        hours > 0 -> stringResource(R.string.duration_hours_only, hours)
+        totalMinutes > 0L -> stringResource(R.string.duration_minutes_only, minutes)
+        totalSeconds > 0L -> stringResource(R.string.duration_seconds_only, seconds)
+        else -> stringResource(R.string.duration_zero_seconds)
     }
 }
 
@@ -517,9 +773,15 @@ private fun HomeScreenPreviewDenied() {
             isLoadingApps = false,
             isLoadingUsage = false,
             todayUsageMillis = 0L,
+            notificationPermissionGranted = false,
+            dailyLimitMinutes = null,
+            limitEvaluation = null,
             onOpenUsageAccessSettings = {},
+            onRequestNotificationPermission = {},
             onSelectApp = {},
             onRefreshUsage = {},
+            onSaveDailyLimit = {},
+            onClearDailyLimit = {},
         )
     }
 }
@@ -533,19 +795,28 @@ private fun HomeScreenPreviewGranted() {
             installedApps = listOf(
                 ManagedApp(
                     packageName = "com.example.video",
-                    appName = "短视频",
+                    appName = "Video App",
                 ),
             ),
             selectedApp = ManagedApp(
                 packageName = "com.example.video",
-                appName = "短视频",
+                appName = "Video App",
             ),
             isLoadingApps = false,
             isLoadingUsage = false,
             todayUsageMillis = 5_400_000L,
+            notificationPermissionGranted = true,
+            dailyLimitMinutes = 90,
+            limitEvaluation = DailyTimeLimitPolicy().evaluate(
+                usageMillis = 5_400_000L,
+                limitMillis = 90 * 60_000L,
+            ),
             onOpenUsageAccessSettings = {},
+            onRequestNotificationPermission = {},
             onSelectApp = {},
             onRefreshUsage = {},
+            onSaveDailyLimit = {},
+            onClearDailyLimit = {},
         )
     }
 }
