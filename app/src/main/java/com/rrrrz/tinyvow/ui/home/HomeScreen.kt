@@ -491,14 +491,18 @@ private fun GuidanceCard(
 }
 
 private fun formatUsageDuration(durationMillis: Long): String {
+    val totalSeconds = durationMillis / 1_000
     val totalMinutes = durationMillis / 60_000
     val hours = totalMinutes / 60
     val minutes = totalMinutes % 60
+    val seconds = totalSeconds % 60
 
     return when {
         hours > 0 && minutes > 0 -> "${hours}小时 ${minutes}分钟"
         hours > 0 -> "${hours}小时"
-        else -> "${minutes}分钟"
+        totalMinutes > 0L -> "${minutes}分钟"
+        totalSeconds > 0L -> "${seconds}秒"
+        else -> "0秒"
     }
 }
 
