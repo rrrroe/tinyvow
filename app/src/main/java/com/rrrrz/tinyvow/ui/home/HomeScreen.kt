@@ -57,6 +57,7 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.rrrrz.tinyvow.R
 import com.rrrrz.tinyvow.data.apps.InstalledAppRepository
+import com.rrrrz.tinyvow.data.accessibility.AccessibilityServiceStateChecker
 import com.rrrrz.tinyvow.data.apps.ManagedApp
 import com.rrrrz.tinyvow.data.notification.NotificationPermissionChecker
 import com.rrrrz.tinyvow.data.settings.ManagedAppPreferences
@@ -66,6 +67,7 @@ import com.rrrrz.tinyvow.data.usage.UsageAccessStatus
 import com.rrrrz.tinyvow.data.usage.UsageStatsUsageRepository
 import com.rrrrz.tinyvow.domain.limit.DailyLimitEvaluation
 import com.rrrrz.tinyvow.domain.limit.DailyTimeLimitPolicy
+import com.rrrrz.tinyvow.service.block.AppLimitAccessibilityService
 import com.rrrrz.tinyvow.ui.theme.TinyVowTheme
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.flowOf
@@ -77,6 +79,7 @@ fun HomeRoute(
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val coroutineScope = rememberCoroutineScope()
+    val accessibilityServiceStateChecker = remember(context) { AccessibilityServiceStateChecker(context) }
     val checker = remember(context) { UsageAccessStateChecker(context) }
     val appRepository = remember(context) { InstalledAppRepository(context) }
     val notificationPermissionChecker = remember(context) { NotificationPermissionChecker(context) }
@@ -86,6 +89,9 @@ fun HomeRoute(
     val limitPolicy = remember { DailyTimeLimitPolicy() }
 
     var usageAccessStatus by remember { mutableStateOf(checker.getStatus()) }
+    var accessibilityServiceEnabled by remember {
+        mutableStateOf(accessibilityServiceStateChecker.isEnabled(AppLimitAccessibilityService::class.java))
+    }
     var notificationPermissionGranted by remember {
         mutableStateOf(notificationPermissionChecker.isGranted())
     }
@@ -117,6 +123,8 @@ fun HomeRoute(
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 usageAccessStatus = checker.getStatus()
+                accessibilityServiceEnabled =
+                    accessibilityServiceStateChecker.isEnabled(AppLimitAccessibilityService::class.java)
                 notificationPermissionGranted = notificationPermissionChecker.isGranted()
                 usageRefreshTick++
             }
@@ -175,6 +183,7 @@ fun HomeRoute(
 
     HomeScreen(
         usageAccessStatus = usageAccessStatus,
+        accessibilityServiceEnabled = accessibilityServiceEnabled,
         notificationPermissionGranted = notificationPermissionGranted,
         installedApps = installedApps,
         selectedApp = installedApps.firstOrNull { it.packageName == selectedPackageName },
@@ -187,6 +196,12 @@ fun HomeRoute(
             val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             context.startActivity(intent)
+        },
+        onOpenAccessibilitySettings = {
+            context.startActivity(
+                Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+            )
         },
         onRequestNotificationPermission = {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
@@ -220,6 +235,7 @@ fun HomeRoute(
 @Composable
 fun HomeScreen(
     usageAccessStatus: UsageAccessStatus,
+    accessibilityServiceEnabled: Boolean,
     notificationPermissionGranted: Boolean,
     installedApps: List<ManagedApp>,
     selectedApp: ManagedApp?,
@@ -229,6 +245,7 @@ fun HomeScreen(
     dailyLimitMinutes: Int?,
     limitEvaluation: DailyLimitEvaluation?,
     onOpenUsageAccessSettings: () -> Unit,
+    onOpenAccessibilitySettings: () -> Unit,
     onRequestNotificationPermission: () -> Unit,
     onSelectApp: (ManagedApp) -> Unit,
     onRefreshUsage: () -> Unit,
@@ -270,6 +287,10 @@ fun HomeScreen(
             )
 
             if (usageAccessGranted) {
+                AccessibilityStatusCard(
+                    accessibilityServiceEnabled = accessibilityServiceEnabled,
+                    onOpenAccessibilitySettings = onOpenAccessibilitySettings,
+                )
                 ReminderStatusCard(
                     notificationPermissionGranted = notificationPermissionGranted,
                     onRequestNotificationPermission = onRequestNotificationPermission,
@@ -316,6 +337,59 @@ fun HomeScreen(
             )
 
             Spacer(modifier = Modifier.height(12.dp))
+        }
+    }
+}
+
+@Composable
+private fun AccessibilityStatusCard(
+    accessibilityServiceEnabled: Boolean,
+    onOpenAccessibilitySettings: () -> Unit,
+) {
+    val statusColor = if (accessibilityServiceEnabled) {
+        MaterialTheme.colorScheme.primary
+    } else {
+        MaterialTheme.colorScheme.error
+    }
+
+    ElevatedCard(
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.elevatedCardColors(
+            containerColor = MaterialTheme.colorScheme.surface,
+        ),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(
+                text = stringResource(R.string.accessibility_card_title),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                text = if (accessibilityServiceEnabled) {
+                    stringResource(R.string.accessibility_card_enabled)
+                } else {
+                    stringResource(R.string.accessibility_card_disabled)
+                },
+                style = MaterialTheme.typography.bodyMedium,
+                color = statusColor,
+                fontWeight = FontWeight.Medium,
+            )
+            Text(
+                text = stringResource(R.string.accessibility_card_desc),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Button(
+                onClick = onOpenAccessibilitySettings,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(text = stringResource(R.string.accessibility_card_action))
+            }
         }
     }
 }
@@ -768,6 +842,7 @@ private fun HomeScreenPreviewDenied() {
     TinyVowTheme {
         HomeScreen(
             usageAccessStatus = UsageAccessStatus.DENIED,
+            accessibilityServiceEnabled = false,
             installedApps = emptyList(),
             selectedApp = null,
             isLoadingApps = false,
@@ -777,6 +852,7 @@ private fun HomeScreenPreviewDenied() {
             dailyLimitMinutes = null,
             limitEvaluation = null,
             onOpenUsageAccessSettings = {},
+            onOpenAccessibilitySettings = {},
             onRequestNotificationPermission = {},
             onSelectApp = {},
             onRefreshUsage = {},
@@ -792,6 +868,7 @@ private fun HomeScreenPreviewGranted() {
     TinyVowTheme {
         HomeScreen(
             usageAccessStatus = UsageAccessStatus.GRANTED,
+            accessibilityServiceEnabled = true,
             installedApps = listOf(
                 ManagedApp(
                     packageName = "com.example.video",
@@ -812,6 +889,7 @@ private fun HomeScreenPreviewGranted() {
                 limitMillis = 90 * 60_000L,
             ),
             onOpenUsageAccessSettings = {},
+            onOpenAccessibilitySettings = {},
             onRequestNotificationPermission = {},
             onSelectApp = {},
             onRefreshUsage = {},

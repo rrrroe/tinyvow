@@ -29,6 +29,11 @@
     <string name="limit_slider_value">当前预算 %1$d 分钟</string>
     <string name="limit_save_action">保存每日限额</string>
     <string name="limit_clear_action">清除限额</string>
+    <string name="accessibility_card_title">无障碍软阻断</string>
+    <string name="accessibility_card_enabled">无障碍服务已开启，超额后进入目标 App 时可以拉起阻断页。</string>
+    <string name="accessibility_card_disabled">无障碍服务还没开启，当前只能提醒，不能自动拉起阻断页。</string>
+    <string name="accessibility_card_desc">这是软阻断雏形，不是系统级强封禁。现在的行为是：检测到超额且目标 App 进入前台时，覆盖一个阻断页。</string>
+    <string name="accessibility_card_action">打开无障碍设置</string>
     <string name="reminder_card_title">超额提醒</string>
     <string name="reminder_card_enabled">通知权限已开启，后台会周期性检查是否超额。</string>
     <string name="reminder_card_disabled">通知权限未开启，超额时暂时无法弹出本地提醒。</string>
@@ -38,6 +43,14 @@
     <string name="notification_channel_desc">当目标 App 超过每日预算时发送提醒。</string>
     <string name="notification_limit_title">%1$s 已超出今日预算</string>
     <string name="notification_limit_body">当前已经超出 %1$s，回到 Tiny Vow 查看剩余策略。</string>
+    <string name="accessibility_service_label">Tiny Vow 软阻断服务</string>
+    <string name="accessibility_service_desc">检测目标 App 是否超出每日预算，并在进入前台时显示阻断页。</string>
+    <string name="block_title">今天的预算已经用完</string>
+    <string name="block_body">%1$s 现在已经超出今日预算 %2$s。当前是无障碍软阻断原型，会优先把你带回 Tiny Vow 或桌面。</string>
+    <string name="block_hint">如果你想暂时关闭这条能力，可以去无障碍设置页手动停用服务。</string>
+    <string name="block_open_app">回到 Tiny Vow</string>
+    <string name="block_go_home">返回桌面</string>
+    <string name="block_open_accessibility_settings">打开无障碍设置</string>
     <string name="app_picker_title">选择要管理的 App</string>
     <string name="app_picker_desc">这里只展示能从桌面启动的 App。先选一个目标，后面就可以给它配置每日分钟预算。</string>
     <string name="app_picker_loading">正在读取已安装 App…</string>
