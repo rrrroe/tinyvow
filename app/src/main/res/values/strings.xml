@@ -1,3 +1,28 @@
 <resources>
     <string name="app_name">Tiny Vow</string>
+    <string name="home_title">先把 Usage Access 打通</string>
+    <string name="home_subtitle">第一版先聚焦“按天时长限额”的底座。当前目标是确认系统是否允许读取应用使用情况，并开始读取某个 App 今天已经用了多久。</string>
+    <string name="permission_status_granted">已开启使用情况访问权限</string>
+    <string name="permission_status_denied">尚未开启使用情况访问权限</string>
+    <string name="permission_status_granted_desc">很好，第一阶段最关键的系统能力已经到位。下面可以直接选择一个 App，并读取它今天的使用时长。</string>
+    <string name="permission_status_denied_desc">没有这个权限，就无法读取 App 今日已使用时长。先去系统设置中为 Tiny Vow 开启“使用情况访问”权限。</string>
+    <string name="permission_primary_action">打开系统设置</string>
+    <string name="permission_manage_action">查看权限设置</string>
+    <string name="permission_steps_title">怎么开启</string>
+    <string name="permission_steps_body">点上面的按钮后，进入系统“使用情况访问”页面，找到 Tiny Vow 并允许访问。返回应用后，首页会自动刷新状态。</string>
+    <string name="mvp_scope_title">这一版只做什么</string>
+    <string name="mvp_scope_body">这一阶段不做系统级强封禁，也不做同步。先把权限检测、目标 App 选择、今日时长读取、每日限额存储和超额提醒做稳。</string>
+    <string name="next_step_title">通过后接什么</string>
+    <string name="next_step_body">权限通过后，下一步就是选择一个目标 App，读取“今天已使用多久”，再把它展示成剩余时长和预算进度。</string>
+    <string name="next_step_body_enabled">现在已经能选 App 和看今日时长。下一步就是给它加“每日可用分钟数”和“剩余时间”展示。</string>
+    <string name="usage_card_title">今天已使用</string>
+    <string name="usage_card_hint">统计区间是今天 00:00 到现在。你可以切换目标 App，或者手动刷新一次读取结果。</string>
+    <string name="usage_loading">正在读取今日使用时长…</string>
+    <string name="usage_refresh_action">刷新使用时长</string>
+    <string name="app_picker_title">选择要管理的 App</string>
+    <string name="app_picker_desc">这里只展示能从桌面启动的 App。先选一个目标，后面就可以给它配置每日分钟预算。</string>
+    <string name="app_picker_loading">正在读取已安装 App…</string>
+    <string name="app_picker_empty">暂时没有读取到可管理的 App。你可以稍后重试，或先检查设备上是否有可启动的应用。</string>
+    <string name="app_picker_action">选择 App</string>
+    <string name="app_picker_empty_selected">还没有选中目标 App</string>
 </resources>
