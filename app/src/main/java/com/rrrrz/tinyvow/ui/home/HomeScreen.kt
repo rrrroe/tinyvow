@@ -287,6 +287,19 @@ fun HomeScreen(
             )
 
             if (usageAccessGranted) {
+                if (Build.MANUFACTURER.equals("xiaomi", ignoreCase = true)) {
+                    val context = androidx.compose.ui.platform.LocalContext.current
+                    XiaomiPermissionCard(
+                        onOpenAppSettings = {
+                            val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                data = android.net.Uri.fromParts("package", context.packageName, null)
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                            context.startActivity(intent)
+                        }
+                    )
+                }
+
                 AccessibilityStatusCard(
                     accessibilityServiceEnabled = accessibilityServiceEnabled,
                     onOpenAccessibilitySettings = onOpenAccessibilitySettings,
@@ -811,6 +824,47 @@ private fun GuidanceCard(
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+        }
+    }
+}
+
+@Composable
+private fun XiaomiPermissionCard(
+    onOpenAppSettings: () -> Unit,
+) {
+    ElevatedCard(
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.elevatedCardColors(
+            containerColor = MaterialTheme.colorScheme.errorContainer,
+        ),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(
+                text = stringResource(R.string.xiaomi_permission_title),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onErrorContainer,
+            )
+            Text(
+                text = stringResource(R.string.xiaomi_permission_body),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onErrorContainer,
+            )
+            Button(
+                onClick = onOpenAppSettings,
+                modifier = Modifier.fillMaxWidth(),
+                colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.error,
+                    contentColor = MaterialTheme.colorScheme.onError
+                )
+            ) {
+                Text(text = stringResource(R.string.xiaomi_permission_action))
+            }
         }
     }
 }

@@ -62,4 +62,7 @@
     <string name="duration_minutes_only">%1$d分钟</string>
     <string name="duration_seconds_only">%1$d秒</string>
     <string name="duration_zero_seconds">0秒</string>
+    <string name="xiaomi_permission_title">小米设备必读：后台弹出界面权限</string>
+    <string name="xiaomi_permission_body">检测到您的设备是小米/澎湃OS。为了让软阻断页面能正常弹出，请务必点击下方按钮，进入【权限管理】，将【后台弹出界面】设为【允许】。</string>
+    <string name="xiaomi_permission_action">去开启后台弹出权限</string>
 </resources>
