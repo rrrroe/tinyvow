@@ -4,11 +4,9 @@ import android.accessibilityservice.AccessibilityService
 import android.content.Intent
 import android.os.SystemClock
 import android.view.accessibility.AccessibilityEvent
-import com.rrrrz.tinyvow.data.settings.ManagedAppPreferences
 import com.rrrrz.tinyvow.data.usage.UsageAccessStateChecker
 import com.rrrrz.tinyvow.data.usage.UsageAccessStatus
-import com.rrrrz.tinyvow.data.usage.UsageStatsUsageRepository
-import com.rrrrz.tinyvow.domain.limit.DailyTimeLimitPolicy
+import com.rrrrz.tinyvow.domain.limit.GroupLimitEnforcer
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -20,68 +18,78 @@ import androidx.core.graphics.toColorInt
 @Suppress("all")
 class AppLimitAccessibilityService : AccessibilityService() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+    private lateinit var enforcer: GroupLimitEnforcer
+
+    override fun onServiceConnected() {
+        super.onServiceConnected()
+        enforcer = GroupLimitEnforcer(applicationContext)
+    }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         val packageName = event?.packageName?.toString() ?: return
-        
-        // Very broad log to see if the service is alive and catching anything
+
         android.util.Log.v("AppLimitService", "Event from: $packageName, type: ${event.eventType}")
-        
-        if (packageName == this.packageName) {
-            return
-        }
+
+        // 忽略自身
+        if (packageName == this.packageName) return
+
+        // 只关注窗口切换事件
         if (
             event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
             event.eventType != AccessibilityEvent.TYPE_WINDOWS_CHANGED
-        ) {
+        ) return
+
+        // 高频事件防抖：和上一次评估的包名+时间对比
+        val now = SystemClock.elapsedRealtime()
+        if (packageName == lastCheckedPackage && now - lastCheckElapsedRealtime < CHECK_DEBOUNCE_MS) {
             return
         }
+        lastCheckedPackage = packageName
+        lastCheckElapsedRealtime = now
 
-        serviceScope.launch {
-            val preferences = ManagedAppPreferences(applicationContext)
-            val selectedPackage = preferences.getSelectedPackageNameOnce()
-            
-            android.util.Log.d("AppLimitService", "Comparing event package: $packageName with selected: $selectedPackage")
-            
-            if (selectedPackage == null || packageName != selectedPackage) return@launch
-
+        serviceScope.launch(Dispatchers.IO) {
+            // 前置检查：使用量权限
             val usagePermission = UsageAccessStateChecker(applicationContext).getStatus()
             if (usagePermission != UsageAccessStatus.GRANTED) {
                 android.util.Log.w("AppLimitService", "Usage access not granted, skipping check")
                 return@launch
             }
 
-            val dailyLimitMinutes = preferences.getDailyLimitMinutesOnce(selectedPackage) ?: return@launch
-            val usageMillis =
-                UsageStatsUsageRepository(applicationContext).getTodayUsageMillis(selectedPackage)
-            
-            android.util.Log.i("AppLimitService", "Checking $selectedPackage: used ${usageMillis / 60000}m / limit ${dailyLimitMinutes}m")
-            
-            val evaluation = DailyTimeLimitPolicy().evaluate(
-                usageMillis = usageMillis,
-                limitMillis = dailyLimitMinutes * 60_000L,
-            )
-            if (!evaluation.isExceeded) return@launch
-
-            val now = SystemClock.elapsedRealtime()
-            if (selectedPackage == lastBlockedPackage && now - lastBlockElapsedRealtime < BLOCK_DEBOUNCE_MS) {
-                android.util.Log.d("AppLimitService", "Debouncing block for $selectedPackage")
+            // ★ 核心：多分组短板效应评估
+            val result = enforcer.evaluate(packageName)
+            if (result == null) {
+                // 没超标，如果有 overlay 就移除
+                kotlinx.coroutines.withContext(Dispatchers.Main) {
+                    removeBlockOverlay()
+                }
                 return@launch
             }
-            lastBlockedPackage = selectedPackage
-            lastBlockElapsedRealtime = now
 
-            android.util.Log.i("AppLimitService", "Limit exceeded! Showing TYPE_ACCESSIBILITY_OVERLAY for $selectedPackage")
-            
+            // 阻断防抖：同一个包名短时间内不重复弹窗
+            val blockNow = SystemClock.elapsedRealtime()
+            if (packageName == lastBlockedPackage && blockNow - lastBlockElapsedRealtime < BLOCK_DEBOUNCE_MS) {
+                android.util.Log.d("AppLimitService", "Debouncing block for $packageName")
+                return@launch
+            }
+            lastBlockedPackage = packageName
+            lastBlockElapsedRealtime = blockNow
+
+            android.util.Log.i(
+                "AppLimitService",
+                "Group [${result.groupName}] exceeded! Used ${result.totalUsedMillis / 60000}m / limit ${result.limitMinutes}m. Blocking $packageName."
+            )
+
             kotlinx.coroutines.withContext(Dispatchers.Main) {
-                showBlockOverlay(selectedPackage, evaluation.exceededMillis)
+                showBlockOverlay(packageName, result.groupName, result.exceededMillis)
             }
         }
     }
 
+    // ──────── Overlay ────────
+
     private var blockView: android.view.View? = null
 
-    private fun showBlockOverlay(packageName: String, exceededMillis: Long) {
+    private fun showBlockOverlay(packageName: String, groupName: String, exceededMillis: Long) {
         if (blockView != null) return
 
         val windowManager = getSystemService(WINDOW_SERVICE) as android.view.WindowManager
@@ -112,9 +120,9 @@ class AppLimitAccessibilityService : AccessibilityService() {
             gravity = android.view.Gravity.CENTER
             setPadding(0, 0, 0, 48)
         }
-        
+
         val body = android.widget.TextView(this).apply {
-            text = getString(com.rrrrz.tinyvow.R.string.block_body, packageName, exceededText)
+            text = getString(com.rrrrz.tinyvow.R.string.block_body_group, groupName, exceededText)
             textSize = 16f
             setTextColor(android.graphics.Color.LTGRAY)
             gravity = android.view.Gravity.CENTER
@@ -133,7 +141,7 @@ class AppLimitAccessibilityService : AccessibilityService() {
                 startActivity(intent)
             }
         }
-        
+
         val space = android.view.View(this).apply {
             layoutParams = android.widget.LinearLayout.LayoutParams(1, 40)
         }
@@ -190,7 +198,12 @@ class AppLimitAccessibilityService : AccessibilityService() {
     }
 
     companion object {
-        private const val BLOCK_DEBOUNCE_MS = 2_000L
+        /** 评估防抖窗口：同一个包名 3 秒内不重复查询 */
+        private const val CHECK_DEBOUNCE_MS = 3_000L
+        /** 阻断弹窗防抖窗口：同一个包名 5 秒内不重复弹 overlay */
+        private const val BLOCK_DEBOUNCE_MS = 5_000L
+        private var lastCheckedPackage: String? = null
+        private var lastCheckElapsedRealtime: Long = 0L
         private var lastBlockedPackage: String? = null
         private var lastBlockElapsedRealtime: Long = 0L
     }

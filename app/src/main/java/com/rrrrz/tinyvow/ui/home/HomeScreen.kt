@@ -58,21 +58,19 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.rrrrz.tinyvow.R
-import com.rrrrz.tinyvow.data.apps.InstalledAppRepository
 import com.rrrrz.tinyvow.data.accessibility.AccessibilityServiceStateChecker
+import com.rrrrz.tinyvow.data.apps.InstalledAppRepository
 import com.rrrrz.tinyvow.data.apps.ManagedApp
+import com.rrrrz.tinyvow.data.db.AppDatabase
 import com.rrrrz.tinyvow.data.notification.NotificationPermissionChecker
+import com.rrrrz.tinyvow.data.repository.AppGroupWithApps
+import com.rrrrz.tinyvow.data.repository.AppLimitRepository
 import com.rrrrz.tinyvow.data.settings.ManagedAppPreferences
-import com.rrrrz.tinyvow.data.reminder.LimitReminderScheduler
 import com.rrrrz.tinyvow.data.usage.UsageAccessStateChecker
 import com.rrrrz.tinyvow.data.usage.UsageAccessStatus
-import com.rrrrz.tinyvow.data.usage.UsageStatsUsageRepository
-import com.rrrrz.tinyvow.domain.limit.DailyLimitEvaluation
-import com.rrrrz.tinyvow.domain.limit.DailyTimeLimitPolicy
 import com.rrrrz.tinyvow.service.block.AppLimitAccessibilityService
 import com.rrrrz.tinyvow.ui.theme.TinyVowTheme
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.flow.flowOf
 
 @Composable
 fun HomeRoute(
@@ -81,6 +79,7 @@ fun HomeRoute(
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val coroutineScope = rememberCoroutineScope()
+    
     val accessibilityServiceStateChecker = remember(context) { AccessibilityServiceStateChecker(context) }
     val checker = remember(context) { UsageAccessStateChecker(context) }
     val appRepository = remember(context) { InstalledAppRepository(context) }
@@ -88,9 +87,10 @@ fun HomeRoute(
     val powerManager = remember(context) { context.getSystemService(android.content.Context.POWER_SERVICE) as PowerManager }
     var isIgnoringBattery by remember { mutableStateOf(powerManager.isIgnoringBatteryOptimizations(context.packageName)) }
     val preferences = remember(context) { ManagedAppPreferences(context) }
-    val reminderScheduler = remember(context) { LimitReminderScheduler(context) }
-    val usageRepository = remember(context) { UsageStatsUsageRepository(context) }
-    val limitPolicy = remember { DailyTimeLimitPolicy() }
+    
+    val database = remember(context) { AppDatabase.getDatabase(context) }
+    val appLimitRepository = remember(database) { AppLimitRepository(database) }
+    val groupsWithApps by appLimitRepository.getAllGroupsWithApps().collectAsState(initial = emptyList())
 
     var usageAccessStatus by remember { mutableStateOf(checker.getStatus()) }
     var accessibilityServiceEnabled by remember {
@@ -99,25 +99,12 @@ fun HomeRoute(
     var notificationPermissionGranted by remember {
         mutableStateOf(notificationPermissionChecker.isGranted())
     }
+    
     var installedApps by remember { mutableStateOf<List<ManagedApp>>(emptyList()) }
     var isLoadingApps by remember { mutableStateOf(false) }
-    var isLoadingUsage by remember { mutableStateOf(false) }
-    var todayUsageMillis by remember { mutableLongStateOf(0L) }
-    var usageRefreshTick by remember { mutableIntStateOf(0) }
-    val selectedPackageName by preferences.selectedPackageName.collectAsState(initial = null)
-    val dailyLimitMinutesFlow = remember(selectedPackageName) {
-        selectedPackageName?.let(preferences::dailyLimitMinutes) ?: flowOf(null)
-    }
-    val dailyLimitMinutes by dailyLimitMinutesFlow.collectAsState(initial = null)
+
     val isAutoStartDismissed by preferences.isAutoStartDismissed.collectAsState(initial = false)
-    val limitEvaluation = remember(todayUsageMillis, dailyLimitMinutes) {
-        dailyLimitMinutes?.let { limitMinutes ->
-            limitPolicy.evaluate(
-                usageMillis = todayUsageMillis,
-                limitMillis = limitMinutes * 60_000L,
-            )
-        }
-    }
+
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission(),
     ) {
@@ -132,14 +119,10 @@ fun HomeRoute(
                     accessibilityServiceStateChecker.isEnabled(AppLimitAccessibilityService::class.java)
                 notificationPermissionGranted = notificationPermissionChecker.isGranted()
                 isIgnoringBattery = powerManager.isIgnoringBatteryOptimizations(context.packageName)
-                usageRefreshTick++
             }
         }
-
         lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose {
-            lifecycleOwner.lifecycle.removeObserver(observer)
-        }
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     LaunchedEffect(usageAccessStatus) {
@@ -149,41 +132,7 @@ fun HomeRoute(
             isLoadingApps = false
         } else {
             installedApps = emptyList()
-            todayUsageMillis = 0L
             isLoadingApps = false
-            isLoadingUsage = false
-        }
-    }
-
-    LaunchedEffect(usageAccessStatus, installedApps, selectedPackageName) {
-        if (
-            usageAccessStatus == UsageAccessStatus.GRANTED &&
-            installedApps.isNotEmpty() &&
-            selectedPackageName == null
-        ) {
-            preferences.setSelectedPackageName(installedApps.first().packageName)
-        }
-    }
-
-    LaunchedEffect(usageAccessStatus, selectedPackageName, usageRefreshTick) {
-        if (usageAccessStatus == UsageAccessStatus.GRANTED && selectedPackageName != null) {
-            isLoadingUsage = true
-            todayUsageMillis = usageRepository.getTodayUsageMillis(selectedPackageName!!)
-            isLoadingUsage = false
-        } else {
-            todayUsageMillis = 0L
-            isLoadingUsage = false
-        }
-    }
-
-    LaunchedEffect(usageAccessStatus, dailyLimitMinutes, selectedPackageName, notificationPermissionGranted) {
-        if (
-            usageAccessStatus == UsageAccessStatus.GRANTED &&
-            selectedPackageName != null &&
-            dailyLimitMinutes != null &&
-            notificationPermissionGranted
-        ) {
-            reminderScheduler.schedule()
         }
     }
 
@@ -193,22 +142,14 @@ fun HomeRoute(
         notificationPermissionGranted = notificationPermissionGranted,
         isIgnoringBattery = isIgnoringBattery,
         installedApps = installedApps,
-        selectedApp = installedApps.firstOrNull { it.packageName == selectedPackageName },
+        groupsWithApps = groupsWithApps,
         isLoadingApps = isLoadingApps,
-        isLoadingUsage = isLoadingUsage,
-        todayUsageMillis = todayUsageMillis,
-        dailyLimitMinutes = dailyLimitMinutes,
-        limitEvaluation = limitEvaluation,
         onOpenUsageAccessSettings = {
-            val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)
-                .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             context.startActivity(intent)
         },
         onOpenAccessibilitySettings = {
-            context.startActivity(
-                Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
-                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-            )
+            context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         },
         onRequestNotificationPermission = {
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
@@ -229,31 +170,18 @@ fun HomeRoute(
             }
             context.startActivity(intent)
         },
-        onSelectApp = { app ->
-            coroutineScope.launch {
-                preferences.setSelectedPackageName(app.packageName)
-            }
-        },
-        onRefreshUsage = {
-            usageRefreshTick++
-        },
-        onSaveDailyLimit = { minutes ->
-            val packageName = selectedPackageName ?: return@HomeScreen
-            coroutineScope.launch {
-                preferences.setDailyLimitMinutes(packageName, minutes)
-            }
-        },
         isAutoStartDismissed = isAutoStartDismissed,
         onSetAutoStartDismissed = {
+            coroutineScope.launch { preferences.setAutoStartDismissed(true) }
+        },
+        onSaveGroup = { id, name, limitMinutes, packageNames ->
             coroutineScope.launch {
-                preferences.setAutoStartDismissed(true)
+                val groupId = appLimitRepository.createOrUpdateGroup(id, name, limitMinutes)
+                appLimitRepository.updateGroupApps(groupId, packageNames)
             }
         },
-        onClearDailyLimit = {
-            val packageName = selectedPackageName ?: return@HomeScreen
-            coroutineScope.launch {
-                preferences.clearDailyLimitMinutes(packageName)
-            }
+        onDeleteGroup = { id ->
+            coroutineScope.launch { appLimitRepository.deleteGroup(id) }
         },
         modifier = modifier,
     )
@@ -266,31 +194,21 @@ fun HomeScreen(
     notificationPermissionGranted: Boolean,
     isIgnoringBattery: Boolean,
     installedApps: List<ManagedApp>,
-    selectedApp: ManagedApp?,
+    groupsWithApps: List<AppGroupWithApps>,
     isLoadingApps: Boolean,
-    isLoadingUsage: Boolean,
-    todayUsageMillis: Long,
-    dailyLimitMinutes: Int?,
-    limitEvaluation: DailyLimitEvaluation?,
     onOpenUsageAccessSettings: () -> Unit,
     onOpenAccessibilitySettings: () -> Unit,
     onRequestNotificationPermission: () -> Unit,
     onOpenAutoStartSettings: () -> Unit,
     onRequestBatteryOptimization: () -> Unit,
-    onSelectApp: (ManagedApp) -> Unit,
-    onRefreshUsage: () -> Unit,
-    onSaveDailyLimit: (Int) -> Unit,
     isAutoStartDismissed: Boolean,
     onSetAutoStartDismissed: () -> Unit,
-    onClearDailyLimit: () -> Unit,
+    onSaveGroup: (id: String?, name: String, limitMinutes: Int, packageNames: List<String>) -> Unit,
+    onDeleteGroup: (id: String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val usageAccessGranted = usageAccessStatus == UsageAccessStatus.GRANTED
-    val statusColor = if (usageAccessGranted) {
-        MaterialTheme.colorScheme.primary
-    } else {
-        MaterialTheme.colorScheme.error
-    }
+    val statusColor = if (usageAccessGranted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
 
     var showDiagnosticMenu by remember { mutableStateOf(false) }
 
@@ -298,92 +216,87 @@ fun HomeScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .verticalScroll(rememberScrollState())
                 .padding(innerPadding)
-                .padding(horizontal = 20.dp, vertical = 24.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             val showCardsOnHome = !usageAccessGranted || !accessibilityServiceEnabled || !isAutoStartDismissed || !isIgnoringBattery || !notificationPermissionGranted
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                Text(
-                    text = if (showCardsOnHome) stringResource(R.string.home_title) else stringResource(R.string.app_name),
-                    style = MaterialTheme.typography.headlineMedium,
-                    fontWeight = FontWeight.Bold,
-                )
-                androidx.compose.material3.IconButton(onClick = { showDiagnosticMenu = true }) {
-                    androidx.compose.material3.Icon(
-                        imageVector = androidx.compose.material.icons.Icons.Default.Settings,
-                        contentDescription = stringResource(R.string.action_diagnostic_settings)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = if (showCardsOnHome) stringResource(R.string.home_title) else stringResource(R.string.app_name),
+                        style = MaterialTheme.typography.headlineMedium,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    androidx.compose.material3.IconButton(onClick = { showDiagnosticMenu = true }) {
+                        androidx.compose.material3.Icon(
+                            imageVector = androidx.compose.material.icons.Icons.Default.Settings,
+                            contentDescription = stringResource(R.string.action_diagnostic_settings)
+                        )
+                    }
+                }
+                
+                if (showCardsOnHome) {
+                    Text(
+                        text = stringResource(R.string.home_subtitle),
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    PermissionProcessList(
+                        isMenuMode = false,
+                        usageAccessGranted = usageAccessGranted,
+                        accessibilityServiceEnabled = accessibilityServiceEnabled,
+                        isAutoStartDismissed = isAutoStartDismissed,
+                        isIgnoringBattery = isIgnoringBattery,
+                        notificationPermissionGranted = notificationPermissionGranted,
+                        statusColor = statusColor,
+                        onOpenUsageAccessSettings = onOpenUsageAccessSettings,
+                        onOpenAccessibilitySettings = onOpenAccessibilitySettings,
+                        onOpenAutoStartSettings = onOpenAutoStartSettings,
+                        onSetAutoStartDismissed = onSetAutoStartDismissed,
+                        onRequestBatteryOptimization = onRequestBatteryOptimization,
+                        onRequestNotificationPermission = onRequestNotificationPermission,
                     )
                 }
             }
-            if (showCardsOnHome) {
-                Text(
-                    text = stringResource(R.string.home_subtitle),
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-
-            if (showCardsOnHome) {
-                PermissionProcessList(
-                    isMenuMode = false,
-                    usageAccessGranted = usageAccessGranted,
-                    accessibilityServiceEnabled = accessibilityServiceEnabled,
-                    isAutoStartDismissed = isAutoStartDismissed,
-                    isIgnoringBattery = isIgnoringBattery,
-                    notificationPermissionGranted = notificationPermissionGranted,
-                    statusColor = statusColor,
-                    onOpenUsageAccessSettings = onOpenUsageAccessSettings,
-                    onOpenAccessibilitySettings = onOpenAccessibilitySettings,
-                    onOpenAutoStartSettings = onOpenAutoStartSettings,
-                    onSetAutoStartDismissed = onSetAutoStartDismissed,
-                    onRequestBatteryOptimization = onRequestBatteryOptimization,
-                    onRequestNotificationPermission = onRequestNotificationPermission,
-                )
-            }
 
             if (usageAccessGranted) {
-                UsageOverviewCard(
-                    selectedApp = selectedApp,
-                    todayUsageMillis = todayUsageMillis,
-                    dailyLimitMinutes = dailyLimitMinutes,
-                    limitEvaluation = limitEvaluation,
-                    isLoadingUsage = isLoadingUsage,
-                    onRefreshUsage = onRefreshUsage,
-                )
-                AppPickerCard(
+                GroupDashboard(
+                    groupsWithApps = groupsWithApps,
                     installedApps = installedApps,
-                    selectedApp = selectedApp,
                     isLoadingApps = isLoadingApps,
-                    onSelectApp = onSelectApp,
-                )
-                DailyLimitCard(
-                    selectedApp = selectedApp,
-                    dailyLimitMinutes = dailyLimitMinutes,
-                    onSaveDailyLimit = onSaveDailyLimit,
-                    onClearDailyLimit = onClearDailyLimit,
+                    onSaveGroup = onSaveGroup,
+                    onDeleteGroup = onDeleteGroup,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f)
+                        .padding(horizontal = 20.dp)
                 )
             } else {
-                GuidanceCard(
-                    title = stringResource(R.string.permission_steps_title),
-                    body = stringResource(R.string.permission_steps_body),
-                )
+                Column(
+                    modifier = Modifier
+                        .padding(horizontal = 20.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    GuidanceCard(
+                        title = stringResource(R.string.permission_steps_title),
+                        body = stringResource(R.string.permission_steps_body),
+                    )
+                    GuidanceCard(
+                        title = stringResource(R.string.mvp_scope_title),
+                        body = stringResource(R.string.mvp_scope_body),
+                    )
+                }
             }
-
-            if (showCardsOnHome) {
-                GuidanceCard(
-                    title = stringResource(R.string.mvp_scope_title),
-                    body = stringResource(R.string.mvp_scope_body),
-                )
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
         }
 
         if (showDiagnosticMenu) {
@@ -655,277 +568,6 @@ private fun PermissionCard(
 }
 
 @Composable
-private fun UsageOverviewCard(
-    selectedApp: ManagedApp?,
-    todayUsageMillis: Long,
-    dailyLimitMinutes: Int?,
-    limitEvaluation: DailyLimitEvaluation?,
-    isLoadingUsage: Boolean,
-    onRefreshUsage: () -> Unit,
-) {
-    val budgetColor = when {
-        limitEvaluation?.isExceeded == true -> MaterialTheme.colorScheme.error
-        limitEvaluation != null -> MaterialTheme.colorScheme.primary
-        else -> MaterialTheme.colorScheme.onSurfaceVariant
-    }
-
-    ElevatedCard(
-        shape = RoundedCornerShape(28.dp),
-        colors = CardDefaults.elevatedCardColors(
-            containerColor = MaterialTheme.colorScheme.primaryContainer,
-        ),
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Text(
-                text = stringResource(R.string.usage_card_title),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Text(
-                text = selectedApp?.appName ?: stringResource(R.string.app_picker_empty_selected),
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold,
-            )
-            if (selectedApp != null) {
-                Text(
-                    text = selectedApp.packageName,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-
-            if (isLoadingUsage) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-                    Text(text = stringResource(R.string.usage_loading))
-                }
-            } else {
-                Text(
-                    text = formatUsageDuration(todayUsageMillis),
-                    style = MaterialTheme.typography.displaySmall,
-                    fontWeight = FontWeight.Bold,
-                )
-            }
-
-            if (dailyLimitMinutes != null && limitEvaluation != null) {
-                Text(
-                    text = stringResource(
-                        R.string.daily_limit_summary,
-                        dailyLimitMinutes,
-                    ),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                Text(
-                    text = if (limitEvaluation.isExceeded) {
-                        stringResource(
-                            R.string.daily_limit_exceeded,
-                            formatUsageDuration(limitEvaluation.exceededMillis),
-                        )
-                    } else {
-                        stringResource(
-                            R.string.daily_limit_remaining,
-                            formatUsageDuration(limitEvaluation.remainingMillis),
-                        )
-                    },
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = budgetColor,
-                    fontWeight = FontWeight.Medium,
-                )
-            } else {
-                Text(
-                    text = stringResource(R.string.daily_limit_missing),
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-
-            Text(
-                text = stringResource(R.string.usage_card_hint),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-
-            OutlinedButton(
-                onClick = onRefreshUsage,
-                enabled = selectedApp != null,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text(text = stringResource(R.string.usage_refresh_action))
-            }
-        }
-    }
-}
-
-@Composable
-private fun DailyLimitCard(
-    selectedApp: ManagedApp?,
-    dailyLimitMinutes: Int?,
-    onSaveDailyLimit: (Int) -> Unit,
-    onClearDailyLimit: () -> Unit,
-) {
-    var sliderMinutes by remember(selectedApp?.packageName, dailyLimitMinutes) {
-        mutableFloatStateOf((dailyLimitMinutes ?: 60).coerceIn(5, 240).toFloat())
-    }
-
-    ElevatedCard(
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.elevatedCardColors(
-            containerColor = MaterialTheme.colorScheme.surface,
-        ),
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            Text(
-                text = stringResource(R.string.limit_card_title),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Text(
-                text = selectedApp?.let {
-                    stringResource(R.string.limit_card_desc_selected, it.appName)
-                } ?: stringResource(R.string.limit_card_desc_empty),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Text(
-                text = stringResource(
-                    R.string.limit_slider_value,
-                    sliderMinutes.toInt(),
-                ),
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold,
-            )
-
-            Slider(
-                value = sliderMinutes,
-                onValueChange = { sliderMinutes = it },
-                valueRange = 5f..240f,
-                steps = 46,
-                enabled = selectedApp != null,
-            )
-
-            Button(
-                onClick = { onSaveDailyLimit(sliderMinutes.toInt()) },
-                enabled = selectedApp != null,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text(text = stringResource(R.string.limit_save_action))
-            }
-
-            OutlinedButton(
-                onClick = onClearDailyLimit,
-                enabled = selectedApp != null && dailyLimitMinutes != null,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text(text = stringResource(R.string.limit_clear_action))
-            }
-        }
-    }
-}
-
-@Composable
-private fun AppPickerCard(
-    installedApps: List<ManagedApp>,
-    selectedApp: ManagedApp?,
-    isLoadingApps: Boolean,
-    onSelectApp: (ManagedApp) -> Unit,
-) {
-    var expanded by remember { mutableStateOf(false) }
-
-    ElevatedCard(
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.elevatedCardColors(
-            containerColor = MaterialTheme.colorScheme.surface,
-        ),
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            Text(
-                text = stringResource(R.string.app_picker_title),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-            )
-            Text(
-                text = stringResource(R.string.app_picker_desc),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-
-            if (isLoadingApps) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
-                    Text(text = stringResource(R.string.app_picker_loading))
-                }
-            } else if (installedApps.isEmpty()) {
-                Text(
-                    text = stringResource(R.string.app_picker_empty),
-                    style = MaterialTheme.typography.bodyMedium,
-                )
-            } else {
-                Box(modifier = Modifier.fillMaxWidth()) {
-                    OutlinedButton(
-                        onClick = { expanded = true },
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Text(
-                            text = selectedApp?.appName
-                                ?: stringResource(R.string.app_picker_action),
-                        )
-                    }
-
-                    DropdownMenu(
-                        expanded = expanded,
-                        onDismissRequest = { expanded = false },
-                        modifier = Modifier
-                            .fillMaxWidth(0.92f)
-                            .heightIn(max = 360.dp),
-                    ) {
-                        installedApps.forEach { app ->
-                            DropdownMenuItem(
-                                text = {
-                                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                                        Text(text = app.appName)
-                                        Text(
-                                            text = app.packageName,
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        )
-                                    }
-                                },
-                                onClick = {
-                                    expanded = false
-                                    onSelectApp(app)
-                                },
-                            )
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
 private fun AutoStartCard(
     onOpenAutoStartSettings: () -> Unit,
     onSetAutoStartDismissed: () -> Unit,
@@ -1055,27 +697,6 @@ private fun GuidanceCard(
     }
 }
 
-@Composable
-private fun formatUsageDuration(durationMillis: Long): String {
-    val totalSeconds = durationMillis / 1_000
-    val totalMinutes = durationMillis / 60_000
-    val hours = totalMinutes / 60
-    val minutes = totalMinutes % 60
-    val seconds = totalSeconds % 60
-
-    return when {
-        hours > 0 && minutes > 0 -> stringResource(
-            R.string.duration_hours_minutes,
-            hours,
-            minutes,
-        )
-        hours > 0 -> stringResource(R.string.duration_hours_only, hours)
-        totalMinutes > 0L -> stringResource(R.string.duration_minutes_only, minutes)
-        totalSeconds > 0L -> stringResource(R.string.duration_seconds_only, seconds)
-        else -> stringResource(R.string.duration_zero_seconds)
-    }
-}
-
 @Preview(showBackground = true)
 @Composable
 private fun HomeScreenPreviewDenied() {
@@ -1084,14 +705,10 @@ private fun HomeScreenPreviewDenied() {
             usageAccessStatus = UsageAccessStatus.DENIED,
             accessibilityServiceEnabled = false,
             installedApps = emptyList(),
-            selectedApp = null,
+            groupsWithApps = emptyList(),
             isLoadingApps = false,
-            isLoadingUsage = false,
-            todayUsageMillis = 0L,
             notificationPermissionGranted = false,
             isIgnoringBattery = false,
-            dailyLimitMinutes = null,
-            limitEvaluation = null,
             isAutoStartDismissed = false,
             onOpenUsageAccessSettings = {},
             onOpenAccessibilitySettings = {},
@@ -1099,10 +716,8 @@ private fun HomeScreenPreviewDenied() {
             onOpenAutoStartSettings = {},
             onRequestBatteryOptimization = {},
             onSetAutoStartDismissed = {},
-            onSelectApp = {},
-            onRefreshUsage = {},
-            onSaveDailyLimit = {},
-            onClearDailyLimit = {},
+            onSaveGroup = { _, _, _, _ -> },
+            onDeleteGroup = {}
         )
     }
 }
@@ -1120,20 +735,10 @@ private fun HomeScreenPreviewGranted() {
                     appName = "Video App",
                 ),
             ),
-            selectedApp = ManagedApp(
-                packageName = "com.example.video",
-                appName = "Video App",
-            ),
+            groupsWithApps = emptyList(),
             isLoadingApps = false,
-            isLoadingUsage = false,
-            todayUsageMillis = 5_400_000L,
             notificationPermissionGranted = true,
             isIgnoringBattery = true,
-            dailyLimitMinutes = 90,
-            limitEvaluation = DailyTimeLimitPolicy().evaluate(
-                usageMillis = 5_400_000L,
-                limitMillis = 90 * 60_000L,
-            ),
             isAutoStartDismissed = false,
             onOpenUsageAccessSettings = {},
             onOpenAccessibilitySettings = {},
@@ -1141,10 +746,8 @@ private fun HomeScreenPreviewGranted() {
             onOpenAutoStartSettings = {},
             onRequestBatteryOptimization = {},
             onSetAutoStartDismissed = {},
-            onSelectApp = {},
-            onRefreshUsage = {},
-            onSaveDailyLimit = {},
-            onClearDailyLimit = {},
+            onSaveGroup = { _, _, _, _ -> },
+            onDeleteGroup = {}
         )
     }
 }

@@ -75,4 +75,16 @@
     <string name="duration_zero_seconds">0秒</string>
     <string name="block_overlay_open_app">回到 Tiny Vow</string>
     <string name="block_overlay_go_home">返回桌面</string>
+    <string name="group_dashboard_title">应用管控分组</string>
+    <string name="group_create_action">创建新分组</string>
+    <string name="group_edit_title">编辑分组属性</string>
+    <string name="group_name_label">分组名称 (如：游戏、视频)</string>
+    <string name="group_limit_label">每日限制时长 (分钟)</string>
+    <string name="group_apps_label">勾选要管控的应用：</string>
+    <string name="group_delete_action">删除分组</string>
+    <string name="action_save">保存配置</string>
+    <string name="action_cancel">取消</string>
+    <string name="group_card_summary">%1$d 个应用，每天共限 %2$d 分钟</string>
+    <string name="group_card_empty">此分组下还没绑定应用</string>
+    <string name="block_body_group">分组「%1$s」的总使用时间已超出限额 %2$s。请休息一下，明天再来。</string>
 </resources>
