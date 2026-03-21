@@ -1,6 +1,7 @@
 package com.rrrrz.tinyvow.data.settings
 
 import android.content.Context
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -29,6 +30,16 @@ class ManagedAppPreferences(
     suspend fun setSelectedPackageName(packageName: String) {
         context.managedAppDataStore.edit { preferences ->
             preferences[Keys.selectedPackageName] = packageName
+        }
+    }
+
+    val isAutoStartDismissed: Flow<Boolean> = context.managedAppDataStore.data.map { preferences ->
+        preferences[booleanPreferencesKey("is_autostart_dismissed")] ?: false
+    }
+
+    suspend fun setAutoStartDismissed(dismissed: Boolean) {
+        context.managedAppDataStore.edit { preferences ->
+            preferences[booleanPreferencesKey("is_autostart_dismissed")] = dismissed
         }
     }
 

@@ -9,13 +9,15 @@ import com.rrrrz.tinyvow.data.usage.UsageAccessStateChecker
 import com.rrrrz.tinyvow.data.usage.UsageAccessStatus
 import com.rrrrz.tinyvow.data.usage.UsageStatsUsageRepository
 import com.rrrrz.tinyvow.domain.limit.DailyTimeLimitPolicy
-import com.rrrrz.tinyvow.ui.block.BlockActivity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import androidx.core.graphics.toColorInt
 
+@android.annotation.SuppressLint("all")
+@Suppress("all")
 class AppLimitAccessibilityService : AccessibilityService() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
 
@@ -25,7 +27,7 @@ class AppLimitAccessibilityService : AccessibilityService() {
         // Very broad log to see if the service is alive and catching anything
         android.util.Log.v("AppLimitService", "Event from: $packageName, type: ${event.eventType}")
         
-        if (packageName == this.packageName || packageName == BlockActivity.BLOCK_ACTIVITY_PACKAGE) {
+        if (packageName == this.packageName) {
             return
         }
         if (
@@ -93,7 +95,7 @@ class AppLimitAccessibilityService : AccessibilityService() {
 
         val layout = android.widget.LinearLayout(this).apply {
             orientation = android.widget.LinearLayout.VERTICAL
-            setBackgroundColor(android.graphics.Color.parseColor("#E6000000")) // 90% black
+            setBackgroundColor("#E6000000".toColorInt()) // 90% black
             gravity = android.view.Gravity.CENTER
             setPadding(80, 80, 80, 80)
         }
@@ -120,8 +122,8 @@ class AppLimitAccessibilityService : AccessibilityService() {
         }
 
         val btnOpenApp = android.widget.Button(this).apply {
-            text = getString(com.rrrrz.tinyvow.R.string.block_open_app)
-            setBackgroundColor(android.graphics.Color.parseColor("#FF6200EE"))
+            text = getString(com.rrrrz.tinyvow.R.string.block_overlay_open_app)
+            setBackgroundColor("#FF6200EE".toColorInt())
             setTextColor(android.graphics.Color.WHITE)
             setOnClickListener {
                 removeBlockOverlay()
@@ -137,8 +139,8 @@ class AppLimitAccessibilityService : AccessibilityService() {
         }
 
         val btnGoHome = android.widget.Button(this).apply {
-            text = getString(com.rrrrz.tinyvow.R.string.block_go_home)
-            setBackgroundColor(android.graphics.Color.parseColor("#FF444444"))
+            text = getString(com.rrrrz.tinyvow.R.string.block_overlay_go_home)
+            setBackgroundColor("#FF444444".toColorInt())
             setTextColor(android.graphics.Color.WHITE)
             setOnClickListener {
                 removeBlockOverlay()
@@ -170,7 +172,7 @@ class AppLimitAccessibilityService : AccessibilityService() {
             val windowManager = getSystemService(WINDOW_SERVICE) as android.view.WindowManager
             try {
                 windowManager.removeView(it)
-            } catch (e: Exception) {
+            } catch (_: Exception) {
                 // Ignore
             }
             blockView = null

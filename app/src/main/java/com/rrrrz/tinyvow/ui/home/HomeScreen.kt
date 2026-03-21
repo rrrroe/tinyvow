@@ -2,11 +2,13 @@ package com.rrrrz.tinyvow.ui.home
 
 import android.Manifest
 import android.content.Intent
-import android.os.Build
 import android.provider.Settings
+import android.os.PowerManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -83,6 +85,8 @@ fun HomeRoute(
     val checker = remember(context) { UsageAccessStateChecker(context) }
     val appRepository = remember(context) { InstalledAppRepository(context) }
     val notificationPermissionChecker = remember(context) { NotificationPermissionChecker(context) }
+    val powerManager = remember(context) { context.getSystemService(android.content.Context.POWER_SERVICE) as PowerManager }
+    var isIgnoringBattery by remember { mutableStateOf(powerManager.isIgnoringBatteryOptimizations(context.packageName)) }
     val preferences = remember(context) { ManagedAppPreferences(context) }
     val reminderScheduler = remember(context) { LimitReminderScheduler(context) }
     val usageRepository = remember(context) { UsageStatsUsageRepository(context) }
@@ -105,6 +109,7 @@ fun HomeRoute(
         selectedPackageName?.let(preferences::dailyLimitMinutes) ?: flowOf(null)
     }
     val dailyLimitMinutes by dailyLimitMinutesFlow.collectAsState(initial = null)
+    val isAutoStartDismissed by preferences.isAutoStartDismissed.collectAsState(initial = false)
     val limitEvaluation = remember(todayUsageMillis, dailyLimitMinutes) {
         dailyLimitMinutes?.let { limitMinutes ->
             limitPolicy.evaluate(
@@ -126,6 +131,7 @@ fun HomeRoute(
                 accessibilityServiceEnabled =
                     accessibilityServiceStateChecker.isEnabled(AppLimitAccessibilityService::class.java)
                 notificationPermissionGranted = notificationPermissionChecker.isGranted()
+                isIgnoringBattery = powerManager.isIgnoringBatteryOptimizations(context.packageName)
                 usageRefreshTick++
             }
         }
@@ -185,6 +191,7 @@ fun HomeRoute(
         usageAccessStatus = usageAccessStatus,
         accessibilityServiceEnabled = accessibilityServiceEnabled,
         notificationPermissionGranted = notificationPermissionGranted,
+        isIgnoringBattery = isIgnoringBattery,
         installedApps = installedApps,
         selectedApp = installedApps.firstOrNull { it.packageName == selectedPackageName },
         isLoadingApps = isLoadingApps,
@@ -204,9 +211,23 @@ fun HomeRoute(
             )
         },
         onRequestNotificationPermission = {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
                 notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
             }
+        },
+        onOpenAutoStartSettings = {
+            val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                data = android.net.Uri.fromParts("package", context.packageName, null)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(intent)
+        },
+        onRequestBatteryOptimization = {
+            val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                data = android.net.Uri.parse("package:${context.packageName}")
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            context.startActivity(intent)
         },
         onSelectApp = { app ->
             coroutineScope.launch {
@@ -220,6 +241,12 @@ fun HomeRoute(
             val packageName = selectedPackageName ?: return@HomeScreen
             coroutineScope.launch {
                 preferences.setDailyLimitMinutes(packageName, minutes)
+            }
+        },
+        isAutoStartDismissed = isAutoStartDismissed,
+        onSetAutoStartDismissed = {
+            coroutineScope.launch {
+                preferences.setAutoStartDismissed(true)
             }
         },
         onClearDailyLimit = {
@@ -237,6 +264,7 @@ fun HomeScreen(
     usageAccessStatus: UsageAccessStatus,
     accessibilityServiceEnabled: Boolean,
     notificationPermissionGranted: Boolean,
+    isIgnoringBattery: Boolean,
     installedApps: List<ManagedApp>,
     selectedApp: ManagedApp?,
     isLoadingApps: Boolean,
@@ -247,9 +275,13 @@ fun HomeScreen(
     onOpenUsageAccessSettings: () -> Unit,
     onOpenAccessibilitySettings: () -> Unit,
     onRequestNotificationPermission: () -> Unit,
+    onOpenAutoStartSettings: () -> Unit,
+    onRequestBatteryOptimization: () -> Unit,
     onSelectApp: (ManagedApp) -> Unit,
     onRefreshUsage: () -> Unit,
     onSaveDailyLimit: (Int) -> Unit,
+    isAutoStartDismissed: Boolean,
+    onSetAutoStartDismissed: () -> Unit,
     onClearDailyLimit: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -260,6 +292,8 @@ fun HomeScreen(
         MaterialTheme.colorScheme.error
     }
 
+    var showDiagnosticMenu by remember { mutableStateOf(false) }
+
     Scaffold(modifier = modifier.fillMaxSize()) { innerPadding ->
         Column(
             modifier = Modifier
@@ -269,45 +303,52 @@ fun HomeScreen(
                 .padding(horizontal = 20.dp, vertical = 24.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Text(
-                text = stringResource(R.string.home_title),
-                style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.Bold,
-            )
-            Text(
-                text = stringResource(R.string.home_subtitle),
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            val showCardsOnHome = !usageAccessGranted || !accessibilityServiceEnabled || !isAutoStartDismissed || !isIgnoringBattery || !notificationPermissionGranted
 
-            PermissionCard(
-                usageAccessGranted = usageAccessGranted,
-                statusColor = statusColor,
-                onOpenUsageAccessSettings = onOpenUsageAccessSettings,
-            )
-
-            if (usageAccessGranted) {
-                if (Build.MANUFACTURER.equals("xiaomi", ignoreCase = true)) {
-                    val context = androidx.compose.ui.platform.LocalContext.current
-                    XiaomiPermissionCard(
-                        onOpenAppSettings = {
-                            val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                                data = android.net.Uri.fromParts("package", context.packageName, null)
-                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                            }
-                            context.startActivity(intent)
-                        }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = if (showCardsOnHome) stringResource(R.string.home_title) else stringResource(R.string.app_name),
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.Bold,
+                )
+                androidx.compose.material3.IconButton(onClick = { showDiagnosticMenu = true }) {
+                    androidx.compose.material3.Icon(
+                        imageVector = androidx.compose.material.icons.Icons.Default.Settings,
+                        contentDescription = stringResource(R.string.action_diagnostic_settings)
                     )
                 }
-
-                AccessibilityStatusCard(
-                    accessibilityServiceEnabled = accessibilityServiceEnabled,
-                    onOpenAccessibilitySettings = onOpenAccessibilitySettings,
+            }
+            if (showCardsOnHome) {
+                Text(
+                    text = stringResource(R.string.home_subtitle),
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                ReminderStatusCard(
+            }
+
+            if (showCardsOnHome) {
+                PermissionProcessList(
+                    isMenuMode = false,
+                    usageAccessGranted = usageAccessGranted,
+                    accessibilityServiceEnabled = accessibilityServiceEnabled,
+                    isAutoStartDismissed = isAutoStartDismissed,
+                    isIgnoringBattery = isIgnoringBattery,
                     notificationPermissionGranted = notificationPermissionGranted,
+                    statusColor = statusColor,
+                    onOpenUsageAccessSettings = onOpenUsageAccessSettings,
+                    onOpenAccessibilitySettings = onOpenAccessibilitySettings,
+                    onOpenAutoStartSettings = onOpenAutoStartSettings,
+                    onSetAutoStartDismissed = onSetAutoStartDismissed,
+                    onRequestBatteryOptimization = onRequestBatteryOptimization,
                     onRequestNotificationPermission = onRequestNotificationPermission,
                 )
+            }
+
+            if (usageAccessGranted) {
                 UsageOverviewCard(
                     selectedApp = selectedApp,
                     todayUsageMillis = todayUsageMillis,
@@ -335,21 +376,114 @@ fun HomeScreen(
                 )
             }
 
-            GuidanceCard(
-                title = stringResource(R.string.mvp_scope_title),
-                body = stringResource(R.string.mvp_scope_body),
-            )
-
-            GuidanceCard(
-                title = stringResource(R.string.next_step_title),
-                body = if (usageAccessGranted) {
-                    stringResource(R.string.next_step_body_enabled)
-                } else {
-                    stringResource(R.string.next_step_body)
-                },
-            )
+            if (showCardsOnHome) {
+                GuidanceCard(
+                    title = stringResource(R.string.mvp_scope_title),
+                    body = stringResource(R.string.mvp_scope_body),
+                )
+            }
 
             Spacer(modifier = Modifier.height(12.dp))
+        }
+
+        if (showDiagnosticMenu) {
+            @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
+            androidx.compose.material3.ModalBottomSheet(
+                onDismissRequest = { showDiagnosticMenu = false }
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 20.dp, vertical = 16.dp)
+                        .verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    Text(
+                        text = stringResource(R.string.action_diagnostic_settings),
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Text(
+                        text = stringResource(R.string.settings_menu_subtitle),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    PermissionProcessList(
+                        isMenuMode = true,
+                        usageAccessGranted = usageAccessGranted,
+                        accessibilityServiceEnabled = accessibilityServiceEnabled,
+                        isAutoStartDismissed = isAutoStartDismissed,
+                        isIgnoringBattery = isIgnoringBattery,
+                        notificationPermissionGranted = notificationPermissionGranted,
+                        statusColor = statusColor,
+                        onOpenUsageAccessSettings = onOpenUsageAccessSettings,
+                        onOpenAccessibilitySettings = onOpenAccessibilitySettings,
+                        onOpenAutoStartSettings = onOpenAutoStartSettings,
+                        onSetAutoStartDismissed = onSetAutoStartDismissed,
+                        onRequestBatteryOptimization = onRequestBatteryOptimization,
+                        onRequestNotificationPermission = onRequestNotificationPermission,
+                    )
+                    Spacer(modifier = Modifier.height(24.dp))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PermissionProcessList(
+    isMenuMode: Boolean,
+    usageAccessGranted: Boolean,
+    accessibilityServiceEnabled: Boolean,
+    isAutoStartDismissed: Boolean,
+    isIgnoringBattery: Boolean,
+    notificationPermissionGranted: Boolean,
+    statusColor: androidx.compose.ui.graphics.Color,
+    onOpenUsageAccessSettings: () -> Unit,
+    onOpenAccessibilitySettings: () -> Unit,
+    onOpenAutoStartSettings: () -> Unit,
+    onSetAutoStartDismissed: () -> Unit,
+    onRequestBatteryOptimization: () -> Unit,
+    onRequestNotificationPermission: () -> Unit,
+) {
+    if (isMenuMode || !usageAccessGranted) {
+        PermissionCard(
+            usageAccessGranted = usageAccessGranted,
+            statusColor = statusColor,
+            onOpenUsageAccessSettings = onOpenUsageAccessSettings,
+        )
+    }
+
+    if (usageAccessGranted || isMenuMode) {
+        if (isMenuMode || !accessibilityServiceEnabled) {
+            AccessibilityStatusCard(
+                accessibilityServiceEnabled = accessibilityServiceEnabled,
+                isMenuMode = isMenuMode,
+                onOpenAccessibilitySettings = onOpenAccessibilitySettings,
+            )
+        }
+
+        if (isMenuMode || !isAutoStartDismissed) {
+            AutoStartCard(
+                onOpenAutoStartSettings = onOpenAutoStartSettings,
+                onSetAutoStartDismissed = onSetAutoStartDismissed,
+            )
+        }
+
+        if (isMenuMode || !isIgnoringBattery) {
+            BatteryOptimizationCard(
+                isIgnoringBattery = isIgnoringBattery,
+                isMenuMode = isMenuMode,
+                onRequestBatteryOptimization = onRequestBatteryOptimization,
+            )
+        }
+
+        if (isMenuMode || !notificationPermissionGranted) {
+            ReminderStatusCard(
+                notificationPermissionGranted = notificationPermissionGranted,
+                isMenuMode = isMenuMode,
+                onRequestNotificationPermission = onRequestNotificationPermission,
+            )
         }
     }
 }
@@ -357,6 +491,7 @@ fun HomeScreen(
 @Composable
 private fun AccessibilityStatusCard(
     accessibilityServiceEnabled: Boolean,
+    isMenuMode: Boolean = false,
     onOpenAccessibilitySettings: () -> Unit,
 ) {
     val statusColor = if (accessibilityServiceEnabled) {
@@ -392,16 +527,13 @@ private fun AccessibilityStatusCard(
                 color = statusColor,
                 fontWeight = FontWeight.Medium,
             )
-            Text(
-                text = stringResource(R.string.accessibility_card_desc),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Button(
-                onClick = onOpenAccessibilitySettings,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text(text = stringResource(R.string.accessibility_card_action))
+            if (isMenuMode || !accessibilityServiceEnabled) {
+                Button(
+                    onClick = onOpenAccessibilitySettings,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(text = stringResource(R.string.accessibility_card_action))
+                }
             }
         }
     }
@@ -410,6 +542,7 @@ private fun AccessibilityStatusCard(
 @Composable
 private fun ReminderStatusCard(
     notificationPermissionGranted: Boolean,
+    isMenuMode: Boolean = false,
     onRequestNotificationPermission: () -> Unit,
 ) {
     val statusColor = if (notificationPermissionGranted) {
@@ -445,12 +578,7 @@ private fun ReminderStatusCard(
                 color = statusColor,
                 fontWeight = FontWeight.Medium,
             )
-            Text(
-                text = stringResource(R.string.reminder_card_desc),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            if (!notificationPermissionGranted) {
+            if (isMenuMode || !notificationPermissionGranted) {
                 Button(
                     onClick = onRequestNotificationPermission,
                     modifier = Modifier.fillMaxWidth(),
@@ -798,6 +926,105 @@ private fun AppPickerCard(
 }
 
 @Composable
+private fun AutoStartCard(
+    onOpenAutoStartSettings: () -> Unit,
+    onSetAutoStartDismissed: () -> Unit,
+) {
+    ElevatedCard(
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.elevatedCardColors(
+            containerColor = MaterialTheme.colorScheme.surface,
+        ),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(
+                text = stringResource(R.string.autostart_card_title),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                text = stringResource(R.string.autostart_card_desc),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Button(
+                    onClick = onOpenAutoStartSettings,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text(text = stringResource(R.string.autostart_card_action))
+                }
+                androidx.compose.material3.OutlinedButton(
+                    onClick = onSetAutoStartDismissed,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text(text = stringResource(R.string.autostart_card_action_done))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun BatteryOptimizationCard(
+    isIgnoringBattery: Boolean,
+    isMenuMode: Boolean = false,
+    onRequestBatteryOptimization: () -> Unit,
+) {
+    val statusColor = if (isIgnoringBattery) {
+        MaterialTheme.colorScheme.primary
+    } else {
+        MaterialTheme.colorScheme.error
+    }
+
+    ElevatedCard(
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.elevatedCardColors(
+            containerColor = MaterialTheme.colorScheme.surface,
+        ),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(
+                text = stringResource(R.string.battery_card_title),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                text = if (isIgnoringBattery) {
+                    stringResource(R.string.battery_card_enabled)
+                } else {
+                    stringResource(R.string.battery_card_disabled)
+                },
+                style = MaterialTheme.typography.bodyMedium,
+                color = statusColor,
+                fontWeight = FontWeight.Medium,
+            )
+            if (isMenuMode || !isIgnoringBattery) {
+                Button(
+                    onClick = onRequestBatteryOptimization,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(text = stringResource(R.string.battery_card_action))
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun GuidanceCard(
     title: String,
     body: String,
@@ -824,47 +1051,6 @@ private fun GuidanceCard(
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-        }
-    }
-}
-
-@Composable
-private fun XiaomiPermissionCard(
-    onOpenAppSettings: () -> Unit,
-) {
-    ElevatedCard(
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.elevatedCardColors(
-            containerColor = MaterialTheme.colorScheme.errorContainer,
-        ),
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            Text(
-                text = stringResource(R.string.xiaomi_permission_title),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onErrorContainer,
-            )
-            Text(
-                text = stringResource(R.string.xiaomi_permission_body),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onErrorContainer,
-            )
-            Button(
-                onClick = onOpenAppSettings,
-                modifier = Modifier.fillMaxWidth(),
-                colors = androidx.compose.material3.ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.error,
-                    contentColor = MaterialTheme.colorScheme.onError
-                )
-            ) {
-                Text(text = stringResource(R.string.xiaomi_permission_action))
-            }
         }
     }
 }
@@ -903,11 +1089,16 @@ private fun HomeScreenPreviewDenied() {
             isLoadingUsage = false,
             todayUsageMillis = 0L,
             notificationPermissionGranted = false,
+            isIgnoringBattery = false,
             dailyLimitMinutes = null,
             limitEvaluation = null,
+            isAutoStartDismissed = false,
             onOpenUsageAccessSettings = {},
             onOpenAccessibilitySettings = {},
             onRequestNotificationPermission = {},
+            onOpenAutoStartSettings = {},
+            onRequestBatteryOptimization = {},
+            onSetAutoStartDismissed = {},
             onSelectApp = {},
             onRefreshUsage = {},
             onSaveDailyLimit = {},
@@ -937,14 +1128,19 @@ private fun HomeScreenPreviewGranted() {
             isLoadingUsage = false,
             todayUsageMillis = 5_400_000L,
             notificationPermissionGranted = true,
+            isIgnoringBattery = true,
             dailyLimitMinutes = 90,
             limitEvaluation = DailyTimeLimitPolicy().evaluate(
                 usageMillis = 5_400_000L,
                 limitMillis = 90 * 60_000L,
             ),
+            isAutoStartDismissed = false,
             onOpenUsageAccessSettings = {},
             onOpenAccessibilitySettings = {},
             onRequestNotificationPermission = {},
+            onOpenAutoStartSettings = {},
+            onRequestBatteryOptimization = {},
+            onSetAutoStartDismissed = {},
             onSelectApp = {},
             onRefreshUsage = {},
             onSaveDailyLimit = {},
