@@ -4,80 +4,63 @@ import android.content.Context
 import android.os.SystemClock
 import com.rrrrz.tinyvow.data.db.AppDatabase
 import com.rrrrz.tinyvow.data.db.AppGroupEntity
+import com.rrrrz.tinyvow.data.db.GroupType
+import com.rrrrz.tinyvow.data.db.LimitPeriod
 import com.rrrrz.tinyvow.data.usage.UsageStatsUsageRepository
 
 /**
- * 多分组交叉短板效应评估器
- *
- * 核心算法：当前前台 App → 查找它所属的 N 个分组 → 逐组聚合计算所有组内 App 总时长
- *         → 任意一个分组超标 → 返回需要阻断的评估结果
- *
- * 内置两层缓存防抖：
- * 1. 配置缓存 (configCacheTtlMs)：避免每次 accessibility 事件都查 Room
- * 2. 使用量缓存 (usageCacheTtlMs)：避免每次都调 UsageStatsManager
+ * 多分组交叉短板效应评估器 (升级版：支持周期时长与加时包)
  */
 class GroupLimitEnforcer(context: Context) {
 
     private val database = AppDatabase.getDatabase(context)
     private val crossRefDao = database.crossRefDao()
     private val groupDao = database.appGroupDao()
+    private val bonusTimeDao = database.bonusTimeDao()
     private val usageRepository = UsageStatsUsageRepository(context)
 
-    // ── 配置缓存：packageName → (groupIds, timestamp) ──
-    private data class ConfigCacheEntry(
-        val groupIds: List<String>,
-        val fetchedAt: Long
-    )
+    private data class ConfigCacheEntry(val groupIds: List<String>, val fetchedAt: Long)
     private val configCache = mutableMapOf<String, ConfigCacheEntry>()
 
-    // ── 使用量缓存：groupId → (usageMillis, timestamp) ──
-    private data class UsageCacheEntry(
-        val usedMillis: Long,
-        val fetchedAt: Long
-    )
+    private data class UsageCacheEntry(val usedMillis: Long, val fetchedAt: Long)
     private val usageCache = mutableMapOf<String, UsageCacheEntry>()
 
-    /**
-     * 对 [packageName] 执行多维短板评估。
-     *
-     * @return 若任意分组超标则返回 [GroupExceededResult]，否则返回 null
-     */
     suspend fun evaluate(packageName: String): GroupExceededResult? {
         val now = SystemClock.elapsedRealtime()
+        val currentTimeMillis = System.currentTimeMillis()
 
-        // 1. 取缓存中的分组 ID 列表；过期则重新查库
         val groupIds = getCachedGroupIds(packageName, now)
-        if (groupIds.isEmpty()) return null   // 该 App 不在任何管控组中
+        if (groupIds.isEmpty()) return null
 
-        // 2. 遍历每个分组，检查是否超标
         for (groupId in groupIds) {
             val group = groupDao.getGroupByIdSync(groupId) ?: continue
-            val limitMillis = group.dailyLimitMinutes * 60_000L
+            
+            // 基础限额 + 加时包
+            val baseLimitMillis = group.limitMinutes * 60_000L
+            val bonusMillis = getSyncBonusTimeMillis(groupId, currentTimeMillis)
+            val totalLimitMillis = baseLimitMillis + bonusMillis
 
-            // 3. 聚合该组所有 App 今日总用量
-            val totalUsedMillis = getCachedGroupUsage(groupId, now)
+            // 统计周期内的历史用量
+            val totalUsedMillis = getCachedGroupUsage(groupId, group.limitPeriod, now)
 
-            if (totalUsedMillis >= limitMillis) {
+            if (totalUsedMillis >= totalLimitMillis) {
                 return GroupExceededResult(
                     groupName = group.name,
                     groupId = groupId,
-                    limitMinutes = group.dailyLimitMinutes,
+                    groupType = group.type,
+                    limitMinutes = group.limitMinutes + (bonusMillis / 60_000).toInt(),
                     totalUsedMillis = totalUsedMillis,
-                    exceededMillis = totalUsedMillis - limitMillis
+                    exceededMillis = totalUsedMillis - totalLimitMillis
                 )
             }
         }
-
         return null
     }
 
-    /** 清除全部缓存（比如午夜跨天、用户修改配置时） */
-    fun invalidateAll() {
-        configCache.clear()
-        usageCache.clear()
+    private fun getSyncBonusTimeMillis(groupId: String, now: Long): Long {
+        val bonusList = bonusTimeDao.getActiveBonusTimeForGroupSync(groupId, now)
+        return bonusList.sumOf { it.extraMinutes * 60_000L }
     }
-
-    // ──────── 内部缓存逻辑 ────────
 
     private fun getCachedGroupIds(packageName: String, now: Long): List<String> {
         val cached = configCache[packageName]
@@ -89,34 +72,31 @@ class GroupLimitEnforcer(context: Context) {
         return fresh
     }
 
-    private suspend fun getCachedGroupUsage(groupId: String, now: Long): Long {
-        val cached = usageCache[groupId]
+    private suspend fun getCachedGroupUsage(groupId: String, period: LimitPeriod, now: Long): Long {
+        val cacheKey = "${groupId}_${period}"
+        val cached = usageCache[cacheKey]
         if (cached != null && now - cached.fetchedAt < USAGE_CACHE_TTL_MS) {
             return cached.usedMillis
         }
         val packages = crossRefDao.getPackageNamesForGroupSync(groupId)
         var total = 0L
         for (pkg in packages) {
-            total += usageRepository.getTodayUsageMillis(pkg)
+            total += usageRepository.getUsageInPeriod(pkg, period)
         }
-        usageCache[groupId] = UsageCacheEntry(total, now)
+        usageCache[cacheKey] = UsageCacheEntry(total, now)
         return total
     }
 
     companion object {
-        /** 配置查询缓存有效期：30 秒 */
         private const val CONFIG_CACHE_TTL_MS = 30_000L
-        /** 使用量查询缓存有效期：15 秒 */
         private const val USAGE_CACHE_TTL_MS = 15_000L
     }
 }
 
-/**
- * 超标结果 DTO
- */
 data class GroupExceededResult(
     val groupName: String,
     val groupId: String,
+    val groupType: GroupType,
     val limitMinutes: Int,
     val totalUsedMillis: Long,
     val exceededMillis: Long

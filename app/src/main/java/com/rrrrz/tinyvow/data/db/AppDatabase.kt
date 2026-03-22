@@ -6,13 +6,22 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 
 @Database(
-    entities = [AppGroupEntity::class, GroupAppCrossRef::class],
-    version = 1,
+    entities = [
+        AppGroupEntity::class, 
+        GroupAppCrossRef::class,
+        RedemptionEntity::class,
+        BonusTimeEntity::class,
+        AchievementEntity::class
+    ],
+    version = 3,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun appGroupDao(): AppGroupDao
     abstract fun crossRefDao(): CrossRefDao
+    abstract fun redemptionDao(): RedemptionDao
+    abstract fun bonusTimeDao(): BonusTimeDao
+    abstract fun achievementDao(): AchievementDao
 
     companion object {
         @Volatile

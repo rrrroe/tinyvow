@@ -2,6 +2,7 @@ package com.rrrrz.tinyvow.data.settings
 
 import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.doublePreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -17,10 +18,33 @@ class ManagedAppPreferences(
 ) {
     private object Keys {
         val selectedPackageName = stringPreferencesKey("selected_package_name")
+        val userPoints = doublePreferencesKey("user_points")
+        val lastSummaryShownDate = stringPreferencesKey("last_summary_shown_date")
     }
 
     val selectedPackageName: Flow<String?> = context.managedAppDataStore.data.map { preferences ->
         preferences[Keys.selectedPackageName]
+    }
+
+    val userPoints: Flow<Double> = context.managedAppDataStore.data.map { preferences ->
+        preferences[Keys.userPoints] ?: 0.0
+    }
+
+    val lastSummaryShownDate: Flow<String?> = context.managedAppDataStore.data.map { preferences ->
+        preferences[Keys.lastSummaryShownDate]
+    }
+
+    suspend fun addUserPoints(points: Double) {
+        context.managedAppDataStore.edit { preferences ->
+            val current = preferences[Keys.userPoints] ?: 0.0
+            preferences[Keys.userPoints] = current + points
+        }
+    }
+
+    suspend fun setLastSummaryShownDate(date: String) {
+        context.managedAppDataStore.edit { preferences ->
+            preferences[Keys.lastSummaryShownDate] = date
+        }
     }
 
     fun dailyLimitMinutes(packageName: String): Flow<Int?> = context.managedAppDataStore.data.map { preferences ->

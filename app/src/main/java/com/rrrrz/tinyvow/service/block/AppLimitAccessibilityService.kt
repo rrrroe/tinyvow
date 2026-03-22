@@ -12,23 +12,48 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.isActive
 import androidx.core.graphics.toColorInt
+
+import com.rrrrz.tinyvow.data.settings.ManagedAppPreferences
+import com.rrrrz.tinyvow.data.db.GroupType
 
 @android.annotation.SuppressLint("all")
 @Suppress("all")
 class AppLimitAccessibilityService : AccessibilityService() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private lateinit var enforcer: GroupLimitEnforcer
+    private lateinit var preferences: ManagedAppPreferences
+    private val database by lazy { com.rrrrz.tinyvow.data.db.AppDatabase.getDatabase(applicationContext) }
+
+    // 积分积累状态
+    private var lastPackageForPoints: String? = null
+    private var startTimeForPoints: Long = 0L
+    private var lastUpdateElapsedRealtime: Long = 0L
 
     override fun onServiceConnected() {
         super.onServiceConnected()
         enforcer = GroupLimitEnforcer(applicationContext)
+        preferences = ManagedAppPreferences(applicationContext)
+
+        // 启动定时结算协程
+        startPeriodicPointsTicker()
+    }
+
+    private fun startPeriodicPointsTicker() {
+        serviceScope.launch(Dispatchers.IO) {
+            while (this.isActive) {
+                kotlinx.coroutines.delay(60_000L) // 每分钟检查一次
+                val currentPackage = lastPackageForPoints
+                if (currentPackage != null) {
+                    handlePointsAccumulation(currentPackage, SystemClock.elapsedRealtime())
+                }
+            }
+        }
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         val packageName = event?.packageName?.toString() ?: return
-
-        android.util.Log.v("AppLimitService", "Event from: $packageName, type: ${event.eventType}")
 
         // 忽略自身
         if (packageName == this.packageName) return
@@ -39,8 +64,13 @@ class AppLimitAccessibilityService : AccessibilityService() {
             event.eventType != AccessibilityEvent.TYPE_WINDOWS_CHANGED
         ) return
 
-        // 高频事件防抖：和上一次评估的包名+时间对比
         val now = SystemClock.elapsedRealtime()
+
+        // 1. 积分累加逻辑：当包切换时，结算上个包的积分
+        handlePointsAccumulation(packageName, now)
+
+        // 2. 限额评估逻辑
+        // 高频事件防抖
         if (packageName == lastCheckedPackage && now - lastCheckElapsedRealtime < CHECK_DEBOUNCE_MS) {
             return
         }
@@ -48,41 +78,84 @@ class AppLimitAccessibilityService : AccessibilityService() {
         lastCheckElapsedRealtime = now
 
         serviceScope.launch(Dispatchers.IO) {
-            // 前置检查：使用量权限
             val usagePermission = UsageAccessStateChecker(applicationContext).getStatus()
-            if (usagePermission != UsageAccessStatus.GRANTED) {
-                android.util.Log.w("AppLimitService", "Usage access not granted, skipping check")
-                return@launch
-            }
+            if (usagePermission != UsageAccessStatus.GRANTED) return@launch
 
-            // ★ 核心：多分组短板效应评估
             val result = enforcer.evaluate(packageName)
-            if (result == null) {
-                // 没超标，如果有 overlay 就移除
+            if (result == null || result.groupType == GroupType.ENCOURAGE) {
+                // 没超标，或是“奖励组”（奖励组不阻断），则移除 overlay
                 kotlinx.coroutines.withContext(Dispatchers.Main) {
                     removeBlockOverlay()
                 }
                 return@launch
             }
 
-            // 阻断防抖：同一个包名短时间内不重复弹窗
+            // 阻断防抖
             val blockNow = SystemClock.elapsedRealtime()
             if (packageName == lastBlockedPackage && blockNow - lastBlockElapsedRealtime < BLOCK_DEBOUNCE_MS) {
-                android.util.Log.d("AppLimitService", "Debouncing block for $packageName")
                 return@launch
             }
             lastBlockedPackage = packageName
             lastBlockElapsedRealtime = blockNow
 
-            android.util.Log.i(
-                "AppLimitService",
-                "Group [${result.groupName}] exceeded! Used ${result.totalUsedMillis / 60000}m / limit ${result.limitMinutes}m. Blocking $packageName."
-            )
-
             kotlinx.coroutines.withContext(Dispatchers.Main) {
                 showBlockOverlay(packageName, result.groupName, result.exceededMillis)
             }
         }
+    }
+
+    private fun handlePointsAccumulation(packageName: String, now: Long) {
+        val oldPackage = lastPackageForPoints
+        
+        if (oldPackage == null) {
+            // 第一次记录
+            lastPackageForPoints = packageName
+            startTimeForPoints = now
+            lastUpdateElapsedRealtime = now
+            return
+        }
+
+        if (oldPackage != packageName) {
+            // 包名切换：结算旧包的最后一段 deltas
+            val durationMs = now - lastUpdateElapsedRealtime
+            if (durationMs > 1000) {
+                creditPoints(oldPackage, durationMs)
+            }
+            // 重置状态
+            lastPackageForPoints = packageName
+            startTimeForPoints = now
+            lastUpdateElapsedRealtime = now
+        } else {
+            // 同一个包：每隔 1 分钟结算一次
+            val durationMs = now - lastUpdateElapsedRealtime
+            if (durationMs >= 60_000L) {
+                creditPoints(packageName, durationMs)
+                lastUpdateElapsedRealtime = now
+            }
+        }
+    }
+
+    private fun creditPoints(packageName: String, durationMs: Long) {
+        serviceScope.launch(Dispatchers.IO) {
+            val pointsRate = getEncouragementPointsPerMinute(packageName)
+            if (pointsRate > 0) {
+                val pointsEarned = (durationMs / 60000.0) * pointsRate
+                preferences.addUserPoints(pointsEarned)
+                android.util.Log.d("AppLimitService", "Earned $pointsEarned points from $packageName (duration: ${durationMs}ms)")
+            }
+        }
+    }
+
+    private suspend fun getEncouragementPointsPerMinute(packageName: String): Double {
+        val groupIds = database.crossRefDao().getGroupIdsForPackageSync(packageName)
+        var maxRate = 0.0
+        for (gid in groupIds) {
+            val group = database.appGroupDao().getGroupByIdSync(gid)
+            if (group?.type == GroupType.ENCOURAGE) {
+                maxRate = maxOf(maxRate, group.pointsPerMinute)
+            }
+        }
+        return maxRate
     }
 
     // ──────── Overlay ────────

@@ -4,28 +4,34 @@ import android.Manifest
 import android.content.Intent
 import android.provider.Settings
 import android.os.PowerManager
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -34,6 +40,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -71,6 +78,21 @@ import com.rrrrz.tinyvow.data.usage.UsageAccessStatus
 import com.rrrrz.tinyvow.service.block.AppLimitAccessibilityService
 import com.rrrrz.tinyvow.ui.theme.TinyVowTheme
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.first
+import androidx.compose.animation.*
+import java.time.LocalDate
+import com.rrrrz.tinyvow.data.usage.UsageStatsUsageRepository
+import com.rrrrz.tinyvow.data.usage.UsageRepository
+
+import com.rrrrz.tinyvow.data.db.GroupType
+import com.rrrrz.tinyvow.data.db.LimitPeriod
+import com.rrrrz.tinyvow.data.db.AchievementEntity
+import com.rrrrz.tinyvow.data.db.RedemptionEntity
+import com.rrrrz.tinyvow.ui.rewards.RedeemScreen
+import com.rrrrz.tinyvow.ui.rewards.AchievementScreen
+
+enum class Screen { HOME, REDEEM, ACHIEVEMENT }
 
 @Composable
 fun HomeRoute(
@@ -83,15 +105,21 @@ fun HomeRoute(
     val accessibilityServiceStateChecker = remember(context) { AccessibilityServiceStateChecker(context) }
     val checker = remember(context) { UsageAccessStateChecker(context) }
     val appRepository = remember(context) { InstalledAppRepository(context) }
+    val preferences = remember(context) { ManagedAppPreferences(context) }
     val notificationPermissionChecker = remember(context) { NotificationPermissionChecker(context) }
     val powerManager = remember(context) { context.getSystemService(android.content.Context.POWER_SERVICE) as PowerManager }
     var isIgnoringBattery by remember { mutableStateOf(powerManager.isIgnoringBatteryOptimizations(context.packageName)) }
-    val preferences = remember(context) { ManagedAppPreferences(context) }
     
     val database = remember(context) { AppDatabase.getDatabase(context) }
     val appLimitRepository = remember(database) { AppLimitRepository(database) }
+    val usageRepository = remember(context) { UsageStatsUsageRepository(context) }
+    
     val groupsWithApps by appLimitRepository.getAllGroupsWithApps().collectAsState(initial = emptyList())
+    val userPoints by preferences.userPoints.collectAsState(initial = 0.0)
+    val rewards by appLimitRepository.getAllRewards().collectAsState(initial = emptyList())
+    val achievements by appLimitRepository.getAllAchievements().collectAsState(initial = emptyList())
 
+    var currentScreen by remember { mutableStateOf(Screen.HOME) }
     var usageAccessStatus by remember { mutableStateOf(checker.getStatus()) }
     var accessibilityServiceEnabled by remember {
         mutableStateOf(accessibilityServiceStateChecker.isEnabled(AppLimitAccessibilityService::class.java))
@@ -102,6 +130,9 @@ fun HomeRoute(
     
     var installedApps by remember { mutableStateOf<List<ManagedApp>>(emptyList()) }
     var isLoadingApps by remember { mutableStateOf(false) }
+
+    var showYesterdaySummary by remember { mutableStateOf(false) }
+    var yesterdaySavedMinutes by remember { mutableIntStateOf(0) }
 
     val isAutoStartDismissed by preferences.isAutoStartDismissed.collectAsState(initial = false)
 
@@ -125,10 +156,40 @@ fun HomeRoute(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
+    LaunchedEffect(Unit) {
+        appLimitRepository.clearExpiredBonusTime(System.currentTimeMillis())
+        
+        // 每日总结逻辑
+        val today = LocalDate.now().toString()
+        val lastShownFlow = preferences.lastSummaryShownDate
+        val lastShown = lastShownFlow.first()
+        if (lastShown != today) {
+            val groups = appLimitRepository.getAllGroupsWithApps().first()
+            var totalSavedMillis = 0L
+            for (groupWithApps in groups) {
+                if (groupWithApps.group.type == GroupType.CONTROL) {
+                    var groupUsage = 0L
+                    for (pkg in groupWithApps.packageNames) {
+                        groupUsage += usageRepository.getYesterdayUsageMillis(pkg)
+                    }
+                    val limitMillis = groupWithApps.group.limitMinutes * 60_000L
+                    if (groupUsage < limitMillis) {
+                        totalSavedMillis += (limitMillis - groupUsage)
+                    }
+                }
+            }
+            if (totalSavedMillis > 0) {
+                yesterdaySavedMinutes = (totalSavedMillis / 60_000).toInt()
+                showYesterdaySummary = true
+            }
+            preferences.setLastSummaryShownDate(today)
+        }
+    }
+
     LaunchedEffect(usageAccessStatus) {
         if (usageAccessStatus == UsageAccessStatus.GRANTED) {
             isLoadingApps = true
-            installedApps = appRepository.getLaunchableApps()
+            installedApps = appRepository.getAllInstalledApps()
             isLoadingApps = false
         } else {
             installedApps = emptyList()
@@ -136,55 +197,250 @@ fun HomeRoute(
         }
     }
 
-    HomeScreen(
-        usageAccessStatus = usageAccessStatus,
-        accessibilityServiceEnabled = accessibilityServiceEnabled,
-        notificationPermissionGranted = notificationPermissionGranted,
-        isIgnoringBattery = isIgnoringBattery,
-        installedApps = installedApps,
-        groupsWithApps = groupsWithApps,
-        isLoadingApps = isLoadingApps,
-        onOpenUsageAccessSettings = {
-            val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-            context.startActivity(intent)
-        },
-        onOpenAccessibilitySettings = {
-            context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-        },
-        onRequestNotificationPermission = {
-            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+    LaunchedEffect(rewards) {
+        if (rewards.isEmpty()) {
+            appLimitRepository.seedInitialData()
+        }
+    }
+
+    LaunchedEffect(userPoints) {
+        appLimitRepository.checkAchievements(userPoints)
+    }
+
+    var newlyUnlockedAchievement by remember { mutableStateOf<AchievementEntity?>(null) }
+    LaunchedEffect(Unit) {
+        appLimitRepository.newAchievementsAction.collectLatest { achievement ->
+            newlyUnlockedAchievement = achievement
+            kotlinx.coroutines.delay(5000) // 显示 5 秒
+            newlyUnlockedAchievement = null
+        }
+    }
+
+    if (currentScreen != Screen.HOME) {
+        BackHandler { currentScreen = Screen.HOME }
+    }
+
+    when (currentScreen) {
+        Screen.REDEEM -> {
+            RedeemScreen(
+                userPoints = userPoints,
+                rewards = rewards,
+                groups = groupsWithApps,
+                onRedeem = { reward, gId -> 
+                    coroutineScope.launch {
+                        if (reward.rewardType == com.rrrrz.tinyvow.data.db.RewardType.TIME_PACK && gId != null) {
+                            appLimitRepository.redeemTimePack(gId, reward.bonusMinutes)
+                        }
+                        preferences.addUserPoints(-reward.pointCost.toDouble())
+                    }
+                },
+                onAddCustomReward = { name, cost ->
+                    coroutineScope.launch { appLimitRepository.addReward(name, cost, com.rrrrz.tinyvow.data.db.RewardType.CUSTOM) }
+                },
+                onBack = { currentScreen = Screen.HOME }
+            )
+        }
+        Screen.ACHIEVEMENT -> {
+            AchievementScreen(
+                achievements = achievements,
+                onBack = { currentScreen = Screen.HOME }
+            )
+        }
+        Screen.HOME -> {
+            HomeScreen(
+                usageAccessStatus = usageAccessStatus,
+                accessibilityServiceEnabled = accessibilityServiceEnabled,
+                notificationPermissionGranted = notificationPermissionGranted,
+                isIgnoringBattery = isIgnoringBattery,
+                installedApps = installedApps,
+                groupsWithApps = groupsWithApps,
+                userPoints = userPoints,
+                isLoadingApps = isLoadingApps,
+                onNavigateToRedeem = { currentScreen = Screen.REDEEM },
+                onNavigateToAchievements = { currentScreen = Screen.ACHIEVEMENT },
+                onOpenUsageAccessSettings = {
+                    val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    context.startActivity(intent)
+                },
+                onOpenAccessibilitySettings = {
+                    context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                },
+                onRequestNotificationPermission = {
+                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                        notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    }
+                },
+                onOpenAutoStartSettings = {
+                    val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                        data = android.net.Uri.fromParts("package", context.packageName, null)
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    context.startActivity(intent)
+                },
+                onRequestBatteryOptimization = {
+                    val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                        data = android.net.Uri.parse("package:${context.packageName}")
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    context.startActivity(intent)
+                },
+                isAutoStartDismissed = isAutoStartDismissed,
+                onSetAutoStartDismissed = {
+                    coroutineScope.launch { preferences.setAutoStartDismissed(true) }
+                },
+                onSaveGroup = { id, name, limit, type, period, pts, pkgs ->
+                    coroutineScope.launch {
+                        val groupId = appLimitRepository.createOrUpdateGroup(id, name, limit, type, period, pts)
+                        appLimitRepository.updateGroupApps(groupId, pkgs)
+                    }
+                },
+                onDeleteGroup = { id ->
+                    coroutineScope.launch { appLimitRepository.deleteGroup(id) }
+                },
+                onTestAddPoints = { points ->
+                    coroutineScope.launch {
+                        preferences.addUserPoints(points)
+                        appLimitRepository.checkAchievements(preferences.userPoints.first())
+                    }
+                },
+                onTestResetSummaryDate = {
+                    coroutineScope.launch {
+                        preferences.setLastSummaryShownDate("reset")
+                    }
+                },
+                onTestTriggerAchievement = {
+                    coroutineScope.launch {
+                        val achievement = appLimitRepository.getAllAchievements().first().find { it.id == "FIRST_10_POINTS" }
+                        if (achievement != null) {
+                            // Using a private flow/method isn't possible, but checkAchievements will trigger it anyway.
+                            // We can just simulate it by adding points.
+                            preferences.addUserPoints(10.0)
+                            appLimitRepository.checkAchievements(preferences.userPoints.first())
+                        }
+                    }
+                },
+                modifier = modifier,
+            )
+        }
+    }
+
+    if (showYesterdaySummary) {
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { showYesterdaySummary = false },
+            title = { 
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    androidx.compose.material3.Icon(
+                        androidx.compose.material.icons.Icons.Default.Star,
+                        contentDescription = null,
+                        tint = androidx.compose.ui.graphics.Color(0xFFFFD700),
+                        modifier = Modifier.size(32.dp)
+                    )
+                    Spacer(modifier = Modifier.width(12.dp))
+                    Text("昨日战报", fontWeight = FontWeight.Bold)
+                }
+            },
+            text = {
+                Column {
+                    Text("太棒了！昨天你凭借强大的意志力，在受控应用中省下了：")
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Box(
+                        modifier = Modifier.fillMaxWidth().background(
+                            MaterialTheme.colorScheme.primaryContainer,
+                            RoundedCornerShape(12.dp)
+                        ).padding(16.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = if (yesterdaySavedMinutes >= 60) {
+                                "${yesterdaySavedMinutes / 60} 小时 ${yesterdaySavedMinutes % 60} 分钟"
+                            } else {
+                                "$yesterdaySavedMinutes 分钟"
+                            },
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Text("继续保持，自律即自由！", style = MaterialTheme.typography.bodyMedium)
+                }
+            },
+            confirmButton = {
+                Button(onClick = { showYesterdaySummary = false }) {
+                    Text("我知道了")
+                }
             }
-        },
-        onOpenAutoStartSettings = {
-            val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                data = android.net.Uri.fromParts("package", context.packageName, null)
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        )
+    }
+
+    // ──────── 成就解锁通知横幅 ────────
+    AnimatedVisibility(
+        visible = newlyUnlockedAchievement != null,
+        enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
+        exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut(),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        newlyUnlockedAchievement?.let { achievement ->
+            AchievementNotificationBanner(achievement)
+        }
+    }
+}
+
+@Composable
+fun AchievementNotificationBanner(achievement: AchievementEntity) {
+    Surface(
+        modifier = Modifier
+            .padding(16.dp)
+            .fillMaxWidth()
+            .padding(top = 24.dp), // 避开状态栏
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.primaryContainer,
+        tonalElevation = 8.dp,
+        shadowElevation = 4.dp
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .background(androidx.compose.ui.graphics.Brush.sweepGradient(
+                        listOf(
+                            androidx.compose.ui.graphics.Color(0xFFFFD700),
+                            androidx.compose.ui.graphics.Color(0xFFFFA500),
+                            androidx.compose.ui.graphics.Color(0xFFFFD700)
+                        )
+                    ), CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                androidx.compose.material3.Icon(
+                    androidx.compose.material.icons.Icons.Default.Star,
+                    contentDescription = null,
+                    tint = androidx.compose.ui.graphics.Color.White,
+                    modifier = Modifier.size(28.dp)
+                )
             }
-            context.startActivity(intent)
-        },
-        onRequestBatteryOptimization = {
-            val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
-                data = android.net.Uri.parse("package:${context.packageName}")
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            Spacer(modifier = Modifier.width(16.dp))
+            Column {
+                Text(
+                    "成就解锁！",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Text(
+                    achievement.title,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    achievement.description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
             }
-            context.startActivity(intent)
-        },
-        isAutoStartDismissed = isAutoStartDismissed,
-        onSetAutoStartDismissed = {
-            coroutineScope.launch { preferences.setAutoStartDismissed(true) }
-        },
-        onSaveGroup = { id, name, limitMinutes, packageNames ->
-            coroutineScope.launch {
-                val groupId = appLimitRepository.createOrUpdateGroup(id, name, limitMinutes)
-                appLimitRepository.updateGroupApps(groupId, packageNames)
-            }
-        },
-        onDeleteGroup = { id ->
-            coroutineScope.launch { appLimitRepository.deleteGroup(id) }
-        },
-        modifier = modifier,
-    )
+        }
+    }
 }
 
 @Composable
@@ -195,7 +451,10 @@ fun HomeScreen(
     isIgnoringBattery: Boolean,
     installedApps: List<ManagedApp>,
     groupsWithApps: List<AppGroupWithApps>,
+    userPoints: Double,
     isLoadingApps: Boolean,
+    onNavigateToRedeem: () -> Unit,
+    onNavigateToAchievements: () -> Unit,
     onOpenUsageAccessSettings: () -> Unit,
     onOpenAccessibilitySettings: () -> Unit,
     onRequestNotificationPermission: () -> Unit,
@@ -203,8 +462,11 @@ fun HomeScreen(
     onRequestBatteryOptimization: () -> Unit,
     isAutoStartDismissed: Boolean,
     onSetAutoStartDismissed: () -> Unit,
-    onSaveGroup: (id: String?, name: String, limitMinutes: Int, packageNames: List<String>) -> Unit,
+    onSaveGroup: (id: String?, name: String, limit: Int, type: GroupType, period: LimitPeriod, pts: Double, pkgs: List<String>) -> Unit,
     onDeleteGroup: (id: String) -> Unit,
+    onTestAddPoints: (Double) -> Unit,
+    onTestResetSummaryDate: () -> Unit,
+    onTestTriggerAchievement: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val usageAccessGranted = usageAccessStatus == UsageAccessStatus.GRANTED
@@ -241,6 +503,47 @@ fun HomeScreen(
                             imageVector = androidx.compose.material.icons.Icons.Default.Settings,
                             contentDescription = stringResource(R.string.action_diagnostic_settings)
                         )
+                    }
+                }
+
+                // 积分与奖励入口
+                if (usageAccessGranted) {
+                    Surface(
+                        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f),
+                        shape = RoundedCornerShape(16.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(16.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column {
+                                Text("当前积分", style = MaterialTheme.typography.labelMedium)
+                                Text(
+                                    "%.1f PT".format(userPoints),
+                                    style = MaterialTheme.typography.titleLarge,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.secondary
+                                )
+                            }
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                OutlinedButton(
+                                    onClick = onNavigateToRedeem,
+                                    contentPadding = PaddingValues(horizontal = 12.dp),
+                                    modifier = Modifier.height(36.dp)
+                                ) {
+                                    Text("商城", style = MaterialTheme.typography.labelLarge)
+                                }
+                                OutlinedButton(
+                                    onClick = onNavigateToAchievements,
+                                    contentPadding = PaddingValues(horizontal = 12.dp),
+                                    modifier = Modifier.height(36.dp)
+                                ) {
+                                    Text("成就", style = MaterialTheme.typography.labelLarge)
+                                }
+                            }
+                        }
                     }
                 }
                 
@@ -336,7 +639,18 @@ fun HomeScreen(
                         onRequestBatteryOptimization = onRequestBatteryOptimization,
                         onRequestNotificationPermission = onRequestNotificationPermission,
                     )
-                    Spacer(modifier = Modifier.height(24.dp))
+
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+                    Text("调试工具 (Testing)", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
+                    
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = { onTestAddPoints(10.0) }, modifier = Modifier.weight(1f)) { Text("+10") }
+                        Button(onClick = { onTestAddPoints(100.0) }, modifier = Modifier.weight(1f)) { Text("+100") }
+                    }
+                    Button(onClick = { onTestResetSummaryDate() }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary)) { Text("重置昨日战报日期") }
+                    OutlinedButton(onClick = { onTestTriggerAchievement() }, modifier = Modifier.fillMaxWidth()) { Text("模拟/触发成就 banner") }
+                    
+                    Spacer(modifier = Modifier.height(48.dp))
                 }
             }
         }
@@ -706,18 +1020,24 @@ private fun HomeScreenPreviewDenied() {
             accessibilityServiceEnabled = false,
             installedApps = emptyList(),
             groupsWithApps = emptyList(),
+            userPoints = 120.5,
             isLoadingApps = false,
             notificationPermissionGranted = false,
             isIgnoringBattery = false,
             isAutoStartDismissed = false,
+            onNavigateToRedeem = {},
+            onNavigateToAchievements = {},
             onOpenUsageAccessSettings = {},
             onOpenAccessibilitySettings = {},
             onRequestNotificationPermission = {},
             onOpenAutoStartSettings = {},
             onRequestBatteryOptimization = {},
             onSetAutoStartDismissed = {},
-            onSaveGroup = { _, _, _, _ -> },
-            onDeleteGroup = {}
+            onSaveGroup = { _, _, _, _, _, _, _ -> },
+            onDeleteGroup = {},
+            onTestAddPoints = {},
+            onTestResetSummaryDate = {},
+            onTestTriggerAchievement = {}
         )
     }
 }
@@ -736,18 +1056,24 @@ private fun HomeScreenPreviewGranted() {
                 ),
             ),
             groupsWithApps = emptyList(),
+            userPoints = 450.0,
             isLoadingApps = false,
             notificationPermissionGranted = true,
             isIgnoringBattery = true,
             isAutoStartDismissed = false,
+            onNavigateToRedeem = {},
+            onNavigateToAchievements = {},
             onOpenUsageAccessSettings = {},
             onOpenAccessibilitySettings = {},
             onRequestNotificationPermission = {},
             onOpenAutoStartSettings = {},
             onRequestBatteryOptimization = {},
             onSetAutoStartDismissed = {},
-            onSaveGroup = { _, _, _, _ -> },
-            onDeleteGroup = {}
+            onSaveGroup = { _, _, _, _, _, _, _ -> },
+            onDeleteGroup = {},
+            onTestAddPoints = {},
+            onTestResetSummaryDate = {},
+            onTestTriggerAchievement = {}
         )
     }
 }

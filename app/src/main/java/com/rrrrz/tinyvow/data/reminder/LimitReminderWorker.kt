@@ -53,7 +53,7 @@ class LimitReminderWorker(
         }
 
         val appName = InstalledAppRepository(applicationContext)
-            .getLaunchableApps()
+            .getAllInstalledApps()
             .firstOrNull { it.packageName == selectedPackageName }
             ?.appName
             ?: selectedPackageName
