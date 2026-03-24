@@ -30,6 +30,9 @@ data class RedemptionEntity(
     @ColumnInfo(name = "is_active")
     val isActive: Boolean = true,
     
+    @ColumnInfo(name = "stock")
+    val stock: Int = -1, // -1 means infinite
+    
     @ColumnInfo(name = "created_at")
     val createdAt: Long,
     

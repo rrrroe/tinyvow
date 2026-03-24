@@ -143,16 +143,17 @@ class AppLimitRepository(private val database: AppDatabase) {
         }
     }
 
-    suspend fun addReward(title: String, cost: Int, type: RewardType, bonusMinutes: Int = 0) {
+    suspend fun addReward(title: String, cost: Int, type: RewardType, stock: Int = -1, description: String = "", bonusMinutes: Int = 0) {
         withContext(Dispatchers.IO) {
             redemptionDao.insertRedemption(
                 RedemptionEntity(
                     id = UUID.randomUUID().toString(),
                     title = title,
-                    description = "",
+                    description = description,
                     pointCost = cost,
                     rewardType = type,
                     bonusMinutes = bonusMinutes,
+                    stock = stock,
                     createdAt = System.currentTimeMillis(),
                     updatedAt = System.currentTimeMillis()
                 )
@@ -160,13 +161,19 @@ class AppLimitRepository(private val database: AppDatabase) {
         }
     }
 
+    suspend fun updateReward(reward: RedemptionEntity) {
+        withContext(Dispatchers.IO) {
+            redemptionDao.insertRedemption(reward.copy(updatedAt = System.currentTimeMillis()))
+        }
+    }
+
     /** 预置初始数据 */
     suspend fun seedInitialData() {
         withContext(Dispatchers.IO) {
-            // 初始奖励
-            addReward("30分钟 临时续命卡", 50, RewardType.TIME_PACK, 30)
-            addReward("1小时 自由冲浪卡", 100, RewardType.TIME_PACK, 60)
-            addReward("吃顿大餐 (自主奖励)", 500, RewardType.CUSTOM)
+            // 只保留三个基础可兑选项，默认库存无穷大
+            addReward("30分钟 临时续命卡", 50, RewardType.TIME_PACK, -1, "立即获得30分钟额外时长", 30)
+            addReward("1小时 自由冲浪卡", 100, RewardType.TIME_PACK, -1, "立即获得1小时额外时长", 60)
+            addReward("大快朵颐 (线下奖励)", 500, RewardType.CUSTOM, 5, "给自己加个鸡腿！")
 
             // 初始成就
             achievementDao.insertAchievement(AchievementEntity("FIRST_10_POINTS", "初露锋芒", "赚取前 10 个积分", "{\"type\":\"points\",\"value\":10}"))

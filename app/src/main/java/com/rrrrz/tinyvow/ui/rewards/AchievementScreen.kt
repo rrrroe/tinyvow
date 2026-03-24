@@ -34,26 +34,40 @@ fun AchievementScreen(
     achievements: List<AchievementEntity>,
     onBack: () -> Unit
 ) {
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("我的成就") },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "返回")
-                    }
-                }
-            )
+    val unlocked = remember(achievements) { achievements.filter { it.isUnlocked } }
+    val locked = remember(achievements) { achievements.filter { !it.isUnlocked } }
+
+    LazyVerticalGrid(
+        columns = GridCells.Fixed(3),
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(16.dp),
+        horizontalArrangement = Arrangement.spacedBy(16.dp),
+        verticalArrangement = Arrangement.spacedBy(24.dp)
+    ) {
+        if (unlocked.isNotEmpty()) {
+            item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(3) }) {
+                Text(
+                    "已完成",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(top = 8.dp, bottom = 12.dp)
+                )
+            }
+            items(unlocked) { achievement ->
+                AchievementBadge(achievement)
+            }
         }
-    ) { padding ->
-        LazyVerticalGrid(
-            columns = GridCells.Fixed(3),
-            modifier = Modifier.padding(padding).fillMaxSize(),
-            contentPadding = PaddingValues(16.dp),
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
-            verticalArrangement = Arrangement.spacedBy(24.dp)
-        ) {
-            items(achievements) { achievement ->
+
+        if (locked.isNotEmpty()) {
+            item(span = { androidx.compose.foundation.lazy.grid.GridItemSpan(3) }) {
+                Text(
+                    "未完成",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(top = 24.dp, bottom = 12.dp)
+                )
+            }
+            items(locked) { achievement ->
                 AchievementBadge(achievement)
             }
         }
@@ -114,7 +128,7 @@ fun AchievementBadge(achievement: AchievementEntity) {
             Icon(
                 Icons.Default.Star,
                 contentDescription = null,
-                tint = if (achievement.isUnlocked) Color(0xFFFFD700) 
+                tint = if (achievement.isUnlocked) MaterialTheme.colorScheme.tertiary 
                        else MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
                 modifier = Modifier
                     .size(40.dp)

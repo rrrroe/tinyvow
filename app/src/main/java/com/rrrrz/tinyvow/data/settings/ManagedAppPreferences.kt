@@ -20,6 +20,9 @@ class ManagedAppPreferences(
         val selectedPackageName = stringPreferencesKey("selected_package_name")
         val userPoints = doublePreferencesKey("user_points")
         val lastSummaryShownDate = stringPreferencesKey("last_summary_shown_date")
+        val selectedTheme = intPreferencesKey("selected_theme")
+        val todayPoints = doublePreferencesKey("today_points")
+        val lastPointsResetDate = stringPreferencesKey("last_points_reset_date")
     }
 
     val selectedPackageName: Flow<String?> = context.managedAppDataStore.data.map { preferences ->
@@ -34,16 +37,46 @@ class ManagedAppPreferences(
         preferences[Keys.lastSummaryShownDate]
     }
 
+    val selectedTheme: Flow<Int> = context.managedAppDataStore.data.map { preferences ->
+        preferences[Keys.selectedTheme] ?: 0
+    }
+
+    val todayPoints: Flow<Double> = context.managedAppDataStore.data.map { preferences ->
+        val lastReset = preferences[Keys.lastPointsResetDate]
+        val today = java.time.LocalDate.now().toString()
+        if (lastReset == today) {
+            preferences[Keys.todayPoints] ?: 0.0
+        } else {
+            0.0
+        }
+    }
+
     suspend fun addUserPoints(points: Double) {
         context.managedAppDataStore.edit { preferences ->
-            val current = preferences[Keys.userPoints] ?: 0.0
-            preferences[Keys.userPoints] = current + points
+            val currentTotal = preferences[Keys.userPoints] ?: 0.0
+            preferences[Keys.userPoints] = currentTotal + points
+            
+            val today = java.time.LocalDate.now().toString()
+            val lastReset = preferences[Keys.lastPointsResetDate]
+            if (lastReset == today) {
+                val currentToday = preferences[Keys.todayPoints] ?: 0.0
+                preferences[Keys.todayPoints] = currentToday + points
+            } else {
+                preferences[Keys.lastPointsResetDate] = today
+                preferences[Keys.todayPoints] = points
+            }
         }
     }
 
     suspend fun setLastSummaryShownDate(date: String) {
         context.managedAppDataStore.edit { preferences ->
             preferences[Keys.lastSummaryShownDate] = date
+        }
+    }
+
+    suspend fun setSelectedTheme(theme: Int) {
+        context.managedAppDataStore.edit { preferences ->
+            preferences[Keys.selectedTheme] = theme
         }
     }
 

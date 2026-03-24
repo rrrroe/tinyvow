@@ -9,8 +9,9 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.filled.*
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -39,9 +40,9 @@ import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
-import androidx.compose.material3.Text
+import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
+import androidx.compose.material3.*
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -92,7 +93,59 @@ import com.rrrrz.tinyvow.data.db.RedemptionEntity
 import com.rrrrz.tinyvow.ui.rewards.RedeemScreen
 import com.rrrrz.tinyvow.ui.rewards.AchievementScreen
 
-enum class Screen { HOME, REDEEM, ACHIEVEMENT }
+enum class Screen { HOME, REWARDS, STATS, ME, LABORATORY }
+
+@Composable
+fun RewardsHome(
+    userPoints: Double,
+    achievements: List<AchievementEntity>,
+    rewards: List<RedemptionEntity>,
+    groups: List<AppGroupWithApps>,
+    onRedeem: (RedemptionEntity, String?) -> Unit,
+    onAddReward: (String, Int, Int, String) -> Unit,
+    onUpdateReward: (RedemptionEntity) -> Unit,
+    onBack: () -> Unit
+) {
+    var selectedTab by remember { mutableIntStateOf(0) }
+    val tabs = listOf("成就在握", "积分商城")
+    
+    Column(modifier = Modifier.fillMaxSize()) {
+        TabRow(
+            selectedTabIndex = selectedTab,
+            containerColor = MaterialTheme.colorScheme.surface,
+            contentColor = MaterialTheme.colorScheme.primary,
+            indicator = { tabPositions ->
+                TabRowDefaults.SecondaryIndicator(
+                    Modifier.tabIndicatorOffset(tabPositions[selectedTab]),
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+        ) {
+            tabs.forEachIndexed { index, title ->
+                Tab(
+                    selected = selectedTab == index,
+                    onClick = { selectedTab = index },
+                    text = { Text(title, fontWeight = if (selectedTab == index) FontWeight.Bold else FontWeight.Normal) }
+                )
+            }
+        }
+        
+        Box(modifier = Modifier.weight(1f)) {
+            when (selectedTab) {
+                0 -> AchievementScreen(achievements = achievements, onBack = onBack)
+                1 -> RedeemScreen(
+                    userPoints = userPoints,
+                    rewards = rewards,
+                    groups = groups,
+                    onRedeem = onRedeem,
+                    onAddReward = onAddReward,
+                    onUpdateReward = onUpdateReward,
+                    onBack = onBack
+                )
+            }
+        }
+    }
+}
 
 @Composable
 fun HomeRoute(
@@ -116,6 +169,8 @@ fun HomeRoute(
     
     val groupsWithApps by appLimitRepository.getAllGroupsWithApps().collectAsState(initial = emptyList())
     val userPoints by preferences.userPoints.collectAsState(initial = 0.0)
+    val todayPoints by preferences.todayPoints.collectAsState(initial = 0.0)
+    val selectedTheme by preferences.selectedTheme.collectAsState(initial = 0)
     val rewards by appLimitRepository.getAllRewards().collectAsState(initial = emptyList())
     val achievements by appLimitRepository.getAllAchievements().collectAsState(initial = emptyList())
 
@@ -220,107 +275,136 @@ fun HomeRoute(
         BackHandler { currentScreen = Screen.HOME }
     }
 
-    when (currentScreen) {
-        Screen.REDEEM -> {
-            RedeemScreen(
-                userPoints = userPoints,
-                rewards = rewards,
-                groups = groupsWithApps,
-                onRedeem = { reward, gId -> 
-                    coroutineScope.launch {
-                        if (reward.rewardType == com.rrrrz.tinyvow.data.db.RewardType.TIME_PACK && gId != null) {
-                            appLimitRepository.redeemTimePack(gId, reward.bonusMinutes)
-                        }
-                        preferences.addUserPoints(-reward.pointCost.toDouble())
+    Scaffold(
+        bottomBar = {
+            if (currentScreen != Screen.LABORATORY) {
+                NavigationBar(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    tonalElevation = 8.dp
+                ) {
+                    val screens = listOf(
+                        Triple(Screen.HOME, "首页", Icons.Default.Home),
+                        Triple(Screen.REWARDS, "奖励", Icons.Default.CardGiftcard),
+                        Triple(Screen.STATS, "战报", Icons.Default.BarChart),
+                        Triple(Screen.ME, "我的", Icons.Default.Person)
+                    )
+                    screens.forEach { (screen, label, icon) ->
+                        NavigationBarItem(
+                            selected = currentScreen == screen || (screen == Screen.REWARDS && (currentScreen == Screen.REWARDS)),
+                            onClick = { currentScreen = screen },
+                            icon = { Icon(icon, contentDescription = label) },
+                            label = { Text(label) }
+                        )
                     }
-                },
-                onAddCustomReward = { name, cost ->
-                    coroutineScope.launch { appLimitRepository.addReward(name, cost, com.rrrrz.tinyvow.data.db.RewardType.CUSTOM) }
-                },
-                onBack = { currentScreen = Screen.HOME }
-            )
+                }
+            }
         }
-        Screen.ACHIEVEMENT -> {
-            AchievementScreen(
-                achievements = achievements,
-                onBack = { currentScreen = Screen.HOME }
-            )
-        }
-        Screen.HOME -> {
-            HomeScreen(
-                usageAccessStatus = usageAccessStatus,
-                accessibilityServiceEnabled = accessibilityServiceEnabled,
-                notificationPermissionGranted = notificationPermissionGranted,
-                isIgnoringBattery = isIgnoringBattery,
-                installedApps = installedApps,
-                groupsWithApps = groupsWithApps,
-                userPoints = userPoints,
-                isLoadingApps = isLoadingApps,
-                onNavigateToRedeem = { currentScreen = Screen.REDEEM },
-                onNavigateToAchievements = { currentScreen = Screen.ACHIEVEMENT },
-                onOpenUsageAccessSettings = {
-                    val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    context.startActivity(intent)
-                },
-                onOpenAccessibilitySettings = {
-                    context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                },
-                onRequestNotificationPermission = {
-                    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-                        notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+    ) { innerPadding ->
+        Box(modifier = Modifier.padding(innerPadding)) {
+            when (currentScreen) {
+                Screen.HOME -> {
+                    HomeScreen(
+                        usageAccessStatus = usageAccessStatus,
+                        accessibilityServiceEnabled = accessibilityServiceEnabled,
+                        notificationPermissionGranted = notificationPermissionGranted,
+                        isIgnoringBattery = isIgnoringBattery,
+                        installedApps = installedApps,
+                        groupsWithApps = groupsWithApps,
+                        userPoints = userPoints,
+                        todayPoints = todayPoints,
+                        isLoadingApps = isLoadingApps,
+                        onNavigateToRedeem = { currentScreen = Screen.REWARDS }, // Placeholder
+                        onNavigateToAchievements = { currentScreen = Screen.REWARDS },
+                        onOpenUsageAccessSettings = {
+                            val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            context.startActivity(intent)
+                        },
+                        onOpenAccessibilitySettings = {
+                            context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                        },
+                        onRequestNotificationPermission = {
+                            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                            }
+                        },
+                        onOpenAutoStartSettings = {
+                            val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                data = android.net.Uri.fromParts("package", context.packageName, null)
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                            context.startActivity(intent)
+                        },
+                        onRequestBatteryOptimization = {
+                            val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                                data = android.net.Uri.parse("package:${context.packageName}")
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                            context.startActivity(intent)
+                        },
+                        isAutoStartDismissed = isAutoStartDismissed,
+                        onSetAutoStartDismissed = {
+                            coroutineScope.launch { preferences.setAutoStartDismissed(true) }
+                        },
+                        onSaveGroup = { id, name, limit, type, period, pts, pkgs ->
+                            coroutineScope.launch {
+                                val groupId = appLimitRepository.createOrUpdateGroup(id, name, limit, type, period, pts)
+                                appLimitRepository.updateGroupApps(groupId, pkgs)
+                            }
+                        },
+                        onDeleteGroup = { id ->
+                            coroutineScope.launch { appLimitRepository.deleteGroup(id) }
+                        },
+                        appLimitRepository = appLimitRepository,
+                        modifier = modifier,
+                    )
+                }
+                Screen.REWARDS -> {
+                    RewardsHome(
+                        userPoints = userPoints,
+                        achievements = achievements,
+                        rewards = rewards,
+                        groups = groupsWithApps,
+                        onRedeem = { reward, gId -> 
+                            coroutineScope.launch {
+                                if (reward.rewardType == com.rrrrz.tinyvow.data.db.RewardType.TIME_PACK && gId != null) {
+                                    appLimitRepository.redeemTimePack(gId, reward.bonusMinutes)
+                                }
+                                preferences.addUserPoints(-reward.pointCost.toDouble())
+                            }
+                        },
+                        onAddReward = { name, cost, stock, desc ->
+                            coroutineScope.launch { appLimitRepository.addReward(name, cost, com.rrrrz.tinyvow.data.db.RewardType.CUSTOM, stock, desc) }
+                        },
+                        onUpdateReward = { reward ->
+                            coroutineScope.launch { appLimitRepository.updateReward(reward) }
+                        },
+                        onBack = { currentScreen = Screen.HOME }
+                    )
+                }
+                Screen.STATS -> {
+                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                        Text("统计功能开发中")
                     }
-                },
-                onOpenAutoStartSettings = {
-                    val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                        data = android.net.Uri.fromParts("package", context.packageName, null)
-                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    }
-                    context.startActivity(intent)
-                },
-                onRequestBatteryOptimization = {
-                    val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
-                        data = android.net.Uri.parse("package:${context.packageName}")
-                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                    }
-                    context.startActivity(intent)
-                },
-                isAutoStartDismissed = isAutoStartDismissed,
-                onSetAutoStartDismissed = {
-                    coroutineScope.launch { preferences.setAutoStartDismissed(true) }
-                },
-                onSaveGroup = { id, name, limit, type, period, pts, pkgs ->
-                    coroutineScope.launch {
-                        val groupId = appLimitRepository.createOrUpdateGroup(id, name, limit, type, period, pts)
-                        appLimitRepository.updateGroupApps(groupId, pkgs)
-                    }
-                },
-                onDeleteGroup = { id ->
-                    coroutineScope.launch { appLimitRepository.deleteGroup(id) }
-                },
-                onTestAddPoints = { points ->
-                    coroutineScope.launch {
-                        preferences.addUserPoints(points)
-                        appLimitRepository.checkAchievements(preferences.userPoints.first())
-                    }
-                },
-                onTestResetSummaryDate = {
-                    coroutineScope.launch {
-                        preferences.setLastSummaryShownDate("reset")
-                    }
-                },
-                onTestTriggerAchievement = {
-                    coroutineScope.launch {
-                        val achievement = appLimitRepository.getAllAchievements().first().find { it.id == "FIRST_10_POINTS" }
-                        if (achievement != null) {
-                            // Using a private flow/method isn't possible, but checkAchievements will trigger it anyway.
-                            // We can just simulate it by adding points.
-                            preferences.addUserPoints(10.0)
-                            appLimitRepository.checkAchievements(preferences.userPoints.first())
-                        }
-                    }
-                },
-                modifier = modifier,
-            )
+                }
+                Screen.ME -> {
+                    MeScreen(
+                        userPoints = userPoints,
+                        currentTheme = selectedTheme,
+                        onSetTheme = { i -> coroutineScope.launch { preferences.setSelectedTheme(i) } },
+                        onNavigateToLaboratory = { currentScreen = Screen.LABORATORY },
+                        onNavigateToAchievements = { currentScreen = Screen.REWARDS },
+                        onNavigateToRedeem = { currentScreen = Screen.REWARDS }
+                    )
+                }
+                Screen.LABORATORY -> {
+                    LaboratoryScreen(
+                        onAddPoints = { pts -> coroutineScope.launch { preferences.addUserPoints(pts); appLimitRepository.checkAchievements(preferences.userPoints.first()) } },
+                        onResetSummary = { coroutineScope.launch { preferences.setLastSummaryShownDate("reset") } },
+                        onTriggerSummary = { showYesterdaySummary = true },
+                        onBack = { currentScreen = Screen.ME }
+                    )
+                }
+            }
         }
     }
 
@@ -332,7 +416,7 @@ fun HomeRoute(
                     androidx.compose.material3.Icon(
                         androidx.compose.material.icons.Icons.Default.Star,
                         contentDescription = null,
-                        tint = androidx.compose.ui.graphics.Color(0xFFFFD700),
+                        tint = MaterialTheme.colorScheme.tertiary,
                         modifier = Modifier.size(32.dp)
                     )
                     Spacer(modifier = Modifier.width(12.dp))
@@ -417,7 +501,7 @@ fun AchievementNotificationBanner(achievement: AchievementEntity) {
                 androidx.compose.material3.Icon(
                     androidx.compose.material.icons.Icons.Default.Star,
                     contentDescription = null,
-                    tint = androidx.compose.ui.graphics.Color.White,
+                    tint = MaterialTheme.colorScheme.tertiary,
                     modifier = Modifier.size(28.dp)
                 )
             }
@@ -452,6 +536,7 @@ fun HomeScreen(
     installedApps: List<ManagedApp>,
     groupsWithApps: List<AppGroupWithApps>,
     userPoints: Double,
+    todayPoints: Double,
     isLoadingApps: Boolean,
     onNavigateToRedeem: () -> Unit,
     onNavigateToAchievements: () -> Unit,
@@ -464,11 +549,29 @@ fun HomeScreen(
     onSetAutoStartDismissed: () -> Unit,
     onSaveGroup: (id: String?, name: String, limit: Int, type: GroupType, period: LimitPeriod, pts: Double, pkgs: List<String>) -> Unit,
     onDeleteGroup: (id: String) -> Unit,
-    onTestAddPoints: (Double) -> Unit,
-    onTestResetSummaryDate: () -> Unit,
-    onTestTriggerAchievement: () -> Unit,
+    appLimitRepository: AppLimitRepository? = null,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
+    var usageMap by remember { mutableStateOf<Map<String, Long>>(emptyMap()) }
+    
+    // 定时刷新各分组用量
+    LaunchedEffect(groupsWithApps) {
+        val usageRepo = UsageStatsUsageRepository(context)
+        while (true) {
+            val newMap = mutableMapOf<String, Long>()
+            groupsWithApps.forEach { groupWithApps ->
+                var totalUsage = 0L
+                groupWithApps.packageNames.forEach { pkg ->
+                    totalUsage += usageRepo.getTodayUsageMillis(pkg)
+                }
+                newMap[groupWithApps.group.id] = totalUsage
+            }
+            usageMap = newMap
+            kotlinx.coroutines.delay(5000L) // 5秒刷新一次
+        }
+    }
     val usageAccessGranted = usageAccessStatus == UsageAccessStatus.GRANTED
     val statusColor = if (usageAccessGranted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
 
@@ -485,63 +588,77 @@ fun HomeScreen(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 16.dp),
+                    .padding(horizontal = 20.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = if (showCardsOnHome) stringResource(R.string.home_title) else stringResource(R.string.app_name),
-                        style = MaterialTheme.typography.headlineMedium,
-                        fontWeight = FontWeight.Bold,
-                    )
-                    androidx.compose.material3.IconButton(onClick = { showDiagnosticMenu = true }) {
-                        androidx.compose.material3.Icon(
-                            imageVector = androidx.compose.material.icons.Icons.Default.Settings,
-                            contentDescription = stringResource(R.string.action_diagnostic_settings)
-                        )
-                    }
+                // 计算今日进度
+                val controlGroups = groupsWithApps.filter { it.group.type == GroupType.CONTROL }
+                val encourageGroups = groupsWithApps.filter { it.group.type == GroupType.ENCOURAGE }
+                
+                val safeVows = controlGroups.count { g -> 
+                    val usage = (usageMap[g.group.id] ?: 0L) / 60_000L
+                    usage <= g.group.limitMinutes
                 }
+                val doneEncs = encourageGroups.count { g ->
+                    val usage = (usageMap[g.group.id] ?: 0L) / 60_000L
+                    usage >= g.group.limitMinutes
+                }
+                val totalUsageMinutes = groupsWithApps.sumOf { (usageMap[it.group.id] ?: 0L) / 60_000L }
 
-                // 积分与奖励入口
+                // 积分与今日概览
                 if (usageAccessGranted) {
                     Surface(
                         color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f),
-                        shape = RoundedCornerShape(16.dp),
+                        shape = RoundedCornerShape(24.dp),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Row(
-                            modifier = Modifier.padding(16.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column {
-                                Text("当前积分", style = MaterialTheme.typography.labelMedium)
-                                Text(
-                                    "%.1f PT".format(userPoints),
-                                    style = MaterialTheme.typography.titleLarge,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.secondary
-                                )
+                        Column(modifier = Modifier.padding(20.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column {
+                                    Text("总积分", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f))
+                                    Text(
+                                        "%.1f".format(userPoints),
+                                        style = MaterialTheme.typography.headlineMedium,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                                Column(horizontalAlignment = Alignment.End) {
+                                    Text("今日积分", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.7f))
+                                    Text(
+                                        "+%.1f PT".format(todayPoints),
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
                             }
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                OutlinedButton(
-                                    onClick = onNavigateToRedeem,
-                                    contentPadding = PaddingValues(horizontal = 12.dp),
-                                    modifier = Modifier.height(36.dp)
-                                ) {
-                                    Text("商城", style = MaterialTheme.typography.labelLarge)
-                                }
-                                OutlinedButton(
-                                    onClick = onNavigateToAchievements,
-                                    contentPadding = PaddingValues(horizontal = 12.dp),
-                                    modifier = Modifier.height(36.dp)
-                                ) {
-                                    Text("成就", style = MaterialTheme.typography.labelLarge)
-                                }
+                            
+                            HorizontalDivider(
+                                modifier = Modifier.padding(vertical = 12.dp),
+                                color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.1f)
+                            )
+                            
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(16.dp)
+                            ) {
+                                DashboardProgressItem(
+                                    label = "小约定达成",
+                                    value = "$safeVows/${controlGroups.size}",
+                                    color = MaterialTheme.colorScheme.secondary,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                DashboardProgressItem(
+                                    label = "小鼓励达成",
+                                    value = "$doneEncs/${encourageGroups.size}",
+                                    color = MaterialTheme.colorScheme.tertiary,
+                                    modifier = Modifier.weight(1f)
+                                )
                             }
                         }
                     }
@@ -574,6 +691,7 @@ fun HomeScreen(
             if (usageAccessGranted) {
                 GroupDashboard(
                     groupsWithApps = groupsWithApps,
+                    usageMap = usageMap,
                     installedApps = installedApps,
                     isLoadingApps = isLoadingApps,
                     onSaveGroup = onSaveGroup,
@@ -640,16 +758,6 @@ fun HomeScreen(
                         onRequestNotificationPermission = onRequestNotificationPermission,
                     )
 
-                    HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
-                    Text("调试工具 (Testing)", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.primary, fontWeight = FontWeight.Bold)
-                    
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(onClick = { onTestAddPoints(10.0) }, modifier = Modifier.weight(1f)) { Text("+10") }
-                        Button(onClick = { onTestAddPoints(100.0) }, modifier = Modifier.weight(1f)) { Text("+100") }
-                    }
-                    Button(onClick = { onTestResetSummaryDate() }, modifier = Modifier.fillMaxWidth(), colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary)) { Text("重置昨日战报日期") }
-                    OutlinedButton(onClick = { onTestTriggerAchievement() }, modifier = Modifier.fillMaxWidth()) { Text("模拟/触发成就 banner") }
-                    
                     Spacer(modifier = Modifier.height(48.dp))
                 }
             }
@@ -1011,6 +1119,31 @@ private fun GuidanceCard(
     }
 }
 
+@Composable
+internal fun DashboardProgressItem(
+    label: String,
+    value: String,
+    color: Color,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.6f),
+        shape = RoundedCornerShape(12.dp),
+        modifier = modifier
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(color))
+                Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            Text(value, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold, color = color)
+        }
+    }
+}
+
 @Preview(showBackground = true)
 @Composable
 private fun HomeScreenPreviewDenied() {
@@ -1021,6 +1154,7 @@ private fun HomeScreenPreviewDenied() {
             installedApps = emptyList(),
             groupsWithApps = emptyList(),
             userPoints = 120.5,
+            todayPoints = 10.0,
             isLoadingApps = false,
             notificationPermissionGranted = false,
             isIgnoringBattery = false,
@@ -1034,10 +1168,7 @@ private fun HomeScreenPreviewDenied() {
             onRequestBatteryOptimization = {},
             onSetAutoStartDismissed = {},
             onSaveGroup = { _, _, _, _, _, _, _ -> },
-            onDeleteGroup = {},
-            onTestAddPoints = {},
-            onTestResetSummaryDate = {},
-            onTestTriggerAchievement = {}
+            onDeleteGroup = {}
         )
     }
 }
@@ -1057,6 +1188,7 @@ private fun HomeScreenPreviewGranted() {
             ),
             groupsWithApps = emptyList(),
             userPoints = 450.0,
+            todayPoints = 25.0,
             isLoadingApps = false,
             notificationPermissionGranted = true,
             isIgnoringBattery = true,
@@ -1070,10 +1202,7 @@ private fun HomeScreenPreviewGranted() {
             onRequestBatteryOptimization = {},
             onSetAutoStartDismissed = {},
             onSaveGroup = { _, _, _, _, _, _, _ -> },
-            onDeleteGroup = {},
-            onTestAddPoints = {},
-            onTestResetSummaryDate = {},
-            onTestTriggerAchievement = {}
+            onDeleteGroup = {}
         )
     }
 }

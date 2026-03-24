@@ -137,13 +137,58 @@ class AppLimitAccessibilityService : AccessibilityService() {
 
     private fun creditPoints(packageName: String, durationMs: Long) {
         serviceScope.launch(Dispatchers.IO) {
-            val pointsRate = getEncouragementPointsPerMinute(packageName)
-            if (pointsRate > 0) {
-                val pointsEarned = (durationMs / 60000.0) * pointsRate
-                preferences.addUserPoints(pointsEarned)
-                android.util.Log.d("AppLimitService", "Earned $pointsEarned points from $packageName (duration: ${durationMs}ms)")
+            val groupIds = database.crossRefDao().getGroupIdsForPackageSync(packageName)
+            for (gid in groupIds) {
+                val group = database.appGroupDao().getGroupByIdSync(gid) ?: continue
+                if (group.type == GroupType.ENCOURAGE && group.pointsPerMinute > 0) {
+                    // 基础每分钟积分
+                    val pointsEarned = (durationMs / 60000.0) * group.pointsPerMinute
+                    preferences.addUserPoints(pointsEarned)
+                    
+                    // 检查是否达成今日目标大奖
+                    checkAndGrantBonus(group)
+                }
             }
         }
+    }
+
+    private suspend fun checkAndGrantBonus(group: com.rrrrz.tinyvow.data.db.AppGroupEntity) {
+        val nowMillis = System.currentTimeMillis()
+        val todayStart = getStartOfDay(nowMillis)
+        
+        if (group.lastBonusAt >= todayStart) {
+            return // 今天已经领过了
+        }
+
+        // 获取该分组今日总用量
+        val packages = database.crossRefDao().getPackageNamesForGroupSync(group.id)
+        val usageRepo = com.rrrrz.tinyvow.data.usage.UsageStatsUsageRepository(applicationContext)
+        var totalTodayUsageMs = 0L
+        for (pkg in packages) {
+            totalTodayUsageMs += usageRepo.getTodayUsageMillis(pkg)
+        }
+
+        val targetMs = group.limitMinutes * 60_000L
+        if (totalTodayUsageMs >= targetMs) {
+            // 达成目标！发放奖励：目标分钟 * 鼓励金比例
+            val bonusPoints = group.limitMinutes * group.pointsPerMinute
+            preferences.addUserPoints(bonusPoints)
+            
+            // 更新数据库标记
+            database.appGroupDao().insertGroup(group.copy(lastBonusAt = nowMillis))
+            
+            android.util.Log.i("AppLimitService", "Group ${group.name} reached daily target! Bonus $bonusPoints pts granted.")
+        }
+    }
+
+    private fun getStartOfDay(millis: Long): Long {
+        val calendar = java.util.Calendar.getInstance()
+        calendar.timeInMillis = millis
+        calendar.set(java.util.Calendar.HOUR_OF_DAY, 0)
+        calendar.set(java.util.Calendar.MINUTE, 0)
+        calendar.set(java.util.Calendar.SECOND, 0)
+        calendar.set(java.util.Calendar.MILLISECOND, 0)
+        return calendar.timeInMillis
     }
 
     private suspend fun getEncouragementPointsPerMinute(packageName: String): Double {

@@ -41,5 +41,8 @@ data class AppGroupEntity(
     val updatedAt: Long,
     
     @ColumnInfo(name = "is_deleted")
-    val isDeleted: Boolean = false
+    val isDeleted: Boolean = false,
+    
+    @ColumnInfo(name = "last_bonus_at")
+    val lastBonusAt: Long = 0
 )

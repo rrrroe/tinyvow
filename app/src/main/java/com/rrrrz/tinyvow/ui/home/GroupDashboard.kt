@@ -6,6 +6,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.grid.GridCells
 import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
 import androidx.compose.foundation.lazy.grid.items as gridItems
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -23,7 +25,9 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.window.Dialog
 import coil.compose.AsyncImage
 import com.rrrrz.tinyvow.R
@@ -32,81 +36,77 @@ import com.rrrrz.tinyvow.data.repository.AppGroupWithApps
 
 import com.rrrrz.tinyvow.data.db.GroupType
 import com.rrrrz.tinyvow.data.db.LimitPeriod
+import androidx.compose.foundation.background
+import androidx.compose.ui.draw.clip
 
 @Composable
 fun GroupDashboard(
     groupsWithApps: List<AppGroupWithApps>,
-    installedApps: List<ManagedApp>,
+    usageMap: Map<String, Long>,
     isLoadingApps: Boolean,
-    onSaveGroup: (id: String?, name: String, limitMinutes: Int, type: GroupType, period: LimitPeriod, pts: Double, pkgs: List<String>) -> Unit,
+    installedApps: List<ManagedApp>,
+    onSaveGroup: (id: String?, name: String, limit: Int, type: GroupType, period: LimitPeriod, pts: Double, pkgs: List<String>) -> Unit,
     onDeleteGroup: (id: String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     var showDialog by remember { mutableStateOf(false) }
     var editingGroup by remember { mutableStateOf<AppGroupWithApps?>(null) }
+    var forcedType by remember { mutableStateOf(GroupType.CONTROL) }
 
-    Column(modifier = modifier, verticalArrangement = Arrangement.spacedBy(16.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text(
-                    text = stringResource(R.string.group_dashboard_title),
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold
-                )
-                if (isLoadingApps) {
-                    Spacer(modifier = Modifier.width(12.dp))
-                    CircularProgressIndicator(modifier = Modifier.size(16.dp), strokeWidth = 2.dp)
-                }
-            }
-            FilledTonalButton(onClick = {
+    val controlGroups = remember(groupsWithApps) { groupsWithApps.filter { it.group.type == GroupType.CONTROL } }
+    val encourageGroups = remember(groupsWithApps) { groupsWithApps.filter { it.group.type == GroupType.ENCOURAGE } }
+
+    Column(modifier = modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(20.dp)) {
+        // Little Vow Section
+        SectionCard(
+            title = "我的小约定",
+            subtitle = "限制类的应用管控",
+            groups = controlGroups,
+            onEdit = { 
+                editingGroup = it
+                forcedType = it.group.type
+                showDialog = true 
+            },
+            onAdd = {
                 editingGroup = null
+                forcedType = GroupType.CONTROL
                 showDialog = true
-            }) {
-                Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
-                Spacer(modifier = Modifier.width(8.dp))
-                Text(stringResource(R.string.group_create_action))
-            }
-        }
+            },
+            onDelete = onDeleteGroup,
+            usageMap = usageMap
+        )
 
-        if (groupsWithApps.isEmpty()) {
-            Text(
-                text = stringResource(R.string.group_card_empty),
-                modifier = Modifier.padding(top = 24.dp),
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        } else {
-            LazyVerticalGrid(
-                columns = GridCells.Adaptive(minSize = 150.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(min = 100.dp, max = 500.dp),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                gridItems(groupsWithApps, key = { it.group.id }) { groupData ->
-                    GroupCard(
-                        groupData = groupData,
-                        onClick = {
-                            editingGroup = groupData
-                            showDialog = true
-                        }
-                    )
-                }
-            }
-        }
+        // Little Encouragement Section
+        SectionCard(
+            title = "我的小鼓励",
+            subtitle = "坚持使用可获积分",
+            groups = encourageGroups,
+            onEdit = { 
+                editingGroup = it
+                forcedType = it.group.type
+                showDialog = true 
+            },
+            onAdd = {
+                editingGroup = null
+                forcedType = GroupType.ENCOURAGE
+                showDialog = true
+            },
+            onDelete = onDeleteGroup,
+            isBooster = true,
+            usageMap = usageMap
+        )
+        
+        Spacer(modifier = Modifier.height(32.dp))
     }
 
     if (showDialog) {
         GroupEditDialog(
-            initialGroup = editingGroup,
+            group = editingGroup,
+            forcedType = forcedType,
             installedApps = installedApps,
             onDismiss = { showDialog = false },
-            onSave = { name, limitMinutes, type, period, ptsRate, packages ->
-                onSaveGroup(editingGroup?.group?.id, name, limitMinutes, type, period, ptsRate, packages)
+            onSave = { name, limit, type, period, pts, pkgs ->
+                onSaveGroup(editingGroup?.group?.id, name, limit, type, period, pts, pkgs)
                 showDialog = false
             },
             onDelete = {
@@ -118,39 +118,140 @@ fun GroupDashboard(
 }
 
 @Composable
-private fun GroupCard(
-    groupData: AppGroupWithApps,
-    onClick: () -> Unit
+private fun SectionCard(
+    title: String,
+    subtitle: String,
+    groups: List<AppGroupWithApps>,
+    onEdit: (AppGroupWithApps) -> Unit,
+    onAdd: () -> Unit,
+    onDelete: (String) -> Unit,
+    usageMap: Map<String, Long>,
+    isBooster: Boolean = false
 ) {
     ElevatedCard(
-        shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.elevatedCardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHighest
-        ),
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column {
+                    Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    Text(subtitle, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+                IconButton(onClick = onAdd) {
+                    Icon(Icons.Default.Add, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            if (groups.isEmpty()) {
+                Text(
+                    "暂未设置任何计划",
+                    modifier = Modifier.padding(vertical = 12.dp, horizontal = 8.dp),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.outline
+                )
+            } else {
+                groups.forEach { groupData ->
+                    GroupCard(
+                        groupData = groupData,
+                        usedMinutes = (usageMap[groupData.group.id] ?: 0L) / 60_000L,
+                        onClick = { onEdit(groupData) },
+                        onDelete = { onDelete(groupData.group.id) },
+                        color = if (isBooster) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.secondary
+                    )
+                    if (groupData != groups.last()) {
+                        HorizontalDivider(
+                            modifier = Modifier.padding(vertical = 4.dp, horizontal = 4.dp),
+                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun GroupCard(
+    groupData: AppGroupWithApps,
+    usedMinutes: Long,
+    onClick: () -> Unit,
+    onDelete: () -> Unit,
+    color: Color
+) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    
+    Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .clickable { onClick() }
+            .padding(vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
+        // Left Side: Overlap Icons (Max 4 for better balanced look)
+        Box(modifier = Modifier.size(width = 80.dp, height = 40.dp), contentAlignment = Alignment.CenterStart) {
+            groupData.packageNames.take(4).forEachIndexed { index, pkg ->
+                val iconPainter = remember(pkg) {
+                    try { context.packageManager.getApplicationIcon(pkg) } catch (_: Exception) { null }
+                }
+                if (iconPainter != null) {
+                    Surface(
+                        modifier = Modifier
+                            .offset(x = (index * 16).dp)
+                            .size(36.dp),
+                        shape = CircleShape,
+                        border = androidx.compose.foundation.BorderStroke(2.dp, Color.White),
+                        shadowElevation = 2.dp
+                    ) {
+                        AsyncImage(model = iconPainter, contentDescription = null)
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.width(16.dp))
+
+        // Right Side: Info and Progress
+        Column(modifier = Modifier.weight(1f)) {
             Text(
                 text = groupData.group.name,
                 style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface
+                fontWeight = FontWeight.Bold
             )
             
-            Text(
-                text = stringResource(
-                    R.string.group_card_summary,
-                    groupData.packageNames.size,
-                    groupData.group.limitMinutes
-                ),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.primary
-            )
+            Spacer(modifier = Modifier.height(2.dp))
+            
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                val progress = if (groupData.group.limitMinutes > 0) {
+                    (usedMinutes.toFloat() / groupData.group.limitMinutes).coerceIn(0f, 1.2f)
+                } else 0f
+                
+                LinearProgressIndicator(
+                    progress = { progress.coerceAtMost(1f) },
+                    modifier = Modifier
+                        .width(60.dp)
+                        .height(6.dp)
+                        .clip(CircleShape),
+                    color = color,
+                    trackColor = color.copy(alpha = 0.15f)
+                )
+                
+                Spacer(modifier = Modifier.width(8.dp))
+                
+                Text(
+                    text = "${usedMinutes}/${groupData.group.limitMinutes} min",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (usedMinutes >= groupData.group.limitMinutes) MaterialTheme.colorScheme.error else color,
+                    fontWeight = FontWeight.Medium
+                )
+            }
         }
     }
 }
@@ -158,19 +259,20 @@ private fun GroupCard(
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun GroupEditDialog(
-    initialGroup: AppGroupWithApps?,
+    group: AppGroupWithApps?,
+    forcedType: GroupType,
     installedApps: List<ManagedApp>,
     onDismiss: () -> Unit,
-    onSave: (String, Int, GroupType, LimitPeriod, Double, List<String>) -> Unit,
+    onSave: (name: String, limit: Int, type: GroupType, period: LimitPeriod, pts: Double, pkgs: List<String>) -> Unit,
     onDelete: () -> Unit
 ) {
-    var name by remember { mutableStateOf(initialGroup?.group?.name ?: "") }
-    var limitMinutes by remember { mutableFloatStateOf(initialGroup?.group?.limitMinutes?.toFloat() ?: 60f) }
-    var selectedPackages by remember { mutableStateOf(initialGroup?.packageNames?.toSet() ?: emptySet()) }
+    var name by remember { mutableStateOf(group?.group?.name ?: "") }
+    var limitMinutes by remember { mutableFloatStateOf(group?.group?.limitMinutes?.toFloat() ?: 60f) }
+    var selectedPackages by remember { mutableStateOf(group?.packageNames?.toSet() ?: emptySet()) }
     var searchQuery by remember { mutableStateOf("") }
-    var groupType by remember { mutableStateOf(initialGroup?.group?.type ?: GroupType.CONTROL) }
-    var limitPeriod by remember { mutableStateOf(initialGroup?.group?.limitPeriod ?: LimitPeriod.DAILY) }
-    var pointsPerMinute by remember { mutableFloatStateOf(initialGroup?.group?.pointsPerMinute?.toFloat() ?: 1f) }
+    var groupType by remember { mutableStateOf(group?.group?.type ?: forcedType) }
+    var limitPeriod by remember { mutableStateOf(group?.group?.limitPeriod ?: LimitPeriod.DAILY) }
+    var pointsPerMinute by remember { mutableFloatStateOf(group?.group?.pointsPerMinute?.toFloat() ?: 1f) }
 
     val filteredApps = remember(installedApps, searchQuery) {
         if (searchQuery.isBlank()) installedApps
@@ -208,7 +310,7 @@ private fun GroupEditDialog(
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold
                     )
-                    if (initialGroup != null) {
+                    if (group != null) {
                         IconButton(onClick = onDelete) {
                             Icon(
                                 Icons.Default.Delete,
@@ -228,28 +330,85 @@ private fun GroupEditDialog(
                     shape = RoundedCornerShape(12.dp)
                 )
 
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                // 分组类型已锁定为：${if (groupType == GroupType.CONTROL) "小约定" else "小鼓励"}
+                
+
+                if (groupType == GroupType.ENCOURAGE) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.3f), RoundedCornerShape(16.dp)).padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "鼓励金速率",
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = String.format("%.1f PT / min", pointsPerMinute),
+                                style = MaterialTheme.typography.titleSmall,
+                                color = MaterialTheme.colorScheme.tertiary,
+                                fontWeight = FontWeight.ExtraBold
+                            )
+                        }
+                        Text(
+                            "坚持使用小鼓励内的 App，每分钟可获得相应积分奖励。",
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Slider(
+                            value = pointsPerMinute,
+                            onValueChange = { pointsPerMinute = it },
+                            valueRange = 0.5f..5f,
+                            steps = 9,
+                            colors = SliderDefaults.colors(
+                                thumbColor = MaterialTheme.colorScheme.tertiary,
+                                activeTrackColor = MaterialTheme.colorScheme.tertiary,
+                                inactiveTrackColor = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.2f)
+                            )
+                        )
+                    }
+                }
+
+                Column(
+                    modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.2f), RoundedCornerShape(16.dp)).padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text(
-                            text = stringResource(R.string.group_limit_label),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                            text = if (groupType == GroupType.CONTROL) "每日限额" else "今日达成目标",
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold
                         )
                         Text(
                             text = "${limitMinutes.toInt()} min",
-                            style = MaterialTheme.typography.bodyMedium,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.primary
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontWeight = FontWeight.ExtraBold
                         )
                     }
+                    Text(
+                        text = if (groupType == GroupType.CONTROL) "达到此时长后，系统将弹出阻断层引导您放下手机。" 
+                               else "每日使用达标可获大奖：${(limitMinutes * pointsPerMinute).toInt()} 积分！建议作为您的专注动力。",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                     Slider(
                         value = limitMinutes,
                         onValueChange = { limitMinutes = it },
-                        valueRange = 5f..300f,
-                        steps = 59
+                        valueRange = 10f..300f,
+                        steps = 29,
+                        colors = SliderDefaults.colors(
+                            thumbColor = MaterialTheme.colorScheme.primary,
+                            activeTrackColor = MaterialTheme.colorScheme.primary,
+                            inactiveTrackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
+                        )
                     )
                 }
 

@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.background
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowBack
@@ -34,91 +35,124 @@ fun RedeemScreen(
     rewards: List<RedemptionEntity>,
     groups: List<AppGroupWithApps>,
     onRedeem: (RedemptionEntity, String?) -> Unit,
-    onAddCustomReward: (String, Int) -> Unit,
+    onAddReward: (String, Int, Int, String) -> Unit,
+    onUpdateReward: (RedemptionEntity) -> Unit,
     onBack: () -> Unit
 ) {
     val scope = rememberCoroutineScope()
     var showAddDialog by remember { mutableStateOf(false) }
+    var editingReward by remember { mutableStateOf<RedemptionEntity?>(null) }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("积分商城") },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.Default.ArrowBack, contentDescription = "返回")
-                    }
-                },
-                actions = {
-                    IconButton(onClick = { showAddDialog = true }) {
-                        Icon(Icons.Default.Add, contentDescription = "添加自定义奖励")
-                    }
-                }
-            )
-        }
-    ) { padding ->
-        Column(modifier = Modifier.padding(padding).fillMaxSize()) {
-            // 积分概览卡片
-            Card(
-                modifier = Modifier.padding(16.dp).fillMaxWidth(),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)
-            ) {
-                Column(modifier = Modifier.padding(24.dp)) {
-                    Text("当前积分", style = MaterialTheme.typography.labelLarge)
+    Column(modifier = Modifier.fillMaxSize()) {
+        // 积分概览卡片
+        Surface(
+            modifier = Modifier.padding(16.dp).fillMaxWidth(),
+            shape = RoundedCornerShape(24.dp),
+            color = MaterialTheme.colorScheme.primary,
+            shadowElevation = 8.dp
+        ) {
+            Column(modifier = Modifier.padding(24.dp)) {
+                Text("当前持有积分", style = MaterialTheme.typography.labelLarge, color = Color.White.copy(alpha = 0.8f))
+                Spacer(Modifier.height(8.dp))
+                Row(verticalAlignment = Alignment.Bottom) {
                     Text(
                         text = "%.1f".format(userPoints),
                         style = MaterialTheme.typography.displayMedium,
                         fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary
+                        color = Color.White
                     )
-                }
-            }
-
-            Text(
-                "可兑换项",
-                style = MaterialTheme.typography.titleMedium,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
-            )
-
-            LazyColumn(
-                modifier = Modifier.fillMaxWidth().weight(1f),
-                contentPadding = PaddingValues(16.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                items(rewards) { reward ->
-                    RewardItem(
-                        reward = reward,
-                        canAfford = userPoints >= reward.pointCost,
-                        groups = groups,
-                        onRedeem = { groupId -> onRedeem(reward, groupId) }
+                    Text(
+                        " PT",
+                        modifier = Modifier.padding(bottom = 12.dp, start = 4.dp),
+                        style = MaterialTheme.typography.titleMedium,
+                        color = Color.White.copy(alpha = 0.8f)
                     )
                 }
             }
         }
+
+        Text(
+            "可兑换项",
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
+        )
+
+        LazyColumn(
+            modifier = Modifier.fillMaxWidth().weight(1f),
+            contentPadding = PaddingValues(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            items(rewards) { reward ->
+                RewardItem(
+                    reward = reward,
+                    canAfford = userPoints >= reward.pointCost && (reward.stock == -1 || reward.stock > 0),
+                    groups = groups,
+                    onRedeem = { groupId -> onRedeem(reward, groupId) },
+                    onLongClick = { editingReward = reward }
+                )
+            }
+
+            // 新增自定义项按钮 (加号放在可兑选项中)
+            item {
+                OutlinedButton(
+                    onClick = { showAddDialog = true },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(20.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.primary),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.3f))
+                ) {
+                    Icon(Icons.Default.Add, contentDescription = null)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("添加自定义奖励")
+                }
+            }
+            
+            item { Spacer(modifier = Modifier.height(24.dp)) }
+        }
     }
 
     if (showAddDialog) {
-        AddCustomRewardDialog(
+        RewardEditDialog(
             onDismiss = { showAddDialog = false },
-            onConfirm = { name, cost ->
-                onAddCustomReward(name, cost)
+            onConfirm = { name, cost, stock, desc ->
+                onAddReward(name, cost, stock, desc)
                 showAddDialog = false
+            }
+        )
+    }
+
+    if (editingReward != null) {
+        RewardEditDialog(
+            reward = editingReward,
+            onDismiss = { editingReward = null },
+            onConfirm = { name, cost, stock, desc ->
+                editingReward?.let {
+                    onUpdateReward(it.copy(title = name, pointCost = cost, stock = stock, description = desc))
+                }
+                editingReward = null
             }
         )
     }
 }
 
+@OptIn(androidx.compose.foundation.ExperimentalFoundationApi::class)
 @Composable
 fun RewardItem(
     reward: RedemptionEntity,
     canAfford: Boolean,
     groups: List<AppGroupWithApps>,
-    onRedeem: (String?) -> Unit
+    onRedeem: (String?) -> Unit,
+    onLongClick: () -> Unit
 ) {
     var showGroupPicker by remember { mutableStateOf(false) }
 
     ElevatedCard(
         modifier = Modifier.fillMaxWidth()
+            .combinedClickable(
+                onClick = { /* Handle normal click on individual components or just do nothing if we want separate button */ },
+                onLongClick = onLongClick
+            )
     ) {
         Row(
             modifier = Modifier.padding(16.dp),
@@ -126,9 +160,17 @@ fun RewardItem(
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(reward.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                if (reward.description.isNotBlank()) {
+                    Text(reward.description, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
                 Text(
-                    if (reward.rewardType == RewardType.TIME_PACK) "加时包: ${reward.bonusMinutes}分钟" else "自定义奖励",
+                    if (reward.rewardType == RewardType.TIME_PACK) "✨ 时光胶囊: 延时 ${reward.bonusMinutes} 分钟" else "🎁 线下奖励",
                     style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary
+                )
+                Text(
+                    text = if (reward.stock == -1) "库存: 无穷大" else "剩余库存: ${reward.stock}",
+                    style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.outline
                 )
             }
@@ -217,23 +259,77 @@ fun RewardItem(
 }
 
 @Composable
-fun AddCustomRewardDialog(onDismiss: () -> Unit, onConfirm: (String, Int) -> Unit) {
-    var name by remember { mutableStateOf("") }
-    var cost by remember { mutableStateOf("100") }
+fun RewardEditDialog(
+    reward: RedemptionEntity? = null,
+    onDismiss: () -> Unit,
+    onConfirm: (String, Int, Int, String) -> Unit
+) {
+    var title by remember { mutableStateOf(reward?.title ?: "") }
+    var cost by remember { mutableStateOf(reward?.pointCost?.toString() ?: "100") }
+    var stock by remember { mutableStateOf(reward?.stock?.toString() ?: "-1") }
+    var description by remember { mutableStateOf(reward?.description ?: "") }
+    var isInfinite by remember { mutableStateOf(reward?.stock == -1) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("添加自定义奖励") },
+        title = { Text(if (reward == null) "添加自定义奖励" else "编辑奖励") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("奖励名称") })
-                OutlinedTextField(value = cost, onValueChange = { cost = it }, label = { Text("所需积分") })
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(
+                    value = title,
+                    onValueChange = { title = it },
+                    label = { Text("项目名称") },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp)
+                )
+                OutlinedTextField(
+                    value = cost,
+                    onValueChange = { cost = it },
+                    label = { Text("所需积分") },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number)
+                )
+                
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Checkbox(checked = isInfinite, onCheckedChange = { isInfinite = it })
+                    Text("无穷大库存", style = MaterialTheme.typography.bodyMedium)
+                }
+
+                if (!isInfinite) {
+                    OutlinedTextField(
+                        value = stock,
+                        onValueChange = { stock = it },
+                        label = { Text("库存数量") },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number)
+                    )
+                }
+
+                OutlinedTextField(
+                    value = description,
+                    onValueChange = { description = it },
+                    label = { Text("描述 (可选)") },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    minLines = 2
+                )
             }
         },
         confirmButton = {
-            Button(onClick = { onConfirm(name, cost.toIntOrNull() ?: 100) }) {
-                Text("添加")
+            Button(
+                onClick = {
+                    val stockValue = if (isInfinite) -1 else stock.toIntOrNull() ?: 1
+                    onConfirm(title, cost.toIntOrNull() ?: 100, stockValue, description)
+                },
+                enabled = title.isNotBlank()
+            ) {
+                Text(if (reward == null) "添加" else "保存")
             }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("取消") }
         }
     )
 }
