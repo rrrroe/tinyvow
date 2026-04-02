@@ -187,6 +187,12 @@ private fun GroupCard(
     color: Color
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
+    val isExceeded = usedMinutes >= groupData.group.limitMinutes
+    val periodLabel = when (groupData.group.limitPeriod) {
+        LimitPeriod.DAILY -> "每日"
+        LimitPeriod.WEEKLY -> "每周"
+        LimitPeriod.MONTHLY -> "每月"
+    }
     
     Row(
         modifier = Modifier
@@ -220,13 +226,39 @@ private fun GroupCard(
 
         // Right Side: Info and Progress
         Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = groupData.group.name,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = groupData.group.name,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.weight(1f)
+                )
+                // Status chip
+                Surface(
+                    shape = RoundedCornerShape(8.dp),
+                    color = if (isExceeded) MaterialTheme.colorScheme.errorContainer else color.copy(alpha = 0.12f)
+                ) {
+                    Text(
+                        text = if (isExceeded) "已超额" else "正常",
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Medium,
+                        color = if (isExceeded) MaterialTheme.colorScheme.error else color
+                    )
+                }
+            }
             
-            Spacer(modifier = Modifier.height(2.dp))
+            Text(
+                text = "${periodLabel} · ${groupData.packageNames.distinct().size}个应用",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            Spacer(modifier = Modifier.height(4.dp))
             
             Row(verticalAlignment = Alignment.CenterVertically) {
                 val progress = if (groupData.group.limitMinutes > 0) {
@@ -239,7 +271,7 @@ private fun GroupCard(
                         .width(60.dp)
                         .height(6.dp)
                         .clip(CircleShape),
-                    color = color,
+                    color = if (isExceeded) MaterialTheme.colorScheme.error else color,
                     trackColor = color.copy(alpha = 0.15f)
                 )
                 
@@ -248,7 +280,7 @@ private fun GroupCard(
                 Text(
                     text = "${usedMinutes}/${groupData.group.limitMinutes} min",
                     style = MaterialTheme.typography.labelSmall,
-                    color = if (usedMinutes >= groupData.group.limitMinutes) MaterialTheme.colorScheme.error else color,
+                    color = if (isExceeded) MaterialTheme.colorScheme.error else color,
                     fontWeight = FontWeight.Medium
                 )
             }
@@ -331,7 +363,35 @@ private fun GroupEditDialog(
                 )
 
                 // 分组类型已锁定为：${if (groupType == GroupType.CONTROL) "小约定" else "小鼓励"}
-                
+
+                // 周期选择器
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "统计周期",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold
+                    )
+                    @OptIn(ExperimentalMaterial3Api::class)
+                    SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                        val periods = listOf(
+                            LimitPeriod.DAILY to "每日",
+                            LimitPeriod.WEEKLY to "每周",
+                            LimitPeriod.MONTHLY to "每月"
+                        )
+                        periods.forEachIndexed { index, (period, label) ->
+                            SegmentedButton(
+                                selected = limitPeriod == period,
+                                onClick = { limitPeriod = period },
+                                shape = SegmentedButtonDefaults.itemShape(index, periods.size)
+                            ) {
+                                Text(label)
+                            }
+                        }
+                    }
+                }
 
                 if (groupType == GroupType.ENCOURAGE) {
                     Column(
@@ -373,6 +433,12 @@ private fun GroupEditDialog(
                     }
                 }
 
+                val periodLabel = when (limitPeriod) {
+                    LimitPeriod.DAILY -> "每日"
+                    LimitPeriod.WEEKLY -> "每周"
+                    LimitPeriod.MONTHLY -> "每月"
+                }
+
                 Column(
                     modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.2f), RoundedCornerShape(16.dp)).padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -382,7 +448,7 @@ private fun GroupEditDialog(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text(
-                            text = if (groupType == GroupType.CONTROL) "每日限额" else "今日达成目标",
+                            text = if (groupType == GroupType.CONTROL) "${periodLabel}限额" else "${periodLabel}达成目标",
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.Bold
                         )
@@ -395,7 +461,7 @@ private fun GroupEditDialog(
                     }
                     Text(
                         text = if (groupType == GroupType.CONTROL) "达到此时长后，系统将弹出阻断层引导您放下手机。" 
-                               else "每日使用达标可获大奖：${(limitMinutes * pointsPerMinute).toInt()} 积分！建议作为您的专注动力。",
+                               else "${periodLabel}使用达标可获大奖：${(limitMinutes * pointsPerMinute).toInt()} 积分！建议作为您的专注动力。",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

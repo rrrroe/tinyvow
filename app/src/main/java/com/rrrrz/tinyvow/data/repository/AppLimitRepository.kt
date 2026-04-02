@@ -22,9 +22,28 @@ class AppLimitRepository(private val database: AppDatabase) {
     private val redemptionDao = database.redemptionDao()
     private val bonusTimeDao = database.bonusTimeDao()
     private val achievementDao = database.achievementDao()
+    private val redemptionHistoryDao = database.redemptionHistoryDao()
 
     private val _newAchievementsAction = MutableSharedFlow<AchievementEntity>()
     val newAchievementsAction: SharedFlow<AchievementEntity> = _newAchievementsAction.asSharedFlow()
+
+    // ──────── 兑换记录 ────────
+
+    fun getRedemptionHistory(): Flow<List<RedemptionHistoryEntity>> =
+        redemptionHistoryDao.getAllHistory()
+
+    suspend fun recordRedemption(title: String, pointCost: Int) {
+        withContext(Dispatchers.IO) {
+            redemptionHistoryDao.insertHistory(
+                RedemptionHistoryEntity(
+                    id = UUID.randomUUID().toString(),
+                    rewardTitle = title,
+                    pointCost = pointCost,
+                    redeemedAt = System.currentTimeMillis()
+                )
+            )
+        }
+    }
 
     /**
      * 实时暴露出所有未软删除的分组及其关联的应用包名列表

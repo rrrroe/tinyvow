@@ -34,7 +34,7 @@ fun MeScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background) // Theme-aware background
+            .background(MaterialTheme.colorScheme.background)
             .verticalScroll(rememberScrollState())
     ) {
         // Upper Profile Header
@@ -57,13 +57,13 @@ fun MeScreen(
                 Surface(
                     modifier = Modifier.size(64.dp),
                     shape = CircleShape,
-                    color = Color.White.copy(alpha = 0.3f)
+                    color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.3f)
                 ) {
                     Icon(
                         Icons.Default.Person,
                         contentDescription = null,
                         modifier = Modifier.padding(12.dp),
-                        tint = Color.White
+                        tint = MaterialTheme.colorScheme.onPrimary
                     )
                 }
                 Spacer(Modifier.width(16.dp))
@@ -71,13 +71,13 @@ fun MeScreen(
                     Text(
                         "自律达人",
                         style = MaterialTheme.typography.titleLarge,
-                        color = Color.White,
+                        color = MaterialTheme.colorScheme.onPrimary,
                         fontWeight = FontWeight.Bold
                     )
                     Text(
                         "ID: 20260322",
                         style = MaterialTheme.typography.bodySmall,
-                        color = Color.White.copy(alpha = 0.8f)
+                        color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.8f)
                     )
                 }
             }
@@ -94,7 +94,7 @@ fun MeScreen(
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(24.dp),
-                color = Color.White,
+                color = MaterialTheme.colorScheme.surface,
                 shadowElevation = 4.dp
             ) {
                 Row(
@@ -102,11 +102,11 @@ fun MeScreen(
                     horizontalArrangement = Arrangement.SpaceAround,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    MeStatItem(value = userPoints.toInt().toString(), label = "当前积分", color = Color(0xFFE91E63))
-                    Divider(modifier = Modifier.width(1.dp).height(40.dp), color = Color.LightGray)
-                    MeStatItem(value = "0", label = "累计自律", color = Color(0xFF2196F3))
-                    Divider(modifier = Modifier.width(1.dp).height(40.dp), color = Color.LightGray)
-                    MeStatItem(value = "1", label = "坚持天数", color = Color(0xFF4CAF50))
+                    MeStatItem(value = userPoints.toInt().toString(), label = "当前积分", color = MaterialTheme.colorScheme.primary)
+                    HorizontalDivider(modifier = Modifier.width(1.dp).height(40.dp), color = MaterialTheme.colorScheme.outlineVariant)
+                    MeStatItem(value = "0", label = "累计自律", color = MaterialTheme.colorScheme.secondary)
+                    HorizontalDivider(modifier = Modifier.width(1.dp).height(40.dp), color = MaterialTheme.colorScheme.outlineVariant)
+                    MeStatItem(value = "1", label = "坚持天数", color = MaterialTheme.colorScheme.tertiary)
                 }
             }
 
@@ -121,7 +121,7 @@ fun MeScreen(
             }
 
             MeMenuSection("高级中心") {
-                MeMenuItem(icon = Icons.Default.Science, title = "实验室 (调试工具)", onClick = onNavigateToLaboratory, color = Color(0xFF9C27B0))
+                MeMenuItem(icon = Icons.Default.Science, title = "实验室 (调试工具)", onClick = onNavigateToLaboratory, color = MaterialTheme.colorScheme.tertiary)
                 MeMenuItem(icon = Icons.Default.History, title = "使用历史", onClick = { /* TODO */ })
                 MeMenuItem(icon = Icons.Default.HelpOutline, title = "帮助与反馈", onClick = { /* TODO */ })
             }
@@ -165,7 +165,7 @@ fun ThemeSelectorRow(currentTheme: Int, onThemeSelected: (Int) -> Unit) {
                             .background(if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.1f) else Color.Transparent)
                             .padding(4.dp)
                             .let {
-                                if (isSelected) it.then(Modifier.background(Color.White, RoundedCornerShape(12.dp)))
+                                if (isSelected) it.then(Modifier.background(MaterialTheme.colorScheme.surface, RoundedCornerShape(12.dp)))
                                 else it
                             },
                         contentAlignment = Alignment.Center
@@ -179,7 +179,7 @@ fun ThemeSelectorRow(currentTheme: Int, onThemeSelected: (Int) -> Unit) {
                     Text(
                         theme.name,
                         style = androidx.compose.ui.text.TextStyle(fontSize = 11.sp),
-                        color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Gray,
+                        color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                         fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
                     )
                 }
@@ -194,7 +194,7 @@ private data class ThemeOption(val id: Int, val name: String, val p: Color, val 
 fun MeStatItem(value: String, label: String, color: Color) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold, color = color)
-        Text(label, style = MaterialTheme.typography.labelSmall, color = Color.Gray)
+        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
@@ -205,13 +205,13 @@ fun MeMenuSection(title: String, content: @Composable ColumnScope.() -> Unit) {
             title, 
             modifier = Modifier.padding(start = 8.dp, bottom = 4.dp), 
             style = MaterialTheme.typography.labelMedium, 
-            color = Color.Gray,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             fontWeight = FontWeight.Bold
         )
         Surface(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(20.dp),
-            color = Color.White
+            color = MaterialTheme.colorScheme.surface
         ) {
             Column {
                 content()
@@ -221,7 +221,7 @@ fun MeMenuSection(title: String, content: @Composable ColumnScope.() -> Unit) {
 }
 
 @Composable
-fun MeMenuItem(icon: ImageVector, title: String, onClick: () -> Unit, color: Color = Color(0xFF444444)) {
+fun MeMenuItem(icon: ImageVector, title: String, onClick: () -> Unit, color: Color = MaterialTheme.colorScheme.onSurface) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -231,8 +231,8 @@ fun MeMenuItem(icon: ImageVector, title: String, onClick: () -> Unit, color: Col
     ) {
         Icon(icon, contentDescription = null, modifier = Modifier.size(24.dp), tint = color)
         Spacer(Modifier.width(16.dp))
-        Text(title, style = MaterialTheme.typography.bodyLarge, color = Color(0xFF333333))
+        Text(title, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface)
         Spacer(Modifier.weight(1f))
-        Icon(Icons.Default.KeyboardArrowRight, contentDescription = null, tint = Color.LightGray)
+        Icon(Icons.Default.KeyboardArrowRight, contentDescription = null, tint = MaterialTheme.colorScheme.outlineVariant)
     }
 }

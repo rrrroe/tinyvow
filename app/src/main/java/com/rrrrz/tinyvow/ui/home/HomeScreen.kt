@@ -90,6 +90,7 @@ import com.rrrrz.tinyvow.data.db.GroupType
 import com.rrrrz.tinyvow.data.db.LimitPeriod
 import com.rrrrz.tinyvow.data.db.AchievementEntity
 import com.rrrrz.tinyvow.data.db.RedemptionEntity
+import com.rrrrz.tinyvow.data.db.RedemptionHistoryEntity
 import com.rrrrz.tinyvow.ui.rewards.RedeemScreen
 import com.rrrrz.tinyvow.ui.rewards.AchievementScreen
 
@@ -101,6 +102,7 @@ fun RewardsHome(
     achievements: List<AchievementEntity>,
     rewards: List<RedemptionEntity>,
     groups: List<AppGroupWithApps>,
+    redemptionHistory: List<RedemptionHistoryEntity>,
     onRedeem: (RedemptionEntity, String?) -> Unit,
     onAddReward: (String, Int, Int, String) -> Unit,
     onUpdateReward: (RedemptionEntity) -> Unit,
@@ -137,6 +139,7 @@ fun RewardsHome(
                     userPoints = userPoints,
                     rewards = rewards,
                     groups = groups,
+                    redemptionHistory = redemptionHistory,
                     onRedeem = onRedeem,
                     onAddReward = onAddReward,
                     onUpdateReward = onUpdateReward,
@@ -173,6 +176,7 @@ fun HomeRoute(
     val selectedTheme by preferences.selectedTheme.collectAsState(initial = 0)
     val rewards by appLimitRepository.getAllRewards().collectAsState(initial = emptyList())
     val achievements by appLimitRepository.getAllAchievements().collectAsState(initial = emptyList())
+    val redemptionHistory by appLimitRepository.getRedemptionHistory().collectAsState(initial = emptyList())
 
     var currentScreen by remember { mutableStateOf(Screen.HOME) }
     var usageAccessStatus by remember { mutableStateOf(checker.getStatus()) }
@@ -364,12 +368,14 @@ fun HomeRoute(
                         achievements = achievements,
                         rewards = rewards,
                         groups = groupsWithApps,
+                        redemptionHistory = redemptionHistory,
                         onRedeem = { reward, gId -> 
                             coroutineScope.launch {
                                 if (reward.rewardType == com.rrrrz.tinyvow.data.db.RewardType.TIME_PACK && gId != null) {
                                     appLimitRepository.redeemTimePack(gId, reward.bonusMinutes)
                                 }
                                 preferences.addUserPoints(-reward.pointCost.toDouble())
+                                appLimitRepository.recordRedemption(reward.title, reward.pointCost)
                             }
                         },
                         onAddReward = { name, cost, stock, desc ->

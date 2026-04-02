@@ -52,6 +52,7 @@ private data class StatsUiState(
     val todayUsageMillis: Long = 0L,
     val weeklyUsageMillis: Long = 0L,
     val monthlyUsageMillis: Long = 0L,
+    val savedTimeMillis: Long = 0L,
     val controlCompletedCount: Int = 0,
     val controlTotalCount: Int = 0,
     val encourageCompletedCount: Int = 0,
@@ -153,6 +154,7 @@ private suspend fun buildStatsUiState(
 
     val controlGroups = groupItems.filter { it.type == GroupType.CONTROL }
     val encourageGroups = groupItems.filter { it.type == GroupType.ENCOURAGE }
+    val savedTimeMillis = controlGroups.sumOf { maxOf(0L, it.deltaMillis) }
 
     return StatsUiState(
         isLoading = false,
@@ -162,6 +164,7 @@ private suspend fun buildStatsUiState(
         todayUsageMillis = todayUsageMillis,
         weeklyUsageMillis = weeklyUsageMillis,
         monthlyUsageMillis = monthlyUsageMillis,
+        savedTimeMillis = savedTimeMillis,
         controlCompletedCount = controlGroups.count { it.deltaMillis >= 0L },
         controlTotalCount = controlGroups.size,
         encourageCompletedCount = encourageGroups.count { it.deltaMillis <= 0L },
@@ -253,6 +256,11 @@ private fun StatsScreen(
                         OverviewCard(
                             title = "本月时长",
                             value = formatDuration(state.monthlyUsageMillis),
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        OverviewCard(
+                            title = "节省时长",
+                            value = formatDuration(state.savedTimeMillis),
                             modifier = Modifier.fillMaxWidth(),
                         )
                     }

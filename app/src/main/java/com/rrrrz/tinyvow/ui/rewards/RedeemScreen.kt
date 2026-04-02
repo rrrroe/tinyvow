@@ -25,8 +25,12 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.clip
 import com.rrrrz.tinyvow.data.db.RedemptionEntity
+import com.rrrrz.tinyvow.data.db.RedemptionHistoryEntity
 import com.rrrrz.tinyvow.data.db.RewardType
 import com.rrrrz.tinyvow.data.repository.AppGroupWithApps
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -34,6 +38,7 @@ fun RedeemScreen(
     userPoints: Double,
     rewards: List<RedemptionEntity>,
     groups: List<AppGroupWithApps>,
+    redemptionHistory: List<RedemptionHistoryEntity> = emptyList(),
     onRedeem: (RedemptionEntity, String?) -> Unit,
     onAddReward: (String, Int, Int, String) -> Unit,
     onUpdateReward: (RedemptionEntity) -> Unit,
@@ -108,6 +113,23 @@ fun RedeemScreen(
                 }
             }
             
+            item { Spacer(modifier = Modifier.height(8.dp)) }
+
+            // 最近兑换记录
+            if (redemptionHistory.isNotEmpty()) {
+                item {
+                    Text(
+                        "最近兑换记录",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(vertical = 8.dp)
+                    )
+                }
+                items(redemptionHistory.take(10)) { record ->
+                    RedemptionHistoryItem(record)
+                }
+            }
+
             item { Spacer(modifier = Modifier.height(24.dp)) }
         }
     }
@@ -334,3 +356,39 @@ fun RewardEditDialog(
     )
 }
 
+@Composable
+private fun RedemptionHistoryItem(record: RedemptionHistoryEntity) {
+    val dateFormatter = remember {
+        SimpleDateFormat("MM/dd HH:mm", Locale.getDefault())
+    }
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+    ) {
+        Row(
+            modifier = Modifier.padding(16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    record.rewardTitle,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Medium
+                )
+                Text(
+                    dateFormatter.format(Date(record.redeemedAt)),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Text(
+                "-${record.pointCost} PT",
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.error
+            )
+        }
+    }
+}

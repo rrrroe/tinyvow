@@ -11,9 +11,10 @@ import androidx.room.RoomDatabase
         GroupAppCrossRef::class,
         RedemptionEntity::class,
         BonusTimeEntity::class,
-        AchievementEntity::class
+        AchievementEntity::class,
+        RedemptionHistoryEntity::class
     ],
-    version = 5,
+    version = 6,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -22,6 +23,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun redemptionDao(): RedemptionDao
     abstract fun bonusTimeDao(): BonusTimeDao
     abstract fun achievementDao(): AchievementDao
+    abstract fun redemptionHistoryDao(): RedemptionHistoryDao
 
     companion object {
         @Volatile
