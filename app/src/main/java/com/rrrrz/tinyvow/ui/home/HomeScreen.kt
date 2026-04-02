@@ -382,9 +382,13 @@ fun HomeRoute(
                     )
                 }
                 Screen.STATS -> {
-                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Text("统计功能开发中")
-                    }
+                    StatsRoute(
+                        usageAccessStatus = usageAccessStatus,
+                        groupsWithApps = groupsWithApps,
+                        userPoints = userPoints,
+                        todayPoints = todayPoints,
+                        modifier = Modifier.fillMaxSize(),
+                    )
                 }
                 Screen.ME -> {
                     MeScreen(

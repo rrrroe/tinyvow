@@ -316,10 +316,10 @@ class AppLimitAccessibilityService : AccessibilityService() {
     }
 
     companion object {
-        /** 评估防抖窗口：同一个包名 3 秒内不重复查询 */
-        private const val CHECK_DEBOUNCE_MS = 3_000L
-        /** 阻断弹窗防抖窗口：同一个包名 5 秒内不重复弹 overlay */
-        private const val BLOCK_DEBOUNCE_MS = 5_000L
+        /** 评估防抖窗口：先压到更短，便于真机回归时观察是否是防抖导致漏拦截 */
+        private const val CHECK_DEBOUNCE_MS = 800L
+        /** 阻断弹窗防抖窗口：缩短到 1.2 秒，先验证是否是重复进入时被窗口挡住 */
+        private const val BLOCK_DEBOUNCE_MS = 1_200L
         private var lastCheckedPackage: String? = null
         private var lastCheckElapsedRealtime: Long = 0L
         private var lastBlockedPackage: String? = null
