@@ -8,7 +8,7 @@ import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface RedemptionHistoryDao {
-    @Query("SELECT * FROM redemption_history ORDER BY redeemedAt DESC")
+    @Query("SELECT * FROM redemption_history ORDER BY redeemed_at DESC")
     fun getAllHistory(): Flow<List<RedemptionHistoryEntity>>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)

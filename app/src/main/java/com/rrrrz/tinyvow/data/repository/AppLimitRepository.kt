@@ -16,6 +16,11 @@ data class AppGroupWithApps(
     val packageNames: List<String>
 )
 
+data class RedemptionResult(
+    val pointCost: Int,
+    val message: String,
+)
+
 class AppLimitRepository(private val database: AppDatabase) {
     private val groupDao = database.appGroupDao()
     private val crossRefDao = database.crossRefDao()
@@ -26,6 +31,8 @@ class AppLimitRepository(private val database: AppDatabase) {
 
     private val _newAchievementsAction = MutableSharedFlow<AchievementEntity>()
     val newAchievementsAction: SharedFlow<AchievementEntity> = _newAchievementsAction.asSharedFlow()
+    private val _redemptionEvents = MutableSharedFlow<String>()
+    val redemptionEvents: SharedFlow<String> = _redemptionEvents.asSharedFlow()
 
     // ──────── 兑换记录 ────────
 
@@ -39,8 +46,71 @@ class AppLimitRepository(private val database: AppDatabase) {
                     id = UUID.randomUUID().toString(),
                     rewardTitle = title,
                     pointCost = pointCost,
+                    historyType = RedemptionHistoryType.CUSTOM,
                     redeemedAt = System.currentTimeMillis()
                 )
+            )
+        }
+    }
+
+    suspend fun redeemReward(
+        reward: RedemptionEntity,
+        targetGroupId: String?,
+    ): RedemptionResult? {
+        return withContext(Dispatchers.IO) {
+            val latestReward = redemptionDao.getRedemptionById(reward.id) ?: return@withContext null
+            if (!latestReward.isActive || latestReward.stock == 0) return@withContext null
+
+            val targetGroupName =
+                if (latestReward.rewardType == RewardType.TIME_PACK && targetGroupId != null) {
+                    groupDao.getGroupByIdSync(targetGroupId)?.name
+                } else {
+                    null
+                }
+
+            if (latestReward.rewardType == RewardType.TIME_PACK) {
+                if (targetGroupId == null) return@withContext null
+                redeemTimePack(targetGroupId, latestReward.bonusMinutes)
+            }
+
+            if (latestReward.stock > 0) {
+                redemptionDao.insertRedemption(
+                    latestReward.copy(
+                        stock = latestReward.stock - 1,
+                        updatedAt = System.currentTimeMillis(),
+                    )
+                )
+            }
+
+            redemptionHistoryDao.insertHistory(
+                RedemptionHistoryEntity(
+                    id = UUID.randomUUID().toString(),
+                    rewardTitle = latestReward.title,
+                    pointCost = latestReward.pointCost,
+                    historyType = when (latestReward.rewardType) {
+                        RewardType.TIME_PACK -> RedemptionHistoryType.TIME_PACK
+                        RewardType.CUSTOM -> RedemptionHistoryType.CUSTOM
+                    },
+                    bonusMinutes = latestReward.bonusMinutes,
+                    targetGroupName = targetGroupName,
+                    redeemedAt = System.currentTimeMillis(),
+                )
+            )
+
+            val message = when (latestReward.rewardType) {
+                RewardType.TIME_PACK -> {
+                    val groupName = targetGroupName ?: "目标分组"
+                    "已兑换 ${latestReward.title}，-${latestReward.pointCost} PT，$groupName +${latestReward.bonusMinutes} 分钟"
+                }
+                RewardType.CUSTOM -> {
+                    "已兑换 ${latestReward.title}，-${latestReward.pointCost} PT"
+                }
+            }
+
+            _redemptionEvents.emit(message)
+            RedemptionResult(
+                pointCost = latestReward.pointCost,
+                message = message,
             )
         }
     }
@@ -194,32 +264,125 @@ class AppLimitRepository(private val database: AppDatabase) {
             addReward("1小时 自由冲浪卡", 100, RewardType.TIME_PACK, -1, "立即获得1小时额外时长", 60)
             addReward("大快朵颐 (线下奖励)", 500, RewardType.CUSTOM, 5, "给自己加个鸡腿！")
 
-            // 初始成就
-            achievementDao.insertAchievement(AchievementEntity("FIRST_10_POINTS", "初露锋芒", "赚取前 10 个积分", "{\"type\":\"points\",\"value\":10}"))
-            achievementDao.insertAchievement(AchievementEntity("FIRST_100_POINTS", "积分达人", "累计赚取 100 个积分", "{\"type\":\"points\",\"value\":100}"))
-            achievementDao.insertAchievement(AchievementEntity("CONSISTENT_3_DAYS", "坚持不懈", "连续 3 天未超标", "{\"type\":\"days\",\"value\":3}"))
+            // 使用 seedAchievement (IGNORE) 避免覆盖已解锁状态
+            suspend fun seed(id: String, title: String, desc: String, req: String, tier: Int, emoji: String) {
+                achievementDao.seedAchievement(AchievementEntity(id, title, desc, req, tier, emoji))
+            }
+
+            // ══════════ 🥉 Bronze 铜阶 ══════════
+            seed("BRONZE_POINTS", "初入江湖", "累计赚取 100 积分",
+                """{"type":"points","value":100}""", AchievementTier.BRONZE, "🌱")
+            seed("BRONZE_REDEEM", "初次消费", "累计消费 100 积分",
+                """{"type":"redeem_points","value":100}""", AchievementTier.BRONZE, "🍬")
+            seed("BRONZE_CTRL_DAYS", "点滴积累", "累计 10 天约定未超标",
+                """{"type":"control_days","value":10}""", AchievementTier.BRONZE, "🤝")
+            seed("BRONZE_CTRL_STREAK", "三日磐石", "连续 3 天约定未超标",
+                """{"type":"control_streak","value":3}""", AchievementTier.BRONZE, "🪨")
+            seed("BRONZE_ENC_DAYS", "向阳而生", "累计 10 天鼓励达标",
+                """{"type":"encourage_days","value":10}""", AchievementTier.BRONZE, "🌻")
+            seed("BRONZE_ENC_STREAK", "初心不改", "连续 3 天鼓励达标",
+                """{"type":"encourage_streak","value":3}""", AchievementTier.BRONZE, "🕯️")
+
+            // ══════════ 🥈 Silver 银阶 ══════════
+            seed("SILVER_POINTS", "踏浪前行", "累计赚取 300 积分",
+                """{"type":"points","value":300}""", AchievementTier.SILVER, "🌊")
+            seed("SILVER_REDEEM", "购物达人", "累计消费 300 积分",
+                """{"type":"redeem_points","value":300}""", AchievementTier.SILVER, "🛒")
+            seed("SILVER_CTRL_DAYS", "守约如山", "累计 30 天约定未超标",
+                """{"type":"control_days","value":30}""", AchievementTier.SILVER, "⛰️")
+            seed("SILVER_CTRL_STREAK", "十日坚守", "连续 10 天约定未超标",
+                """{"type":"control_streak","value":10}""", AchievementTier.SILVER, "🌓")
+            seed("SILVER_ENC_DAYS", "习惯养成", "累计 30 天鼓励达标",
+                """{"type":"encourage_days","value":30}""", AchievementTier.SILVER, "📖")
+            seed("SILVER_ENC_STREAK", "十全十美", "连续 10 天鼓励达标",
+                """{"type":"encourage_streak","value":10}""", AchievementTier.SILVER, "🌿")
+
+            // ══════════ 🥇 Gold 金阶 ══════════
+            seed("GOLD_POINTS", "千分大师", "累计赚取 1000 积分",
+                """{"type":"points","value":1000}""", AchievementTier.GOLD, "👑")
+            seed("GOLD_REDEEM", "赏金猎人", "累计消费 1000 积分",
+                """{"type":"redeem_points","value":1000}""", AchievementTier.GOLD, "🎯")
+            seed("GOLD_CTRL_DAYS", "百日守护", "累计 100 天约定未超标",
+                """{"type":"control_days","value":100}""", AchievementTier.GOLD, "🛡️")
+            seed("GOLD_CTRL_STREAK", "月之战神", "连续 30 天约定未超标",
+                """{"type":"control_streak","value":30}""", AchievementTier.GOLD, "🌙")
+            seed("GOLD_ENC_DAYS", "百炼成钢", "累计 100 天鼓励达标",
+                """{"type":"encourage_days","value":100}""", AchievementTier.GOLD, "🔥")
+            seed("GOLD_ENC_STREAK", "势如破竹", "连续 30 天鼓励达标",
+                """{"type":"encourage_streak","value":30}""", AchievementTier.GOLD, "🎍")
+
+            // ══════════ 💎 Diamond 钻石阶 ══════════
+            seed("DIAMOND_POINTS", "名满天下", "累计赚取 3000 积分",
+                """{"type":"points","value":3000}""", AchievementTier.DIAMOND, "💫")
+            seed("DIAMOND_REDEEM", "挥金如土", "累计消费 3000 积分",
+                """{"type":"redeem_points","value":3000}""", AchievementTier.DIAMOND, "🏛️")
+            seed("DIAMOND_CTRL_DAYS", "岁月如歌", "累计 365 天约定未超标",
+                """{"type":"control_days","value":365}""", AchievementTier.DIAMOND, "🏰")
+            seed("DIAMOND_CTRL_STREAK", "百日无懈", "连续 100 天约定未超标",
+                """{"type":"control_streak","value":100}""", AchievementTier.DIAMOND, "⚡")
+            seed("DIAMOND_ENC_DAYS", "年年有余", "累计 365 天鼓励达标",
+                """{"type":"encourage_days","value":365}""", AchievementTier.DIAMOND, "⚔️")
+            seed("DIAMOND_ENC_STREAK", "百战百胜", "连续 100 天鼓励达标",
+                """{"type":"encourage_streak","value":100}""", AchievementTier.DIAMOND, "🗡️")
+
+            // ══════════ 🌟 Legendary 传奇阶 ══════════
+            seed("LEGEND_POINTS", "不朽传说", "累计赚取 10000 积分",
+                """{"type":"points","value":10000}""", AchievementTier.LEGENDARY, "🐉")
+            seed("LEGEND_REDEEM", "万金散尽", "累计消费 10000 积分",
+                """{"type":"redeem_points","value":10000}""", AchievementTier.LEGENDARY, "💰")
+            seed("LEGEND_CTRL_DAYS", "万世千秋", "累计 10000 天约定未超标",
+                """{"type":"control_days","value":10000}""", AchievementTier.LEGENDARY, "⭐")
+            seed("LEGEND_CTRL_STREAK", "誓约永恒", "连续 365 天约定未超标",
+                """{"type":"control_streak","value":365}""", AchievementTier.LEGENDARY, "🔱")
+            seed("LEGEND_ENC_DAYS", "与日同辉", "累计 10000 天鼓励达标",
+                """{"type":"encourage_days","value":10000}""", AchievementTier.LEGENDARY, "🌈")
+            seed("LEGEND_ENC_STREAK", "时间领主", "连续 365 天鼓励达标",
+                """{"type":"encourage_streak","value":365}""", AchievementTier.LEGENDARY, "⏳")
         }
     }
 
-    suspend fun checkAchievements(currentPoints: Double) {
+    /**
+     * 检查并解锁达成条件的成就
+     * @param currentPoints 累计赚取积分
+     * @param redeemedPointsTotal 累计消费积分
+     * @param controlDaysTotal 累计约定未超标天数
+     * @param controlStreak 连续约定未超标天数
+     * @param encourageDaysTotal 累计鼓励达标天数
+     * @param encourageStreak 连续鼓励达标天数
+     */
+    suspend fun checkAchievements(
+        currentPoints: Double,
+        redeemedPointsTotal: Double = 0.0,
+        controlDaysTotal: Int = 0,
+        controlStreak: Int = 0,
+        encourageDaysTotal: Int = 0,
+        encourageStreak: Int = 0
+    ) {
         withContext(Dispatchers.IO) {
             val locked = achievementDao.getLockedAchievements()
             val now = System.currentTimeMillis()
             for (achievement in locked) {
                 try {
-                    // 简单的字符串包含逻辑来匹配 type:points 和 value
-                    if (achievement.requirement.contains("\"type\":\"points\"")) {
-                        val valueStr = achievement.requirement.split("\"value\":")[1]
-                            .split("}")[0]
-                            .trim()
-                        if (currentPoints >= valueStr.toDouble()) {
-                            achievementDao.unlockAchievement(achievement.id, now)
-                            // 发送解锁成功通知
-                            _newAchievementsAction.emit(achievement.copy(isUnlocked = true, unlockedAt = now))
-                        }
+                    val json = org.json.JSONObject(achievement.requirement)
+                    val type = json.optString("type", "")
+                    val value = json.optDouble("value", Double.MAX_VALUE)
+
+                    val shouldUnlock = when (type) {
+                        "points" -> currentPoints >= value
+                        "redeem_points" -> redeemedPointsTotal >= value
+                        "control_days" -> controlDaysTotal >= value.toInt()
+                        "control_streak" -> controlStreak >= value.toInt()
+                        "encourage_days" -> encourageDaysTotal >= value.toInt()
+                        "encourage_streak" -> encourageStreak >= value.toInt()
+                        else -> false
+                    }
+
+                    if (shouldUnlock) {
+                        achievementDao.unlockAchievement(achievement.id, now)
+                        _newAchievementsAction.emit(achievement.copy(isUnlocked = true, unlockedAt = now))
                     }
                 } catch (e: Exception) {
-                    // Ignore parsing errors
+                    android.util.Log.w("AchievementCheck", "Failed to parse requirement for ${achievement.id}", e)
                 }
             }
         }

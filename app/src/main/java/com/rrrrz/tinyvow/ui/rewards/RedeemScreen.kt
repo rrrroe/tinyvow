@@ -26,6 +26,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.draw.clip
 import com.rrrrz.tinyvow.data.db.RedemptionEntity
 import com.rrrrz.tinyvow.data.db.RedemptionHistoryEntity
+import com.rrrrz.tinyvow.data.db.RedemptionHistoryType
 import com.rrrrz.tinyvow.data.db.RewardType
 import com.rrrrz.tinyvow.data.repository.AppGroupWithApps
 import java.text.SimpleDateFormat
@@ -44,11 +45,25 @@ fun RedeemScreen(
     onUpdateReward: (RedemptionEntity) -> Unit,
     onBack: () -> Unit
 ) {
-    val scope = rememberCoroutineScope()
     var showAddDialog by remember { mutableStateOf(false) }
     var editingReward by remember { mutableStateOf<RedemptionEntity?>(null) }
 
-    Column(modifier = Modifier.fillMaxSize()) {
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text("积分商城", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.Default.ArrowBack, contentDescription = "返回")
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.background
+                )
+            )
+        }
+    ) { innerPadding ->
+        Column(modifier = Modifier.fillMaxSize().padding(innerPadding)) {
         // 积分概览卡片
         Surface(
             modifier = Modifier.padding(16.dp).fillMaxWidth(),
@@ -155,6 +170,7 @@ fun RedeemScreen(
                 editingReward = null
             }
         )
+    }
     }
 }
 
@@ -361,6 +377,13 @@ private fun RedemptionHistoryItem(record: RedemptionHistoryEntity) {
     val dateFormatter = remember {
         SimpleDateFormat("MM/dd HH:mm", Locale.getDefault())
     }
+    val subtitle = when (record.historyType) {
+        RedemptionHistoryType.TIME_PACK -> {
+            val groupName = record.targetGroupName ?: "目标分组"
+            "$groupName +${record.bonusMinutes} 分钟"
+        }
+        RedemptionHistoryType.CUSTOM -> "自定义奖励"
+    }
 
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -381,6 +404,11 @@ private fun RedemptionHistoryItem(record: RedemptionHistoryEntity) {
                     dateFormatter.format(Date(record.redeemedAt)),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    subtitle,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary
                 )
             }
             Text(

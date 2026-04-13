@@ -9,6 +9,11 @@ enum class RewardType {
     CUSTOM
 }
 
+enum class RedemptionHistoryType {
+    TIME_PACK,
+    CUSTOM
+}
+
 @Entity(tableName = "redemptions")
 data class RedemptionEntity(
     @PrimaryKey

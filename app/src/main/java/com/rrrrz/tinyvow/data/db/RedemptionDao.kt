@@ -8,6 +8,9 @@ interface RedemptionDao {
     @Query("SELECT * FROM redemptions WHERE is_active = 1 ORDER BY created_at DESC")
     fun getAllActiveRedemptions(): Flow<List<RedemptionEntity>>
 
+    @Query("SELECT * FROM redemptions WHERE id = :id LIMIT 1")
+    suspend fun getRedemptionById(id: String): RedemptionEntity?
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertRedemption(redemption: RedemptionEntity)
 

@@ -11,7 +11,14 @@ import androidx.compose.foundation.background
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.animation.core.*
+import androidx.compose.ui.unit.sp
+import androidx.compose.animation.*
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -43,6 +50,8 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.*
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -89,6 +98,7 @@ import com.rrrrz.tinyvow.data.usage.UsageRepository
 import com.rrrrz.tinyvow.data.db.GroupType
 import com.rrrrz.tinyvow.data.db.LimitPeriod
 import com.rrrrz.tinyvow.data.db.AchievementEntity
+import com.rrrrz.tinyvow.data.db.AchievementTier
 import com.rrrrz.tinyvow.data.db.RedemptionEntity
 import com.rrrrz.tinyvow.data.db.RedemptionHistoryEntity
 import com.rrrrz.tinyvow.ui.rewards.RedeemScreen
@@ -109,7 +119,7 @@ fun RewardsHome(
     onBack: () -> Unit
 ) {
     var selectedTab by remember { mutableIntStateOf(0) }
-    val tabs = listOf("成就在握", "积分商城")
+    val tabs = listOf("成就殿堂", "积分商城")
     
     Column(modifier = Modifier.fillMaxSize()) {
         TabRow(
@@ -134,7 +144,11 @@ fun RewardsHome(
         
         Box(modifier = Modifier.weight(1f)) {
             when (selectedTab) {
-                0 -> AchievementScreen(achievements = achievements, onBack = onBack)
+                0 -> AchievementScreen(
+                    achievements = achievements,
+                    currentPoints = userPoints,
+                    onBack = onBack
+                )
                 1 -> RedeemScreen(
                     userPoints = userPoints,
                     rewards = rewards,
@@ -179,6 +193,7 @@ fun HomeRoute(
     val redemptionHistory by appLimitRepository.getRedemptionHistory().collectAsState(initial = emptyList())
 
     var currentScreen by remember { mutableStateOf(Screen.HOME) }
+    val snackbarHostState = remember { SnackbarHostState() }
     var usageAccessStatus by remember { mutableStateOf(checker.getStatus()) }
     var accessibilityServiceEnabled by remember {
         mutableStateOf(accessibilityServiceStateChecker.isEnabled(AppLimitAccessibilityService::class.java))
@@ -275,11 +290,20 @@ fun HomeRoute(
         }
     }
 
+    LaunchedEffect(Unit) {
+        appLimitRepository.redemptionEvents.collectLatest { message ->
+            snackbarHostState.showSnackbar(message)
+        }
+    }
+
     if (currentScreen != Screen.HOME) {
         BackHandler { currentScreen = Screen.HOME }
     }
 
     Scaffold(
+        snackbarHost = {
+            SnackbarHost(hostState = snackbarHostState)
+        },
         bottomBar = {
             if (currentScreen != Screen.LABORATORY) {
                 NavigationBar(
@@ -371,11 +395,10 @@ fun HomeRoute(
                         redemptionHistory = redemptionHistory,
                         onRedeem = { reward, gId -> 
                             coroutineScope.launch {
-                                if (reward.rewardType == com.rrrrz.tinyvow.data.db.RewardType.TIME_PACK && gId != null) {
-                                    appLimitRepository.redeemTimePack(gId, reward.bonusMinutes)
+                                val result = appLimitRepository.redeemReward(reward, gId)
+                                if (result != null) {
+                                    preferences.addUserPoints(-result.pointCost.toDouble())
                                 }
-                                preferences.addUserPoints(-reward.pointCost.toDouble())
-                                appLimitRepository.recordRedemption(reward.title, reward.pointCost)
                             }
                         },
                         onAddReward = { name, cost, stock, desc ->
@@ -482,56 +505,141 @@ fun HomeRoute(
 
 @Composable
 fun AchievementNotificationBanner(achievement: AchievementEntity) {
+    val tierGradient = when (achievement.tier) {
+        AchievementTier.LEGENDARY -> listOf(
+            Color(0xFFFF6B6B), Color(0xFFFECA57), Color(0xFF48DBFB), Color(0xFFFF9FF3), Color(0xFFFF6B6B)
+        )
+        AchievementTier.DIAMOND -> listOf(
+            Color(0xFF64B5F6), Color(0xFF90CAF9), Color(0xFFE3F2FD), Color(0xFF64B5F6)
+        )
+        AchievementTier.GOLD -> listOf(
+            Color(0xFFFFD700), Color(0xFFFFF59D), Color(0xFFFFA500), Color(0xFFFFD700)
+        )
+        AchievementTier.SILVER -> listOf(
+            Color(0xFFB8C5D6), Color(0xFFE2E8F0), Color(0xFF8A9BB0), Color(0xFFB8C5D6)
+        )
+        else -> listOf(
+            Color(0xFFCD9B6B), Color(0xFFDEB887), Color(0xFF8B6F47), Color(0xFFCD9B6B)
+        )
+    }
+
+    val tierLabel = when (achievement.tier) {
+        AchievementTier.LEGENDARY -> "💎 传奇成就解锁"
+        AchievementTier.DIAMOND -> "💫 钻石成就解锁"
+        AchievementTier.GOLD -> "🥇 金阶成就解锁"
+        AchievementTier.SILVER -> "🥈 银阶成就解锁"
+        else -> "🥉 铜阶成就解锁"
+    }
+    
+    val infiniteTransition = rememberInfiniteTransition(label = "banner_shine")
+    val shineOffset by infiniteTransition.animateFloat(
+        initialValue = -100f,
+        targetValue = 1000f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(2000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "shine_offset"
+    )
+    
+    val pulse by infiniteTransition.animateFloat(
+        initialValue = 0.98f,
+        targetValue = 1.02f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(800, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "pulse"
+    )
+    
+    var isReady by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { isReady = true }
+    
+    val bounceScale by animateFloatAsState(
+        targetValue = if (isReady) 1f else 0.5f,
+        animationSpec = spring(dampingRatio = 0.5f, stiffness = Spring.StiffnessMedium),
+        label = "banner_bounce"
+    )
+
     Surface(
         modifier = Modifier
             .padding(16.dp)
             .fillMaxWidth()
-            .padding(top = 24.dp), // 避开状态栏
-        shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.primaryContainer,
+            .padding(top = 24.dp)
+            .graphicsLayer { 
+                scaleX = bounceScale * (if (achievement.tier >= AchievementTier.GOLD) pulse else 1f)
+                scaleY = bounceScale * (if (achievement.tier >= AchievementTier.GOLD) pulse else 1f)
+            },
+        shape = RoundedCornerShape(20.dp),
+        color = MaterialTheme.colorScheme.surface,
         tonalElevation = 8.dp,
-        shadowElevation = 4.dp
+        shadowElevation = 12.dp
     ) {
-        Row(
-            modifier = Modifier.padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(48.dp)
-                    .background(androidx.compose.ui.graphics.Brush.sweepGradient(
-                        listOf(
-                            androidx.compose.ui.graphics.Color(0xFFFFD700),
-                            androidx.compose.ui.graphics.Color(0xFFFFA500),
-                            androidx.compose.ui.graphics.Color(0xFFFFD700)
-                        )
-                    ), CircleShape),
-                contentAlignment = Alignment.Center
-            ) {
-                androidx.compose.material3.Icon(
-                    androidx.compose.material.icons.Icons.Default.Star,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.tertiary,
-                    modifier = Modifier.size(28.dp)
-                )
+        Box(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp))) {
+            // 光泽扫光效果
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                if (achievement.tier >= AchievementTier.GOLD) {
+                    drawRect(
+                        brush = Brush.linearGradient(
+                            colors = tierGradient,
+                            start = Offset(shineOffset, 0f),
+                            end = Offset(shineOffset + 150f, 150f)
+                        ),
+                        alpha = 0.15f
+                    )
+                }
             }
-            Spacer(modifier = Modifier.width(16.dp))
-            Column {
-                Text(
-                    "成就解锁！",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.primary
-                )
-                Text(
-                    achievement.title,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-                Text(
-                    achievement.description,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+            
+            Row(
+                modifier = Modifier.padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                // 等级徽章
+                Box(
+                    modifier = Modifier
+                        .size(56.dp)
+                        .background(
+                            Brush.sweepGradient(tierGradient),
+                            CircleShape
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    // 内圈
+                    Box(
+                        modifier = Modifier
+                            .size(50.dp)
+                            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.8f), CircleShape),
+                    )
+                    Text(
+                        text = achievement.iconEmoji,
+                        fontSize = 28.sp,
+                        modifier = Modifier.graphicsLayer {
+                            scaleX = pulse
+                            scaleY = pulse
+                        }
+                    )
+                }
+                Spacer(modifier = Modifier.width(16.dp))
+                Column {
+                    Text(
+                        tierLabel,
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = Brush.linearGradient(tierGradient).let { Color.Unspecified } // 占位
+                    )
+                    Text(
+                        achievement.title,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        achievement.description,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
         }
     }
