@@ -1,5 +1,6 @@
 package com.rrrrz.tinyvow.ui.home
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
@@ -8,6 +9,8 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.automirrored.filled.HelpOutline
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material3.*
@@ -18,9 +21,11 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.rrrrz.tinyvow.R
 
 @Composable
 fun MeScreen(
@@ -53,17 +58,18 @@ fun MeScreen(
                 modifier = Modifier.align(Alignment.CenterStart),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Avatar Placeholder
+                // App Icon Avatar
                 Surface(
                     modifier = Modifier.size(64.dp),
                     shape = CircleShape,
-                    color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.3f)
+                    color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.15f)
                 ) {
-                    Icon(
-                        Icons.Default.Person,
-                        contentDescription = null,
-                        modifier = Modifier.padding(12.dp),
-                        tint = MaterialTheme.colorScheme.onPrimary
+                    Image(
+                        painter = painterResource(R.mipmap.ic_launcher),
+                        contentDescription = "App Icon",
+                        modifier = Modifier
+                            .padding(4.dp)
+                            .clip(CircleShape)
                     )
                 }
                 Spacer(Modifier.width(16.dp))
@@ -123,7 +129,7 @@ fun MeScreen(
             MeMenuSection("高级中心") {
                 MeMenuItem(icon = Icons.Default.Science, title = "实验室 (调试工具)", onClick = onNavigateToLaboratory, color = MaterialTheme.colorScheme.tertiary)
                 MeMenuItem(icon = Icons.Default.History, title = "使用历史", onClick = { /* TODO */ })
-                MeMenuItem(icon = Icons.Default.HelpOutline, title = "帮助与反馈", onClick = { /* TODO */ })
+                MeMenuItem(icon = Icons.AutoMirrored.Filled.HelpOutline, title = "帮助与反馈", onClick = { /* TODO */ })
             }
         }
     }
@@ -233,6 +239,6 @@ fun MeMenuItem(icon: ImageVector, title: String, onClick: () -> Unit, color: Col
         Spacer(Modifier.width(16.dp))
         Text(title, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface)
         Spacer(Modifier.weight(1f))
-        Icon(Icons.Default.KeyboardArrowRight, contentDescription = null, tint = MaterialTheme.colorScheme.outlineVariant)
+        Icon(Icons.AutoMirrored.Filled.KeyboardArrowRight, contentDescription = null, tint = MaterialTheme.colorScheme.outlineVariant)
     }
 }
