@@ -65,7 +65,7 @@ fun MeScreen(
                     color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.15f)
                 ) {
                     Image(
-                        painter = painterResource(R.mipmap.ic_launcher),
+                        painter = painterResource(R.mipmap.ic_launcher_foreground),
                         contentDescription = "App Icon",
                         modifier = Modifier
                             .padding(4.dp)
