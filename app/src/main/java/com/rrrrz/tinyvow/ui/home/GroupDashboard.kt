@@ -1,43 +1,98 @@
 package com.rrrrz.tinyvow.ui.home
 
+import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
+import android.content.Intent
+import android.graphics.drawable.ColorDrawable
+import android.view.Window
+import android.view.WindowManager
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.grid.GridCells
-import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
-import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Clear
-import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
-import androidx.compose.runtime.setValue
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ElevatedCard
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.DialogWindowProvider
+import androidx.core.view.WindowCompat
 import coil.compose.AsyncImage
-import com.rrrrz.tinyvow.R
 import com.rrrrz.tinyvow.data.apps.ManagedApp
-import com.rrrrz.tinyvow.data.repository.AppGroupWithApps
-
 import com.rrrrz.tinyvow.data.db.GroupType
 import com.rrrrz.tinyvow.data.db.LimitPeriod
-import androidx.compose.foundation.background
-import androidx.compose.ui.draw.clip
+import com.rrrrz.tinyvow.data.repository.AppGroupWithApps
+
+private val DialogHorizontalPadding = 28.dp
+private val CompactFieldHeight = 56.dp
+private val CompactFieldShape = RoundedCornerShape(18.dp)
 
 @Composable
 fun GroupDashboard(
@@ -45,7 +100,15 @@ fun GroupDashboard(
     usageMap: Map<String, Long>,
     isLoadingApps: Boolean,
     installedApps: List<ManagedApp>,
-    onSaveGroup: (id: String?, name: String, limit: Int, type: GroupType, period: LimitPeriod, pts: Double, pkgs: List<String>) -> Unit,
+    onSaveGroup: (
+        id: String?,
+        name: String,
+        limit: Int,
+        type: GroupType,
+        period: LimitPeriod,
+        pts: Double,
+        pkgs: List<String>
+    ) -> Unit,
     onDeleteGroup: (id: String) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -53,50 +116,63 @@ fun GroupDashboard(
     var editingGroup by remember { mutableStateOf<AppGroupWithApps?>(null) }
     var forcedType by remember { mutableStateOf(GroupType.CONTROL) }
 
-    val controlGroups = remember(groupsWithApps) { groupsWithApps.filter { it.group.type == GroupType.CONTROL } }
-    val encourageGroups = remember(groupsWithApps) { groupsWithApps.filter { it.group.type == GroupType.ENCOURAGE } }
+    val controlGroups = remember(groupsWithApps) {
+        groupsWithApps.filter { it.group.type == GroupType.CONTROL }
+    }
+    val encourageGroups = remember(groupsWithApps) {
+        groupsWithApps.filter { it.group.type == GroupType.ENCOURAGE }
+    }
 
-    Column(modifier = modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(20.dp)) {
-        // Little Vow Section
+    Column(
+        modifier = modifier.verticalScroll(rememberScrollState()),
+        verticalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
         SectionCard(
-            title = "我的小约定",
-            subtitle = "限制类的应用管控",
+            title = "小约定",
+            subtitle = "管理限制类应用",
             groups = controlGroups,
-            onEdit = { 
-                editingGroup = it
-                forcedType = it.group.type
-                showDialog = true 
-            },
+            usageMap = usageMap,
+            accent = MaterialTheme.colorScheme.secondary,
             onAdd = {
                 editingGroup = null
                 forcedType = GroupType.CONTROL
                 showDialog = true
             },
-            onDelete = onDeleteGroup,
-            usageMap = usageMap
-        )
-
-        // Little Encouragement Section
-        SectionCard(
-            title = "我的小鼓励",
-            subtitle = "坚持使用可获积分",
-            groups = encourageGroups,
-            onEdit = { 
+            onEdit = {
                 editingGroup = it
                 forcedType = it.group.type
-                showDialog = true 
-            },
+                showDialog = true
+            }
+        )
+
+        SectionCard(
+            title = "小鼓励",
+            subtitle = "完成目标后获得积分",
+            groups = encourageGroups,
+            usageMap = usageMap,
+            accent = MaterialTheme.colorScheme.tertiary,
             onAdd = {
                 editingGroup = null
                 forcedType = GroupType.ENCOURAGE
                 showDialog = true
             },
-            onDelete = onDeleteGroup,
-            isBooster = true,
-            usageMap = usageMap
+            onEdit = {
+                editingGroup = it
+                forcedType = it.group.type
+                showDialog = true
+            }
         )
-        
-        Spacer(modifier = Modifier.height(32.dp))
+
+        if (isLoadingApps) {
+            Text(
+                text = "正在加载应用列表…",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(horizontal = 4.dp)
+            )
+        }
+
+        Spacer(modifier = Modifier.height(24.dp))
     }
 
     if (showDialog) {
@@ -105,12 +181,12 @@ fun GroupDashboard(
             forcedType = forcedType,
             installedApps = installedApps,
             onDismiss = { showDialog = false },
-            onSave = { name, limit, type, period, pts, pkgs ->
-                onSaveGroup(editingGroup?.group?.id, name, limit, type, period, pts, pkgs)
+            onSave = { name, limit, type, period, points, packages ->
+                onSaveGroup(editingGroup?.group?.id, name, limit, type, period, points, packages)
                 showDialog = false
             },
             onDelete = {
-                editingGroup?.group?.id?.let { onDeleteGroup(it) }
+                editingGroup?.group?.id?.let(onDeleteGroup)
                 showDialog = false
             }
         )
@@ -122,55 +198,66 @@ private fun SectionCard(
     title: String,
     subtitle: String,
     groups: List<AppGroupWithApps>,
-    onEdit: (AppGroupWithApps) -> Unit,
-    onAdd: () -> Unit,
-    onDelete: (String) -> Unit,
     usageMap: Map<String, Long>,
-    isBooster: Boolean = false
+    accent: Color,
+    onAdd: () -> Unit,
+    onEdit: (AppGroupWithApps) -> Unit
 ) {
     ElevatedCard(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface)
+        colors = CardDefaults.elevatedCardColors(
+            containerColor = MaterialTheme.colorScheme.surface
+        )
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
+        Column(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column {
-                    Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-                    Text(subtitle, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = subtitle,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
                 IconButton(onClick = onAdd) {
-                    Icon(Icons.Default.Add, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Icon(
+                        imageVector = Icons.Default.Add,
+                        contentDescription = "新增分组",
+                        tint = MaterialTheme.colorScheme.primary
+                    )
                 }
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
-
             if (groups.isEmpty()) {
                 Text(
-                    "暂未设置任何计划",
-                    modifier = Modifier.padding(vertical = 12.dp, horizontal = 8.dp),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.outline
+                    text = "暂无分组",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 2.dp, bottom = 4.dp)
                 )
             } else {
-                groups.forEach { groupData ->
+                groups.forEachIndexed { index, item ->
                     GroupCard(
-                        groupData = groupData,
-                        usedMinutes = (usageMap[groupData.group.id] ?: 0L) / 60_000L,
-                        onClick = { onEdit(groupData) },
-                        onDelete = { onDelete(groupData.group.id) },
-                        color = if (isBooster) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.secondary
+                        groupData = item,
+                        usedMinutes = ((usageMap[item.group.id] ?: 0L) / 60_000L).toInt(),
+                        accent = accent,
+                        onClick = { onEdit(item) }
                     )
-                    if (groupData != groups.last()) {
-                        HorizontalDivider(
-                            modifier = Modifier.padding(vertical = 4.dp, horizontal = 4.dp),
-                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)
-                        )
+                    if (index < groups.lastIndex) {
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f))
                     }
                 }
             }
@@ -178,485 +265,730 @@ private fun SectionCard(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun GroupCard(
     groupData: AppGroupWithApps,
-    usedMinutes: Long,
-    onClick: () -> Unit,
-    onDelete: () -> Unit,
-    color: Color
+    usedMinutes: Int,
+    accent: Color,
+    onClick: () -> Unit
 ) {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    val isExceeded = usedMinutes >= groupData.group.limitMinutes
+    val context = LocalContext.current
     val periodLabel = when (groupData.group.limitPeriod) {
         LimitPeriod.DAILY -> "每日"
         LimitPeriod.WEEKLY -> "每周"
         LimitPeriod.MONTHLY -> "每月"
     }
-    
-    Row(
+    val detailText = if (groupData.group.type == GroupType.ENCOURAGE) {
+        "$periodLabel ${usedMinutes}/${groupData.group.limitMinutes}m · ${trimTrailingZero(groupData.group.pointsPerMinute)} PT/m"
+    } else {
+        "$periodLabel ${usedMinutes}/${groupData.group.limitMinutes}m"
+    }
+    val rawProgress = if (groupData.group.limitMinutes > 0) {
+        usedMinutes.toFloat() / groupData.group.limitMinutes.toFloat()
+    } else {
+        0f
+    }
+    val progress = rawProgress.coerceIn(0f, 1f)
+    val progressColor = if (rawProgress >= 1f) MaterialTheme.colorScheme.error else accent
+    val iconPackages = groupData.packageNames.take(5)
+    val iconSize = 34
+    val iconOffset = 17
+    val maxIcons = 5
+    val iconWidth = iconSize + (maxIcons - 1) * iconOffset
+
+    Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable { onClick() }
+            .clip(RoundedCornerShape(16.dp))
+            .combinedClickable(onClick = onClick, onLongClick = onClick)
             .padding(vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically
+        verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        // Left Side: Overlap Icons (Max 4 for better balanced look)
-        Box(modifier = Modifier.size(width = 80.dp, height = 40.dp), contentAlignment = Alignment.CenterStart) {
-            groupData.packageNames.take(4).forEachIndexed { index, pkg ->
-                val iconPainter = remember(pkg) {
-                    try { context.packageManager.getApplicationIcon(pkg) } catch (_: Exception) { null }
-                }
-                if (iconPainter != null) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(14.dp)
+        ) {
+            Box(
+                modifier = Modifier.width(iconWidth.dp),
+                contentAlignment = Alignment.CenterStart
+            ) {
+                iconPackages.forEachIndexed { index, packageName ->
+                    val icon = remember(packageName) {
+                        runCatching { context.packageManager.getApplicationIcon(packageName) }.getOrNull()
+                    }
                     Surface(
                         modifier = Modifier
-                            .offset(x = (index * 16).dp)
-                            .size(36.dp),
+                            .padding(start = (index * iconOffset).dp)
+                            .size(iconSize.dp),
                         shape = CircleShape,
-                        border = androidx.compose.foundation.BorderStroke(2.dp, Color.White),
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        border = BorderStroke(2.dp, MaterialTheme.colorScheme.surface),
                         shadowElevation = 2.dp
                     ) {
-                        AsyncImage(model = iconPainter, contentDescription = null)
+                        if (icon != null) {
+                            AsyncImage(
+                                model = icon,
+                                contentDescription = null,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier
+                                    .fillMaxSize()
+                                    .clip(CircleShape)
+                                    .graphicsLayer {
+                                        scaleX = 1.08f
+                                        scaleY = 1.08f
+                                    }
+                            )
+                        }
                     }
                 }
             }
-        }
 
-        Spacer(modifier = Modifier.width(16.dp))
-
-        // Right Side: Info and Progress
-        Column(modifier = Modifier.weight(1f)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+            Column(
+                modifier = Modifier.weight(1f),
+                horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.spacedBy(2.dp)
             ) {
                 Text(
                     text = groupData.group.name,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
-                    modifier = Modifier.weight(1f)
+                    color = MaterialTheme.colorScheme.onSurface,
+                    textAlign = TextAlign.End,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
-                // Status chip
-                Surface(
-                    shape = RoundedCornerShape(8.dp),
-                    color = if (isExceeded) MaterialTheme.colorScheme.errorContainer else color.copy(alpha = 0.12f)
-                ) {
-                    Text(
-                        text = if (isExceeded) "已超额" else "正常",
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Medium,
-                        color = if (isExceeded) MaterialTheme.colorScheme.error else color
-                    )
-                }
-            }
-            
-            Text(
-                text = "${periodLabel} · ${groupData.packageNames.distinct().size}个应用",
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-
-            Spacer(modifier = Modifier.height(4.dp))
-            
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                val progress = if (groupData.group.limitMinutes > 0) {
-                    (usedMinutes.toFloat() / groupData.group.limitMinutes).coerceIn(0f, 1.2f)
-                } else 0f
-                
-                LinearProgressIndicator(
-                    progress = { progress.coerceAtMost(1f) },
-                    modifier = Modifier
-                        .width(60.dp)
-                        .height(6.dp)
-                        .clip(CircleShape),
-                    color = if (isExceeded) MaterialTheme.colorScheme.error else color,
-                    trackColor = color.copy(alpha = 0.15f)
-                )
-                
-                Spacer(modifier = Modifier.width(8.dp))
-                
                 Text(
-                    text = "${usedMinutes}/${groupData.group.limitMinutes} min",
+                    text = detailText,
                     style = MaterialTheme.typography.labelSmall,
-                    color = if (isExceeded) MaterialTheme.colorScheme.error else color,
-                    fontWeight = FontWeight.Medium
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.End,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
+        }
+
+        val animatedProgress by androidx.compose.animation.core.animateFloatAsState(
+            targetValue = progress,
+            animationSpec = androidx.compose.animation.core.spring(
+                dampingRatio = androidx.compose.animation.core.Spring.DampingRatioNoBouncy,
+                stiffness = androidx.compose.animation.core.Spring.StiffnessVeryLow
+            ),
+            label = "progress"
+        )
+        
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(8.dp)
+                .clip(CircleShape)
+                .background(accent.copy(alpha = 0.12f))
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(fraction = animatedProgress.coerceIn(0f, 1f))
+                    .fillMaxHeight()
+                    .clip(CircleShape)
+                    .background(
+                        brush = androidx.compose.ui.graphics.Brush.horizontalGradient(
+                            colors = listOf(
+                                progressColor.copy(alpha = 0.6f),
+                                progressColor
+                            )
+                        )
+                    )
+            )
         }
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+
 @Composable
 private fun GroupEditDialog(
     group: AppGroupWithApps?,
     forcedType: GroupType,
     installedApps: List<ManagedApp>,
     onDismiss: () -> Unit,
-    onSave: (name: String, limit: Int, type: GroupType, period: LimitPeriod, pts: Double, pkgs: List<String>) -> Unit,
+    onSave: (String, Int, GroupType, LimitPeriod, Double, List<String>) -> Unit,
     onDelete: () -> Unit
 ) {
-    var name by remember { mutableStateOf(group?.group?.name ?: "") }
-    var limitMinutes by remember { mutableFloatStateOf(group?.group?.limitMinutes?.toFloat() ?: 60f) }
-    var selectedPackages by remember { mutableStateOf(group?.packageNames?.toSet() ?: emptySet()) }
+    val context = LocalContext.current
+    val homePackage = remember(context) {
+        val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
+        runCatching {
+            context.packageManager.resolveActivity(intent, 0)?.activityInfo?.packageName
+        }.getOrNull()
+    }
+    val excludedPackages = remember(context.packageName, homePackage) {
+        setOfNotNull(
+            context.packageName,
+            homePackage,
+            "com.miui.home",
+            "com.android.launcher",
+            "com.android.launcher3"
+        )
+    }
+
+    var groupName by remember(group) { mutableStateOf(group?.group?.name.orEmpty()) }
+    var limitText by remember(group) { mutableStateOf((group?.group?.limitMinutes ?: 60).toString()) }
+    var pointRateText by remember(group) {
+        mutableStateOf(
+            if (group?.group?.type == GroupType.ENCOURAGE && group.group.pointsPerMinute > 0) {
+                trimTrailingZero(group.group.pointsPerMinute)
+            } else {
+                "1"
+            }
+        )
+    }
+    var selectedPeriod by remember(group) {
+        mutableStateOf(group?.group?.limitPeriod ?: LimitPeriod.DAILY)
+    }
     var searchQuery by remember { mutableStateOf("") }
-    var groupType by remember { mutableStateOf(group?.group?.type ?: forcedType) }
-    var limitPeriod by remember { mutableStateOf(group?.group?.limitPeriod ?: LimitPeriod.DAILY) }
-    var pointsPerMinute by remember { mutableFloatStateOf(group?.group?.pointsPerMinute?.toFloat() ?: 1f) }
+    var showOnlyUsedInSevenDays by remember { mutableStateOf(true) }
+    var selectedPackages by remember(group) {
+        mutableStateOf(group?.packageNames?.toSet().orEmpty())
+    }
+    var showDeleteConfirm by remember { mutableStateOf(false) }
 
-    val filteredApps = remember(installedApps, searchQuery) {
-        if (searchQuery.isBlank()) installedApps
-        else installedApps.filter { 
-            it.appName.contains(searchQuery, ignoreCase = true) || 
-            it.packageName.contains(searchQuery, ignoreCase = true) 
-        }
+    val canSave = groupName.trim().isNotBlank() &&
+        (limitText.toIntOrNull()?.coerceIn(1, 1440) != null) &&
+        (forcedType != GroupType.ENCOURAGE || pointRateText.toDoubleOrNull() != null)
+
+    val visibleApps = remember(installedApps, excludedPackages, showOnlyUsedInSevenDays, selectedPackages, searchQuery) {
+        installedApps
+            .asSequence()
+            .filterNot { it.packageName in excludedPackages }
+            .filter {
+                !showOnlyUsedInSevenDays ||
+                    it.usageTimeInMs > 60_000L ||
+                    it.packageName in selectedPackages
+            }
+            .filter {
+                if (searchQuery.isBlank()) {
+                    true
+                } else {
+                    it.appName.contains(searchQuery, ignoreCase = true) ||
+                        it.packageName.contains(searchQuery, ignoreCase = true)
+                }
+            }
+            .sortedWith(
+                compareByDescending<ManagedApp> { it.packageName in selectedPackages }
+                    .thenByDescending { it.usageTimeInMs }
+                    .thenBy { it.appName.lowercase() }
+            )
+            .toList()
     }
 
-    // 计算最大时长用于进度条
-    val maxUsageTime = remember(installedApps) { 
-        installedApps.maxOfOrNull { it.usageTimeInMs }?.coerceAtLeast(1L) ?: 1L 
-    }
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false
+        )
+    ) {
+        SyncDialogSystemBars()
 
-    Dialog(onDismissRequest = onDismiss) {
-        Surface(
-            shape = RoundedCornerShape(28.dp),
-            color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .fillMaxHeight(0.9f) // 占据 90% 高度，避免由于空间不足导致的局促感
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background)
         ) {
             Column(
-                modifier = Modifier.padding(24.dp),
+                modifier = Modifier
+                    .fillMaxSize()
+                    .statusBarsPadding()
+                    .navigationBarsPadding()
+                    .padding(horizontal = DialogHorizontalPadding, vertical = 18.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                // 顶部操作栏
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = stringResource(R.string.group_edit_title),
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold
-                    )
+                    IconButton(onClick = onDismiss) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "返回",
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                    Spacer(modifier = Modifier.weight(1f))
                     if (group != null) {
-                        IconButton(onClick = onDelete) {
+                        IconButton(onClick = { showDeleteConfirm = true }) {
                             Icon(
-                                Icons.Default.Delete,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.error
+                                imageVector = Icons.Default.Delete,
+                                contentDescription = "删除",
+                                tint = MaterialTheme.colorScheme.primary
                             )
                         }
                     }
+                    IconButton(
+                        onClick = {
+                            val name = groupName.trim()
+                            val limit = limitText.toIntOrNull()?.coerceIn(1, 1440) ?: return@IconButton
+                            val points = if (forcedType == GroupType.ENCOURAGE) {
+                                pointRateText.toDoubleOrNull()?.coerceAtLeast(0.0) ?: return@IconButton
+                            } else {
+                                0.0
+                            }
+                            onSave(name, limit, forcedType, selectedPeriod, points, selectedPackages.toList())
+                        },
+                        enabled = canSave
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Check,
+                            contentDescription = "保存",
+                            tint = if (canSave) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
+                        )
+                    }
                 }
 
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it },
-                    label = { Text(stringResource(R.string.group_name_label)) },
+                UnifiedInputField(
+                    value = groupName,
+                    onValueChange = { groupName = it },
+                    placeholder = "分组名称（如：游戏、视频）",
                     modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    shape = RoundedCornerShape(12.dp)
+                    keyboardType = KeyboardType.Text,
+                    textAlign = TextAlign.Start
                 )
 
-                // 分组类型已锁定为：${if (groupType == GroupType.CONTROL) "小约定" else "小鼓励"}
-
-                // 周期选择器
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text(
-                        text = "统计周期",
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold
-                    )
-                    @OptIn(ExperimentalMaterial3Api::class)
-                    SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                        val periods = listOf(
-                            LimitPeriod.DAILY to "每日",
-                            LimitPeriod.WEEKLY to "每周",
-                            LimitPeriod.MONTHLY to "每月"
-                        )
-                        periods.forEachIndexed { index, (period, label) ->
-                            SegmentedButton(
-                                selected = limitPeriod == period,
-                                onClick = { limitPeriod = period },
-                                shape = SegmentedButtonDefaults.itemShape(index, periods.size)
-                            ) {
-                                Text(label)
-                            }
-                        }
-                    }
-                }
-
-                if (groupType == GroupType.ENCOURAGE) {
-                    Column(
-                        modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.3f), RoundedCornerShape(16.dp)).padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(
-                                text = "鼓励金速率",
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                text = String.format("%.1f PT / min", pointsPerMinute),
-                                style = MaterialTheme.typography.titleSmall,
-                                color = MaterialTheme.colorScheme.tertiary,
-                                fontWeight = FontWeight.ExtraBold
-                            )
-                        }
-                        Text(
-                            "坚持使用小鼓励内的 App，每分钟可获得相应积分奖励。",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        Slider(
-                            value = pointsPerMinute,
-                            onValueChange = { pointsPerMinute = it },
-                            valueRange = 0.5f..5f,
-                            steps = 9,
-                            colors = SliderDefaults.colors(
-                                thumbColor = MaterialTheme.colorScheme.tertiary,
-                                activeTrackColor = MaterialTheme.colorScheme.tertiary,
-                                inactiveTrackColor = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.2f)
-                            )
-                        )
-                    }
-                }
-
-                val periodLabel = when (limitPeriod) {
-                    LimitPeriod.DAILY -> "每日"
-                    LimitPeriod.WEEKLY -> "每周"
-                    LimitPeriod.MONTHLY -> "每月"
-                }
-
-                Column(
-                    modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.2f), RoundedCornerShape(16.dp)).padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween
-                    ) {
-                        Text(
-                            text = if (groupType == GroupType.CONTROL) "${periodLabel}限额" else "${periodLabel}达成目标",
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            text = "${limitMinutes.toInt()} min",
-                            style = MaterialTheme.typography.titleSmall,
-                            color = MaterialTheme.colorScheme.primary,
-                            fontWeight = FontWeight.ExtraBold
-                        )
-                    }
-                    Text(
-                        text = if (groupType == GroupType.CONTROL) "达到此时长后，系统将弹出阻断层引导您放下手机。" 
-                               else "${periodLabel}使用达标可获大奖：${(limitMinutes * pointsPerMinute).toInt()} 积分！建议作为您的专注动力。",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Slider(
-                        value = limitMinutes,
-                        onValueChange = { limitMinutes = it },
-                        valueRange = 10f..300f,
-                        steps = 29,
-                        colors = SliderDefaults.colors(
-                            thumbColor = MaterialTheme.colorScheme.primary,
-                            activeTrackColor = MaterialTheme.colorScheme.primary,
-                            inactiveTrackColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
-                        )
-                    )
-                }
-
-                // 搜索框 (仿 reference 设计)
-                OutlinedTextField(
-                    value = searchQuery,
-                    onValueChange = { searchQuery = it },
-                    placeholder = { Text("搜索", style = MaterialTheme.typography.bodyMedium) },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    shape = RoundedCornerShape(16.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-                        focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                        unfocusedBorderColor = androidx.compose.ui.graphics.Color.Transparent,
-                        focusedBorderColor = MaterialTheme.colorScheme.primary
-                    ),
-                    leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-                    trailingIcon = {
-                        if (searchQuery.isNotEmpty()) {
-                            IconButton(onClick = { searchQuery = "" }) {
-                                Icon(Icons.Default.Clear, contentDescription = null)
-                            }
-                        }
-                    }
-                )
-
-                // 列表头
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 4.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    CompactPeriodSelector(
+                        period = selectedPeriod,
+                        groupType = forcedType,
+                        onPeriodChange = { selectedPeriod = it },
+                        modifier = Modifier.weight(1f)
+                    )
+                    UnifiedInputField(
+                        value = limitText,
+                        onValueChange = { limitText = it.filter(Char::isDigit).take(4) },
+                        placeholder = "0",
+                        suffix = "分钟",
+                        modifier = Modifier.weight(1f),
+                        keyboardType = KeyboardType.Number,
+                        textAlign = TextAlign.End
+                    )
+                    if (forcedType == GroupType.ENCOURAGE) {
+                        UnifiedInputField(
+                            value = pointRateText,
+                            onValueChange = { pointRateText = sanitizeDecimalInput(it) },
+                            placeholder = "0",
+                            prefix = "每分钟",
+                            suffix = "PT",
+                            modifier = Modifier.weight(1f),
+                            keyboardType = KeyboardType.Decimal,
+                            textAlign = TextAlign.End
+                        )
+                    }
+                }
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     Text(
-                        "App 名称",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.outline
+                        text = if (showOnlyUsedInSevenDays) "近7天活跃" else "全部应用",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.clickable { showOnlyUsedInSevenDays = !showOnlyUsedInSevenDays }
                     )
-                    Text(
-                        "周使用时间",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.outline
+                    SearchField(
+                        value = searchQuery,
+                        onValueChange = { searchQuery = it },
+                        modifier = Modifier.weight(1f)
                     )
                 }
 
-                // 应用选择列表 (高密度布局)
-                androidx.compose.foundation.lazy.LazyColumn(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f))
+
+                LazyColumn(
+                    modifier = Modifier.weight(1f),
+                    contentPadding = PaddingValues(bottom = 0.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    items(filteredApps, key = { it.packageName }) { app ->
+                    items(
+                        items = visibleApps,
+                        key = { it.packageName }
+                    ) { app ->
                         AppSelectionItem(
                             app = app,
-                            isSelected = selectedPackages.contains(app.packageName),
-                            maxUsageTime = maxUsageTime,
-                            onToggle = {
-                                selectedPackages = if (selectedPackages.contains(app.packageName)) {
-                                    selectedPackages - app.packageName
-                                } else {
+                            checked = app.packageName in selectedPackages,
+                            onCheckedChange = { checked ->
+                                selectedPackages = if (checked) {
                                     selectedPackages + app.packageName
+                                } else {
+                                    selectedPackages - app.packageName
                                 }
                             }
                         )
                     }
                 }
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    TextButton(onClick = onDismiss) {
-                        Text(stringResource(R.string.action_cancel))
-                    }
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Button(
-                        onClick = { onSave(name, limitMinutes.toInt(), groupType, limitPeriod, pointsPerMinute.toDouble(), selectedPackages.toList()) },
-                        enabled = name.isNotBlank(),
-                        shape = RoundedCornerShape(20.dp),
-                        modifier = Modifier.height(44.dp)
-                    ) {
-                        Text(stringResource(R.string.action_save), modifier = Modifier.padding(horizontal = 8.dp))
-                    }
-                }
             }
         }
+    }
+
+    if (showDeleteConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteConfirm = false },
+            title = { Text("删除分组") },
+            text = { Text("删除后该分组配置会被移除，是否继续？") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showDeleteConfirm = false
+                        onDelete()
+                    }
+                ) {
+                    Text("删除")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteConfirm = false }) {
+                    Text("取消")
+                }
+            }
+        )
+    }
+}
+
+@Composable
+private fun UnifiedInputField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    placeholder: String,
+    modifier: Modifier = Modifier,
+    prefix: String? = null,
+    suffix: String? = null,
+    keyboardType: KeyboardType,
+    textAlign: TextAlign
+) {
+    FieldContainer(modifier = modifier) {
+        if (prefix != null) {
+            Text(
+                text = prefix,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        BasicTextField(
+            value = value,
+            onValueChange = onValueChange,
+            modifier = Modifier.weight(1f),
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
+            textStyle = MaterialTheme.typography.titleSmall.merge(
+                TextStyle(
+                    color = MaterialTheme.colorScheme.onSurface,
+                    textAlign = textAlign
+                )
+            ),
+            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+            decorationBox = { innerTextField ->
+                Box(modifier = Modifier.fillMaxWidth()) {
+                    if (value.isBlank()) {
+                        Text(
+                            text = placeholder,
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.outline,
+                            modifier = Modifier.fillMaxWidth(),
+                            textAlign = textAlign
+                        )
+                    }
+                    innerTextField()
+                }
+            }
+        )
+        if (suffix != null) {
+            Text(
+                text = suffix,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+    }
+}
+
+@Composable
+private fun SearchField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    FieldContainer(modifier = modifier) {
+        Icon(
+            imageVector = Icons.Default.Search,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        BasicTextField(
+            value = value,
+            onValueChange = onValueChange,
+            modifier = Modifier.weight(1f),
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
+            textStyle = MaterialTheme.typography.titleSmall.merge(
+                TextStyle(color = MaterialTheme.colorScheme.onSurface)
+            ),
+            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+            decorationBox = { innerTextField ->
+                Box(modifier = Modifier.fillMaxWidth()) {
+                    if (value.isBlank()) {
+                        Text(
+                            text = "搜索应用",
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.outline
+                        )
+                    }
+                    innerTextField()
+                }
+            }
+        )
+    }
+}
+
+@Composable
+private fun FieldContainer(
+    modifier: Modifier = Modifier,
+    content: @Composable RowScope.() -> Unit
+) {
+    Surface(
+        modifier = modifier.height(CompactFieldHeight),
+        shape = CompactFieldShape,
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            content = content
+        )
     }
 }
 
 @Composable
 private fun AppSelectionItem(
     app: ManagedApp,
-    isSelected: Boolean,
-    maxUsageTime: Long,
-    onToggle: () -> Unit
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
 ) {
-    val context = androidx.compose.ui.platform.LocalContext.current
-    val iconPainter = remember(app.packageName) {
-        try { context.packageManager.getApplicationIcon(app.packageName) } catch (_: Exception) { null }
-    }
-    
-    // 格式化时长
-    val formattedTime = remember(app.usageTimeInMs) {
-        val seconds = (app.usageTimeInMs / 1000) % 60
-        val minutes = (app.usageTimeInMs / (1000 * 60)) % 60
-        val hours = (app.usageTimeInMs / (1000 * 60 * 60))
-        
-        buildString {
-            if (hours > 0) append("${hours}小时")
-            if (minutes > 0 || hours > 0) append("${minutes}分")
-            append("${seconds}秒")
-        }
+    val context = LocalContext.current
+    val icon = remember(app.packageName) {
+        runCatching { context.packageManager.getApplicationIcon(app.packageName) }.getOrNull()
     }
 
     Row(
-        verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onToggle)
-            .padding(vertical = 4.dp)
+            .clip(RoundedCornerShape(16.dp))
+            .clickable { onCheckedChange(!checked) }
+            .padding(vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        // 图标
-        if (iconPainter != null) {
-            AsyncImage(
-                model = iconPainter,
-                contentDescription = null,
-                modifier = Modifier
-                    .size(48.dp)
-                    .padding(4.dp)
-            )
-        } else {
-            Box(modifier = Modifier.size(48.dp), contentAlignment = Alignment.Center) {
-                Icon(Icons.Default.Info, contentDescription = null, tint = MaterialTheme.colorScheme.outlineVariant)
+        Surface(
+            modifier = Modifier.size(38.dp),
+            shape = RoundedCornerShape(12.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+        ) {
+            if (icon != null) {
+                AsyncImage(
+                    model = icon,
+                    contentDescription = null,
+                    modifier = Modifier.padding(6.dp)
+                )
             }
         }
 
-        Spacer(modifier = Modifier.width(12.dp))
+        Text(
+            text = app.appName,
+            modifier = Modifier.weight(1f),
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Medium,
+            color = MaterialTheme.colorScheme.onSurface,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
 
-        Column(modifier = Modifier.weight(1f)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.Bottom
-            ) {
-                Text(
-                    text = app.appName,
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = if (app.isLaunchable) FontWeight.Bold else FontWeight.Normal,
-                    maxLines = 1,
-                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-                    modifier = Modifier.weight(1f)
-                )
-                Text(
-                    text = formattedTime,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            
-            Spacer(modifier = Modifier.height(6.dp))
-            
-            // 进度条可视化时长
-            LinearProgressIndicator(
-                progress = { (app.usageTimeInMs.toFloat() / maxUsageTime.toFloat()).coerceIn(0f, 1f) },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(4.dp),
-                color = MaterialTheme.colorScheme.primary,
-                trackColor = MaterialTheme.colorScheme.surfaceVariant,
-                strokeCap = StrokeCap.Round
-            )
-        }
-
-        Spacer(modifier = Modifier.width(16.dp))
+        Text(
+            text = formatUsageDuration(app.usageTimeInMs),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
 
         Checkbox(
-            checked = isSelected,
-            onCheckedChange = null,
-            modifier = Modifier.size(24.dp)
+            checked = checked,
+            onCheckedChange = onCheckedChange
         )
+    }
+}
+
+@Composable
+private fun CompactPeriodSelector(
+    period: LimitPeriod,
+    groupType: GroupType,
+    onPeriodChange: (LimitPeriod) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val label = when (period) {
+        LimitPeriod.DAILY -> if (groupType == GroupType.ENCOURAGE) "每日目标" else "每日限额"
+        LimitPeriod.WEEKLY -> if (groupType == GroupType.ENCOURAGE) "每周目标" else "每周限额"
+        LimitPeriod.MONTHLY -> if (groupType == GroupType.ENCOURAGE) "每月目标" else "每月限额"
+    }
+
+    Box(modifier = modifier) {
+        FieldContainer(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { expanded = true }
+        ) {
+            Text(
+                text = label,
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Icon(
+                imageVector = Icons.Default.KeyboardArrowDown,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false }
+        ) {
+            listOf(LimitPeriod.DAILY, LimitPeriod.WEEKLY, LimitPeriod.MONTHLY).forEach { option ->
+                val optionLabel = when (option) {
+                    LimitPeriod.DAILY -> if (groupType == GroupType.ENCOURAGE) "每日目标" else "每日限额"
+                    LimitPeriod.WEEKLY -> if (groupType == GroupType.ENCOURAGE) "每周目标" else "每周限额"
+                    LimitPeriod.MONTHLY -> if (groupType == GroupType.ENCOURAGE) "每月目标" else "每月限额"
+                }
+                DropdownMenuItem(
+                    text = { Text(optionLabel) },
+                    onClick = {
+                        onPeriodChange(option)
+                        expanded = false
+                    }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SyncDialogSystemBars() {
+    val view = LocalView.current
+    val backgroundColor = MaterialTheme.colorScheme.background
+    val backgroundArgb = backgroundColor.toArgb()
+    val lightIcons = backgroundColor.luminance() > 0.5f
+    val dialogWindow = remember(view) { (view.parent as? DialogWindowProvider)?.window }
+    val activityWindow = remember(view.context) { view.context.findActivity()?.window }
+
+    DisposableEffect(dialogWindow, activityWindow, backgroundArgb, lightIcons) {
+        val previousDialogState = dialogWindow?.snapshot()
+        val previousActivityState = activityWindow?.snapshot()
+
+        dialogWindow?.let { window ->
+            WindowCompat.setDecorFitsSystemWindows(window, false)
+            window.setLayout(
+                WindowManager.LayoutParams.MATCH_PARENT,
+                WindowManager.LayoutParams.MATCH_PARENT
+            )
+            window.setBackgroundDrawable(ColorDrawable(backgroundArgb))
+            window.statusBarColor = backgroundArgb
+            window.navigationBarColor = backgroundArgb
+            WindowCompat.getInsetsController(window, window.decorView).apply {
+                isAppearanceLightStatusBars = lightIcons
+                isAppearanceLightNavigationBars = lightIcons
+            }
+        }
+
+        activityWindow?.let { window ->
+            window.statusBarColor = backgroundArgb
+            window.navigationBarColor = backgroundArgb
+            WindowCompat.getInsetsController(window, window.decorView).apply {
+                isAppearanceLightStatusBars = lightIcons
+                isAppearanceLightNavigationBars = lightIcons
+            }
+        }
+
+        onDispose {
+            dialogWindow?.restore(previousDialogState)
+            activityWindow?.restore(previousActivityState)
+        }
+    }
+}
+
+private data class WindowSnapshot(
+    val statusBarColor: Int,
+    val navigationBarColor: Int
+)
+
+private fun Window.snapshot(): WindowSnapshot {
+    return WindowSnapshot(
+        statusBarColor = statusBarColor,
+        navigationBarColor = navigationBarColor
+    )
+}
+
+private fun Window.restore(snapshot: WindowSnapshot?) {
+    if (snapshot == null) return
+    statusBarColor = snapshot.statusBarColor
+    navigationBarColor = snapshot.navigationBarColor
+}
+
+private tailrec fun Context.findActivity(): Activity? = when (this) {
+    is Activity -> this
+    is ContextWrapper -> baseContext.findActivity()
+    else -> null
+}
+
+private fun formatUsageDuration(durationMillis: Long): String {
+    if (durationMillis <= 0L) return "<1m"
+    val totalMinutes = durationMillis / 60_000L
+    if (totalMinutes <= 0L) return "<1m"
+    val hours = totalMinutes / 60
+    val minutes = totalMinutes % 60
+    return when {
+        hours > 0 && minutes > 0 -> "${hours}h ${minutes}m"
+        hours > 0 -> "${hours}h"
+        else -> "${minutes}m"
+    }
+}
+
+private fun sanitizeDecimalInput(value: String): String {
+    val filtered = value.filter { it.isDigit() || it == '.' }
+    if (filtered.isBlank()) return ""
+    val firstDot = filtered.indexOf('.')
+    return if (firstDot == -1) {
+        filtered
+    } else {
+        val integerPart = filtered.substring(0, firstDot + 1)
+        val decimalPart = filtered.substring(firstDot + 1).replace(".", "")
+        integerPart + decimalPart.take(2)
+    }
+}
+
+private fun trimTrailingZero(value: Double): String {
+    return if (value % 1.0 == 0.0) {
+        value.toInt().toString()
+    } else {
+        value.toString().trimEnd('0').trimEnd('.')
     }
 }

@@ -5,7 +5,6 @@ import android.content.Context
 import com.rrrrz.tinyvow.data.db.LimitPeriod
 import java.time.LocalDate
 import java.time.ZoneId
-import java.time.DayOfWeek
 import java.time.temporal.TemporalAdjusters
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -25,7 +24,7 @@ class UsageStatsUsageRepository(
             
             val startMillis = when (period) {
                 LimitPeriod.DAILY -> now.atStartOfDay(zoneId).toInstant().toEpochMilli()
-                LimitPeriod.WEEKLY -> now.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
+                LimitPeriod.WEEKLY -> now.minusDays(6)
                     .atStartOfDay(zoneId).toInstant().toEpochMilli()
                 LimitPeriod.MONTHLY -> now.with(TemporalAdjusters.firstDayOfMonth())
                     .atStartOfDay(zoneId).toInstant().toEpochMilli()
