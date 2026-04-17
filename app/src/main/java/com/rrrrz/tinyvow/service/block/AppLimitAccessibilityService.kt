@@ -221,9 +221,16 @@ class AppLimitAccessibilityService : AccessibilityService() {
 
         val layout = android.widget.LinearLayout(this).apply {
             orientation = android.widget.LinearLayout.VERTICAL
-            setBackgroundColor("#E6000000".toColorInt()) // 90% black
+            setBackgroundColor("#F8FAFB".toColorInt()) // 清新的亮色背景，更积极
             gravity = android.view.Gravity.CENTER
-            setPadding(80, 80, 80, 80)
+            setPadding(100, 100, 100, 100)
+        }
+
+        val iconView = android.widget.ImageView(this).apply {
+            setImageResource(com.rrrrz.tinyvow.R.mipmap.ic_launcher)
+            layoutParams = android.widget.LinearLayout.LayoutParams(180, 180).apply {
+                bottomMargin = 60
+            }
         }
 
         val totalMinutes = exceededMillis / 60_000
@@ -232,42 +239,37 @@ class AppLimitAccessibilityService : AccessibilityService() {
         val exceededText = if (hours > 0) "${hours}小时 ${minutes}分钟" else "${minutes}分钟"
 
         val title = android.widget.TextView(this).apply {
-            text = getString(com.rrrrz.tinyvow.R.string.block_title)
-            textSize = 28f
-            setTextColor(android.graphics.Color.WHITE)
+            text = "此刻，给自己一个深呼吸"
+            textSize = 26f
+            setTypeface(null, android.graphics.Typeface.BOLD)
+            setTextColor("#2F3133".toColorInt())
             gravity = android.view.Gravity.CENTER
-            setPadding(0, 0, 0, 48)
+            setPadding(0, 0, 0, 20)
         }
 
         val body = android.widget.TextView(this).apply {
-            text = getString(com.rrrrz.tinyvow.R.string.block_body_group, groupName, exceededText)
-            textSize = 16f
-            setTextColor(android.graphics.Color.LTGRAY)
+            text = "你今日已使用 $groupName 超过 $exceededText。\n自律不是限制，而是为了遇见更好的自己。"
+            textSize = 15f
+            setLineSpacing(2f, 1.2f)
+            setTextColor("#5F6266".toColorInt())
             gravity = android.view.Gravity.CENTER
             setPadding(0, 0, 0, 80)
         }
 
-        val btnOpenApp = android.widget.Button(this).apply {
-            text = getString(com.rrrrz.tinyvow.R.string.block_overlay_open_app)
-            setBackgroundColor("#FF6200EE".toColorInt())
-            setTextColor(android.graphics.Color.WHITE)
-            setOnClickListener {
-                removeBlockOverlay()
-                val intent = Intent(this@AppLimitAccessibilityService, com.rrrrz.tinyvow.MainActivity::class.java).apply {
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
-                }
-                startActivity(intent)
-            }
+        // 主按钮 (回到首页)
+        val btnPrimaryBg = android.graphics.drawable.GradientDrawable().apply {
+            setColor("#8FB9C5".toColorInt()) 
+            cornerRadius = 50f
         }
-
-        val space = android.view.View(this).apply {
-            layoutParams = android.widget.LinearLayout.LayoutParams(1, 40)
-        }
-
         val btnGoHome = android.widget.Button(this).apply {
             text = getString(com.rrrrz.tinyvow.R.string.block_overlay_go_home)
-            setBackgroundColor("#FF444444".toColorInt())
+            background = btnPrimaryBg
             setTextColor(android.graphics.Color.WHITE)
+            isAllCaps = false
+            layoutParams = android.widget.LinearLayout.LayoutParams(
+                android.widget.LinearLayout.LayoutParams.MATCH_PARENT, 
+                140
+            )
             setOnClickListener {
                 removeBlockOverlay()
                 val intent = Intent(Intent.ACTION_MAIN).apply {
@@ -278,10 +280,9 @@ class AppLimitAccessibilityService : AccessibilityService() {
             }
         }
 
+        layout.addView(iconView)
         layout.addView(title)
         layout.addView(body)
-        layout.addView(btnOpenApp)
-        layout.addView(space)
         layout.addView(btnGoHome)
 
         try {
@@ -316,10 +317,10 @@ class AppLimitAccessibilityService : AccessibilityService() {
     }
 
     companion object {
-        /** 评估防抖窗口：先压到更短，便于真机回归时观察是否是防抖导致漏拦截 */
-        private const val CHECK_DEBOUNCE_MS = 800L
-        /** 阻断弹窗防抖窗口：缩短到 1.2 秒，先验证是否是重复进入时被窗口挡住 */
-        private const val BLOCK_DEBOUNCE_MS = 1_200L
+        /** 评估防抖窗口：缩短以提升响应速度 */
+        private const val CHECK_DEBOUNCE_MS = 300L
+        /** 阻断弹窗防抖窗口：缩短以确保点击关闭后能较快再次生效 */
+        private const val BLOCK_DEBOUNCE_MS = 500L
         private var lastCheckedPackage: String? = null
         private var lastCheckElapsedRealtime: Long = 0L
         private var lastBlockedPackage: String? = null
