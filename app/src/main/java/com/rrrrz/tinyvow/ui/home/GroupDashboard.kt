@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -91,8 +92,8 @@ import com.rrrrz.tinyvow.data.db.LimitPeriod
 import com.rrrrz.tinyvow.data.repository.AppGroupWithApps
 
 private val DialogHorizontalPadding = 28.dp
-private val CompactFieldHeight = 56.dp
-private val CompactFieldShape = RoundedCornerShape(18.dp)
+private val CompactFieldHeight = 50.dp
+private val CompactFieldShape = RoundedCornerShape(16.dp)
 
 @Composable
 fun GroupDashboard(
@@ -172,7 +173,7 @@ fun GroupDashboard(
             )
         }
 
-        Spacer(modifier = Modifier.height(24.dp))
+        Spacer(modifier = Modifier.height(80.dp))
     }
 
     if (showDialog) {
@@ -280,9 +281,9 @@ private fun GroupCard(
         LimitPeriod.MONTHLY -> "每月"
     }
     val detailText = if (groupData.group.type == GroupType.ENCOURAGE) {
-        "$periodLabel ${usedMinutes}/${groupData.group.limitMinutes}m · ${trimTrailingZero(groupData.group.pointsPerMinute)} PT/m"
+        "$periodLabel ${usedMinutes}/${groupData.group.limitMinutes}分 · ${trimTrailingZero(groupData.group.pointsPerMinute)} 积分/分"
     } else {
-        "$periodLabel ${usedMinutes}/${groupData.group.limitMinutes}m"
+        "$periodLabel ${usedMinutes}/${groupData.group.limitMinutes}分"
     }
     val rawProgress = if (groupData.group.limitMinutes > 0) {
         usedMinutes.toFloat() / groupData.group.limitMinutes.toFloat()
@@ -473,11 +474,7 @@ private fun GroupEditDialog(
                         it.packageName.contains(searchQuery, ignoreCase = true)
                 }
             }
-            .sortedWith(
-                compareByDescending<ManagedApp> { it.packageName in selectedPackages }
-                    .thenByDescending { it.usageTimeInMs }
-                    .thenBy { it.appName.lowercase() }
-            )
+            .sortedByDescending { it.usageTimeInMs }
             .toList()
     }
 
@@ -500,8 +497,9 @@ private fun GroupEditDialog(
                     .fillMaxSize()
                     .statusBarsPadding()
                     .navigationBarsPadding()
+                    .imePadding()
                     .padding(horizontal = DialogHorizontalPadding, vertical = 18.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -580,7 +578,7 @@ private fun GroupEditDialog(
                             onValueChange = { pointRateText = sanitizeDecimalInput(it) },
                             placeholder = "0",
                             prefix = "每分钟",
-                            suffix = "PT",
+                            suffix = "积分",
                             modifier = Modifier.weight(1f),
                             keyboardType = KeyboardType.Decimal,
                             textAlign = TextAlign.End
@@ -593,13 +591,21 @@ private fun GroupEditDialog(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Text(
-                        text = if (showOnlyUsedInSevenDays) "近7天活跃" else "全部应用",
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.clickable { showOnlyUsedInSevenDays = !showOnlyUsedInSevenDays }
-                    )
+                    Surface(
+                        onClick = { showOnlyUsedInSevenDays = !showOnlyUsedInSevenDays },
+                        modifier = Modifier.height(CompactFieldHeight),
+                        shape = CompactFieldShape,
+                        color = if (showOnlyUsedInSevenDays) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                        border = if (showOnlyUsedInSevenDays) null else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                    ) {
+                        Text(
+                            text = if (showOnlyUsedInSevenDays) "近7天活跃" else "全部应用",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = if (showOnlyUsedInSevenDays) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
+                        )
+                    }
                     SearchField(
                         value = searchQuery,
                         onValueChange = { searchQuery = it },
@@ -611,8 +617,8 @@ private fun GroupEditDialog(
 
                 LazyColumn(
                     modifier = Modifier.weight(1f),
-                    contentPadding = PaddingValues(bottom = 0.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                    contentPadding = PaddingValues(bottom = 56.dp),
+                    verticalArrangement = Arrangement.spacedBy(1.dp)
                 ) {
                     items(
                         items = visibleApps,
@@ -762,8 +768,8 @@ private fun FieldContainer(
     Surface(
         modifier = modifier.height(CompactFieldHeight),
         shape = CompactFieldShape,
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant)
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
     ) {
         Row(
             modifier = Modifier
@@ -790,15 +796,15 @@ private fun AppSelectionItem(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
+            .clip(RoundedCornerShape(20.dp))
             .clickable { onCheckedChange(!checked) }
-            .padding(vertical = 6.dp),
+            .padding(vertical = 4.dp, horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(12.dp)
+        horizontalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         Surface(
-            modifier = Modifier.size(38.dp),
-            shape = RoundedCornerShape(12.dp),
+            modifier = Modifier.size(52.dp),
+            shape = RoundedCornerShape(16.dp),
             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
         ) {
             if (icon != null) {
@@ -810,25 +816,29 @@ private fun AppSelectionItem(
             }
         }
 
-        Text(
-            text = app.appName,
-            modifier = Modifier.weight(1f),
-            style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.Medium,
-            color = MaterialTheme.colorScheme.onSurface,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis
-        )
-
-        Text(
-            text = formatUsageDuration(app.usageTimeInMs),
-            style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = app.appName,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = formatUsageDuration(app.usageTimeInMs),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
+            )
+        }
 
         Checkbox(
             checked = checked,
-            onCheckedChange = onCheckedChange
+            onCheckedChange = null, // Controlled by Row click
+            colors = androidx.compose.material3.CheckboxDefaults.colors(
+                checkedColor = MaterialTheme.colorScheme.primary,
+                uncheckedColor = MaterialTheme.colorScheme.outline
+            )
         )
     }
 }

@@ -774,7 +774,7 @@ fun HomeScreen(
                                             modifier = Modifier.alignByBaseline()
                                         )
                                         Text(
-                                            text = " PT",
+                                            text = " 积分",
                                             style = MaterialTheme.typography.titleMedium,
                                             fontWeight = FontWeight.Bold,
                                             color = MaterialTheme.colorScheme.primary,
