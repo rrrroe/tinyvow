@@ -63,7 +63,12 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import androidx.compose.runtime.LaunchedEffect
+import kotlinx.coroutines.withContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -316,8 +321,12 @@ private fun GroupCard(
                 contentAlignment = Alignment.CenterStart
             ) {
                 iconPackages.forEachIndexed { index, packageName ->
-                    val icon = remember(packageName) {
-                        runCatching { context.packageManager.getApplicationIcon(packageName) }.getOrNull()
+                    // 异步加载图标，避免同步 Binder IPC 阻塞主线程
+                    var icon by remember(packageName) { mutableStateOf<android.graphics.drawable.Drawable?>(null) }
+                    LaunchedEffect(packageName) {
+                        icon = withContext(Dispatchers.IO) {
+                            runCatching { context.packageManager.getApplicationIcon(packageName) }.getOrNull()
+                        }
                     }
                     Surface(
                         modifier = Modifier
@@ -789,8 +798,12 @@ private fun AppSelectionItem(
     onCheckedChange: (Boolean) -> Unit
 ) {
     val context = LocalContext.current
-    val icon = remember(app.packageName) {
-        runCatching { context.packageManager.getApplicationIcon(app.packageName) }.getOrNull()
+    // 异步加载图标，避免同步 Binder IPC 阻塞主线程
+    var icon by remember(app.packageName) { mutableStateOf<android.graphics.drawable.Drawable?>(null) }
+    LaunchedEffect(app.packageName) {
+        icon = withContext(Dispatchers.IO) {
+            runCatching { context.packageManager.getApplicationIcon(app.packageName) }.getOrNull()
+        }
     }
 
     Row(

@@ -38,6 +38,8 @@ class AppLimitAccessibilityService : AccessibilityService() {
 
         // 启动定时结算协程
         startPeriodicPointsTicker()
+        // 启动事件消费协程
+        startEventConsumer()
     }
 
     private fun startPeriodicPointsTicker() {
@@ -49,6 +51,44 @@ class AppLimitAccessibilityService : AccessibilityService() {
                     handlePointsAccumulation(currentPackage, SystemClock.elapsedRealtime())
                 }
             }
+        }
+    }
+
+    // CONFLATED Channel：只保留最新的包名，高频窗口切换事件自动合并，防止协程爆炸
+    private val eventChannel = kotlinx.coroutines.channels.Channel<String>(
+        kotlinx.coroutines.channels.Channel.CONFLATED
+    )
+
+    private fun startEventConsumer() {
+        serviceScope.launch(Dispatchers.IO) {
+            for (packageName in eventChannel) {
+                evaluateAndBlock(packageName)
+            }
+        }
+    }
+
+    private suspend fun evaluateAndBlock(packageName: String) {
+        val usagePermission = UsageAccessStateChecker(applicationContext).getStatus()
+        if (usagePermission != UsageAccessStatus.GRANTED) return
+
+        val result = enforcer.evaluate(packageName)
+        if (result == null || result.groupType == GroupType.ENCOURAGE) {
+            kotlinx.coroutines.withContext(Dispatchers.Main) {
+                removeBlockOverlay()
+            }
+            return
+        }
+
+        // 阻断防抖
+        val blockNow = SystemClock.elapsedRealtime()
+        if (packageName == lastBlockedPackage && blockNow - lastBlockElapsedRealtime < BLOCK_DEBOUNCE_MS) {
+            return
+        }
+        lastBlockedPackage = packageName
+        lastBlockElapsedRealtime = blockNow
+
+        kotlinx.coroutines.withContext(Dispatchers.Main) {
+            showBlockOverlay(packageName, result.groupName, result.exceededMillis)
         }
     }
 
@@ -77,31 +117,8 @@ class AppLimitAccessibilityService : AccessibilityService() {
         lastCheckedPackage = packageName
         lastCheckElapsedRealtime = now
 
-        serviceScope.launch(Dispatchers.IO) {
-            val usagePermission = UsageAccessStateChecker(applicationContext).getStatus()
-            if (usagePermission != UsageAccessStatus.GRANTED) return@launch
-
-            val result = enforcer.evaluate(packageName)
-            if (result == null || result.groupType == GroupType.ENCOURAGE) {
-                // 没超标，或是“奖励组”（奖励组不阻断），则移除 overlay
-                kotlinx.coroutines.withContext(Dispatchers.Main) {
-                    removeBlockOverlay()
-                }
-                return@launch
-            }
-
-            // 阻断防抖
-            val blockNow = SystemClock.elapsedRealtime()
-            if (packageName == lastBlockedPackage && blockNow - lastBlockElapsedRealtime < BLOCK_DEBOUNCE_MS) {
-                return@launch
-            }
-            lastBlockedPackage = packageName
-            lastBlockElapsedRealtime = blockNow
-
-            kotlinx.coroutines.withContext(Dispatchers.Main) {
-                showBlockOverlay(packageName, result.groupName, result.exceededMillis)
-            }
-        }
+        // 发送到 CONFLATED Channel（非阻塞，自动丢弃旧值，只保留最新包名）
+        eventChannel.trySend(packageName)
     }
 
     private fun handlePointsAccumulation(packageName: String, now: Long) {

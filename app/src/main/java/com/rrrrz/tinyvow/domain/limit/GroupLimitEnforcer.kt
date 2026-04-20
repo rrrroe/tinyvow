@@ -32,21 +32,22 @@ class GroupLimitEnforcer(context: Context) {
         val groupIds = getCachedGroupIds(packageName, now)
         if (groupIds.isEmpty()) return null
 
-        for (groupId in groupIds) {
-            val group = groupDao.getGroupByIdSync(groupId) ?: continue
-            
+        // 一次性批量读取所有分组，避免热路径循环查询 DB
+        val groups = groupDao.getGroupsByIdsSync(groupIds)
+
+        for (group in groups) {
             // 基础限额 + 加时包
             val baseLimitMillis = group.limitMinutes * 60_000L
-            val bonusMillis = getSyncBonusTimeMillis(groupId, currentTimeMillis)
+            val bonusMillis = getSyncBonusTimeMillis(group.id, currentTimeMillis)
             val totalLimitMillis = baseLimitMillis + bonusMillis
 
             // 统计周期内的历史用量
-            val totalUsedMillis = getCachedGroupUsage(groupId, group.limitPeriod, now)
+            val totalUsedMillis = getCachedGroupUsage(group.id, group.limitPeriod, now)
 
             if (totalUsedMillis >= totalLimitMillis) {
                 return GroupExceededResult(
                     groupName = group.name,
-                    groupId = groupId,
+                    groupId = group.id,
                     groupType = group.type,
                     limitMinutes = group.limitMinutes + (bonusMillis / 60_000).toInt(),
                     totalUsedMillis = totalUsedMillis,

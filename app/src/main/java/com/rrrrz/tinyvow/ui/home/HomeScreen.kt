@@ -277,8 +277,9 @@ fun HomeRoute(
         }
     }
 
-    LaunchedEffect(userPoints) {
-        appLimitRepository.checkAchievements(userPoints)
+    // 仅在应用首次启动时检查一次成就，避免每次积分变化都触发高代价 DB 扫描
+    LaunchedEffect(Unit) {
+        appLimitRepository.checkAchievements(preferences.userPoints.first())
     }
 
     var newlyUnlockedAchievement by remember { mutableStateOf<AchievementEntity?>(null) }
@@ -674,17 +675,18 @@ fun HomeScreen(
     val coroutineScope = rememberCoroutineScope()
     var usageMap by remember { mutableStateOf<Map<String, Long>>(emptyMap()) }
     
-    // 定时刷新各分组用量
+    // 定时刷新各分组用量：批量查询一次 UsageStats，过滤分组汇总。这样可将 N 次 IPC 降为 1 次
     LaunchedEffect(groupsWithApps) {
         val usageRepo = UsageStatsUsageRepository(context)
         while (true) {
+            val todayStart = java.time.LocalDate.now(java.time.ZoneId.systemDefault())
+                .atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
+            // 一次性获得所有包名的用量 Map
+            val allUsage = usageRepo.getUsageStats(todayStart, System.currentTimeMillis())
             val newMap = mutableMapOf<String, Long>()
             groupsWithApps.forEach { groupWithApps ->
-                var totalUsage = 0L
-                groupWithApps.packageNames.forEach { pkg ->
-                    totalUsage += usageRepo.getTodayUsageMillis(pkg)
-                }
-                newMap[groupWithApps.group.id] = totalUsage
+                newMap[groupWithApps.group.id] =
+                    groupWithApps.packageNames.sumOf { allUsage[it] ?: 0L }
             }
             usageMap = newMap
             kotlinx.coroutines.delay(5000L) // 5秒刷新一次

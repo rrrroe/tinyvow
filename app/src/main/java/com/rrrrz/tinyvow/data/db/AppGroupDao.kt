@@ -15,6 +15,10 @@ interface AppGroupDao {
     @Query("SELECT * FROM app_groups WHERE id = :groupId AND is_deleted = 0 LIMIT 1")
     fun getGroupByIdSync(groupId: String): AppGroupEntity?
 
+    /** 同步批量查询：一次性按 ID 列表取多条分组记录，避免循环调用 */
+    @Query("SELECT * FROM app_groups WHERE id IN (:ids) AND is_deleted = 0")
+    fun getGroupsByIdsSync(ids: List<String>): List<AppGroupEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertGroup(group: AppGroupEntity)
 

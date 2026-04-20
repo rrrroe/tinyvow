@@ -1,102 +1,196 @@
 package com.rrrrz.tinyvow.ui.home
 
+import android.content.Context
+import android.content.Intent
+import android.graphics.Bitmap
+import android.provider.Settings
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ChevronLeft
-import androidx.compose.material.icons.filled.ChevronRight
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
+import androidx.compose.material.icons.automirrored.filled.CallSplit
+import androidx.compose.material.icons.automirrored.filled.CompareArrows
+import androidx.compose.material.icons.filled.AccessTime
+import androidx.compose.material.icons.filled.BarChart
+import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.Insights
+import androidx.compose.material.icons.filled.NightsStay
+import androidx.compose.material.icons.filled.PhoneAndroid
+import androidx.compose.material.icons.filled.RocketLaunch
+import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.Timeline
+import androidx.compose.material.icons.filled.TouchApp
+import androidx.compose.material.icons.filled.WbSunny
+import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.core.graphics.drawable.toBitmap
 import coil.compose.AsyncImage
+import com.rrrrz.tinyvow.data.apps.InstalledAppRepository
+import com.rrrrz.tinyvow.data.apps.ManagedApp
 import com.rrrrz.tinyvow.data.repository.AppGroupWithApps
 import com.rrrrz.tinyvow.data.usage.AppSession
 import com.rrrrz.tinyvow.data.usage.UsageAccessStatus
 import com.rrrrz.tinyvow.data.usage.UsageRepository
 import com.rrrrz.tinyvow.data.usage.UsageStatsUsageRepository
 import kotlinx.coroutines.delay
-import java.time.DayOfWeek
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
-import java.time.temporal.TemporalAdjusters
-import kotlin.math.absoluteValue
+import java.util.Locale
+import kotlin.math.roundToInt
+import kotlin.math.roundToLong
 
-private enum class StatsMode(val label: String) {
-    DAY("日"),
-    WEEK("周"),
-    MONTH("月"),
-    YEAR("年"),
+private enum class ReportTab(val label: String) {
+    DAY("日报"),
+    WEEK("周报"),
+    MONTH("月报"),
+    YEAR("年报"),
 }
 
-private data class StatsRange(
-    val mode: StatsMode,
-    val startMillis: Long,
-    val endMillis: Long,
-    val displayLabel: String,
-    val bucketStarts: List<Long>,
-    val bucketLabels: List<String>,
-    val footerLabels: List<String>,
-    val canNavigateForward: Boolean,
+private data class InstalledAppsState(
+    val apps: List<ManagedApp> = emptyList(),
+    val isLoading: Boolean = false,
 )
 
-private data class SleepSummary(
-    val windowStartMillis: Long,
-    val windowEndMillis: Long,
-    val durationMillis: Long,
-    val startMillis: Long,
-    val endMillis: Long,
-    val preSleepTopPackage: String? = null,
-    val preSleepTopMillis: Long = 0L,
-    val postWakeTopPackage: String? = null,
-    val postWakeTopMillis: Long = 0L,
-)
-
-private data class BucketInsight(
+private data class AppIdentity(
+    val packageName: String,
     val label: String,
-    val totalMillis: Long,
-    val topPackage: String? = null,
-    val topPackageMillis: Long = 0L,
+    val isLaunchable: Boolean,
 )
 
-private data class StatsUiState(
+private data class DailyTimelineBucket(
+    val hour: Int,
+    val label: String,
+    val deviceMillis: Long,
+)
+
+private data class DailyReportSummary(
+    val title: String,
+    val subtitle: String,
+    val capturedAt: String,
+    val message: String,
+    val primaryValue: String,
+    val secondaryValue: String,
+    val tertiaryValue: String,
+    val tags: List<String>,
+)
+
+private data class ScopeOverview(
+    val totalUsageMillis: Long,
+    val openCount: Int,
+    val activeBucketCount: Int,
+    val topApp: AppDisplayItem?,
+)
+
+private data class AppDisplayItem(
+    val packageName: String,
+    val label: String,
+    val value: Long,
+)
+
+private data class PeriodUsageStat(
+    val label: String,
+    val deviceMillis: Long,
+)
+
+private data class BehaviorAppMoment(
+    val label: String,
+    val packageName: String? = null,
+    val appLabel: String? = null,
+)
+
+private data class UsageBehaviorInsight(
+    val peakHourLabel: String,
+    val peakHourMillis: Long,
+    val peakTwoHourLabel: String,
+    val peakTwoHourMillis: Long,
+    val nightUsageMillis: Long,
+    val longestSession: AppDisplayItem?,
+    val averageSessionMillis: Long,
+    val shortSessionRatio: Float,
+    val reopenIntensity: Float,
+    val beforeSleep: BehaviorAppMoment,
+    val afterWake: BehaviorAppMoment,
+)
+
+private data class ComparisonMetric(
+    val label: String,
+    val todayValue: String,
+    val yesterdayDelta: String?,
+    val averageDelta: String?,
+)
+
+private data class WindowMetrics(
+    val deviceUsageMillis: Long,
+    val deviceOpenCount: Int,
+    val longestSessionMillis: Long,
+    val nightUsageMillis: Long,
+)
+
+private data class DailyReportUiState(
     val isLoading: Boolean = true,
     val isPermissionGranted: Boolean = false,
-    val mode: StatsMode = StatsMode.DAY,
-    val range: StatsRange? = null,
-    val managedPackages: List<String> = emptyList(),
-    val totalUsageMillis: Long = 0L,
-    val usageBuckets: List<Long> = emptyList(),
-    val totalOpenCount: Int = 0,
-    val topApps: List<Pair<String, Long>> = emptyList(),
-    val topOpenedApps: List<Pair<String, Int>> = emptyList(),
-    val longestSessions: List<AppSession> = emptyList(),
-    val sessions: List<AppSession> = emptyList(),
-    val sleepSummary: SleepSummary? = null,
-    val bucketInsights: List<BucketInsight> = emptyList(),
-    val activeBucketCount: Int = 0,
-    val longestActiveStreak: Int = 0,
-    val peakBucketShare: Float = 0f,
-    val averageBucketUsageMillis: Long = 0L,
+    val selectedTab: ReportTab = ReportTab.DAY,
+    val summary: DailyReportSummary? = null,
+    val deviceOverview: ScopeOverview? = null,
+    val timelineBuckets: List<DailyTimelineBucket> = emptyList(),
+    val periodUsage: List<PeriodUsageStat> = emptyList(),
+    val usageTopApps: List<AppDisplayItem> = emptyList(),
+    val behaviorInsight: UsageBehaviorInsight? = null,
+    val comparisons: List<ComparisonMetric> = emptyList(),
+    val placeholderTitle: String? = null,
+    val placeholderDescription: String? = null,
 )
 
 @Composable
@@ -109,988 +203,1352 @@ fun StatsRoute(
 ) {
     val context = LocalContext.current
     val zoneId = remember { ZoneId.systemDefault() }
-    var statsMode by remember { mutableStateOf(StatsMode.DAY) }
-    var anchorDate by remember { mutableStateOf(LocalDate.now(zoneId)) }
-    var statsUiState by remember { mutableStateOf(StatsUiState(mode = statsMode)) }
+    var selectedTab by remember { mutableStateOf(ReportTab.DAY) }
+    var uiState by remember { mutableStateOf(DailyReportUiState(selectedTab = selectedTab)) }
 
-    LaunchedEffect(usageAccessStatus, groupsWithApps, statsMode, anchorDate) {
+    val installedAppsState by produceState(
+        initialValue = InstalledAppsState(),
+        key1 = usageAccessStatus,
+    ) {
         if (usageAccessStatus != UsageAccessStatus.GRANTED) {
-            statsUiState = StatsUiState(isLoading = false, isPermissionGranted = false, mode = statsMode)
+            value = InstalledAppsState()
+            return@produceState
+        }
+        value = InstalledAppsState(isLoading = true)
+        val apps = InstalledAppRepository(context).getAllInstalledApps()
+        value = InstalledAppsState(apps = apps, isLoading = false)
+    }
+
+    LaunchedEffect(
+        usageAccessStatus,
+        groupsWithApps,
+        selectedTab,
+        installedAppsState.apps,
+        installedAppsState.isLoading,
+        userPoints,
+        todayPoints,
+    ) {
+        if (usageAccessStatus != UsageAccessStatus.GRANTED) {
+            uiState = DailyReportUiState(
+                isLoading = false,
+                isPermissionGranted = false,
+                selectedTab = selectedTab,
+            )
+            return@LaunchedEffect
+        }
+
+        if (installedAppsState.isLoading) {
+            uiState = DailyReportUiState(
+                isLoading = true,
+                isPermissionGranted = true,
+                selectedTab = selectedTab,
+            )
             return@LaunchedEffect
         }
 
         val usageRepository = UsageStatsUsageRepository(context)
-        while (true) {
-            statsUiState = buildStatsUiState(
-                mode = statsMode,
-                anchorDate = anchorDate,
-                groupsWithApps = groupsWithApps,
-                usageRepository = usageRepository,
+        if (selectedTab != ReportTab.DAY) {
+            uiState = buildPlaceholderUiState(selectedTab)
+            return@LaunchedEffect
+        }
+
+        while (isActive) {
+            uiState = buildDailyReportUiState(
+                context = context,
                 zoneId = zoneId,
+                usageRepository = usageRepository,
+                groupsWithApps = groupsWithApps,
+                installedApps = installedAppsState.apps,
             )
-            delay(if (statsMode == StatsMode.DAY) 30_000L else 120_000L)
+            delay(30_000L)
         }
     }
 
     StatsScreenLayout(
-        state = statsUiState,
-        userPoints = userPoints,
-        todayPoints = todayPoints,
-        onModeChange = { mode ->
-            statsMode = mode
-            anchorDate = anchorDate.coerceAtMost(LocalDate.now(zoneId))
-        },
-        onNavigatePrevious = {
-            anchorDate = shiftAnchorDate(anchorDate, statsMode, -1)
-        },
-        onNavigateNext = {
-            val candidate = shiftAnchorDate(anchorDate, statsMode, 1)
-            if (!candidate.isAfter(LocalDate.now(zoneId))) {
-                anchorDate = candidate
-            }
-        },
+        state = uiState,
+        onTabSelected = { selectedTab = it },
         modifier = modifier,
     )
 }
 
-private suspend fun buildStatsUiState(
-    mode: StatsMode,
-    anchorDate: LocalDate,
-    groupsWithApps: List<AppGroupWithApps>,
-    usageRepository: UsageRepository,
+private suspend fun buildDailyReportUiState(
+    context: Context,
     zoneId: ZoneId,
-): StatsUiState {
-    val range = buildStatsRange(mode, anchorDate, zoneId)
-    val uniquePackages = groupsWithApps.flatMap { it.packageNames }.distinct()
+    usageRepository: UsageRepository,
+    groupsWithApps: List<AppGroupWithApps>,
+    installedApps: List<ManagedApp>,
+): DailyReportUiState {
+    val today = LocalDate.now(zoneId)
+    val todayStart = today.atStartOfDay(zoneId).toInstant().toEpochMilli()
+    val nowMillis = System.currentTimeMillis()
+    val installedAppMap = installedApps.associateBy { it.packageName }
+    val managedPackages = groupsWithApps.flatMap { it.packageNames }.toSet()
 
-    if (uniquePackages.isEmpty()) {
-        return StatsUiState(
-            isLoading = false,
-            isPermissionGranted = true,
-            mode = mode,
-            range = range,
+    val todayUsageStats = usageRepository.getUsageStats(todayStart, nowMillis)
+    val todayOpenCounts = usageRepository.getAppOpenCount(todayStart, nowMillis)
+    val todaySessions = usageRepository.getUsageSessions(todayStart, nowMillis).filter { it.endTime > it.startTime }
+    val devicePackages = selectDevicePackages(
+        context = context,
+        installedAppMap = installedAppMap,
+        managedPackages = managedPackages,
+        packages = todayUsageStats.keys + todayOpenCounts.keys + todaySessions.map { it.packageName },
+    )
+    val devicePackageSet = devicePackages.keys
+
+    val deviceUsageStats = todayUsageStats.filterKeys { it in devicePackageSet }
+    val deviceOpenCounts = todayOpenCounts.filterKeys { it in devicePackageSet }
+    val deviceSessions = todaySessions.filter { it.packageName in devicePackageSet }
+
+    val timelineBuckets = buildTimelineBuckets(todayStart, nowMillis, deviceSessions)
+    val periodUsage = buildPeriodUsageStats(timelineBuckets)
+    val behaviorInsight = buildBehaviorInsight(
+        context = context,
+        zoneId = zoneId,
+        anchorDate = today,
+        usageRepository = usageRepository,
+        installedAppMap = installedAppMap,
+        managedPackages = managedPackages,
+        timelineBuckets = timelineBuckets,
+        deviceSessions = deviceSessions,
+        deviceOpenCounts = deviceOpenCounts,
+    )
+
+    val usageTopApps = deviceUsageStats.toList()
+        .sortedByDescending { it.second }
+        .filter { it.second > 0L }
+        .take(10)
+        .map { (packageName, value) ->
+            AppDisplayItem(packageName, devicePackages[packageName]?.label ?: packageName, value)
+        }
+
+    val yesterdayMetrics = buildWindowMetrics(
+        context = context,
+        zoneId = zoneId,
+        date = today.minusDays(1),
+        usageRepository = usageRepository,
+        installedAppMap = installedAppMap,
+        managedPackages = managedPackages,
+    )
+    val recentMetrics = (1L..7L).map { offset ->
+        buildWindowMetrics(
+            context = context,
+            zoneId = zoneId,
+            date = today.minusDays(offset),
+            usageRepository = usageRepository,
+            installedAppMap = installedAppMap,
+            managedPackages = managedPackages,
+        )
+    }
+    val averageMetrics = WindowMetrics(
+        deviceUsageMillis = recentMetrics.map { it.deviceUsageMillis }.average().roundToLongSafe(),
+        deviceOpenCount = recentMetrics.map { it.deviceOpenCount }.average().roundToInt(),
+        longestSessionMillis = recentMetrics.map { it.longestSessionMillis }.average().roundToLongSafe(),
+        nightUsageMillis = recentMetrics.map { it.nightUsageMillis }.average().roundToLongSafe(),
+    )
+
+    val deviceOverview = ScopeOverview(
+        totalUsageMillis = deviceUsageStats.values.sum(),
+        openCount = deviceOpenCounts.values.sum(),
+        activeBucketCount = timelineBuckets.count { it.deviceMillis > 0L },
+        topApp = usageTopApps.firstOrNull(),
+    )
+
+    val summary = buildDailyReportSummary(
+        date = today,
+        zoneId = zoneId,
+        nowMillis = nowMillis,
+        deviceOverview = deviceOverview,
+        periodUsage = periodUsage,
+        yesterdayMetrics = yesterdayMetrics,
+        averageMetrics = averageMetrics,
+    )
+
+    val longestSessionValue = deviceSessions.maxOfOrNull { it.endTime - it.startTime } ?: 0L
+    val comparisons = buildComparisonMetrics(
+        deviceOverview = deviceOverview,
+        behaviorInsight = behaviorInsight,
+        longestSessionMillis = longestSessionValue,
+        yesterdayMetrics = yesterdayMetrics,
+        averageMetrics = averageMetrics,
+    )
+
+    return DailyReportUiState(
+        isLoading = false,
+        isPermissionGranted = true,
+        selectedTab = ReportTab.DAY,
+        summary = summary,
+        deviceOverview = deviceOverview,
+        timelineBuckets = timelineBuckets,
+        periodUsage = periodUsage,
+        usageTopApps = usageTopApps,
+        behaviorInsight = behaviorInsight,
+        comparisons = comparisons,
+    )
+}
+
+private fun buildPlaceholderUiState(tab: ReportTab): DailyReportUiState {
+    val title = when (tab) {
+        ReportTab.WEEK -> "周报筹备中"
+        ReportTab.MONTH -> "月报筹备中"
+        ReportTab.YEAR -> "年报筹备中"
+        ReportTab.DAY -> "日报"
+    }
+    val description = when (tab) {
+        ReportTab.WEEK -> "等日报快照稳定沉淀后，再开放周趋势与连续性洞察。"
+        ReportTab.MONTH -> "月维度会基于日快照做节律、阶段和结构变化分析。"
+        ReportTab.YEAR -> "年维度会沉淀成长轨迹、波峰波谷与长期自律表现。"
+        ReportTab.DAY -> ""
+    }
+    return DailyReportUiState(
+        isLoading = false,
+        isPermissionGranted = true,
+        selectedTab = tab,
+        placeholderTitle = title,
+        placeholderDescription = description,
+    )
+}
+
+private suspend fun buildWindowMetrics(
+    context: Context,
+    zoneId: ZoneId,
+    date: LocalDate,
+    usageRepository: UsageRepository,
+    installedAppMap: Map<String, ManagedApp>,
+    managedPackages: Set<String>,
+): WindowMetrics {
+    val startMillis = date.atStartOfDay(zoneId).toInstant().toEpochMilli()
+    val endMillis = date.plusDays(1).atStartOfDay(zoneId).toInstant().toEpochMilli()
+    val usageStats = usageRepository.getUsageStats(startMillis, endMillis)
+    val openCounts = usageRepository.getAppOpenCount(startMillis, endMillis)
+    val sessions = usageRepository.getUsageSessions(startMillis, endMillis).filter { it.endTime > it.startTime }
+    val devicePackages = selectDevicePackages(
+        context = context,
+        installedAppMap = installedAppMap,
+        managedPackages = managedPackages,
+        packages = usageStats.keys + openCounts.keys + sessions.map { it.packageName },
+    ).keys
+    val deviceSessions = sessions.filter { it.packageName in devicePackages }
+    return WindowMetrics(
+        deviceUsageMillis = usageStats.filterKeys { it in devicePackages }.values.sum(),
+        deviceOpenCount = openCounts.filterKeys { it in devicePackages }.values.sum(),
+        longestSessionMillis = deviceSessions.maxOfOrNull { it.endTime - it.startTime } ?: 0L,
+        nightUsageMillis = buildTimelineBuckets(startMillis, endMillis, deviceSessions)
+            .filter { it.hour < 6 || it.hour >= 22 }
+            .sumOf { it.deviceMillis },
+    )
+}
+
+private suspend fun buildBehaviorInsight(
+    context: Context,
+    zoneId: ZoneId,
+    anchorDate: LocalDate,
+    usageRepository: UsageRepository,
+    installedAppMap: Map<String, ManagedApp>,
+    managedPackages: Set<String>,
+    timelineBuckets: List<DailyTimelineBucket>,
+    deviceSessions: List<AppSession>,
+    deviceOpenCounts: Map<String, Int>,
+): UsageBehaviorInsight {
+    val peakHour = timelineBuckets.maxByOrNull { it.deviceMillis }
+    val peakTwoHour = timelineBuckets.windowed(size = 2, step = 1, partialWindows = false)
+        .map { buckets -> buckets to buckets.sumOf { it.deviceMillis } }
+        .maxByOrNull { it.second }
+
+    val averageSessionMillis = if (deviceSessions.isNotEmpty()) {
+        deviceSessions.sumOf { it.endTime - it.startTime } / deviceSessions.size
+    } else {
+        0L
+    }
+    val shortSessionRatio = if (deviceSessions.isNotEmpty()) {
+        deviceSessions.count { (it.endTime - it.startTime) <= 60_000L }.toFloat() / deviceSessions.size.toFloat()
+    } else {
+        0f
+    }
+    val reopenIntensity = if (timelineBuckets.count { it.deviceMillis > 0L } > 0) {
+        deviceOpenCounts.values.sum().toFloat() / timelineBuckets.count { it.deviceMillis > 0L }.toFloat()
+    } else {
+        0f
+    }
+    val longestSession = deviceSessions.maxByOrNull { it.endTime - it.startTime }?.let { session ->
+        AppDisplayItem(
+            packageName = session.packageName,
+            label = resolveAppLabel(context, session.packageName, installedAppMap),
+            value = session.endTime - session.startTime,
         )
     }
 
-    val usageByPackage = usageRepository.getUsageStats(range.startMillis, range.endMillis)
-        .filterKeys { uniquePackages.contains(it) }
-    val totalUsage = usageByPackage.values.sum()
-
-    val topApps = usageByPackage.toList()
-        .sortedByDescending { it.second }
-        .filter { it.second > 0L }
-        .take(3)
-
-    val bucketInsights = if (mode == StatsMode.DAY) {
-        emptyList()
-    } else {
-        buildBucketInsights(range, uniquePackages, usageRepository)
-    }
-    val usageBuckets = bucketInsights.map { it.totalMillis }
-
-    val managedSessions = if (mode == StatsMode.DAY) {
-        usageRepository.getUsageSessions(range.startMillis, range.endMillis)
-            .filter { uniquePackages.contains(it.packageName) }
-    } else {
-        emptyList()
-    }
-
-    val openCounts = if (mode == StatsMode.DAY) {
-        usageRepository.getAppOpenCount(range.startMillis, range.endMillis)
-            .filterKeys { uniquePackages.contains(it) }
-    } else {
-        emptyMap()
-    }
-
-    val topOpenedApps = openCounts.toList().sortedByDescending { it.second }.take(3)
-    val longestSessions = managedSessions.sortedByDescending { it.endTime - it.startTime }.take(3)
-    val sleepSummary = if (mode == StatsMode.DAY) {
-        buildSleepSummary(anchorDate, uniquePackages, usageRepository, zoneId)
-    } else {
-        null
-    }
-
-    return StatsUiState(
-        isLoading = false,
-        isPermissionGranted = true,
-        mode = mode,
-        range = range,
-        managedPackages = uniquePackages,
-        totalUsageMillis = totalUsage,
-        usageBuckets = usageBuckets,
-        totalOpenCount = openCounts.values.sum(),
-        topApps = topApps,
-        topOpenedApps = topOpenedApps,
-        longestSessions = longestSessions,
-        sessions = managedSessions,
-        sleepSummary = sleepSummary,
-        bucketInsights = bucketInsights,
-        activeBucketCount = usageBuckets.count { it > 0L },
-        longestActiveStreak = buildLongestActiveStreak(usageBuckets),
-        peakBucketShare = if (totalUsage > 0L) {
-            (usageBuckets.maxOrNull() ?: 0L).toFloat() / totalUsage.toFloat()
-        } else {
-            0f
-        },
-        averageBucketUsageMillis = if (usageBuckets.isNotEmpty()) totalUsage / usageBuckets.size else 0L,
-    )
-}
-
-private fun buildStatsRange(
-    mode: StatsMode,
-    anchorDate: LocalDate,
-    zoneId: ZoneId,
-): StatsRange {
-    val today = LocalDate.now(zoneId)
-    val nowMillis = System.currentTimeMillis()
-
-    return when (mode) {
-        StatsMode.DAY -> {
-            val start = anchorDate.atStartOfDay(zoneId).toInstant().toEpochMilli()
-            val nextDay = anchorDate.plusDays(1).atStartOfDay(zoneId).toInstant().toEpochMilli()
-            StatsRange(
-                mode = mode,
-                startMillis = start,
-                endMillis = if (anchorDate == today) minOf(nowMillis, nextDay) else nextDay,
-                displayLabel = if (anchorDate == today) "今天" else anchorDate.format(DateTimeFormatter.ofPattern("M月d日")),
-                bucketStarts = (0 until 24).map { hour ->
-                    anchorDate.atStartOfDay(zoneId).plusHours(hour.toLong()).toInstant().toEpochMilli()
-                },
-                bucketLabels = (0 until 24).map { "${it}时" },
-                footerLabels = listOf("0", "6", "12", "18", "24"),
-                canNavigateForward = anchorDate.isBefore(today),
-            )
-        }
-
-        StatsMode.WEEK -> {
-            val weekStart = anchorDate.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
-            val nextWeek = weekStart.plusWeeks(1)
-            val currentWeekStart = today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
-            StatsRange(
-                mode = mode,
-                startMillis = weekStart.atStartOfDay(zoneId).toInstant().toEpochMilli(),
-                endMillis = if (weekStart == currentWeekStart) nowMillis else nextWeek.atStartOfDay(zoneId).toInstant().toEpochMilli(),
-                displayLabel = "${weekStart.format(DateTimeFormatter.ofPattern("M.d"))} - ${weekStart.plusDays(6).format(DateTimeFormatter.ofPattern("M.d"))}",
-                bucketStarts = (0 until 7).map { offset ->
-                    weekStart.plusDays(offset.toLong()).atStartOfDay(zoneId).toInstant().toEpochMilli()
-                },
-                bucketLabels = listOf("周一", "周二", "周三", "周四", "周五", "周六", "周日"),
-                footerLabels = listOf("一", "二", "三", "四", "五", "六", "日"),
-                canNavigateForward = weekStart.isBefore(currentWeekStart),
-            )
-        }
-
-        StatsMode.MONTH -> {
-            val monthStart = anchorDate.with(TemporalAdjusters.firstDayOfMonth())
-            val nextMonth = monthStart.plusMonths(1)
-            val currentMonthStart = today.with(TemporalAdjusters.firstDayOfMonth())
-            val daysInMonth = monthStart.lengthOfMonth()
-            StatsRange(
-                mode = mode,
-                startMillis = monthStart.atStartOfDay(zoneId).toInstant().toEpochMilli(),
-                endMillis = if (monthStart == currentMonthStart) nowMillis else nextMonth.atStartOfDay(zoneId).toInstant().toEpochMilli(),
-                displayLabel = monthStart.format(DateTimeFormatter.ofPattern("yyyy年M月")),
-                bucketStarts = (0 until daysInMonth).map { offset ->
-                    monthStart.plusDays(offset.toLong()).atStartOfDay(zoneId).toInstant().toEpochMilli()
-                },
-                bucketLabels = (1..daysInMonth).map { "${it}日" },
-                footerLabels = buildMonthFooterLabels(daysInMonth),
-                canNavigateForward = monthStart.isBefore(currentMonthStart),
-            )
-        }
-
-        StatsMode.YEAR -> {
-            val yearStart = anchorDate.with(TemporalAdjusters.firstDayOfYear())
-            val nextYear = yearStart.plusYears(1)
-            StatsRange(
-                mode = mode,
-                startMillis = yearStart.atStartOfDay(zoneId).toInstant().toEpochMilli(),
-                endMillis = if (yearStart.year == today.year) nowMillis else nextYear.atStartOfDay(zoneId).toInstant().toEpochMilli(),
-                displayLabel = yearStart.format(DateTimeFormatter.ofPattern("yyyy年")),
-                bucketStarts = (0 until 12).map { offset ->
-                    yearStart.plusMonths(offset.toLong()).atStartOfDay(zoneId).toInstant().toEpochMilli()
-                },
-                bucketLabels = (1..12).map { "${it}月" },
-                footerLabels = listOf("1月", "4月", "7月", "10月", "12月"),
-                canNavigateForward = yearStart.year < today.year,
-            )
-        }
-    }
-}
-
-private suspend fun buildUsageBuckets(
-    range: StatsRange,
-    managedPackages: List<String>,
-    usageRepository: UsageRepository,
-): List<Long> {
-    return buildBucketInsights(range, managedPackages, usageRepository).map { it.totalMillis }
-}
-
-private suspend fun buildBucketInsights(
-    range: StatsRange,
-    managedPackages: List<String>,
-    usageRepository: UsageRepository,
-): List<BucketInsight> {
-    val managedPackageSet = managedPackages.toSet()
-
-    return range.bucketStarts.mapIndexed { index, bucketStart ->
-        val bucketEnd = if (index == range.bucketStarts.lastIndex) {
-            range.endMillis
-        } else {
-            minOf(range.bucketStarts[index + 1], range.endMillis)
-        }
-        if (bucketStart >= range.endMillis) {
-            BucketInsight(
-                label = range.bucketLabels.getOrElse(index) { "${index + 1}" },
-                totalMillis = 0L,
-            )
-        } else {
-            val usageByPackage = usageRepository.getUsageStats(bucketStart, bucketEnd)
-                .filterKeys { it in managedPackageSet }
-            val topEntry = usageByPackage.maxByOrNull { it.value }
-            BucketInsight(
-                label = range.bucketLabels.getOrElse(index) { "${index + 1}" },
-                totalMillis = usageByPackage.values.sum(),
-                topPackage = topEntry?.key?.takeIf { (topEntry.value) > 0L },
-                topPackageMillis = topEntry?.value ?: 0L,
-            )
-        }
-    }
-}
-
-private suspend fun buildSleepSummary(
-    anchorDate: LocalDate,
-    managedPackages: List<String>,
-    usageRepository: UsageRepository,
-    zoneId: ZoneId,
-): SleepSummary? {
     val sleepWindowStart = anchorDate.minusDays(1).atTime(18, 0).atZone(zoneId).toInstant().toEpochMilli()
     val sleepWindowEnd = anchorDate.atTime(12, 0).atZone(zoneId).toInstant().toEpochMilli()
-    val nightStart = anchorDate.minusDays(1).atTime(21, 0).atZone(zoneId).toInstant().toEpochMilli()
-    val morningEnd = anchorDate.atTime(10, 0).atZone(zoneId).toInstant().toEpochMilli()
+    val sleepSessions = usageRepository.getUsageSessions(sleepWindowStart, sleepWindowEnd).filter { it.endTime > it.startTime }
+    val sleepPackages = selectDevicePackages(
+        context = context,
+        installedAppMap = installedAppMap,
+        managedPackages = managedPackages,
+        packages = sleepSessions.map { it.packageName },
+    ).keys
+    val filteredSleepSessions = sleepSessions.filter { it.packageName in sleepPackages }.sortedBy { it.startTime }
+    val beforeSleep = filteredSleepSessions.lastOrNull { it.startTime < anchorDate.atTime(3, 0).atZone(zoneId).toInstant().toEpochMilli() }
+    val afterWake = filteredSleepSessions.firstOrNull { it.startTime >= anchorDate.atTime(5, 0).atZone(zoneId).toInstant().toEpochMilli() }
 
-    val sessions = usageRepository.getUsageSessions(sleepWindowStart, sleepWindowEnd)
-        .filter { managedPackages.contains(it.packageName) }
-        .sortedBy { it.startTime }
-
-    var previousEnd = sleepWindowStart
-    var bestStart = nightStart
-    var bestEnd = nightStart
-    var bestGap = 0L
-
-    val anchoredSessions = if (sessions.isEmpty()) {
-        emptyList()
-    } else {
-        sessions
-    }
-
-    anchoredSessions.forEach { session ->
-        val candidateStart = maxOf(previousEnd, nightStart)
-        val candidateEnd = minOf(session.startTime, morningEnd)
-        val candidateGap = candidateEnd - candidateStart
-        if (candidateGap > bestGap) {
-            bestGap = candidateGap
-            bestStart = candidateStart
-            bestEnd = candidateEnd
-        }
-        previousEnd = maxOf(previousEnd, session.endTime)
-    }
-
-    val tailStart = maxOf(previousEnd, nightStart)
-    val tailGap = morningEnd - tailStart
-    if (tailGap > bestGap) {
-        bestGap = tailGap
-        bestStart = tailStart
-        bestEnd = morningEnd
-    }
-
-    if (bestGap < 90 * 60 * 1000L) {
-        return null
-    }
-
-    val preWindowUsage = collectWindowUsageByPackage(
-        sessions = sessions,
-        windowStart = bestStart - 60 * 60 * 1000L,
-        windowEnd = bestStart,
-    )
-    val postWindowUsage = collectWindowUsageByPackage(
-        sessions = sessions,
-        windowStart = bestEnd,
-        windowEnd = bestEnd + 60 * 60 * 1000L,
-    )
-
-    val preTop = preWindowUsage.maxByOrNull { it.value }
-    val postTop = postWindowUsage.maxByOrNull { it.value }
-
-    return SleepSummary(
-        windowStartMillis = sleepWindowStart,
-        windowEndMillis = sleepWindowEnd,
-        durationMillis = bestGap,
-        startMillis = bestStart,
-        endMillis = bestEnd,
-        preSleepTopPackage = preTop?.key,
-        preSleepTopMillis = preTop?.value ?: 0L,
-        postWakeTopPackage = postTop?.key,
-        postWakeTopMillis = postTop?.value ?: 0L,
+    return UsageBehaviorInsight(
+        peakHourLabel = peakHour?.label ?: "--",
+        peakHourMillis = peakHour?.deviceMillis ?: 0L,
+        peakTwoHourLabel = peakTwoHour?.first?.let { "${it.first().label}-${it.last().hour + 1}时" } ?: "--",
+        peakTwoHourMillis = peakTwoHour?.second ?: 0L,
+        nightUsageMillis = timelineBuckets.filter { it.hour < 6 || it.hour >= 22 }.sumOf { it.deviceMillis },
+        longestSession = longestSession,
+        averageSessionMillis = averageSessionMillis,
+        shortSessionRatio = shortSessionRatio,
+        reopenIntensity = reopenIntensity,
+        beforeSleep = BehaviorAppMoment(
+            label = "睡前最后在用",
+            packageName = beforeSleep?.packageName,
+            appLabel = beforeSleep?.packageName?.let { resolveAppLabel(context, it, installedAppMap) },
+        ),
+        afterWake = BehaviorAppMoment(
+            label = "起床后先打开",
+            packageName = afterWake?.packageName,
+            appLabel = afterWake?.packageName?.let { resolveAppLabel(context, it, installedAppMap) },
+        ),
     )
 }
 
-private fun collectWindowUsageByPackage(
+private fun buildDailyReportSummary(
+    date: LocalDate,
+    zoneId: ZoneId,
+    nowMillis: Long,
+    deviceOverview: ScopeOverview,
+    periodUsage: List<PeriodUsageStat>,
+    yesterdayMetrics: WindowMetrics,
+    averageMetrics: WindowMetrics,
+): DailyReportSummary {
+    val intensity = when {
+        averageMetrics.deviceUsageMillis > 0L &&
+            deviceOverview.totalUsageMillis > averageMetrics.deviceUsageMillis * 1.15f -> "今天手机使用偏重"
+        averageMetrics.deviceUsageMillis > 0L &&
+            deviceOverview.totalUsageMillis < averageMetrics.deviceUsageMillis * 0.85f -> "今天手机使用偏轻"
+        else -> "今天手机使用接近平时"
+    }
+    val dominantPeriod = periodUsage.maxByOrNull { it.deviceMillis }?.label ?: "全天"
+    val intensityTag = when {
+        averageMetrics.deviceUsageMillis > 0L &&
+            deviceOverview.totalUsageMillis > averageMetrics.deviceUsageMillis * 1.15f -> "重度使用"
+        averageMetrics.deviceUsageMillis > 0L &&
+            deviceOverview.totalUsageMillis < averageMetrics.deviceUsageMillis * 0.85f -> "使用克制"
+        else -> "接近日常"
+    }
+    val periodTag = "${dominantPeriod}集中"
+    val openTag = when {
+        yesterdayMetrics.deviceOpenCount > 0 &&
+            deviceOverview.openCount > yesterdayMetrics.deviceOpenCount * 1.15f -> "切换偏频繁"
+        deviceOverview.openCount == 0 -> "尚无记录"
+        else -> "打开节奏正常"
+    }
+    val formattedDate = date.format(DateTimeFormatter.ofPattern("M月d日 EEEE", Locale.CHINA))
+    val capturedAt = java.time.Instant.ofEpochMilli(nowMillis)
+        .atZone(zoneId)
+        .toLocalTime()
+        .format(DateTimeFormatter.ofPattern("HH:mm", Locale.CHINA))
+    return DailyReportSummary(
+        title = "今日战报",
+        subtitle = formattedDate,
+        capturedAt = "采样截至 $capturedAt",
+        message = "$intensity，主要集中在$dominantPeriod，$openTag。",
+        primaryValue = formatDuration(deviceOverview.totalUsageMillis),
+        secondaryValue = deltaDescription(deviceOverview.totalUsageMillis, yesterdayMetrics.deviceUsageMillis, "较昨天"),
+        tertiaryValue = deltaDescription(deviceOverview.totalUsageMillis, averageMetrics.deviceUsageMillis, "较近 7 日"),
+        tags = listOf(intensityTag, periodTag, openTag),
+    )
+}
+
+private fun buildComparisonMetrics(
+    deviceOverview: ScopeOverview,
+    behaviorInsight: UsageBehaviorInsight,
+    longestSessionMillis: Long,
+    yesterdayMetrics: WindowMetrics,
+    averageMetrics: WindowMetrics,
+): List<ComparisonMetric> {
+    return listOf(
+        ComparisonMetric(
+            label = "全机总时长",
+            todayValue = formatDuration(deviceOverview.totalUsageMillis),
+            yesterdayDelta = deltaDescription(deviceOverview.totalUsageMillis, yesterdayMetrics.deviceUsageMillis, "较昨天"),
+            averageDelta = deltaDescription(deviceOverview.totalUsageMillis, averageMetrics.deviceUsageMillis, "较均值"),
+        ),
+        ComparisonMetric(
+            label = "打开次数",
+            todayValue = "${deviceOverview.openCount} 次",
+            yesterdayDelta = deltaDescription(deviceOverview.openCount.toLong(), yesterdayMetrics.deviceOpenCount.toLong(), "较昨天", countUnit = "次"),
+            averageDelta = deltaDescription(deviceOverview.openCount.toLong(), averageMetrics.deviceOpenCount.toLong(), "较均值", countUnit = "次"),
+        ),
+        ComparisonMetric(
+            label = "夜间使用",
+            todayValue = formatDuration(behaviorInsight.nightUsageMillis),
+            yesterdayDelta = deltaDescription(behaviorInsight.nightUsageMillis, yesterdayMetrics.nightUsageMillis, "较昨天"),
+            averageDelta = deltaDescription(behaviorInsight.nightUsageMillis, averageMetrics.nightUsageMillis, "较均值"),
+        ),
+        ComparisonMetric(
+            label = "最长单次会话",
+            todayValue = formatDuration(longestSessionMillis),
+            yesterdayDelta = deltaDescription(longestSessionMillis, yesterdayMetrics.longestSessionMillis, "较昨天"),
+            averageDelta = deltaDescription(longestSessionMillis, averageMetrics.longestSessionMillis, "较均值"),
+        ),
+    )
+}
+
+private fun buildTimelineBuckets(
+    startMillis: Long,
+    endMillis: Long,
+    deviceSessions: List<AppSession>,
+): List<DailyTimelineBucket> {
+    return (0 until 24).map { hour ->
+        val bucketStart = startMillis + hour * 60L * 60_000L
+        val bucketEnd = minOf(bucketStart + 60L * 60_000L, endMillis)
+        DailyTimelineBucket(
+            hour = hour,
+            label = "${hour}时",
+            deviceMillis = bucketDuration(deviceSessions, bucketStart, bucketEnd),
+        )
+    }
+}
+
+private fun buildPeriodUsageStats(
+    timelineBuckets: List<DailyTimelineBucket>,
+): List<PeriodUsageStat> {
+    val groups = listOf(
+        "凌晨" to 0..5,
+        "上午" to 6..11,
+        "下午" to 12..17,
+        "晚间" to 18..23,
+    )
+    return groups.map { (label, range) ->
+        val buckets = timelineBuckets.filter { it.hour in range }
+        PeriodUsageStat(
+            label = label,
+            deviceMillis = buckets.sumOf { it.deviceMillis },
+        )
+    }
+}
+
+private fun bucketDuration(
     sessions: List<AppSession>,
-    windowStart: Long,
-    windowEnd: Long,
-): Map<String, Long> {
-    if (windowEnd <= windowStart) return emptyMap()
-
-    val usageByPackage = mutableMapOf<String, Long>()
-    sessions.forEach { session ->
-        val overlapStart = maxOf(session.startTime, windowStart)
-        val overlapEnd = minOf(session.endTime, windowEnd)
-        val overlap = overlapEnd - overlapStart
-        if (overlap > 0L) {
-            usageByPackage[session.packageName] = usageByPackage.getOrDefault(session.packageName, 0L) + overlap
-        }
+    bucketStart: Long,
+    bucketEnd: Long,
+): Long {
+    if (bucketEnd <= bucketStart) return 0L
+    return sessions.sumOf { session ->
+        val overlapStart = maxOf(bucketStart, session.startTime)
+        val overlapEnd = minOf(bucketEnd, session.endTime)
+        maxOf(0L, overlapEnd - overlapStart)
     }
-    return usageByPackage
 }
 
-private fun buildMonthFooterLabels(daysInMonth: Int): List<String> {
-    val markers = listOf(1, daysInMonth / 4, daysInMonth / 2, (daysInMonth * 3) / 4, daysInMonth)
-    return markers.distinct().map { it.coerceAtLeast(1).toString() }
-}
-
-private fun buildLongestActiveStreak(values: List<Long>): Int {
-    var best = 0
-    var current = 0
-    values.forEach { value ->
-        if (value > 0L) {
-            current += 1
-            best = maxOf(best, current)
-        } else {
-            current = 0
+private fun selectDevicePackages(
+    context: Context,
+    installedAppMap: Map<String, ManagedApp>,
+    managedPackages: Set<String>,
+    packages: Iterable<String>,
+): Map<String, AppIdentity> {
+    val packageManager = context.packageManager
+    return packages.asSequence()
+        .filter { it.isNotBlank() }
+        .distinct()
+        .mapNotNull { packageName ->
+            val managed = packageName in managedPackages
+            val installed = installedAppMap[packageName]
+            val label = installed?.appName ?: resolveAppLabel(context, packageName, installedAppMap)
+            val isLaunchable = installed?.isLaunchable
+                ?: (packageManager.getLaunchIntentForPackage(packageName) != null)
+            if (!managed && !isLaunchable) return@mapNotNull null
+            if (shouldExcludePackage(context, packageName, label, managed)) return@mapNotNull null
+            AppIdentity(
+                packageName = packageName,
+                label = label,
+                isLaunchable = isLaunchable,
+            )
         }
-    }
-    return best
+        .associateBy { it.packageName }
 }
 
-private fun shiftAnchorDate(anchorDate: LocalDate, mode: StatsMode, offset: Long): LocalDate {
-    return when (mode) {
-        StatsMode.DAY -> anchorDate.plusDays(offset)
-        StatsMode.WEEK -> anchorDate.plusWeeks(offset)
-        StatsMode.MONTH -> anchorDate.plusMonths(offset)
-        StatsMode.YEAR -> anchorDate.plusYears(offset)
+private fun shouldExcludePackage(
+    context: Context,
+    packageName: String,
+    label: String,
+    isManaged: Boolean,
+): Boolean {
+    if (isManaged) return false
+    if (packageName == context.packageName) return true
+
+    val packageLower = packageName.lowercase(Locale.ROOT)
+    val labelLower = label.lowercase(Locale.ROOT)
+    val exactNoise = setOf(
+        "com.android.systemui",
+        "com.google.android.packageinstaller",
+        "com.android.permissioncontroller",
+        "com.android.inputmethod.latin",
+        "com.google.android.inputmethod.latin",
+        "com.miui.home",
+        "com.android.launcher",
+        "com.android.launcher3",
+    )
+    if (packageLower in exactNoise) return true
+
+    val noiseKeywords = listOf(
+        "launcher",
+        "systemui",
+        "packageinstaller",
+        "permissioncontroller",
+        "inputmethod",
+        "ime",
+        "documentsui",
+    )
+    return noiseKeywords.any { keyword ->
+        packageLower.contains(keyword) || labelLower.contains(keyword)
+    }
+}
+
+private fun resolveAppLabel(
+    context: Context,
+    packageName: String,
+    installedAppMap: Map<String, ManagedApp>,
+): String {
+    installedAppMap[packageName]?.appName?.let { return it }
+    return try {
+        context.packageManager.getApplicationLabel(
+            context.packageManager.getApplicationInfo(packageName, 0),
+        ).toString()
+    } catch (_: Exception) {
+        packageName
     }
 }
 
 @Composable
 private fun StatsScreenLayout(
-    state: StatsUiState,
-    userPoints: Double,
-    todayPoints: Double,
-    onModeChange: (StatsMode) -> Unit,
-    onNavigatePrevious: () -> Unit,
-    onNavigateNext: () -> Unit,
+    state: DailyReportUiState,
+    onTabSelected: (ReportTab) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    if (!state.isPermissionGranted || state.range == null) {
-        Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Text("核心权限未开启", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    val background = Brush.verticalGradient(
+        colors = listOf(
+            MaterialTheme.colorScheme.background,
+            MaterialTheme.colorScheme.surfaceContainerLow,
+            MaterialTheme.colorScheme.background,
+        ),
+    )
+
+    Box(
+        modifier = modifier
+            .fillMaxSize()
+            .background(background),
+    ) {
+        when {
+            !state.isPermissionGranted -> PermissionRequiredState()
+            state.isLoading -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                CircularProgressIndicator()
+            }
+            state.selectedTab != ReportTab.DAY -> PlaceholderReportScreen(
+                state = state,
+                onTabSelected = onTabSelected,
+            )
+            else -> DailyReportScreen(
+                state = state,
+                onTabSelected = onTabSelected,
+            )
         }
-        return
     }
+}
 
-    if (state.isLoading) {
-        Box(modifier = modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            CircularProgressIndicator()
-        }
-        return
-    }
-
-    val context = LocalContext.current
-    val appColors = remember(state.managedPackages) {
-        val colors = listOf(Color(0xFF2196F3), Color(0xFF4CAF50), Color(0xFFFFC107), Color(0xFFE91E63), Color(0xFF9C27B0))
-        state.managedPackages.mapIndexed { index, pkg -> pkg to colors[index % colors.size] }.toMap()
-    }
-
+@Composable
+private fun DailyReportScreen(
+    state: DailyReportUiState,
+    onTabSelected: (ReportTab) -> Unit,
+) {
     LazyColumn(
-        modifier = modifier.fillMaxSize().background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        modifier = Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         item {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("洞察", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.ExtraBold)
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 20.dp, vertical = 18.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp),
+            ) {
+                ReportTabRow(selectedTab = state.selectedTab, onTabSelected = onTabSelected)
+                if (state.summary != null && state.deviceOverview != null) {
+                    DeviceHeroCard(
+                        summary = state.summary,
+                        overview = state.deviceOverview,
+                        behaviorInsight = state.behaviorInsight,
+                    )
+                }
+                TimelineCard(
+                    buckets = state.timelineBuckets,
+                    periodUsage = state.periodUsage,
+                    behaviorInsight = state.behaviorInsight,
+                )
+                AppChartsCard(
+                    usageTopApps = state.usageTopApps,
+                )
+                BehaviorCard(
+                    behaviorInsight = state.behaviorInsight,
+                )
+                ComparisonCard(state.comparisons)
+                Spacer(modifier = Modifier.height(24.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun PlaceholderReportScreen(
+    state: DailyReportUiState,
+    onTabSelected: (ReportTab) -> Unit,
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(horizontal = 20.dp, vertical = 18.dp),
+        verticalArrangement = Arrangement.spacedBy(16.dp),
+    ) {
+        ReportTabRow(selectedTab = state.selectedTab, onTabSelected = onTabSelected)
+        ReportCard {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Surface(
+                    shape = RoundedCornerShape(999.dp),
+                    color = MaterialTheme.colorScheme.secondaryContainer,
+                ) {
+                    Text(
+                        text = "趋势维度待开放",
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                    )
+                }
                 Text(
-                    "按日、周、月、年切换看使用趋势。",
+                    text = state.placeholderTitle.orEmpty(),
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold,
+                )
+                Text(
+                    text = state.placeholderDescription.orEmpty(),
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Surface(
+                    shape = RoundedCornerShape(18.dp),
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                ) {
+                    Text(
+                        text = "当前先把日报做满，趋势页会在日快照能力稳定后开放。",
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PermissionRequiredState() {
+    val context = LocalContext.current
+    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+        ReportCard(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp),
+        ) {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Default.BarChart,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(28.dp),
+                )
+                Text(
+                    text = "战报需要读取使用记录权限",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                )
+                Text(
+                    text = "开启使用记录权限后，日报才能统计手机上的全天使用痕迹、Top 应用和行为趋势。",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-            }
-        }
-
-        item {
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                OverviewPill(label = "总积分", value = formatPoints(userPoints), modifier = Modifier.weight(1f))
-                OverviewPill(label = "今日积分", value = "+${formatPoints(todayPoints)}", modifier = Modifier.weight(1f))
-                OverviewPill(label = "管理 App", value = state.managedPackages.size.toString(), modifier = Modifier.weight(1f))
-            }
-        }
-
-        // App Icons Row
-        item {
-            LazyRow(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
-                items(state.managedPackages) { pkg ->
-                    val icon = remember(pkg) { try { context.packageManager.getApplicationIcon(pkg) } catch (e: Exception) { null } }
-                    val color = appColors[pkg] ?: Color.Gray
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        Surface(
-                            modifier = Modifier.size(48.dp),
-                            shape = CircleShape,
-                            color = MaterialTheme.colorScheme.surface,
-                            shadowElevation = 2.dp
-                        ) {
-                            if (icon != null) AsyncImage(model = icon, contentDescription = null, modifier = Modifier.padding(8.dp))
-                        }
-                        Spacer(Modifier.height(4.dp))
-                        Box(modifier = Modifier.width(20.dp).height(3.dp).background(color, RoundedCornerShape(1.5.dp)))
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Button(
+                        onClick = {
+                            context.startActivity(
+                                Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                            )
+                        },
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Text("去开启权限")
+                    }
+                    OutlinedButton(
+                        onClick = {
+                            context.startActivity(
+                                Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                            )
+                        },
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Text("系统设置")
                     }
                 }
             }
         }
+    }
+}
 
-        // Date Selector
-        item {
-            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-                @OptIn(ExperimentalMaterial3Api::class)
-                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                    StatsMode.entries.forEachIndexed { index, mode ->
-                        SegmentedButton(
-                            selected = state.mode == mode,
-                            onClick = { onModeChange(mode) },
-                            modifier = Modifier.semantics {
-                                contentDescription = "stats-mode-${mode.name.lowercase()}"
-                            },
-                            shape = SegmentedButtonDefaults.itemShape(index, StatsMode.entries.size),
-                        ) {
-                            Text(mode.label)
-                        }
-                    }
+@Composable
+private fun ReportTabRow(
+    selectedTab: ReportTab,
+    onTabSelected: (ReportTab) -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(20.dp))
+            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.82f))
+            .padding(6.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        ReportTab.entries.forEach { tab ->
+            val selected = selectedTab == tab
+            Surface(
+                modifier = Modifier.weight(1f),
+                shape = RoundedCornerShape(16.dp),
+                color = if (selected) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.5f)
+                },
+                onClick = { onTabSelected(tab) },
+            ) {
+                Box(
+                    modifier = Modifier.padding(vertical = 12.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = tab.label,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DeviceHeroCard(
+    summary: DailyReportSummary,
+    overview: ScopeOverview,
+    behaviorInsight: UsageBehaviorInsight?,
+) {
+    ReportCard {
+        AdaptiveRowGrid(
+            itemCount = 2,
+            compactColumns = 1,
+            expandedColumns = 2,
+            horizontalSpacing = 16.dp,
+            verticalSpacing = 16.dp,
+        ) { modifier, index ->
+            when (index) {
+                0 -> DeviceHeroVisualPanel(
+                    summary = summary,
+                    overview = overview,
+                    modifier = modifier,
+                )
+                else -> DeviceHeroMetricsPanel(
+                    summary = summary,
+                    overview = overview,
+                    behaviorInsight = behaviorInsight,
+                    modifier = modifier,
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun DeviceHeroVisualPanel(
+    summary: DailyReportSummary,
+    overview: ScopeOverview,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(28.dp),
+        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.42f),
+    ) {
+        BoxWithConstraints {
+            val compact = maxWidth < 360.dp
+            val dialSize = if (compact) 156.dp else 188.dp
+            val contentPadding = if (compact) 16.dp else 18.dp
+            val contentSpacing = if (compact) 12.dp else 14.dp
+            Column(
+                modifier = Modifier.padding(horizontal = contentPadding, vertical = contentPadding),
+                verticalArrangement = Arrangement.spacedBy(contentSpacing),
+            ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                    verticalAlignment = Alignment.Top,
                 ) {
-                    IconButton(
-                        onClick = onNavigatePrevious,
-                        modifier = Modifier.semantics { contentDescription = "stats-previous-range" }
-                    ) {
-                        Icon(Icons.Default.ChevronLeft, contentDescription = null)
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(
+                            text = summary.subtitle,
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Text(
+                            text = summary.title,
+                            style = MaterialTheme.typography.headlineSmall,
+                            fontWeight = FontWeight.Bold,
+                        )
                     }
                     Text(
-                        state.range.displayLabel,
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
+                        text = summary.capturedAt,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
-                    IconButton(
-                        onClick = onNavigateNext,
-                        enabled = state.range.canNavigateForward,
-                        modifier = Modifier.semantics { contentDescription = "stats-next-range" }
-                    ) {
-                        Icon(Icons.Default.ChevronRight, contentDescription = null)
+                }
+                Box(
+                    modifier = Modifier.fillMaxWidth(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    UsageDialChart(
+                        usageMillis = overview.totalUsageMillis,
+                        activeBucketCount = overview.activeBucketCount,
+                        modifier = Modifier.size(dialSize),
+                    )
+                }
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    summary.tags.forEach { tag ->
+                        SummaryTagChip(tag)
                     }
                 }
             }
         }
+    }
+}
 
-        // Card 1: Usage Stats
-        item {
-            InsightCard(title = "使用统计", extraText = state.range.displayLabel) {
-                if (state.totalUsageMillis == 0L) {
-                    Text(
-                        "当前时间段没有使用记录。",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                } else {
-                    val h = (state.totalUsageMillis / 3600_000).toInt()
-                    val m = ((state.totalUsageMillis % 3600_000) / 60_000).toInt()
-                    Row(verticalAlignment = Alignment.Bottom) {
-                        Text(h.toString(), style = MaterialTheme.typography.displayMedium, fontWeight = FontWeight.Black)
-                        Text("h", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(bottom = 8.dp, start = 2.dp))
-                        Text(m.toString(), style = MaterialTheme.typography.displayMedium, fontWeight = FontWeight.Black, modifier = Modifier.padding(start = 8.dp))
-                        Text("m", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(bottom = 8.dp, start = 2.dp))
-                    }
-
-                    Spacer(Modifier.height(16.dp))
-
-                    if (state.mode == StatsMode.DAY) {
-                        TimelineChart(
-                            sessions = state.sessions,
-                            startOfDay = state.range.startMillis,
-                            endMillis = state.range.endMillis,
-                            appColors = appColors
+@Composable
+private fun DeviceHeroMetricsPanel(
+    summary: DailyReportSummary,
+    overview: ScopeOverview,
+    behaviorInsight: UsageBehaviorInsight?,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(28.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.72f),
+    ) {
+        BoxWithConstraints {
+            val compact = maxWidth < 360.dp
+            val contentPadding = if (compact) 16.dp else 18.dp
+            val contentSpacing = if (compact) 12.dp else 14.dp
+            Column(
+                modifier = Modifier.padding(horizontal = contentPadding, vertical = contentPadding),
+                verticalArrangement = Arrangement.spacedBy(contentSpacing),
+            ) {
+                Text(
+                    text = summary.message,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                AdaptiveRowGrid(
+                    itemCount = 4,
+                    compactColumns = 2,
+                    expandedColumns = 2,
+                    horizontalSpacing = 10.dp,
+                    verticalSpacing = 10.dp,
+                ) { childModifier, index ->
+                    when (index) {
+                        0 -> HeroMetricChip(
+                            icon = Icons.Default.PhoneAndroid,
+                            label = "全机时长",
+                            value = summary.primaryValue,
+                            modifier = childModifier,
                         )
-                    } else {
-                        AggregateBarChart(
-                            values = state.usageBuckets,
-                            color = MaterialTheme.colorScheme.primary
+                        1 -> HeroMetricChip(
+                            icon = Icons.AutoMirrored.Filled.CompareArrows,
+                            label = "对比昨天",
+                            value = summary.secondaryValue,
+                            modifier = childModifier,
+                        )
+                        2 -> HeroMetricChip(
+                            icon = Icons.Default.TouchApp,
+                            label = "打开次数",
+                            value = "${overview.openCount} 次",
+                            modifier = childModifier,
+                        )
+                        else -> HeroMetricChip(
+                            icon = Icons.Default.NightsStay,
+                            label = "夜间使用",
+                            value = formatDuration(behaviorInsight?.nightUsageMillis ?: 0L),
+                            modifier = childModifier,
                         )
                     }
-
-                    Spacer(Modifier.height(16.dp))
-
-                    FooterLabels(state.range.footerLabels)
-
-                    if (state.mode != StatsMode.DAY) {
-                        Spacer(Modifier.height(16.dp))
-                        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                            OverviewPill(label = "活跃区段", value = state.activeBucketCount.toString(), modifier = Modifier.weight(1f))
-                            OverviewPill(label = "连续活跃", value = formatBucketCount(state.longestActiveStreak, state.mode), modifier = Modifier.weight(1f))
-                            OverviewPill(label = "平均时长", value = formatDurationCompact(state.averageBucketUsageMillis), modifier = Modifier.weight(1f))
-                        }
-                    }
-
-                    if (state.topApps.isNotEmpty()) {
-                        Spacer(Modifier.height(16.dp))
-                        state.topApps.forEach { (pkg, duration) ->
-                            AppProgressBarRow(
-                                pkg = pkg,
-                                duration = duration,
-                                maxDuration = maxOf(1L, state.topApps.firstOrNull()?.second ?: 1L),
-                                color = appColors[pkg] ?: Color.Gray
+                }
+                overview.topApp?.let { topApp ->
+                    Surface(
+                        shape = RoundedCornerShape(20.dp),
+                        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.86f),
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(
+                                horizontal = if (compact) 12.dp else 14.dp,
+                                vertical = if (compact) 10.dp else 12.dp,
+                            ),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(if (compact) 10.dp else 12.dp),
+                        ) {
+                            AppIconCircle(topApp.packageName)
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "今日主导 App",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Text(
+                                    text = topApp.label,
+                                    style = MaterialTheme.typography.titleMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                )
+                            }
+                            Text(
+                                text = formatDuration(topApp.value),
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
                             )
                         }
                     }
                 }
             }
         }
-
-        if (state.mode != StatsMode.DAY && state.usageBuckets.isNotEmpty()) {
-            item {
-                AggregateHighlightsCard(
-                    mode = state.mode,
-                    range = state.range,
-                    usageBuckets = state.usageBuckets,
-                )
-            }
-            item {
-                AggregateHeatmapCard(
-                    mode = state.mode,
-                    bucketInsights = state.bucketInsights,
-                    longestActiveStreak = state.longestActiveStreak,
-                    peakBucketShare = state.peakBucketShare,
-                    appColors = appColors,
-                )
-            }
-            item {
-                AggregateBucketRankingCard(
-                    mode = state.mode,
-                    bucketInsights = state.bucketInsights,
-                )
-            }
-        }
-
-        // Card 2: Intensity Distribution
-        if (state.mode == StatsMode.DAY) {
-            item {
-                InsightCard(title = "使用强度分布") {
-                    IntensityViolinChart(
-                        sessions = state.sessions,
-                        startOfDay = state.range.startMillis,
-                        endMillis = state.range.endMillis
-                    )
-                }
-            }
-        }
-
-        // Card 3: Sleep
-        if (state.mode == StatsMode.DAY) {
-            item {
-                InsightCard(title = "睡眠") {
-                    val sleepSummary = state.sleepSummary
-                    if (sleepSummary == null) {
-                        Text(
-                            "昨晚到今天上午之间没有足够长的连续空档，暂时无法推断稳定睡眠区间。",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    } else {
-                        val h = (sleepSummary.durationMillis / 3600_000).toInt()
-                        val m = ((sleepSummary.durationMillis % 3600_000) / 60_000).toInt()
-                        Row(verticalAlignment = Alignment.Bottom) {
-                            Text(h.toString(), style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold)
-                            Text("h", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(bottom = 4.dp, start = 2.dp))
-                            Text(m.toString(), style = MaterialTheme.typography.headlineLarge, fontWeight = FontWeight.Bold, modifier = Modifier.padding(start = 4.dp))
-                            Text("m", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(bottom = 4.dp, start = 2.dp))
-                        }
-                        val formatter = DateTimeFormatter.ofPattern("HH:mm")
-                        val startStr = java.time.Instant.ofEpochMilli(sleepSummary.startMillis).atZone(ZoneId.systemDefault()).format(formatter)
-                        val endStr = java.time.Instant.ofEpochMilli(sleepSummary.endMillis).atZone(ZoneId.systemDefault()).format(formatter)
-                        Text("$startStr - $endStr", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-
-                        Spacer(Modifier.height(16.dp))
-                        SleepTimelineChart(sleepSummary)
-
-                        Spacer(Modifier.height(16.dp))
-                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text("睡前 1 小时", style = MaterialTheme.typography.labelMedium)
-                                Text(
-                                    if (sleepSummary.preSleepTopPackage == null) "无明显使用"
-                                    else "${rememberAppLabel(sleepSummary.preSleepTopPackage)} · ${formatDurationCompact(sleepSummary.preSleepTopMillis)}",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                            }
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text("醒后 1 小时", style = MaterialTheme.typography.labelMedium)
-                                Text(
-                                    if (sleepSummary.postWakeTopPackage == null) "无明显使用"
-                                    else "${rememberAppLabel(sleepSummary.postWakeTopPackage)} · ${formatDurationCompact(sleepSummary.postWakeTopMillis)}",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.secondary
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Card 4: Single Addiction
-        if (state.mode == StatsMode.DAY && state.longestSessions.isNotEmpty()) {
-            item {
-                InsightCard(title = "单次沉迷数据") {
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly) {
-                        state.longestSessions.forEach { session ->
-                            val durationMins = (session.endTime - session.startTime) / 60000
-                            val color = appColors[session.packageName] ?: Color.Gray
-                            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                                AppIconCircle(session.packageName)
-                                Spacer(Modifier.height(4.dp))
-                                Text("${durationMins}m", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-                                val formatter = DateTimeFormatter.ofPattern("HH:mm")
-                                val s = java.time.Instant.ofEpochMilli(session.startTime).atZone(ZoneId.systemDefault()).format(formatter)
-                                val e = java.time.Instant.ofEpochMilli(session.endTime).atZone(ZoneId.systemDefault()).format(formatter)
-                                Text("$s-$e", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.outline)
-                                Spacer(Modifier.height(8.dp))
-                                Box(modifier = Modifier.width(4.dp).height(12.dp).background(color, RoundedCornerShape(2.dp)))
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Card 5: App Open Count
-        if (state.mode == StatsMode.DAY) {
-            item {
-                InsightCard(title = "App 打开次数") {
-                    Row(verticalAlignment = Alignment.Bottom) {
-                        Text(state.totalOpenCount.toString(), style = MaterialTheme.typography.displaySmall, fontWeight = FontWeight.Bold)
-                        Text("次", style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(bottom = 6.dp, start = 4.dp))
-                    }
-
-                    Spacer(Modifier.height(16.dp))
-
-                    OpenCountScatterChart(
-                        sessions = state.sessions,
-                        startOfDay = state.range.startMillis,
-                        endMillis = state.range.endMillis,
-                        appColors = appColors
-                    )
-
-                    Spacer(Modifier.height(16.dp))
-
-                    FooterLabels(state.range.footerLabels)
-
-                    Spacer(Modifier.height(16.dp))
-
-                    state.topOpenedApps.forEach { (pkg, counts) ->
-                        AppProgressBarRow(
-                            pkg = pkg,
-                            duration = counts.toLong(),
-                            maxDuration = maxOf(1L, state.topOpenedApps.firstOrNull()?.second?.toLong() ?: 1L),
-                            color = appColors[pkg] ?: Color.Gray,
-                            unit = "次"
-                        )
-                    }
-                }
-            }
-        }
     }
 }
 
 @Composable
-private fun OverviewPill(label: String, value: String, modifier: Modifier = Modifier) {
-    Surface(
-        modifier = modifier,
-        shape = RoundedCornerShape(18.dp),
-        color = MaterialTheme.colorScheme.surface,
-        shadowElevation = 1.dp
-    ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Text(value, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold)
-            Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-    }
-}
-
-@Composable
-private fun AggregateHighlightsCard(
-    mode: StatsMode,
-    range: StatsRange,
-    usageBuckets: List<Long>,
-) {
-    val peakIndex = usageBuckets.indices.maxByOrNull { usageBuckets[it] } ?: return
-    val lightIndex = usageBuckets.indices.minByOrNull { usageBuckets[it] } ?: return
-    val peakLabel = range.bucketLabels.getOrElse(peakIndex) { range.displayLabel }
-    val lightLabel = range.bucketLabels.getOrElse(lightIndex) { range.displayLabel }
-    val peakValue = usageBuckets[peakIndex]
-    val lightValue = usageBuckets[lightIndex]
-    val averageValue = if (usageBuckets.isEmpty()) 0L else usageBuckets.sum() / usageBuckets.size
-
-    val averageLabel = when (mode) {
-        StatsMode.WEEK, StatsMode.MONTH -> "日均"
-        StatsMode.YEAR -> "月均"
-        StatsMode.DAY -> "均值"
-    }
-
-    InsightCard(title = "聚合摘要") {
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            OverviewPill(label = "最高", value = "${peakLabel}\n${formatDurationCompact(peakValue)}", modifier = Modifier.weight(1f))
-            OverviewPill(label = "最低", value = "${lightLabel}\n${formatDurationCompact(lightValue)}", modifier = Modifier.weight(1f))
-            OverviewPill(label = averageLabel, value = formatDurationCompact(averageValue), modifier = Modifier.weight(1f))
-        }
-    }
-}
-
-@Composable
-private fun AggregateBucketRankingCard(
-    mode: StatsMode,
-    bucketInsights: List<BucketInsight>,
-) {
-    val rankedBuckets = bucketInsights.sortedByDescending { it.totalMillis }.take(5)
-
-    val title = when (mode) {
-        StatsMode.WEEK -> "本周高使用日"
-        StatsMode.MONTH -> "本月高使用日"
-        StatsMode.YEAR -> "本年高使用月"
-        StatsMode.DAY -> "高使用区段"
-    }
-
-    InsightCard(title = title) {
-        if (rankedBuckets.all { it.totalMillis == 0L }) {
-            Text(
-                "当前时间段没有可排序的使用记录。",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        } else {
-            rankedBuckets.filter { it.totalMillis > 0L }.forEachIndexed { index, bucket ->
-                BucketRankingRow(
-                    rank = index + 1,
-                    label = bucket.label,
-                    usageMillis = bucket.totalMillis,
-                    maxUsageMillis = rankedBuckets.firstOrNull()?.totalMillis ?: bucket.totalMillis,
-                    topPackage = bucket.topPackage,
-                    topPackageMillis = bucket.topPackageMillis,
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun AggregateHeatmapCard(
-    mode: StatsMode,
-    bucketInsights: List<BucketInsight>,
-    longestActiveStreak: Int,
-    peakBucketShare: Float,
-    appColors: Map<String, Color>,
-) {
-    val title = when (mode) {
-        StatsMode.WEEK -> "一周热力分布"
-        StatsMode.MONTH -> "当月热力分布"
-        StatsMode.YEAR -> "年度热力分布"
-        StatsMode.DAY -> "热力分布"
-    }
-    val columnCount = when (mode) {
-        StatsMode.WEEK -> 7
-        StatsMode.MONTH -> 7
-        StatsMode.YEAR -> 4
-        StatsMode.DAY -> 6
-    }
-    val maxUsage = bucketInsights.maxOfOrNull { it.totalMillis } ?: 0L
-    val heatRows = bucketInsights.chunked(columnCount)
-
-    InsightCard(title = title) {
-        Text(
-            "颜色越深代表使用时长越高，底部圆点表示该区间主导 App。",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Spacer(modifier = Modifier.height(12.dp))
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            OverviewPill(
-                label = "连续活跃",
-                value = formatBucketCount(longestActiveStreak, mode),
-                modifier = Modifier.weight(1f),
-            )
-            OverviewPill(
-                label = "峰值占比",
-                value = formatPercent(peakBucketShare),
-                modifier = Modifier.weight(1f),
-            )
-        }
-        Spacer(modifier = Modifier.height(16.dp))
-        heatRows.forEachIndexed { index, rowBuckets ->
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                rowBuckets.forEach { bucket ->
-                    AggregateHeatCell(
-                        bucket = bucket,
-                        maxUsage = maxUsage,
-                        appColor = bucket.topPackage?.let { appColors[it] } ?: MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.weight(1f),
-                    )
-                }
-                repeat(columnCount - rowBuckets.size) {
-                    Spacer(modifier = Modifier.weight(1f))
-                }
-            }
-            if (index != heatRows.lastIndex) {
-                Spacer(modifier = Modifier.height(8.dp))
-            }
-        }
-    }
-}
-
-@Composable
-private fun AggregateHeatCell(
-    bucket: BucketInsight,
-    maxUsage: Long,
-    appColor: Color,
+private fun UsageDialChart(
+    usageMillis: Long,
+    activeBucketCount: Int,
     modifier: Modifier = Modifier,
 ) {
-    val fillRatio = if (maxUsage <= 0L) 0f else bucket.totalMillis.toFloat() / maxUsage.toFloat()
-    val background = if (bucket.totalMillis == 0L) {
-        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.65f)
-    } else {
-        MaterialTheme.colorScheme.primary.copy(alpha = 0.14f + 0.62f * fillRatio.coerceIn(0f, 1f))
-    }
-
-    Surface(
-        modifier = modifier,
-        shape = RoundedCornerShape(18.dp),
-        color = background,
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .defaultMinSize(minHeight = 86.dp)
-                .padding(horizontal = 10.dp, vertical = 10.dp),
-            verticalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Text(
-                text = bucket.label,
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.SemiBold,
+    val capMillis = 12L * 60L * 60_000L
+    val progress by animateFloatAsState(
+        targetValue = (usageMillis.toFloat() / capMillis.toFloat()).coerceIn(0f, 1f),
+        animationSpec = spring(dampingRatio = 0.9f, stiffness = 180f),
+        label = "usage_dial_progress",
+    )
+    val arcColor = MaterialTheme.colorScheme.primary
+    Box(modifier = modifier, contentAlignment = Alignment.Center) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val stroke = size.minDimension * 0.1f
+            val diameter = size.minDimension - stroke
+            drawArc(
+                color = arcColor.copy(alpha = 0.14f),
+                startAngle = 145f,
+                sweepAngle = 250f,
+                useCenter = false,
+                topLeft = Offset((size.width - diameter) / 2f, (size.height - diameter) / 2f),
+                size = Size(diameter, diameter),
+                style = androidx.compose.ui.graphics.drawscope.Stroke(width = stroke),
             )
+            drawArc(
+                color = arcColor,
+                startAngle = 145f,
+                sweepAngle = 250f * progress,
+                useCenter = false,
+                topLeft = Offset((size.width - diameter) / 2f, (size.height - diameter) / 2f),
+                size = Size(diameter, diameter),
+                style = androidx.compose.ui.graphics.drawscope.Stroke(width = stroke),
+            )
+        }
+        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(
-                text = if (bucket.totalMillis > 0L) formatDurationCompact(bucket.totalMillis) else "--",
-                style = MaterialTheme.typography.titleSmall,
+                text = formatDuration(usageMillis),
+                style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.Bold,
             )
-            if (bucket.topPackage != null) {
+            Text(
+                text = "$activeBucketCount 个活跃小时",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun SummaryTagChip(tag: String) {
+    Surface(
+        shape = RoundedCornerShape(999.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
+    ) {
+        Text(
+            text = tag,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
+    }
+}
+
+@Composable
+private fun AdaptiveRowGrid(
+    itemCount: Int,
+    compactColumns: Int,
+    expandedColumns: Int,
+    horizontalSpacing: androidx.compose.ui.unit.Dp = 10.dp,
+    verticalSpacing: androidx.compose.ui.unit.Dp = 10.dp,
+    itemContent: @Composable (Modifier, Int) -> Unit,
+) {
+    BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+        val columns = if (maxWidth < 420.dp) compactColumns else expandedColumns
+        val rows = (0 until itemCount).toList().chunked(columns.coerceAtLeast(1))
+        Column(verticalArrangement = Arrangement.spacedBy(verticalSpacing)) {
+            rows.forEach { rowItems ->
                 Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(horizontalSpacing),
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(8.dp)
-                            .clip(CircleShape)
-                            .background(appColor),
-                    )
-                    Text(
-                        text = rememberAppLabel(bucket.topPackage),
-                        style = MaterialTheme.typography.labelSmall,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
+                    rowItems.forEach { index ->
+                        itemContent(Modifier.weight(1f), index)
+                    }
+                    repeat(columns - rowItems.size) {
+                        Spacer(modifier = Modifier.weight(1f))
+                    }
                 }
-            } else {
-                Text(
-                    text = "无明显使用",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
             }
         }
     }
 }
 
 @Composable
-private fun BucketRankingRow(
-    rank: Int,
+private fun HeroMetricChip(
+    icon: ImageVector,
     label: String,
-    usageMillis: Long,
-    maxUsageMillis: Long,
-    topPackage: String? = null,
-    topPackageMillis: Long = 0L,
+    value: String,
+    modifier: Modifier = Modifier,
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(20.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.8f),
     ) {
-        Text(
-            text = rank.toString(),
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.Bold,
-            color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.width(28.dp),
-        )
-        Column(modifier = Modifier.weight(1f)) {
+        Column(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(16.dp),
+            )
             Text(
                 text = label,
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.Medium,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Spacer(modifier = Modifier.height(4.dp))
-            LinearProgressIndicator(
-                progress = { (usageMillis.toFloat() / maxOf(1L, maxUsageMillis).toFloat()).coerceIn(0f, 1f) },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(6.dp)
-                    .clip(CircleShape),
-                color = MaterialTheme.colorScheme.secondary,
-                trackColor = MaterialTheme.colorScheme.secondary.copy(alpha = 0.15f),
+            Text(
+                text = value,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
             )
-            if (topPackage != null && topPackageMillis > 0L) {
-                Spacer(modifier = Modifier.height(6.dp))
-                Text(
-                    text = "主导 App: ${rememberAppLabel(topPackage)} · ${formatDurationCompact(topPackageMillis)}",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun TimelineCard(
+    buckets: List<DailyTimelineBucket>,
+    periodUsage: List<PeriodUsageStat>,
+    behaviorInsight: UsageBehaviorInsight?,
+) {
+    ReportCard {
+        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            SectionHeader(
+                icon = Icons.Default.Timeline,
+                title = "全天痕迹",
+                subtitle = "用图表看今天的时间分布、时段重心和峰值压力。",
+            )
+            DailyTimelineChart(buckets)
+            TimelineFooter()
+            AdaptiveRowGrid(
+                itemCount = 2,
+                compactColumns = 1,
+                expandedColumns = 2,
+                horizontalSpacing = 14.dp,
+                verticalSpacing = 14.dp,
+            ) { modifier, index ->
+                when (index) {
+                    0 -> PeriodDistributionCard(
+                        periodUsage = periodUsage,
+                        modifier = modifier,
+                    )
+                    else -> PeakMomentsCard(
+                        behaviorInsight = behaviorInsight,
+                        modifier = modifier,
+                    )
+                }
             }
         }
-        Spacer(modifier = Modifier.width(12.dp))
+    }
+}
+
+@Composable
+private fun DailyTimelineChart(
+    buckets: List<DailyTimelineBucket>,
+) {
+    val deviceColor = MaterialTheme.colorScheme.primary
+    val guideLineColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.14f)
+    val peakIndex = buckets.indexOfFirst { it.deviceMillis == (buckets.maxOfOrNull { bucket -> bucket.deviceMillis } ?: 0L) }
+    BoxWithConstraints {
+        val chartHeight = if (maxWidth < 360.dp) 138.dp else 156.dp
+        Canvas(modifier = Modifier.fillMaxWidth().height(chartHeight)) {
+            if (buckets.isEmpty()) return@Canvas
+            val deviceMax = buckets.maxOfOrNull { it.deviceMillis }?.coerceAtLeast(1L) ?: 1L
+            val slotWidth = size.width / buckets.size
+            val barWidth = slotWidth * 0.48f
+            val baseY = size.height
+
+            repeat(4) { index ->
+                val y = baseY - (index + 1) * (size.height / 4f)
+                drawLine(
+                    color = guideLineColor,
+                    start = Offset(0f, y),
+                    end = Offset(size.width, y),
+                    strokeWidth = 1f,
+                )
+            }
+
+            buckets.forEachIndexed { index, bucket ->
+                val x = slotWidth * index + (slotWidth - barWidth) / 2f
+                val deviceHeight = size.height * (bucket.deviceMillis.toFloat() / deviceMax.toFloat()).coerceIn(0f, 1f)
+                val isPeak = index == peakIndex && bucket.deviceMillis > 0L
+                val top = size.height - maxOf(6f, deviceHeight)
+                if (isPeak) {
+                    drawRoundRect(
+                        brush = Brush.verticalGradient(
+                            colors = listOf(
+                                deviceColor.copy(alpha = 0.18f),
+                                deviceColor.copy(alpha = 0f),
+                            ),
+                            startY = top - 24f,
+                            endY = baseY,
+                        ),
+                        topLeft = Offset(x - 4f, top - 16f),
+                        size = Size(barWidth + 8f, maxOf(16f, deviceHeight + 16f)),
+                        cornerRadius = CornerRadius(barWidth, barWidth),
+                    )
+                }
+                drawRoundRect(
+                    brush = Brush.verticalGradient(
+                        colors = if (isPeak) {
+                            listOf(
+                                Color.White.copy(alpha = 0.95f),
+                                deviceColor,
+                            )
+                        } else {
+                            listOf(
+                                deviceColor.copy(alpha = 0.54f),
+                                deviceColor.copy(alpha = if (bucket.deviceMillis > 0L) 0.9f else 0.14f),
+                            )
+                        },
+                        startY = top,
+                        endY = baseY,
+                    ),
+                    topLeft = Offset(x, top),
+                    size = Size(barWidth, maxOf(6f, deviceHeight)),
+                    cornerRadius = CornerRadius(barWidth / 2f, barWidth / 2f),
+                )
+                if (isPeak) {
+                    drawCircle(
+                        color = Color.White.copy(alpha = 0.95f),
+                        radius = barWidth * 0.22f,
+                        center = Offset(x + barWidth / 2f, top + barWidth * 0.3f),
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TimelineFooter() {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        listOf("0", "6", "12", "18", "24").forEach { label ->
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
+private fun PeriodDistributionCard(
+    periodUsage: List<PeriodUsageStat>,
+    modifier: Modifier = Modifier,
+) {
+    val total = periodUsage.sumOf { it.deviceMillis }.coerceAtLeast(1L)
+    val dominantIndex = periodUsage.indexOfFirst { it.deviceMillis == (periodUsage.maxOfOrNull { item -> item.deviceMillis } ?: 0L) }
+    val colors = listOf(
+        MaterialTheme.colorScheme.primary,
+        MaterialTheme.colorScheme.secondary,
+        MaterialTheme.colorScheme.tertiary,
+        Color(0xFFF59E0B),
+    )
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(22.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.7f),
+    ) {
+        BoxWithConstraints {
+            val donutSize = if (maxWidth < 360.dp) 148.dp else 170.dp
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text(
+                    text = "时段热力",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                )
+                Box(
+                    modifier = Modifier.fillMaxWidth(),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    PeriodDonutChart(
+                        values = periodUsage.map { it.deviceMillis },
+                        colors = colors,
+                        highlightedIndex = dominantIndex.takeIf { it >= 0 },
+                        modifier = Modifier.size(donutSize),
+                    )
+                }
+                periodUsage.forEachIndexed { index, item ->
+                    val share = item.deviceMillis.toFloat() / total.toFloat()
+                    PeriodLegendRow(
+                        label = item.label,
+                        value = formatDuration(item.deviceMillis),
+                        share = share,
+                        color = colors[index % colors.size],
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PeriodDonutChart(
+    values: List<Long>,
+    colors: List<Color>,
+    highlightedIndex: Int? = null,
+    modifier: Modifier = Modifier,
+) {
+    val total = values.sum().coerceAtLeast(1L)
+    val revealProgress by animateFloatAsState(
+        targetValue = if (values.any { it > 0L }) 1f else 0f,
+        animationSpec = spring(dampingRatio = 0.92f, stiffness = 160f),
+        label = "donut_reveal_progress",
+    )
+    Canvas(modifier = modifier) {
+        val baseStroke = size.minDimension * 0.13f
+        val diameter = size.minDimension - baseStroke
+        var startAngle = -90f
+        values.forEachIndexed { index, value ->
+            val sweep = 360f * (value.toFloat() / total.toFloat()) * revealProgress
+            val isHighlighted = highlightedIndex == index && value > 0L
+            val stroke = if (isHighlighted) baseStroke * 1.18f else baseStroke
+            val topLeft = Offset((size.width - diameter) / 2f, (size.height - diameter) / 2f)
+            val chartSize = Size(diameter, diameter)
+
+            if (isHighlighted) {
+                drawArc(
+                    color = colors[index % colors.size].copy(alpha = 0.16f),
+                    startAngle = startAngle - 2f,
+                    sweepAngle = sweep + 4f,
+                    useCenter = false,
+                    topLeft = topLeft,
+                    size = chartSize,
+                    style = androidx.compose.ui.graphics.drawscope.Stroke(width = stroke + 10f),
+                )
+            }
+            drawArc(
+                color = colors[index % colors.size].copy(alpha = if (value > 0L) 0.92f else 0.12f),
+                startAngle = startAngle,
+                sweepAngle = sweep,
+                useCenter = false,
+                topLeft = topLeft,
+                size = chartSize,
+                style = androidx.compose.ui.graphics.drawscope.Stroke(width = stroke),
+            )
+            startAngle += sweep
+        }
+    }
+}
+
+@Composable
+private fun PeriodLegendRow(
+    label: String,
+    value: String,
+    share: Float,
+    color: Color,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(10.dp)
+                .clip(CircleShape)
+                .background(color),
+        )
         Text(
-            text = formatDurationCompact(usageMillis),
+            text = label,
+            modifier = Modifier.width(36.dp),
+            style = MaterialTheme.typography.labelLarge,
+        )
+        LinearProgressIndicator(
+            progress = { share.coerceIn(0f, 1f) },
+            modifier = Modifier
+                .weight(1f)
+                .height(6.dp)
+                .clip(CircleShape),
+            color = color,
+            trackColor = color.copy(alpha = 0.14f),
+        )
+        Text(
+            text = value,
             style = MaterialTheme.typography.labelLarge,
             fontWeight = FontWeight.Bold,
         )
@@ -1098,176 +1556,45 @@ private fun BucketRankingRow(
 }
 
 @Composable
-fun AppIconCircle(pkg: String) {
-    val context = LocalContext.current
-    val icon = remember(pkg) { try { context.packageManager.getApplicationIcon(pkg) } catch (e: Exception) { null } }
+private fun PeakMomentsCard(
+    behaviorInsight: UsageBehaviorInsight?,
+    modifier: Modifier = Modifier,
+) {
     Surface(
-        modifier = Modifier.size(32.dp),
-        shape = CircleShape,
-        color = MaterialTheme.colorScheme.surfaceVariant
+        modifier = modifier,
+        shape = RoundedCornerShape(22.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.7f),
     ) {
-        if (icon != null) AsyncImage(model = icon, contentDescription = null, modifier = Modifier.padding(6.dp))
-    }
-}
-
-@Composable
-private fun rememberAppLabel(packageName: String?): String {
-    if (packageName == null) return ""
-    val context = LocalContext.current
-    return remember(packageName) {
-        try {
-            context.packageManager.getApplicationLabel(
-                context.packageManager.getApplicationInfo(packageName, 0)
-            ).toString()
-        } catch (_: Exception) {
-            packageName
-        }
-    }
-}
-
-private fun formatPoints(points: Double): String {
-    return if (points % 1.0 == 0.0) {
-        points.toInt().toString()
-    } else {
-        String.format("%.1f", points)
-    }
-}
-
-private fun formatDurationCompact(durationMillis: Long): String {
-    val totalMinutes = durationMillis / 60_000L
-    val hours = totalMinutes / 60
-    val minutes = totalMinutes % 60
-    return when {
-        hours > 0L -> "${hours}h${minutes}m"
-        minutes > 0L -> "${minutes}m"
-        else -> "${durationMillis / 1000L}s"
-    }
-}
-
-private fun formatBucketCount(count: Int, mode: StatsMode): String {
-    val unit = when (mode) {
-        StatsMode.WEEK, StatsMode.MONTH -> "天"
-        StatsMode.YEAR -> "月"
-        StatsMode.DAY -> "段"
-    }
-    return "${count}${unit}"
-}
-
-private fun formatPercent(value: Float): String = "${(value * 100).toInt()}%"
-
-@Composable
-fun AppProgressBarRow(pkg: String, duration: Long, maxDuration: Long, color: Color, unit: String = "") {
-    val context = LocalContext.current
-    val name = remember(pkg) { try { context.packageManager.getApplicationLabel(context.packageManager.getApplicationInfo(pkg, 0)).toString() } catch (e: Exception) { pkg } }
-
-    Row(
-        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        AppIconCircle(pkg)
-        Spacer(Modifier.width(12.dp))
-        Column(modifier = Modifier.weight(1f)) {
-            Text(name, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
-            Spacer(Modifier.height(4.dp))
-            LinearProgressIndicator(
-                progress = { (duration.toFloat() / maxDuration.toFloat()).coerceIn(0f, 1f) },
-                modifier = Modifier.fillMaxWidth().height(6.dp).clip(CircleShape),
-                color = color,
-                trackColor = color.copy(alpha = 0.15f)
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(
+                text = "峰值时刻",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
             )
-        }
-        Spacer(Modifier.width(16.dp))
-        val valueText = if (unit.isEmpty()) {
-            val h = duration / 3600_000
-            val m = (duration % 3600_000) / 60_000
-            if (h > 0) "${h}h ${m}m" else "${m}m"
-        } else {
-            "$duration $unit"
-        }
-        Text(valueText, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
-    }
-}
-
-@Composable
-fun InsightCard(title: String, extraText: String = "", content: @Composable ColumnScope.() -> Unit) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp),
-        color = MaterialTheme.colorScheme.surface,
-        shadowElevation = 0.dp
-    ) {
-        Column(modifier = Modifier.padding(24.dp)) {
-            Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                if (extraText.isNotEmpty()) {
-                    Surface(shape = RoundedCornerShape(12.dp), color = MaterialTheme.colorScheme.primaryContainer) {
-                        Text(extraText, modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimaryContainer)
-                    }
-                }
-            }
-            Spacer(Modifier.height(16.dp))
-            content()
-        }
-    }
-}
-
-@Composable
-private fun FooterLabels(labels: List<String>) {
-    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-        labels.forEach { label ->
-            Text(label, style = MaterialTheme.typography.labelSmall, color = Color.Gray)
-        }
-    }
-}
-
-@Composable
-private fun AggregateBarChart(values: List<Long>, color: Color) {
-    Canvas(modifier = Modifier.fillMaxWidth().height(120.dp)) {
-        if (values.isEmpty()) return@Canvas
-        val maxValue = values.maxOrNull()?.coerceAtLeast(1L) ?: 1L
-        val slotWidth = size.width / values.size
-        val barWidth = slotWidth * 0.56f
-        values.forEachIndexed { index, value ->
-            val ratio = value.toFloat() / maxValue.toFloat()
-            val barHeight = maxOf(8f, size.height * ratio.coerceIn(0f, 1f))
-            val x = slotWidth * index + (slotWidth - barWidth) / 2
-            drawRoundRect(
-                color = if (value == 0L) color.copy(alpha = 0.12f) else color.copy(alpha = 0.88f),
-                topLeft = Offset(x, size.height - barHeight),
-                size = Size(barWidth, barHeight),
-                cornerRadius = CornerRadius(barWidth / 2, barWidth / 2)
-            )
-        }
-    }
-}
-
-@Composable
-fun TimelineChart(sessions: List<AppSession>, startOfDay: Long, endMillis: Long, appColors: Map<String, Color>) {
-    Canvas(modifier = Modifier.fillMaxWidth().height(120.dp)) {
-        val w = size.width
-        val h = size.height
-        val totalRange = maxOf(1L, endMillis - startOfDay)
-        // Draw axes lines (0, 6, 12, 18, 0 hours)
-        for (i in 0..4) {
-            val x = w * (i / 4f)
-            drawLine(Color.LightGray.copy(alpha = 0.3f), Offset(x, 0f), Offset(x, h), strokeWidth = 2f)
-        }
-
-        // Draw sessions
-        sessions.forEach { session ->
-            val startRatio = (session.startTime - startOfDay).toFloat() / totalRange.toFloat()
-            val endRatio = (session.endTime - startOfDay).toFloat() / totalRange.toFloat()
-            if (startRatio in 0f..1f && endRatio in 0f..1f) {
-                val startX = w * startRatio
-                val endX = w * endRatio
-                val color = appColors[session.packageName] ?: Color.Gray
-                // randomly stagger y based on hash
-                val yOffset = (session.packageName.hashCode().absoluteValue % 5) * (h / 6f) + 10f
-                drawRoundRect(
-                    color = color.copy(alpha = 0.8f),
-                    topLeft = Offset(startX, yOffset),
-                    size = Size(maxOf(4f, endX - startX), 12f),
-                    cornerRadius = CornerRadius(6f)
+            if (behaviorInsight == null) {
+                Text(
+                    text = "今天的样本还不足以判断峰值。",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                MiniInsightCard(
+                    icon = Icons.Default.Bolt,
+                    label = "最重 1 小时",
+                    value = "${behaviorInsight.peakHourLabel} · ${formatDuration(behaviorInsight.peakHourMillis)}",
+                )
+                MiniInsightCard(
+                    icon = Icons.AutoMirrored.Filled.CallSplit,
+                    label = "最重连续 2 小时",
+                    value = "${behaviorInsight.peakTwoHourLabel} · ${formatDuration(behaviorInsight.peakTwoHourMillis)}",
+                )
+                MiniInsightCard(
+                    icon = Icons.Default.NightsStay,
+                    label = "夜间使用",
+                    value = formatDuration(behaviorInsight.nightUsageMillis),
                 )
             }
         }
@@ -1275,88 +1602,827 @@ fun TimelineChart(sessions: List<AppSession>, startOfDay: Long, endMillis: Long,
 }
 
 @Composable
-fun IntensityViolinChart(sessions: List<AppSession>, startOfDay: Long, endMillis: Long) {
-    Canvas(modifier = Modifier.fillMaxWidth().height(100.dp)) {
-        val w = size.width
-        val h = size.height
-        val chunks = 48
-        val chunkMillis = maxOf(1L, (endMillis - startOfDay) / chunks)
-        val intensity = IntArray(chunks)
-
-        sessions.forEach { s ->
-            for (i in 0 until chunks) {
-                val cStart = startOfDay + i * chunkMillis
-                val cEnd = if (i == chunks - 1) endMillis else cStart + chunkMillis
-                val overlap = maxOf(0L, minOf(s.endTime, cEnd) - maxOf(s.startTime, cStart))
-                intensity[i] += overlap.toInt()
-            }
+private fun rememberAppChartColors(
+    packageNames: List<String>,
+): Map<String, Color> {
+    val context = LocalContext.current
+    val stablePackages = remember(packageNames) { packageNames.distinct() }
+    val fallbackColors = remember {
+        listOf(
+            Color(0xFF4F7BFF),
+            Color(0xFF17A398),
+            Color(0xFFF59E0B),
+            Color(0xFFE85D75),
+            Color(0xFF8B5CF6),
+            Color(0xFF06B6D4),
+            Color(0xFF84CC16),
+            Color(0xFFF97316),
+            Color(0xFF0EA5E9),
+            Color(0xFFA855F7),
+        )
+    }
+    val colors by produceState(
+        initialValue = stablePackages.mapIndexed { index, pkg -> pkg to fallbackColors[index % fallbackColors.size] }.toMap(),
+        key1 = stablePackages,
+    ) {
+        value = withContext(Dispatchers.Default) {
+            stablePackages.mapIndexed { index, packageName ->
+                packageName to extractAppChartColor(context, packageName, fallbackColors[index % fallbackColors.size])
+            }.toMap()
         }
+    }
+    return colors
+}
 
-        val maxI = intensity.maxOrNull()?.toFloat()?.coerceAtLeast(1f) ?: 1f
+private fun extractAppChartColor(
+    context: Context,
+    packageName: String,
+    fallback: Color,
+): Color {
+    val drawable = runCatching { context.packageManager.getApplicationIcon(packageName) }.getOrNull()
+        ?: return fallback
+    val bitmap = drawable.toBitmap(width = 128, height = 128, config = Bitmap.Config.ARGB_8888)
+    val rgb = extractDominantBitmapColor(bitmap) ?: return fallback
+    return normalizeChartColor(Color(rgb), fallback)
+}
 
-        val barWidth = w / chunks * 0.6f
-        for (i in 0 until chunks) {
-            val ratio = intensity[i] / maxI
-            val barH = maxOf(4f, h * ratio)
-            val x = w * (i.toFloat() / chunks) + (w / chunks - barWidth) / 2
-            val y = (h - barH) / 2
-            drawRoundRect(
-                color = Color.Gray.copy(alpha = 0.5f),
-                topLeft = Offset(x, y),
-                size = Size(barWidth, barH),
-                cornerRadius = CornerRadius(barWidth / 2)
+private fun extractDominantBitmapColor(bitmap: Bitmap): Int? {
+    val scaled = Bitmap.createScaledBitmap(bitmap, 40, 40, true)
+    val buckets = HashMap<Int, Int>()
+    for (x in 0 until scaled.width) {
+        for (y in 0 until scaled.height) {
+            val pixel = scaled.getPixel(x, y)
+            val alpha = android.graphics.Color.alpha(pixel)
+            if (alpha < 180) continue
+
+            val red = android.graphics.Color.red(pixel)
+            val green = android.graphics.Color.green(pixel)
+            val blue = android.graphics.Color.blue(pixel)
+            val max = maxOf(red, green, blue)
+            val min = minOf(red, green, blue)
+            val saturation = if (max == 0) 0f else (max - min).toFloat() / max.toFloat()
+            val luminance = (0.2126f * red + 0.7152f * green + 0.0722f * blue) / 255f
+
+            if (luminance < 0.08f || luminance > 0.94f) continue
+            if (saturation < 0.12f) continue
+
+            val bucket = ((red shr 4) shl 8) or ((green shr 4) shl 4) or (blue shr 4)
+            buckets[bucket] = buckets.getOrDefault(bucket, 0) + 1
+        }
+    }
+
+    val dominantBucket = buckets.maxByOrNull { it.value }?.key ?: return null
+    val red = ((dominantBucket shr 8) and 0xF) * 17
+    val green = ((dominantBucket shr 4) and 0xF) * 17
+    val blue = (dominantBucket and 0xF) * 17
+    return android.graphics.Color.rgb(red, green, blue)
+}
+
+private fun normalizeChartColor(
+    color: Color,
+    fallback: Color,
+): Color {
+    val luminance = color.luminance()
+    return when {
+        luminance < 0.08f -> Color(
+            red = color.red * 0.55f + fallback.red * 0.45f,
+            green = color.green * 0.55f + fallback.green * 0.45f,
+            blue = color.blue * 0.55f + fallback.blue * 0.45f,
+            alpha = 1f,
+        )
+        luminance > 0.88f -> Color(
+            red = color.red * 0.65f + fallback.red * 0.35f,
+            green = color.green * 0.65f + fallback.green * 0.35f,
+            blue = color.blue * 0.65f + fallback.blue * 0.35f,
+            alpha = 1f,
+        )
+        else -> color.copy(alpha = 1f)
+    }
+}
+
+private fun fallbackChartColor(index: Int): Color {
+    val colors = listOf(
+        Color(0xFF4F7BFF),
+        Color(0xFF17A398),
+        Color(0xFFF59E0B),
+        Color(0xFFE85D75),
+        Color(0xFF8B5CF6),
+        Color(0xFF06B6D4),
+        Color(0xFF84CC16),
+        Color(0xFFF97316),
+        Color(0xFF0EA5E9),
+        Color(0xFFA855F7),
+    )
+    return colors[index % colors.size]
+}
+
+@Composable
+private fun TopUsageBarRow(
+    rank: Int,
+    item: AppDisplayItem,
+    maxUsage: Long,
+    color: Color,
+) {
+    val isTopRank = rank == 1
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(20.dp),
+        color = if (isTopRank) color.copy(alpha = 0.08f) else Color.Transparent,
+        border = if (isTopRank) BorderStroke(1.dp, color.copy(alpha = 0.22f)) else null,
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 10.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Surface(
+                modifier = Modifier.width(28.dp),
+                shape = RoundedCornerShape(999.dp),
+                color = color.copy(alpha = if (isTopRank) 0.22f else 0.14f),
+            ) {
+                Box(
+                    modifier = Modifier.padding(vertical = 6.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = rank.toString(),
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = color,
+                    )
+                }
+            }
+            AppIconCircle(item.packageName)
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text(
+                    text = item.label,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = if (isTopRank) FontWeight.Bold else FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                GradientProgressBar(
+                    progress = (item.value.toFloat() / maxUsage.toFloat()).coerceIn(0f, 1f),
+                    color = color,
+                )
+            }
+            Text(
+                text = formatDuration(item.value),
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold,
             )
         }
     }
 }
 
 @Composable
-private fun SleepTimelineChart(summary: SleepSummary) {
-    Canvas(modifier = Modifier.fillMaxWidth().height(40.dp)) {
-        val w = size.width
-        val h = size.height
-        val totalRange = maxOf(1L, summary.windowEndMillis - summary.windowStartMillis)
-        drawLine(
-            Color.LightGray.copy(alpha = 0.3f),
-            Offset(0f, h / 2),
-            Offset(w, h / 2),
-            strokeWidth = 8f
+private fun GradientProgressBar(
+    progress: Float,
+    color: Color,
+    modifier: Modifier = Modifier,
+) {
+    val animatedProgress by animateFloatAsState(
+        targetValue = progress.coerceIn(0f, 1f),
+        animationSpec = spring(dampingRatio = 0.92f, stiffness = 220f),
+        label = "gradient_progress",
+    )
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(10.dp)
+            .clip(CircleShape)
+            .background(color.copy(alpha = 0.14f)),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth(animatedProgress)
+                .fillMaxSize()
+                .clip(CircleShape)
+                .background(
+                    Brush.horizontalGradient(
+                        colors = listOf(
+                            color.copy(alpha = 0.5f),
+                            color,
+                        ),
+                    ),
+                ),
         )
-
-        val sleepStartRatio = ((summary.startMillis - summary.windowStartMillis).toFloat() / totalRange.toFloat()).coerceIn(0f, 1f)
-        val sleepEndRatio = ((summary.endMillis - summary.windowStartMillis).toFloat() / totalRange.toFloat()).coerceIn(0f, 1f)
-        val sleepStartX = w * sleepStartRatio
-        val sleepEndX = w * sleepEndRatio
-
-        drawRoundRect(
-            color = Color(0xFF5C7892),
-            topLeft = Offset(sleepStartX, h / 2 - 12f),
-            size = Size(maxOf(12f, sleepEndX - sleepStartX), 24f),
-            cornerRadius = CornerRadius(12f)
-        )
-        drawCircle(color = Color(0xFF2196F3), radius = 10f, center = Offset(sleepStartX, h / 2))
-        drawCircle(color = Color(0xFF2196F3), radius = 10f, center = Offset(sleepEndX, h / 2))
-    }
-    Row(modifier = Modifier.fillMaxWidth().padding(top = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-        listOf("18", "0", "6", "12").forEach { Text(it, style = MaterialTheme.typography.labelSmall, color = Color.Gray) }
     }
 }
 
 @Composable
-fun OpenCountScatterChart(sessions: List<AppSession>, startOfDay: Long, endMillis: Long, appColors: Map<String, Color>) {
-    Canvas(modifier = Modifier.fillMaxWidth().height(140.dp)) {
-        val w = size.width
-        val h = size.height
-        val totalRange = maxOf(1L, endMillis - startOfDay)
-
-        sessions.forEach { s ->
-            val startRatio = (s.startTime - startOfDay).toFloat() / totalRange.toFloat()
-            if (startRatio in 0f..1f) {
-                val x = w * startRatio
-                val yOffset = (s.packageName.hashCode().absoluteValue % 8) * (h / 9f) + 10f
-                val color = appColors[s.packageName] ?: Color.Gray
-                drawCircle(color = color.copy(alpha = 0.8f), radius = 6f, center = Offset(x, yOffset))
+private fun AppChartsCard(
+    usageTopApps: List<AppDisplayItem>,
+) {
+    val appColors = rememberAppChartColors(usageTopApps.map { it.packageName })
+    ReportCard {
+        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            SectionHeader(
+                icon = Icons.Default.BarChart,
+                title = "Top 10 应用",
+                subtitle = "只看今天使用时长最高的 10 个应用，并尽量使用它们自己的主题色。",
+            )
+            if (usageTopApps.isEmpty()) {
+                Text(
+                    text = "今天还没有形成足够的前台使用记录。",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                AppUsageShareCard(
+                    items = usageTopApps,
+                    appColors = appColors,
+                )
+                TopUsageRankingCard(
+                    items = usageTopApps,
+                    appColors = appColors,
+                )
             }
         }
     }
+}
+
+@Composable
+private fun AppUsageShareCard(
+    items: List<AppDisplayItem>,
+    appColors: Map<String, Color>,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(22.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.7f),
+    ) {
+        BoxWithConstraints {
+            val compact = maxWidth < 360.dp
+            val donutSize = if (compact) 156.dp else 186.dp
+            val shareChipCount = if (compact) minOf(items.size, 4) else minOf(items.size, 6)
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text(
+                    text = "使用时长占比",
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                )
+                if (items.isEmpty()) {
+                    Text(
+                        text = "还没有足够的前台使用记录。",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                } else {
+                    val total = items.sumOf { it.value }.coerceAtLeast(1L)
+                    val topApp = items.first()
+                    val topColor = appColors[topApp.packageName] ?: fallbackChartColor(0)
+                    Box(
+                        modifier = Modifier.fillMaxWidth(),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            PeriodDonutChart(
+                                values = items.map { it.value },
+                                colors = items.mapIndexed { index, item -> appColors[item.packageName] ?: fallbackChartColor(index) },
+                                highlightedIndex = 0,
+                                modifier = Modifier.size(donutSize),
+                            )
+                            Column(
+                                horizontalAlignment = Alignment.CenterHorizontally,
+                                verticalArrangement = Arrangement.spacedBy(4.dp),
+                            ) {
+                                Text(
+                                    text = formatDuration(total),
+                                    style = if (compact) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleLarge,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                                Text(
+                                    text = "Top 10 总时长",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Surface(
+                                    shape = RoundedCornerShape(999.dp),
+                                    color = topColor.copy(alpha = 0.14f),
+                                ) {
+                                    Text(
+                                        text = "Top 1 · ${((topApp.value.toFloat() / total.toFloat()) * 100).roundToInt()}%",
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = topColor,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    if (compact) {
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            ) {
+                                AppIconCircle(topApp.packageName)
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = topApp.label,
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                    Text(
+                                        text = formatDuration(topApp.value),
+                                        style = MaterialTheme.typography.labelLarge,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                            Text(
+                                text = "${((topApp.value.toFloat() / total.toFloat()) * 100).roundToInt()}%",
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold,
+                                color = topColor,
+                                modifier = Modifier.align(Alignment.End),
+                            )
+                        }
+                    } else {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            ) {
+                                AppIconCircle(topApp.packageName)
+                                Column {
+                                    Text(
+                                        text = topApp.label,
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.Bold,
+                                    )
+                                    Text(
+                                        text = formatDuration(topApp.value),
+                                        style = MaterialTheme.typography.labelLarge,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                            Text(
+                                text = "${((topApp.value.toFloat() / total.toFloat()) * 100).roundToInt()}%",
+                                style = MaterialTheme.typography.headlineSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = topColor,
+                            )
+                        }
+                    }
+                    AdaptiveRowGrid(
+                        itemCount = shareChipCount,
+                        compactColumns = 2,
+                        expandedColumns = 3,
+                        horizontalSpacing = 8.dp,
+                        verticalSpacing = 8.dp,
+                    ) { chipModifier, index ->
+                        val item = items[index]
+                        val color = appColors[item.packageName] ?: fallbackChartColor(index)
+                        AppShareChip(
+                            label = item.label,
+                            shareText = "${((item.value.toFloat() / total.toFloat()) * 100).roundToInt()}%",
+                            color = color,
+                            modifier = chipModifier,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AppShareChip(
+    label: String,
+    shareText: String,
+    color: Color,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        color = color.copy(alpha = 0.08f),
+        border = BorderStroke(1.dp, color.copy(alpha = 0.18f)),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(10.dp)
+                    .clip(CircleShape)
+                    .background(color),
+            )
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.labelLarge,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = shareText,
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = color,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun TopUsageRankingCard(
+    items: List<AppDisplayItem>,
+    appColors: Map<String, Color>,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(22.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.7f),
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(
+                text = "时长排名",
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+            )
+            val maxUsage = items.maxOfOrNull { it.value }?.coerceAtLeast(1L) ?: 1L
+            items.forEachIndexed { index, item ->
+                val color = appColors[item.packageName] ?: fallbackChartColor(index)
+                TopUsageBarRow(
+                    rank = index + 1,
+                    item = item,
+                    maxUsage = maxUsage,
+                    color = color,
+                )
+                if (index != items.lastIndex) {
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MiniInsightCard(
+    icon: ImageVector,
+    label: String,
+    value: String,
+    visualRatio: Float? = null,
+    modifier: Modifier = Modifier,
+) {
+    val accent = MaterialTheme.colorScheme.primary
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.56f),
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(16.dp),
+            )
+            Text(text = label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(text = value, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+            if (visualRatio != null) {
+                GradientProgressBar(
+                    progress = visualRatio.coerceIn(0f, 1f),
+                    color = accent,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun BehaviorCard(
+    behaviorInsight: UsageBehaviorInsight?,
+) {
+    ReportCard {
+        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            SectionHeader(
+                icon = Icons.Default.Insights,
+                title = "行为分析",
+                subtitle = "继续观察会话长度、碎片化程度和睡前起床的使用切片。",
+            )
+            if (behaviorInsight == null) {
+                Text(
+                    text = "今天还没有形成足够的使用痕迹。",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                val insight = behaviorInsight
+                AdaptiveRowGrid(
+                    itemCount = 4,
+                    compactColumns = 2,
+                    expandedColumns = 2,
+                ) { modifier, index ->
+                    when (index) {
+                        0 -> MiniInsightCard(
+                            icon = Icons.Default.Schedule,
+                            label = "最长单次会话",
+                            value = insight.longestSession?.let { session -> "${session.label} · ${formatDuration(session.value)}" } ?: "暂无",
+                            visualRatio = ((insight.longestSession?.value ?: 0L).toFloat() / (2 * 60 * 60_000L).toFloat()).coerceIn(0f, 1f),
+                            modifier = modifier,
+                        )
+                        1 -> MiniInsightCard(
+                            icon = Icons.Default.AccessTime,
+                            label = "平均单次时长",
+                            value = formatDuration(insight.averageSessionMillis),
+                            visualRatio = (insight.averageSessionMillis.toFloat() / (30 * 60_000L).toFloat()).coerceIn(0f, 1f),
+                            modifier = modifier,
+                        )
+                        2 -> MiniInsightCard(
+                            icon = Icons.Default.TouchApp,
+                            label = "碎片化程度",
+                            value = "${(insight.shortSessionRatio * 100).roundToInt()}% 短会话",
+                            visualRatio = insight.shortSessionRatio.coerceIn(0f, 1f),
+                            modifier = modifier,
+                        )
+                        3 -> MiniInsightCard(
+                            icon = Icons.Default.RocketLaunch,
+                            label = "重复打开强度",
+                            value = String.format(Locale.CHINA, "%.1f 次/活跃小时", insight.reopenIntensity),
+                            visualRatio = (insight.reopenIntensity / 6f).coerceIn(0f, 1f),
+                            modifier = modifier,
+                        )
+                        else -> Spacer(modifier = modifier)
+                    }
+                }
+                AdaptiveRowGrid(
+                    itemCount = 2,
+                    compactColumns = 1,
+                    expandedColumns = 2,
+                    horizontalSpacing = 12.dp,
+                    verticalSpacing = 12.dp,
+                ) { modifier, index ->
+                    when (index) {
+                        0 -> BehaviorMomentCard(
+                            icon = Icons.Default.NightsStay,
+                            title = insight.beforeSleep.label,
+                            appLabel = insight.beforeSleep.appLabel ?: "暂无记录",
+                            packageName = insight.beforeSleep.packageName,
+                            modifier = modifier,
+                        )
+                        else -> BehaviorMomentCard(
+                            icon = Icons.Default.WbSunny,
+                            title = insight.afterWake.label,
+                            appLabel = insight.afterWake.appLabel ?: "暂无记录",
+                            packageName = insight.afterWake.packageName,
+                            modifier = modifier,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun BehaviorMomentCard(
+    icon: ImageVector,
+    title: String,
+    appLabel: String,
+    packageName: String?,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(20.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.76f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Surface(
+                modifier = Modifier.size(40.dp),
+                shape = RoundedCornerShape(14.dp),
+                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+            }
+            if (packageName != null) {
+                AppIconCircle(packageName)
+            }
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    text = appLabel,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ComparisonCard(
+    comparisons: List<ComparisonMetric>,
+) {
+    ReportCard {
+        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            SectionHeader(
+                icon = Icons.AutoMirrored.Filled.CompareArrows,
+                title = "今日对比",
+                subtitle = "只比较日报里最稳定、最能解释的核心指标。",
+            )
+            if (comparisons.isEmpty()) {
+                Text(
+                    text = "今日样本还不足，暂时不展示对比。",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                comparisons.forEachIndexed { index, item ->
+                    ComparisonRow(item)
+                    if (index != comparisons.lastIndex) {
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f))
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun ComparisonRow(item: ComparisonMetric) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(text = item.label, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+        Text(text = item.todayValue, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            item.yesterdayDelta?.let {
+                ComparisonChip(text = it)
+            }
+            item.averageDelta?.let {
+                ComparisonChip(text = it)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ComparisonChip(text: String) {
+    Surface(
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.6f),
+    ) {
+        Text(
+            text = text,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+            style = MaterialTheme.typography.labelLarge,
+        )
+    }
+}
+
+@Composable
+private fun SectionHeader(
+    icon: ImageVector,
+    title: String,
+    subtitle: String? = null,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(18.dp),
+            )
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+            )
+        }
+        if (subtitle != null) {
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ReportCard(
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(28.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+        shadowElevation = 0.dp,
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 20.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            content = content,
+        )
+    }
+}
+
+@Composable
+fun AppIconCircle(pkg: String) {
+    val context = LocalContext.current
+    val icon = remember(pkg) {
+        try {
+            context.packageManager.getApplicationIcon(pkg)
+        } catch (_: Exception) {
+            null
+        }
+    }
+    Surface(
+        modifier = Modifier.size(34.dp),
+        shape = CircleShape,
+        color = MaterialTheme.colorScheme.surfaceVariant,
+    ) {
+        if (icon != null) {
+            AsyncImage(
+                model = icon,
+                contentDescription = null,
+                modifier = Modifier.padding(6.dp),
+            )
+        }
+    }
+}
+
+private fun formatDuration(durationMillis: Long): String {
+    if (durationMillis <= 0L) return "0m"
+    val totalMinutes = durationMillis / 60_000L
+    val hours = totalMinutes / 60
+    val minutes = totalMinutes % 60
+    return when {
+        hours > 0 && minutes > 0 -> "${hours}h ${minutes}m"
+        hours > 0 -> "${hours}h"
+        else -> "${minutes}m"
+    }
+}
+
+private fun deltaDescription(
+    current: Long,
+    baseline: Long,
+    prefix: String,
+    countUnit: String? = null,
+): String {
+    if (baseline <= 0L && current <= 0L) return "$prefix 持平"
+    val delta = current - baseline
+    if (delta == 0L) return "$prefix 持平"
+    val direction = if (delta > 0L) "多" else "少"
+    val deltaValue = countUnit?.let { "${kotlin.math.abs(delta)} $it" } ?: formatDuration(kotlin.math.abs(delta))
+    return "$prefix $direction $deltaValue"
+}
+
+private fun Double.roundToLongSafe(): Long {
+    return if (this.isNaN()) 0L else roundToLong()
 }
