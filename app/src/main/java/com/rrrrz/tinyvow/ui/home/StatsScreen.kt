@@ -160,6 +160,8 @@ private data class UsageBehaviorInsight(
     val averageSessionMillis: Long,
     val shortSessionRatio: Float,
     val reopenIntensity: Float,
+    val predictedSleepLabel: String,
+    val predictedSleepDurationLabel: String,
     val beforeSleep: BehaviorAppMoment,
     val afterWake: BehaviorAppMoment,
 )
@@ -489,6 +491,18 @@ private suspend fun buildBehaviorInsight(
     val filteredSleepSessions = sleepSessions.filter { it.packageName in sleepPackages }.sortedBy { it.startTime }
     val beforeSleep = filteredSleepSessions.lastOrNull { it.startTime < anchorDate.atTime(3, 0).atZone(zoneId).toInstant().toEpochMilli() }
     val afterWake = filteredSleepSessions.firstOrNull { it.startTime >= anchorDate.atTime(5, 0).atZone(zoneId).toInstant().toEpochMilli() }
+    val predictedSleepStartMillis = beforeSleep?.endTime
+    val predictedSleepEndMillis = afterWake?.startTime
+    val predictedSleepLabel = if (predictedSleepStartMillis != null && predictedSleepEndMillis != null && predictedSleepEndMillis > predictedSleepStartMillis) {
+        "${formatClockTime(predictedSleepStartMillis, zoneId)} - ${formatClockTime(predictedSleepEndMillis, zoneId)}"
+    } else {
+        beforeSleep?.endTime?.let { "${formatClockTime(it, zoneId)} 后" } ?: "样本不足"
+    }
+    val predictedSleepDurationLabel = if (predictedSleepStartMillis != null && predictedSleepEndMillis != null && predictedSleepEndMillis > predictedSleepStartMillis) {
+        formatDuration(predictedSleepEndMillis - predictedSleepStartMillis)
+    } else {
+        "--"
+    }
 
     return UsageBehaviorInsight(
         peakHourLabel = peakHour?.label ?: "--",
@@ -500,6 +514,8 @@ private suspend fun buildBehaviorInsight(
         averageSessionMillis = averageSessionMillis,
         shortSessionRatio = shortSessionRatio,
         reopenIntensity = reopenIntensity,
+        predictedSleepLabel = predictedSleepLabel,
+        predictedSleepDurationLabel = predictedSleepDurationLabel,
         beforeSleep = BehaviorAppMoment(
             label = "睡前最后在用",
             packageName = beforeSleep?.packageName,
@@ -1293,7 +1309,6 @@ private fun TimelineCard(
             SectionHeader(
                 icon = Icons.Default.Timeline,
                 title = "全天痕迹",
-                subtitle = "用图表看今天的时间分布、时段重心和峰值压力。",
             )
             DailyTimelineChart(buckets)
             TimelineFooter()
@@ -1325,71 +1340,65 @@ private fun DailyTimelineChart(
 ) {
     val deviceColor = MaterialTheme.colorScheme.primary
     val guideLineColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.14f)
-    val peakIndex = buckets.indexOfFirst { it.deviceMillis == (buckets.maxOfOrNull { bucket -> bucket.deviceMillis } ?: 0L) }
+    val axisTextColor = MaterialTheme.colorScheme.onSurfaceVariant
     BoxWithConstraints {
         val chartHeight = if (maxWidth < 360.dp) 138.dp else 156.dp
-        Canvas(modifier = Modifier.fillMaxWidth().height(chartHeight)) {
-            if (buckets.isEmpty()) return@Canvas
-            val deviceMax = buckets.maxOfOrNull { it.deviceMillis }?.coerceAtLeast(1L) ?: 1L
-            val slotWidth = size.width / buckets.size
-            val barWidth = slotWidth * 0.48f
-            val baseY = size.height
-
-            repeat(4) { index ->
-                val y = baseY - (index + 1) * (size.height / 4f)
-                drawLine(
-                    color = guideLineColor,
-                    start = Offset(0f, y),
-                    end = Offset(size.width, y),
-                    strokeWidth = 1f,
-                )
+        val axisWidth = if (maxWidth < 360.dp) 32.dp else 40.dp
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.Bottom,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Column(
+                modifier = Modifier
+                    .width(axisWidth)
+                    .height(chartHeight),
+                verticalArrangement = Arrangement.SpaceBetween,
+                horizontalAlignment = Alignment.End,
+            ) {
+                val maxUsage = buckets.maxOfOrNull { it.deviceMillis }?.coerceAtLeast(1L) ?: 1L
+                listOf(maxUsage, maxUsage * 2 / 3, maxUsage / 3, 0L).forEach { tick ->
+                    Text(
+                        text = if (tick == 0L) "0" else formatAxisDuration(tick),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = axisTextColor,
+                        maxLines = 1,
+                    )
+                }
             }
+            Canvas(modifier = Modifier.weight(1f).height(chartHeight)) {
+                if (buckets.isEmpty()) return@Canvas
+                val deviceMax = buckets.maxOfOrNull { it.deviceMillis }?.coerceAtLeast(1L) ?: 1L
+                val slotWidth = size.width / buckets.size
+                val barWidth = slotWidth * 0.48f
+                val baseY = size.height
 
-            buckets.forEachIndexed { index, bucket ->
-                val x = slotWidth * index + (slotWidth - barWidth) / 2f
-                val deviceHeight = size.height * (bucket.deviceMillis.toFloat() / deviceMax.toFloat()).coerceIn(0f, 1f)
-                val isPeak = index == peakIndex && bucket.deviceMillis > 0L
-                val top = size.height - maxOf(6f, deviceHeight)
-                if (isPeak) {
+                repeat(4) { index ->
+                    val y = baseY - (index * (size.height / 3f))
+                    drawLine(
+                        color = guideLineColor,
+                        start = Offset(0f, y),
+                        end = Offset(size.width, y),
+                        strokeWidth = 1f,
+                    )
+                }
+
+                buckets.forEachIndexed { index, bucket ->
+                    val x = slotWidth * index + (slotWidth - barWidth) / 2f
+                    val deviceHeight = size.height * (bucket.deviceMillis.toFloat() / deviceMax.toFloat()).coerceIn(0f, 1f)
+                    val top = size.height - maxOf(6f, deviceHeight)
                     drawRoundRect(
                         brush = Brush.verticalGradient(
                             colors = listOf(
-                                deviceColor.copy(alpha = 0.18f),
-                                deviceColor.copy(alpha = 0f),
+                                deviceColor.copy(alpha = 0.62f),
+                                deviceColor.copy(alpha = if (bucket.deviceMillis > 0L) 0.92f else 0.14f),
                             ),
-                            startY = top - 24f,
+                            startY = top,
                             endY = baseY,
                         ),
-                        topLeft = Offset(x - 4f, top - 16f),
-                        size = Size(barWidth + 8f, maxOf(16f, deviceHeight + 16f)),
-                        cornerRadius = CornerRadius(barWidth, barWidth),
-                    )
-                }
-                drawRoundRect(
-                    brush = Brush.verticalGradient(
-                        colors = if (isPeak) {
-                            listOf(
-                                Color.White.copy(alpha = 0.95f),
-                                deviceColor,
-                            )
-                        } else {
-                            listOf(
-                                deviceColor.copy(alpha = 0.54f),
-                                deviceColor.copy(alpha = if (bucket.deviceMillis > 0L) 0.9f else 0.14f),
-                            )
-                        },
-                        startY = top,
-                        endY = baseY,
-                    ),
-                    topLeft = Offset(x, top),
-                    size = Size(barWidth, maxOf(6f, deviceHeight)),
-                    cornerRadius = CornerRadius(barWidth / 2f, barWidth / 2f),
-                )
-                if (isPeak) {
-                    drawCircle(
-                        color = Color.White.copy(alpha = 0.95f),
-                        radius = barWidth * 0.22f,
-                        center = Offset(x + barWidth / 2f, top + barWidth * 0.3f),
+                        topLeft = Offset(x, top),
+                        size = Size(barWidth, maxOf(6f, deviceHeight)),
+                        cornerRadius = CornerRadius(barWidth / 2f, barWidth / 2f),
                     )
                 }
             }
@@ -1420,16 +1429,18 @@ private fun PeriodDistributionCard(
 ) {
     val total = periodUsage.sumOf { it.deviceMillis }.coerceAtLeast(1L)
     val dominantIndex = periodUsage.indexOfFirst { it.deviceMillis == (periodUsage.maxOfOrNull { item -> item.deviceMillis } ?: 0L) }
+    val dominantItem = dominantIndex.takeIf { it >= 0 }?.let { periodUsage[it] }
     val colors = listOf(
-        MaterialTheme.colorScheme.primary,
-        MaterialTheme.colorScheme.secondary,
-        MaterialTheme.colorScheme.tertiary,
-        Color(0xFFF59E0B),
+        Color(0xFF8FB8FF),
+        Color(0xFFFFC857),
+        Color(0xFFFF8C69),
+        Color(0xFF6B8F71),
     )
     Surface(
         modifier = modifier,
-        shape = RoundedCornerShape(22.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.7f),
+        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.82f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.26f)),
     ) {
         BoxWithConstraints {
             val donutSize = if (maxWidth < 360.dp) 148.dp else 170.dp
@@ -1439,19 +1450,36 @@ private fun PeriodDistributionCard(
             ) {
                 Text(
                     text = "时段热力",
-                    style = MaterialTheme.typography.titleSmall,
+                    style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                 )
                 Box(
                     modifier = Modifier.fillMaxWidth(),
                     contentAlignment = Alignment.Center,
                 ) {
-                    PeriodDonutChart(
-                        values = periodUsage.map { it.deviceMillis },
-                        colors = colors,
-                        highlightedIndex = dominantIndex.takeIf { it >= 0 },
-                        modifier = Modifier.size(donutSize),
-                    )
+                    Box(contentAlignment = Alignment.Center) {
+                        PeriodDonutChart(
+                            values = periodUsage.map { it.deviceMillis },
+                            colors = colors,
+                            highlightedIndex = dominantIndex.takeIf { it >= 0 },
+                            modifier = Modifier.size(donutSize),
+                        )
+                        Column(
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(2.dp),
+                        ) {
+                            Text(
+                                text = dominantItem?.label ?: "--",
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold,
+                            )
+                            Text(
+                                text = dominantItem?.let { formatDuration(it.deviceMillis) } ?: "--",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
                 }
                 periodUsage.forEachIndexed { index, item ->
                     val share = item.deviceMillis.toFloat() / total.toFloat()
@@ -1536,7 +1564,7 @@ private fun PeriodLegendRow(
         Text(
             text = label,
             modifier = Modifier.width(36.dp),
-            style = MaterialTheme.typography.labelLarge,
+            style = MaterialTheme.typography.labelMedium,
         )
         LinearProgressIndicator(
             progress = { share.coerceIn(0f, 1f) },
@@ -1549,8 +1577,9 @@ private fun PeriodLegendRow(
         )
         Text(
             text = value,
-            style = MaterialTheme.typography.labelLarge,
+            style = MaterialTheme.typography.labelMedium,
             fontWeight = FontWeight.Bold,
+            color = color,
         )
     }
 }
@@ -1581,21 +1610,33 @@ private fun PeakMomentsCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             } else {
-                MiniInsightCard(
-                    icon = Icons.Default.Bolt,
-                    label = "最重 1 小时",
-                    value = "${behaviorInsight.peakHourLabel} · ${formatDuration(behaviorInsight.peakHourMillis)}",
-                )
-                MiniInsightCard(
-                    icon = Icons.AutoMirrored.Filled.CallSplit,
-                    label = "最重连续 2 小时",
-                    value = "${behaviorInsight.peakTwoHourLabel} · ${formatDuration(behaviorInsight.peakTwoHourMillis)}",
-                )
-                MiniInsightCard(
-                    icon = Icons.Default.NightsStay,
-                    label = "夜间使用",
-                    value = formatDuration(behaviorInsight.nightUsageMillis),
-                )
+                AdaptiveRowGrid(
+                    itemCount = 3,
+                    compactColumns = 1,
+                    expandedColumns = 1,
+                    verticalSpacing = 8.dp,
+                ) { modifier, index ->
+                    when (index) {
+                        0 -> MiniInsightCard(
+                            icon = Icons.Default.Bolt,
+                            label = "峰值 1h",
+                            value = "${behaviorInsight.peakHourLabel} · ${formatDuration(behaviorInsight.peakHourMillis)}",
+                            modifier = modifier,
+                        )
+                        1 -> MiniInsightCard(
+                            icon = Icons.AutoMirrored.Filled.CallSplit,
+                            label = "连续 2h",
+                            value = "${behaviorInsight.peakTwoHourLabel} · ${formatDuration(behaviorInsight.peakTwoHourMillis)}",
+                            modifier = modifier,
+                        )
+                        else -> MiniInsightCard(
+                            icon = Icons.Default.NightsStay,
+                            label = "夜间",
+                            value = formatDuration(behaviorInsight.nightUsageMillis),
+                            modifier = modifier,
+                        )
+                    }
+                }
             }
         }
     }
@@ -1721,14 +1762,19 @@ private fun TopUsageBarRow(
     rank: Int,
     item: AppDisplayItem,
     maxUsage: Long,
+    totalUsage: Long,
     color: Color,
 ) {
     val isTopRank = rank == 1
+    val share = if (totalUsage > 0L) item.value.toFloat() / totalUsage.toFloat() else 0f
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(20.dp),
-        color = if (isTopRank) color.copy(alpha = 0.08f) else Color.Transparent,
-        border = if (isTopRank) BorderStroke(1.dp, color.copy(alpha = 0.22f)) else null,
+        shape = RoundedCornerShape(18.dp),
+        color = if (isTopRank) color.copy(alpha = 0.08f) else MaterialTheme.colorScheme.surface.copy(alpha = 0.36f),
+        border = BorderStroke(
+            1.dp,
+            if (isTopRank) color.copy(alpha = 0.24f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.18f),
+        ),
     ) {
         Row(
             modifier = Modifier
@@ -1748,7 +1794,7 @@ private fun TopUsageBarRow(
                 ) {
                     Text(
                         text = rank.toString(),
-                        style = MaterialTheme.typography.labelLarge,
+                        style = MaterialTheme.typography.labelMedium,
                         fontWeight = FontWeight.Bold,
                         color = color,
                     )
@@ -1768,11 +1814,19 @@ private fun TopUsageBarRow(
                     color = color,
                 )
             }
-            Text(
-                text = formatDuration(item.value),
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.Bold,
-            )
+            Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    text = formatDuration(item.value),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                )
+                Text(
+                    text = "${(share * 100).roundToInt()}%",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = color,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
         }
     }
 }
@@ -1852,8 +1906,9 @@ private fun AppUsageShareCard(
 ) {
     Surface(
         modifier = modifier,
-        shape = RoundedCornerShape(22.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.7f),
+        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.82f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.26f)),
     ) {
         BoxWithConstraints {
             val compact = maxWidth < 360.dp
@@ -1865,7 +1920,7 @@ private fun AppUsageShareCard(
             ) {
                 Text(
                     text = "使用时长占比",
-                    style = MaterialTheme.typography.titleSmall,
+                    style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                 )
                 if (items.isEmpty()) {
@@ -1876,8 +1931,6 @@ private fun AppUsageShareCard(
                     )
                 } else {
                     val total = items.sumOf { it.value }.coerceAtLeast(1L)
-                    val topApp = items.first()
-                    val topColor = appColors[topApp.packageName] ?: fallbackChartColor(0)
                     Box(
                         modifier = Modifier.fillMaxWidth(),
                         contentAlignment = Alignment.Center,
@@ -1903,98 +1956,21 @@ private fun AppUsageShareCard(
                                     style = MaterialTheme.typography.labelMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
-                                Surface(
-                                    shape = RoundedCornerShape(999.dp),
-                                    color = topColor.copy(alpha = 0.14f),
-                                ) {
-                                    Text(
-                                        text = "Top 1 · ${((topApp.value.toFloat() / total.toFloat()) * 100).roundToInt()}%",
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
-                                        style = MaterialTheme.typography.labelMedium,
-                                        fontWeight = FontWeight.Bold,
-                                        color = topColor,
-                                    )
-                                }
                             }
-                        }
-                    }
-                    if (compact) {
-                        Column(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            ) {
-                                AppIconCircle(topApp.packageName)
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = topApp.label,
-                                        style = MaterialTheme.typography.titleSmall,
-                                        fontWeight = FontWeight.Bold,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                    )
-                                    Text(
-                                        text = formatDuration(topApp.value),
-                                        style = MaterialTheme.typography.labelLarge,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                }
-                            }
-                            Text(
-                                text = "${((topApp.value.toFloat() / total.toFloat()) * 100).roundToInt()}%",
-                                style = MaterialTheme.typography.titleLarge,
-                                fontWeight = FontWeight.Bold,
-                                color = topColor,
-                                modifier = Modifier.align(Alignment.End),
-                            )
-                        }
-                    } else {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            ) {
-                                AppIconCircle(topApp.packageName)
-                                Column {
-                                    Text(
-                                        text = topApp.label,
-                                        style = MaterialTheme.typography.titleSmall,
-                                        fontWeight = FontWeight.Bold,
-                                    )
-                                    Text(
-                                        text = formatDuration(topApp.value),
-                                        style = MaterialTheme.typography.labelLarge,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                }
-                            }
-                            Text(
-                                text = "${((topApp.value.toFloat() / total.toFloat()) * 100).roundToInt()}%",
-                                style = MaterialTheme.typography.headlineSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = topColor,
-                            )
                         }
                     }
                     AdaptiveRowGrid(
                         itemCount = shareChipCount,
-                        compactColumns = 2,
-                        expandedColumns = 3,
-                        horizontalSpacing = 8.dp,
-                        verticalSpacing = 8.dp,
+                        compactColumns = 4,
+                        expandedColumns = 6,
+                        horizontalSpacing = 6.dp,
+                        verticalSpacing = 6.dp,
                     ) { chipModifier, index ->
                         val item = items[index]
                         val color = appColors[item.packageName] ?: fallbackChartColor(index)
                         AppShareChip(
-                            label = item.label,
                             shareText = "${((item.value.toFloat() / total.toFloat()) * 100).roundToInt()}%",
+                            packageName = item.packageName,
                             color = color,
                             modifier = chipModifier,
                         )
@@ -2007,42 +1983,39 @@ private fun AppUsageShareCard(
 
 @Composable
 private fun AppShareChip(
-    label: String,
     shareText: String,
+    packageName: String,
     color: Color,
     modifier: Modifier = Modifier,
 ) {
     Surface(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(18.dp),
-        color = color.copy(alpha = 0.08f),
-        border = BorderStroke(1.dp, color.copy(alpha = 0.18f)),
+        shape = RoundedCornerShape(16.dp),
+        color = color.copy(alpha = 0.09f),
+        border = BorderStroke(1.dp, color.copy(alpha = 0.2f)),
     ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 10.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        Column(
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            Box(
-                modifier = Modifier
-                    .size(10.dp)
-                    .clip(CircleShape)
-                    .background(color),
-            )
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(
-                    text = label,
-                    style = MaterialTheme.typography.labelLarge,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Text(
-                    text = shareText,
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = color,
+            Box {
+                AppIconCircle(packageName)
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .size(8.dp)
+                        .clip(CircleShape)
+                        .background(color),
                 )
             }
+            Text(
+                text = shareText,
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Bold,
+                color = color,
+                maxLines = 1,
+            )
         }
     }
 }
@@ -2055,8 +2028,9 @@ private fun TopUsageRankingCard(
 ) {
     Surface(
         modifier = modifier,
-        shape = RoundedCornerShape(22.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.7f),
+        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.82f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.26f)),
     ) {
         Column(
             modifier = Modifier.padding(16.dp),
@@ -2064,16 +2038,18 @@ private fun TopUsageRankingCard(
         ) {
             Text(
                 text = "时长排名",
-                style = MaterialTheme.typography.titleSmall,
+                style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
             )
             val maxUsage = items.maxOfOrNull { it.value }?.coerceAtLeast(1L) ?: 1L
+            val totalUsage = items.sumOf { it.value }.coerceAtLeast(1L)
             items.forEachIndexed { index, item ->
                 val color = appColors[item.packageName] ?: fallbackChartColor(index)
                 TopUsageBarRow(
                     rank = index + 1,
                     item = item,
                     maxUsage = maxUsage,
+                    totalUsage = totalUsage,
                     color = color,
                 )
                 if (index != items.lastIndex) {
@@ -2140,7 +2116,7 @@ private fun BehaviorCard(
             } else {
                 val insight = behaviorInsight
                 AdaptiveRowGrid(
-                    itemCount = 4,
+                    itemCount = 5,
                     compactColumns = 2,
                     expandedColumns = 2,
                 ) { modifier, index ->
@@ -2171,6 +2147,13 @@ private fun BehaviorCard(
                             label = "重复打开强度",
                             value = String.format(Locale.CHINA, "%.1f 次/活跃小时", insight.reopenIntensity),
                             visualRatio = (insight.reopenIntensity / 6f).coerceIn(0f, 1f),
+                            modifier = modifier,
+                        )
+                        4 -> MiniInsightCard(
+                            icon = Icons.Default.NightsStay,
+                            label = "预测睡眠时间",
+                            value = "${insight.predictedSleepLabel} · ${insight.predictedSleepDurationLabel}",
+                            visualRatio = null,
                             modifier = modifier,
                         )
                         else -> Spacer(modifier = modifier)
@@ -2407,6 +2390,23 @@ private fun formatDuration(durationMillis: Long): String {
         hours > 0 -> "${hours}h"
         else -> "${minutes}m"
     }
+}
+
+private fun formatAxisDuration(durationMillis: Long): String {
+    val totalMinutes = durationMillis / 60_000L
+    val hours = totalMinutes / 60
+    return when {
+        hours >= 1 -> "${hours}h"
+        totalMinutes > 0 -> "${totalMinutes}m"
+        else -> "0"
+    }
+}
+
+private fun formatClockTime(epochMillis: Long, zoneId: ZoneId): String {
+    return java.time.Instant.ofEpochMilli(epochMillis)
+        .atZone(zoneId)
+        .toLocalTime()
+        .format(DateTimeFormatter.ofPattern("HH:mm", Locale.CHINA))
 }
 
 private fun deltaDescription(
