@@ -4,8 +4,15 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.provider.Settings
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
@@ -80,6 +87,7 @@ import com.rrrrz.tinyvow.data.usage.AppSession
 import com.rrrrz.tinyvow.data.usage.UsageAccessStatus
 import com.rrrrz.tinyvow.data.usage.UsageRepository
 import com.rrrrz.tinyvow.data.usage.UsageStatsUsageRepository
+import com.rrrrz.tinyvow.ui.theme.LocalReportColors
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.Dispatchers
@@ -180,17 +188,49 @@ private data class WindowMetrics(
     val nightUsageMillis: Long,
 )
 
+private data class HeroSectionData(
+    val summary: DailyReportSummary,
+    val overview: ScopeOverview,
+    val nightUsageMillis: Long,
+)
+
+private data class TimelineSectionData(
+    val buckets: List<DailyTimelineBucket>,
+    val periodUsage: List<PeriodUsageStat>,
+    val peakHourLabel: String,
+    val peakHourMillis: Long,
+    val peakTwoHourLabel: String,
+    val peakTwoHourMillis: Long,
+    val nightUsageMillis: Long,
+)
+
+private data class TopAppsSectionData(
+    val usageTopApps: List<AppDisplayItem>,
+)
+
+private data class BehaviorSectionData(
+    val behaviorInsight: UsageBehaviorInsight?,
+)
+
+private data class ComparisonSectionData(
+    val comparisons: List<ComparisonMetric>,
+)
+
+private sealed interface SectionState<out T> {
+    data object Loading : SectionState<Nothing>
+    data object Empty : SectionState<Nothing>
+    data class Ready<T>(val data: T) : SectionState<T>
+}
+
 private data class DailyReportUiState(
-    val isLoading: Boolean = true,
     val isPermissionGranted: Boolean = false,
     val selectedTab: ReportTab = ReportTab.DAY,
-    val summary: DailyReportSummary? = null,
-    val deviceOverview: ScopeOverview? = null,
-    val timelineBuckets: List<DailyTimelineBucket> = emptyList(),
-    val periodUsage: List<PeriodUsageStat> = emptyList(),
-    val usageTopApps: List<AppDisplayItem> = emptyList(),
-    val behaviorInsight: UsageBehaviorInsight? = null,
-    val comparisons: List<ComparisonMetric> = emptyList(),
+    val isRefreshing: Boolean = true,
+    val heroState: SectionState<HeroSectionData> = SectionState.Loading,
+    val timelineState: SectionState<TimelineSectionData> = SectionState.Loading,
+    val topAppsState: SectionState<TopAppsSectionData> = SectionState.Loading,
+    val behaviorState: SectionState<BehaviorSectionData> = SectionState.Loading,
+    val comparisonState: SectionState<ComparisonSectionData> = SectionState.Loading,
     val placeholderTitle: String? = null,
     val placeholderDescription: String? = null,
 )
@@ -232,19 +272,15 @@ fun StatsRoute(
     ) {
         if (usageAccessStatus != UsageAccessStatus.GRANTED) {
             uiState = DailyReportUiState(
-                isLoading = false,
                 isPermissionGranted = false,
                 selectedTab = selectedTab,
+                isRefreshing = false,
             )
             return@LaunchedEffect
         }
 
         if (installedAppsState.isLoading) {
-            uiState = DailyReportUiState(
-                isLoading = true,
-                isPermissionGranted = true,
-                selectedTab = selectedTab,
-            )
+            uiState = createRefreshingUiState(selectedTab = selectedTab)
             return@LaunchedEffect
         }
 
@@ -255,12 +291,17 @@ fun StatsRoute(
         }
 
         while (isActive) {
-            uiState = buildDailyReportUiState(
+            uiState = createRefreshingUiState(
+                selectedTab = selectedTab,
+                previous = uiState,
+            )
+            buildDailyReportUiState(
                 context = context,
                 zoneId = zoneId,
                 usageRepository = usageRepository,
                 groupsWithApps = groupsWithApps,
                 installedApps = installedAppsState.apps,
+                updateState = { transform -> uiState = transform(uiState) },
             )
             delay(30_000L)
         }
@@ -273,13 +314,30 @@ fun StatsRoute(
     )
 }
 
+private fun createRefreshingUiState(
+    selectedTab: ReportTab,
+    previous: DailyReportUiState? = null,
+): DailyReportUiState {
+    return DailyReportUiState(
+        isPermissionGranted = true,
+        selectedTab = selectedTab,
+        isRefreshing = true,
+        heroState = previous?.heroState ?: SectionState.Loading,
+        timelineState = previous?.timelineState ?: SectionState.Loading,
+        topAppsState = previous?.topAppsState ?: SectionState.Loading,
+        behaviorState = previous?.behaviorState ?: SectionState.Loading,
+        comparisonState = previous?.comparisonState ?: SectionState.Loading,
+    )
+}
+
 private suspend fun buildDailyReportUiState(
     context: Context,
     zoneId: ZoneId,
     usageRepository: UsageRepository,
     groupsWithApps: List<AppGroupWithApps>,
     installedApps: List<ManagedApp>,
-): DailyReportUiState {
+    updateState: ((DailyReportUiState) -> DailyReportUiState) -> Unit,
+) {
     val today = LocalDate.now(zoneId)
     val todayStart = today.atStartOfDay(zoneId).toInstant().toEpochMilli()
     val nowMillis = System.currentTimeMillis()
@@ -303,17 +361,7 @@ private suspend fun buildDailyReportUiState(
 
     val timelineBuckets = buildTimelineBuckets(todayStart, nowMillis, deviceSessions)
     val periodUsage = buildPeriodUsageStats(timelineBuckets)
-    val behaviorInsight = buildBehaviorInsight(
-        context = context,
-        zoneId = zoneId,
-        anchorDate = today,
-        usageRepository = usageRepository,
-        installedAppMap = installedAppMap,
-        managedPackages = managedPackages,
-        timelineBuckets = timelineBuckets,
-        deviceSessions = deviceSessions,
-        deviceOpenCounts = deviceOpenCounts,
-    )
+    val timelineInsight = buildTimelineSectionData(timelineBuckets)
 
     val usageTopApps = deviceUsageStats.toList()
         .sortedByDescending { it.second }
@@ -331,6 +379,73 @@ private suspend fun buildDailyReportUiState(
         installedAppMap = installedAppMap,
         managedPackages = managedPackages,
     )
+    val deviceOverview = ScopeOverview(
+        totalUsageMillis = deviceUsageStats.values.sum(),
+        openCount = deviceOpenCounts.values.sum(),
+        activeBucketCount = timelineBuckets.count { it.deviceMillis > 0L },
+        topApp = usageTopApps.firstOrNull(),
+    )
+
+    val provisionalAverageMetrics = WindowMetrics(
+        deviceUsageMillis = 0L,
+        deviceOpenCount = 0,
+        longestSessionMillis = 0L,
+        nightUsageMillis = 0L,
+    )
+    val summary = buildDailyReportSummary(
+        date = today,
+        zoneId = zoneId,
+        nowMillis = nowMillis,
+        deviceOverview = deviceOverview,
+        periodUsage = periodUsage,
+        yesterdayMetrics = yesterdayMetrics,
+        averageMetrics = provisionalAverageMetrics,
+    )
+
+    updateState { current ->
+        current.copy(
+            heroState = SectionState.Ready(
+                HeroSectionData(
+                    summary = summary,
+                    overview = deviceOverview,
+                    nightUsageMillis = timelineInsight.nightUsageMillis,
+                ),
+            ),
+            timelineState = if (timelineBuckets.isEmpty() && periodUsage.all { it.deviceMillis == 0L }) {
+                SectionState.Empty
+            } else {
+                SectionState.Ready(
+                    timelineInsight.copy(
+                        buckets = timelineBuckets,
+                        periodUsage = periodUsage,
+                    ),
+                )
+            },
+            topAppsState = if (usageTopApps.isEmpty()) {
+                SectionState.Empty
+            } else {
+                SectionState.Ready(TopAppsSectionData(usageTopApps = usageTopApps))
+            },
+        )
+    }
+
+    val behaviorInsight = buildBehaviorInsight(
+        context = context,
+        zoneId = zoneId,
+        anchorDate = today,
+        usageRepository = usageRepository,
+        installedAppMap = installedAppMap,
+        managedPackages = managedPackages,
+        timelineBuckets = timelineBuckets,
+        deviceSessions = deviceSessions,
+        deviceOpenCounts = deviceOpenCounts,
+    )
+    updateState { current ->
+        current.copy(
+            behaviorState = SectionState.Ready(BehaviorSectionData(behaviorInsight = behaviorInsight)),
+        )
+    }
+
     val recentMetrics = (1L..7L).map { offset ->
         buildWindowMetrics(
             context = context,
@@ -347,15 +462,7 @@ private suspend fun buildDailyReportUiState(
         longestSessionMillis = recentMetrics.map { it.longestSessionMillis }.average().roundToLongSafe(),
         nightUsageMillis = recentMetrics.map { it.nightUsageMillis }.average().roundToLongSafe(),
     )
-
-    val deviceOverview = ScopeOverview(
-        totalUsageMillis = deviceUsageStats.values.sum(),
-        openCount = deviceOpenCounts.values.sum(),
-        activeBucketCount = timelineBuckets.count { it.deviceMillis > 0L },
-        topApp = usageTopApps.firstOrNull(),
-    )
-
-    val summary = buildDailyReportSummary(
+    val refinedSummary = buildDailyReportSummary(
         date = today,
         zoneId = zoneId,
         nowMillis = nowMillis,
@@ -364,7 +471,6 @@ private suspend fun buildDailyReportUiState(
         yesterdayMetrics = yesterdayMetrics,
         averageMetrics = averageMetrics,
     )
-
     val longestSessionValue = deviceSessions.maxOfOrNull { it.endTime - it.startTime } ?: 0L
     val comparisons = buildComparisonMetrics(
         deviceOverview = deviceOverview,
@@ -374,18 +480,23 @@ private suspend fun buildDailyReportUiState(
         averageMetrics = averageMetrics,
     )
 
-    return DailyReportUiState(
-        isLoading = false,
-        isPermissionGranted = true,
-        selectedTab = ReportTab.DAY,
-        summary = summary,
-        deviceOverview = deviceOverview,
-        timelineBuckets = timelineBuckets,
-        periodUsage = periodUsage,
-        usageTopApps = usageTopApps,
-        behaviorInsight = behaviorInsight,
-        comparisons = comparisons,
-    )
+    updateState { current ->
+        current.copy(
+            isRefreshing = false,
+            heroState = SectionState.Ready(
+                HeroSectionData(
+                    summary = refinedSummary,
+                    overview = deviceOverview,
+                    nightUsageMillis = timelineInsight.nightUsageMillis,
+                ),
+            ),
+            comparisonState = if (comparisons.isEmpty()) {
+                SectionState.Empty
+            } else {
+                SectionState.Ready(ComparisonSectionData(comparisons = comparisons))
+            },
+        )
+    }
 }
 
 private fun buildPlaceholderUiState(tab: ReportTab): DailyReportUiState {
@@ -402,9 +513,9 @@ private fun buildPlaceholderUiState(tab: ReportTab): DailyReportUiState {
         ReportTab.DAY -> ""
     }
     return DailyReportUiState(
-        isLoading = false,
         isPermissionGranted = true,
         selectedTab = tab,
+        isRefreshing = false,
         placeholderTitle = title,
         placeholderDescription = description,
     )
@@ -646,6 +757,24 @@ private fun buildPeriodUsageStats(
     }
 }
 
+private fun buildTimelineSectionData(
+    timelineBuckets: List<DailyTimelineBucket>,
+): TimelineSectionData {
+    val peakHour = timelineBuckets.maxByOrNull { it.deviceMillis }
+    val peakTwoHour = timelineBuckets.windowed(size = 2, step = 1, partialWindows = false)
+        .map { buckets -> buckets to buckets.sumOf { it.deviceMillis } }
+        .maxByOrNull { it.second }
+    return TimelineSectionData(
+        buckets = timelineBuckets,
+        periodUsage = buildPeriodUsageStats(timelineBuckets),
+        peakHourLabel = peakHour?.label ?: "--",
+        peakHourMillis = peakHour?.deviceMillis ?: 0L,
+        peakTwoHourLabel = peakTwoHour?.first?.let { "${it.first().label}-${it.last().hour + 1}鏃?" } ?: "--",
+        peakTwoHourMillis = peakTwoHour?.second ?: 0L,
+        nightUsageMillis = timelineBuckets.filter { it.hour < 6 || it.hour >= 22 }.sumOf { it.deviceMillis },
+    )
+}
+
 private fun bucketDuration(
     sessions: List<AppSession>,
     bucketStart: Long,
@@ -744,12 +873,9 @@ private fun StatsScreenLayout(
     onTabSelected: (ReportTab) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val reportColors = LocalReportColors.current
     val background = Brush.verticalGradient(
-        colors = listOf(
-            MaterialTheme.colorScheme.background,
-            MaterialTheme.colorScheme.surfaceContainerLow,
-            MaterialTheme.colorScheme.background,
-        ),
+        colors = reportColors.pageGradient,
     )
 
     Box(
@@ -759,9 +885,6 @@ private fun StatsScreenLayout(
     ) {
         when {
             !state.isPermissionGranted -> PermissionRequiredState()
-            state.isLoading -> Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                CircularProgressIndicator()
-            }
             state.selectedTab != ReportTab.DAY -> PlaceholderReportScreen(
                 state = state,
                 onTabSelected = onTabSelected,
@@ -791,29 +914,516 @@ private fun DailyReportScreen(
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
                 ReportTabRow(selectedTab = state.selectedTab, onTabSelected = onTabSelected)
-                if (state.summary != null && state.deviceOverview != null) {
-                    DeviceHeroCard(
-                        summary = state.summary,
-                        overview = state.deviceOverview,
-                        behaviorInsight = state.behaviorInsight,
-                    )
+                if (state.isRefreshing) {
+                    LoadingHintChip()
                 }
-                TimelineCard(
-                    buckets = state.timelineBuckets,
-                    periodUsage = state.periodUsage,
-                    behaviorInsight = state.behaviorInsight,
-                )
-                AppChartsCard(
-                    usageTopApps = state.usageTopApps,
-                )
-                BehaviorCard(
-                    behaviorInsight = state.behaviorInsight,
-                )
-                ComparisonCard(state.comparisons)
+                DeviceHeroCard(heroState = state.heroState)
+                TimelineCard(timelineState = state.timelineState)
+                AppChartsCard(topAppsState = state.topAppsState)
+                BehaviorCard(behaviorState = state.behaviorState)
+                ComparisonCard(comparisonState = state.comparisonState)
                 Spacer(modifier = Modifier.height(24.dp))
             }
         }
     }
+}
+
+@Composable
+private fun LoadingHintChip() {
+    Surface(
+        shape = RoundedCornerShape(999.dp),
+        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            CircularProgressIndicator(
+                modifier = Modifier.size(14.dp),
+                strokeWidth = 2.dp,
+            )
+            Text(
+                text = "正在刷新今日战报",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSecondaryContainer,
+            )
+        }
+    }
+}
+
+@Composable
+private fun HeroSkeletonCard() {
+    ReportCard {
+        AdaptiveRowGrid(
+            itemCount = 2,
+            compactColumns = 1,
+            expandedColumns = 2,
+            horizontalSpacing = 16.dp,
+            verticalSpacing = 16.dp,
+        ) { modifier, index ->
+            Surface(
+                modifier = modifier,
+                shape = RoundedCornerShape(28.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.76f),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.22f)),
+            ) {
+                Column(
+                    modifier = Modifier.padding(18.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    when (index) {
+                        0 -> {
+                            SkeletonLine(width = 88.dp, height = 12.dp)
+                            SkeletonLine(width = 110.dp, height = 20.dp)
+                            SkeletonDonutChart(chartSize = 168.dp)
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                SkeletonPill(width = 72.dp)
+                                SkeletonPill(width = 78.dp)
+                            }
+                        }
+                        else -> {
+                            SkeletonLine(fill = true, height = 18.dp)
+                            AdaptiveRowGrid(
+                                itemCount = 4,
+                                compactColumns = 2,
+                                expandedColumns = 2,
+                            ) { childModifier, _ ->
+                                SkeletonMetricChip(modifier = childModifier)
+                            }
+                            SkeletonBlock(
+                                modifier = Modifier.fillMaxWidth(),
+                                height = 62.dp,
+                                shape = RoundedCornerShape(20.dp),
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TimelineSkeletonCard() {
+    ReportCard {
+        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            SkeletonSectionHeader()
+            SkeletonTimelineChart()
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                repeat(5) {
+                    SkeletonLine(width = 18.dp, height = 10.dp)
+                }
+            }
+            AdaptiveRowGrid(
+                itemCount = 2,
+                compactColumns = 1,
+                expandedColumns = 2,
+                horizontalSpacing = 14.dp,
+                verticalSpacing = 14.dp,
+            ) { modifier, index ->
+                if (index == 0) {
+                    SkeletonDonutPanel(modifier = modifier)
+                } else {
+                    SkeletonPeakPanel(modifier = modifier)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AppChartsSkeletonCard() {
+    ReportCard {
+        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            SkeletonSectionHeader()
+            SkeletonUsageSharePanel()
+            SkeletonRankingPanel()
+        }
+    }
+}
+
+@Composable
+private fun BehaviorSkeletonCard() {
+    ReportCard {
+        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            SkeletonSectionHeader()
+            AdaptiveRowGrid(
+                itemCount = 5,
+                compactColumns = 2,
+                expandedColumns = 2,
+            ) { modifier, _ ->
+                SkeletonMetricChip(modifier = modifier)
+            }
+            AdaptiveRowGrid(
+                itemCount = 2,
+                compactColumns = 1,
+                expandedColumns = 2,
+                horizontalSpacing = 12.dp,
+                verticalSpacing = 12.dp,
+            ) { modifier, _ ->
+                SkeletonBlock(
+                    modifier = modifier,
+                    height = 72.dp,
+                    shape = RoundedCornerShape(20.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ComparisonSkeletonCard() {
+    ReportCard {
+        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            SkeletonSectionHeader()
+            repeat(3) { index ->
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SkeletonLine(width = 72.dp, height = 12.dp)
+                    SkeletonLine(width = 96.dp, height = 24.dp)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        SkeletonPill(width = 78.dp)
+                        SkeletonPill(width = 84.dp)
+                    }
+                }
+                if (index != 2) {
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SkeletonSectionHeader() {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        SkeletonLine(width = 92.dp, height = 18.dp)
+        SkeletonLine(width = 180.dp, height = 12.dp)
+    }
+}
+
+@Composable
+private fun SkeletonMetricChip(modifier: Modifier = Modifier) {
+    SkeletonBlock(
+        modifier = modifier,
+        height = 86.dp,
+        shape = RoundedCornerShape(20.dp),
+    )
+}
+
+@Composable
+private fun SkeletonPill(width: androidx.compose.ui.unit.Dp) {
+    SkeletonBlock(
+        modifier = Modifier.width(width),
+        height = 28.dp,
+        shape = RoundedCornerShape(999.dp),
+    )
+}
+
+@Composable
+private fun SkeletonCircle(size: androidx.compose.ui.unit.Dp) {
+    SkeletonBlock(
+        modifier = Modifier.size(size),
+        height = size,
+        shape = CircleShape,
+    )
+}
+
+@Composable
+private fun SkeletonDonutChart(chartSize: androidx.compose.ui.unit.Dp) {
+    val (baseColor, accentColor) = rememberSkeletonColors()
+    Canvas(modifier = Modifier.size(chartSize)) {
+        val stroke = size.minDimension * 0.12f
+        val diameter = size.minDimension - stroke
+        drawArc(
+            color = baseColor,
+            startAngle = -90f,
+            sweepAngle = 360f,
+            useCenter = false,
+            topLeft = Offset((this.size.width - diameter) / 2f, (this.size.height - diameter) / 2f),
+            size = Size(diameter, diameter),
+            style = androidx.compose.ui.graphics.drawscope.Stroke(width = stroke),
+        )
+        drawArc(
+            color = accentColor,
+            startAngle = -70f,
+            sweepAngle = 120f,
+            useCenter = false,
+            topLeft = Offset((this.size.width - diameter) / 2f, (this.size.height - diameter) / 2f),
+            size = Size(diameter, diameter),
+            style = androidx.compose.ui.graphics.drawscope.Stroke(width = stroke),
+        )
+    }
+}
+
+@Composable
+private fun SkeletonTimelineChart() {
+    val (baseColor, _) = rememberSkeletonColors()
+    val lineColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.22f)
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.Bottom,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Column(
+            modifier = Modifier
+                .width(40.dp)
+                .height(156.dp),
+            verticalArrangement = Arrangement.SpaceBetween,
+            horizontalAlignment = Alignment.End,
+        ) {
+            repeat(4) {
+                SkeletonLine(width = 24.dp, height = 10.dp)
+            }
+        }
+        Canvas(
+            modifier = Modifier
+                .weight(1f)
+                .height(156.dp),
+        ) {
+            repeat(4) { index ->
+                val y = size.height - (index * (size.height / 3f))
+                drawLine(
+                    color = lineColor,
+                    start = Offset(0f, y),
+                    end = Offset(size.width, y),
+                    strokeWidth = 1f,
+                )
+            }
+            val bars = listOf(0.18f, 0.42f, 0.36f, 0.55f, 0.28f, 0.62f, 0.74f, 0.31f, 0.25f, 0.44f, 0.52f, 0.38f)
+            val slotWidth = size.width / 24f
+            val barWidth = slotWidth * 0.5f
+            bars.forEachIndexed { index, ratio ->
+                val x = slotWidth * index * 2 + (slotWidth - barWidth) / 2f
+                val barHeight = size.height * ratio
+                drawRoundRect(
+                    color = baseColor,
+                    topLeft = Offset(x, size.height - barHeight),
+                    size = Size(barWidth, barHeight),
+                    cornerRadius = CornerRadius(barWidth / 2f, barWidth / 2f),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SkeletonDonutPanel(modifier: Modifier = Modifier) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.82f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.22f)),
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            SkeletonLine(width = 76.dp, height = 14.dp)
+            Box(
+                modifier = Modifier.fillMaxWidth(),
+                contentAlignment = Alignment.Center,
+            ) {
+                SkeletonDonutChart(chartSize = 156.dp)
+            }
+            repeat(4) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    SkeletonCircle(size = 10.dp)
+                    SkeletonLine(width = 40.dp, height = 12.dp)
+                    SkeletonBlock(
+                        modifier = Modifier.weight(1f),
+                        height = 6.dp,
+                        shape = RoundedCornerShape(999.dp),
+                    )
+                    SkeletonLine(width = 34.dp, height = 12.dp)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SkeletonPeakPanel(modifier: Modifier = Modifier) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.82f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.22f)),
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            SkeletonLine(width = 72.dp, height = 14.dp)
+            repeat(3) {
+                SkeletonMetricChip(modifier = Modifier.fillMaxWidth())
+            }
+        }
+    }
+}
+
+@Composable
+private fun SkeletonUsageSharePanel() {
+    Surface(
+        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.82f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.22f)),
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            SkeletonLine(width = 92.dp, height = 14.dp)
+            Box(
+                modifier = Modifier.fillMaxWidth(),
+                contentAlignment = Alignment.Center,
+            ) {
+                SkeletonDonutChart(chartSize = 176.dp)
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                repeat(4) {
+                    Surface(
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(16.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.42f),
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 8.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            SkeletonCircle(size = 28.dp)
+                            SkeletonLine(width = 24.dp, height = 10.dp)
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SkeletonRankingPanel() {
+    Surface(
+        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.82f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.22f)),
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            SkeletonLine(width = 76.dp, height = 14.dp)
+            repeat(5) { index ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    SkeletonPill(width = 28.dp)
+                    SkeletonCircle(size = 34.dp)
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        SkeletonLine(width = 88.dp, height = 12.dp)
+                        SkeletonBlock(
+                            modifier = Modifier.fillMaxWidth(),
+                            height = 10.dp,
+                            shape = RoundedCornerShape(999.dp),
+                        )
+                    }
+                    Column(
+                        horizontalAlignment = Alignment.End,
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        SkeletonLine(width = 38.dp, height = 12.dp)
+                        SkeletonLine(width = 28.dp, height = 10.dp)
+                    }
+                }
+                if (index != 4) {
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.28f))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SkeletonLine(
+    width: androidx.compose.ui.unit.Dp = 0.dp,
+    height: androidx.compose.ui.unit.Dp = 14.dp,
+    fill: Boolean = false,
+) {
+    SkeletonBlock(
+        modifier = if (fill) Modifier.fillMaxWidth() else Modifier.width(width),
+        height = height,
+        shape = RoundedCornerShape(999.dp),
+    )
+}
+
+@Composable
+private fun SkeletonBlock(
+    modifier: Modifier = Modifier,
+    height: androidx.compose.ui.unit.Dp,
+    shape: androidx.compose.ui.graphics.Shape,
+) {
+    val shimmerBrush = rememberSkeletonBrush()
+    Box(
+        modifier = modifier
+            .height(height)
+            .clip(shape)
+            .background(shimmerBrush),
+    )
+}
+
+@Composable
+private fun rememberSkeletonBrush(): Brush {
+    val transition = rememberInfiniteTransition(label = "skeleton_shimmer")
+    val progress by transition.animateFloat(
+        initialValue = -1f,
+        targetValue = 2f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1400, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart,
+        ),
+        label = "skeleton_shimmer_progress",
+    )
+    val reportColors = LocalReportColors.current
+    val base = reportColors.skeletonBase.copy(alpha = 0.92f)
+    val highlight = reportColors.skeletonHighlight
+    return Brush.linearGradient(
+        colors = listOf(base, highlight, base),
+        start = Offset(progress * 420f - 220f, progress * 180f - 120f),
+        end = Offset(progress * 420f + 220f, progress * 180f + 120f),
+    )
+}
+
+@Composable
+private fun rememberSkeletonColors(): Pair<Color, Color> {
+    val transition = rememberInfiniteTransition(label = "skeleton_pulse")
+    val pulse by transition.animateFloat(
+        initialValue = 0f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1100, easing = LinearEasing),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "skeleton_pulse_progress",
+    )
+    val reportColors = LocalReportColors.current
+    val base = reportColors.skeletonBase.copy(alpha = 0.92f + 0.08f * pulse)
+    val accent = reportColors.skeletonAccent.copy(alpha = 0.72f + 0.18f * pulse)
+    return base to accent
 }
 
 @Composable
@@ -966,9 +1576,7 @@ private fun ReportTabRow(
 
 @Composable
 private fun DeviceHeroCard(
-    summary: DailyReportSummary,
-    overview: ScopeOverview,
-    behaviorInsight: UsageBehaviorInsight?,
+    heroState: SectionState<HeroSectionData>,
 ) {
     ReportCard {
         AdaptiveRowGrid(
@@ -980,14 +1588,11 @@ private fun DeviceHeroCard(
         ) { modifier, index ->
             when (index) {
                 0 -> DeviceHeroVisualPanel(
-                    summary = summary,
-                    overview = overview,
+                    heroState = heroState,
                     modifier = modifier,
                 )
                 else -> DeviceHeroMetricsPanel(
-                    summary = summary,
-                    overview = overview,
-                    behaviorInsight = behaviorInsight,
+                    heroState = heroState,
                     modifier = modifier,
                 )
             }
@@ -998,10 +1603,26 @@ private fun DeviceHeroCard(
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun DeviceHeroVisualPanel(
-    summary: DailyReportSummary,
-    overview: ScopeOverview,
+    heroState: SectionState<HeroSectionData>,
     modifier: Modifier = Modifier,
 ) {
+    val data = (heroState as? SectionState.Ready)?.data
+    val summary = data?.summary ?: DailyReportSummary(
+        title = "今日战报",
+        subtitle = "",
+        capturedAt = "",
+        message = "",
+        primaryValue = "",
+        secondaryValue = "",
+        tertiaryValue = "",
+        tags = emptyList(),
+    )
+    val overview = data?.overview ?: ScopeOverview(
+        totalUsageMillis = 0L,
+        openCount = 0,
+        activeBucketCount = 0,
+        topApp = null,
+    )
     Surface(
         modifier = modifier,
         shape = RoundedCornerShape(28.dp),
@@ -1022,39 +1643,57 @@ private fun DeviceHeroVisualPanel(
                     verticalAlignment = Alignment.Top,
                 ) {
                     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        if (data == null) {
+                            SkeletonLine(width = 88.dp, height = 12.dp)
+                        } else {
+                            Text(
+                                text = data.summary.subtitle,
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                         Text(
-                            text = summary.subtitle,
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                        Text(
-                            text = summary.title,
+                            text = data?.summary?.title ?: "今日战报",
                             style = MaterialTheme.typography.headlineSmall,
                             fontWeight = FontWeight.Bold,
                         )
                     }
-                    Text(
-                        text = summary.capturedAt,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                    if (data == null) {
+                        SkeletonLine(width = 72.dp, height = 10.dp)
+                    } else {
+                        Text(
+                            text = data.summary.capturedAt,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                 }
                 Box(
                     modifier = Modifier.fillMaxWidth(),
                     contentAlignment = Alignment.Center,
                 ) {
-                    UsageDialChart(
-                        usageMillis = overview.totalUsageMillis,
-                        activeBucketCount = overview.activeBucketCount,
-                        modifier = Modifier.size(dialSize),
-                    )
+                    if (data == null) {
+                        SkeletonDonutChart(chartSize = dialSize)
+                    } else {
+                        UsageDialChart(
+                            usageMillis = data.overview.totalUsageMillis,
+                            activeBucketCount = data.overview.activeBucketCount,
+                            modifier = Modifier.size(dialSize),
+                        )
+                    }
                 }
                 FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    summary.tags.forEach { tag ->
-                        SummaryTagChip(tag)
+                    if (data == null) {
+                        SkeletonPill(width = 72.dp)
+                        SkeletonPill(width = 80.dp)
+                        SkeletonPill(width = 64.dp)
+                    } else {
+                        data.summary.tags.forEach { tag ->
+                            SummaryTagChip(tag)
+                        }
                     }
                 }
             }
@@ -1064,11 +1703,16 @@ private fun DeviceHeroVisualPanel(
 
 @Composable
 private fun DeviceHeroMetricsPanel(
-    summary: DailyReportSummary,
-    overview: ScopeOverview,
-    behaviorInsight: UsageBehaviorInsight?,
+    heroState: SectionState<HeroSectionData>,
     modifier: Modifier = Modifier,
 ) {
+    val data = (heroState as? SectionState.Ready)?.data
+    val overview = data?.overview ?: ScopeOverview(
+        totalUsageMillis = 0L,
+        openCount = 0,
+        activeBucketCount = 0,
+        topApp = null,
+    )
     Surface(
         modifier = modifier,
         shape = RoundedCornerShape(28.dp),
@@ -1082,11 +1726,15 @@ private fun DeviceHeroMetricsPanel(
                 modifier = Modifier.padding(horizontal = contentPadding, vertical = contentPadding),
                 verticalArrangement = Arrangement.spacedBy(contentSpacing),
             ) {
-                Text(
-                    text = summary.message,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                )
+                if (data == null) {
+                    SkeletonLine(fill = true, height = 18.dp)
+                } else {
+                    Text(
+                        text = data.summary.message,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                }
                 AdaptiveRowGrid(
                     itemCount = 4,
                     compactColumns = 2,
@@ -1094,17 +1742,21 @@ private fun DeviceHeroMetricsPanel(
                     horizontalSpacing = 10.dp,
                     verticalSpacing = 10.dp,
                 ) { childModifier, index ->
+                    if (data == null) {
+                        SkeletonMetricChip(modifier = childModifier)
+                        return@AdaptiveRowGrid
+                    }
                     when (index) {
                         0 -> HeroMetricChip(
                             icon = Icons.Default.PhoneAndroid,
                             label = "全机时长",
-                            value = summary.primaryValue,
+                            value = data.summary.primaryValue,
                             modifier = childModifier,
                         )
                         1 -> HeroMetricChip(
                             icon = Icons.AutoMirrored.Filled.CompareArrows,
                             label = "对比昨天",
-                            value = summary.secondaryValue,
+                            value = data.summary.secondaryValue,
                             modifier = childModifier,
                         )
                         2 -> HeroMetricChip(
@@ -1116,12 +1768,19 @@ private fun DeviceHeroMetricsPanel(
                         else -> HeroMetricChip(
                             icon = Icons.Default.NightsStay,
                             label = "夜间使用",
-                            value = formatDuration(behaviorInsight?.nightUsageMillis ?: 0L),
+                            value = formatDuration(data.nightUsageMillis),
                             modifier = childModifier,
                         )
                     }
                 }
-                overview.topApp?.let { topApp ->
+                if (data == null) {
+                    SkeletonBlock(
+                        modifier = Modifier.fillMaxWidth(),
+                        height = 62.dp,
+                        shape = RoundedCornerShape(20.dp),
+                    )
+                } else {
+                    overview?.topApp?.let { topApp ->
                     Surface(
                         shape = RoundedCornerShape(20.dp),
                         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.86f),
@@ -1134,6 +1793,11 @@ private fun DeviceHeroMetricsPanel(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(if (compact) 10.dp else 12.dp),
                         ) {
+                            val animatedTopAppValue = animateMetricDisplayText(
+                                rawText = formatDuration(topApp.value),
+                                label = "hero_top_app_${topApp.packageName}",
+                                delayMillis = 240,
+                            )
                             AppIconCircle(topApp.packageName)
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
@@ -1150,12 +1814,13 @@ private fun DeviceHeroMetricsPanel(
                                 )
                             }
                             Text(
-                                text = formatDuration(topApp.value),
+                                text = animatedTopAppValue,
                                 style = MaterialTheme.typography.titleSmall,
                                 fontWeight = FontWeight.Bold,
                             )
                         }
                     }
+                }
                 }
             }
         }
@@ -1169,19 +1834,31 @@ private fun UsageDialChart(
     modifier: Modifier = Modifier,
 ) {
     val capMillis = 12L * 60L * 60_000L
+    val stagedUsageMillis = rememberDelayedLongTarget(usageMillis, 40)
+    val animatedUsageMillis = animateLongValue(
+        targetValue = stagedUsageMillis,
+        label = "usage_dial_value",
+        durationMillis = 880,
+    )
     val progress by animateFloatAsState(
-        targetValue = (usageMillis.toFloat() / capMillis.toFloat()).coerceIn(0f, 1f),
+        targetValue = (stagedUsageMillis.toFloat() / capMillis.toFloat()).coerceIn(0f, 1f),
         animationSpec = spring(dampingRatio = 0.9f, stiffness = 180f),
         label = "usage_dial_progress",
+    )
+    val rotationProgress by animateFloatAsState(
+        targetValue = if (stagedUsageMillis > 0L) 1f else 0f,
+        animationSpec = tween(durationMillis = 900),
+        label = "usage_dial_rotation",
     )
     val arcColor = MaterialTheme.colorScheme.primary
     Box(modifier = modifier, contentAlignment = Alignment.Center) {
         Canvas(modifier = Modifier.fillMaxSize()) {
             val stroke = size.minDimension * 0.1f
             val diameter = size.minDimension - stroke
+            val startAngle = 145f - (1f - rotationProgress) * 360f
             drawArc(
                 color = arcColor.copy(alpha = 0.14f),
-                startAngle = 145f,
+                startAngle = startAngle,
                 sweepAngle = 250f,
                 useCenter = false,
                 topLeft = Offset((size.width - diameter) / 2f, (size.height - diameter) / 2f),
@@ -1190,7 +1867,7 @@ private fun UsageDialChart(
             )
             drawArc(
                 color = arcColor,
-                startAngle = 145f,
+                startAngle = startAngle,
                 sweepAngle = 250f * progress,
                 useCenter = false,
                 topLeft = Offset((size.width - diameter) / 2f, (size.height - diameter) / 2f),
@@ -1200,7 +1877,7 @@ private fun UsageDialChart(
         }
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Text(
-                text = formatDuration(usageMillis),
+                text = formatDuration(animatedUsageMillis),
                 style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.Bold,
             )
@@ -1264,8 +1941,19 @@ private fun HeroMetricChip(
     icon: ImageVector,
     label: String,
     value: String,
+    delayMillis: Int = when (icon) {
+        Icons.Default.PhoneAndroid -> 80
+        Icons.AutoMirrored.Filled.CompareArrows -> 120
+        Icons.Default.TouchApp -> 160
+        else -> 200
+    },
     modifier: Modifier = Modifier,
 ) {
+    val animatedValue = animateMetricDisplayText(
+        rawText = value,
+        label = "hero_metric_${label.hashCode()}",
+        delayMillis = delayMillis,
+    )
     Surface(
         modifier = modifier,
         shape = RoundedCornerShape(20.dp),
@@ -1287,7 +1975,7 @@ private fun HeroMetricChip(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Text(
-                text = value,
+                text = animatedValue,
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Bold,
                 maxLines = 2,
@@ -1300,9 +1988,7 @@ private fun HeroMetricChip(
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun TimelineCard(
-    buckets: List<DailyTimelineBucket>,
-    periodUsage: List<PeriodUsageStat>,
-    behaviorInsight: UsageBehaviorInsight?,
+    timelineState: SectionState<TimelineSectionData>,
 ) {
     ReportCard {
         Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -1310,7 +1996,11 @@ private fun TimelineCard(
                 icon = Icons.Default.Timeline,
                 title = "全天痕迹",
             )
-            DailyTimelineChart(buckets)
+            when (timelineState) {
+                SectionState.Loading -> SkeletonTimelineChart()
+                SectionState.Empty -> DailyTimelineChart(emptyList())
+                is SectionState.Ready -> DailyTimelineChart(timelineState.data.buckets)
+            }
             TimelineFooter()
             AdaptiveRowGrid(
                 itemCount = 2,
@@ -1319,15 +2009,37 @@ private fun TimelineCard(
                 horizontalSpacing = 14.dp,
                 verticalSpacing = 14.dp,
             ) { modifier, index ->
-                when (index) {
-                    0 -> PeriodDistributionCard(
-                        periodUsage = periodUsage,
-                        modifier = modifier,
-                    )
-                    else -> PeakMomentsCard(
-                        behaviorInsight = behaviorInsight,
-                        modifier = modifier,
-                    )
+                when (timelineState) {
+                    SectionState.Loading -> {
+                        if (index == 0) {
+                            SkeletonDonutPanel(modifier = modifier)
+                        } else {
+                            SkeletonPeakPanel(modifier = modifier)
+                        }
+                    }
+                    SectionState.Empty -> {
+                        if (index == 0) {
+                            PeriodDistributionCard(
+                                periodUsage = emptyList(),
+                                modifier = modifier,
+                            )
+                        } else {
+                            PeakMomentsCard(
+                                timelineState = null,
+                                modifier = modifier,
+                            )
+                        }
+                    }
+                    is SectionState.Ready -> when (index) {
+                        0 -> PeriodDistributionCard(
+                            periodUsage = timelineState.data.periodUsage,
+                            modifier = modifier,
+                        )
+                        else -> PeakMomentsCard(
+                            timelineState = timelineState.data,
+                            modifier = modifier,
+                        )
+                    }
                 }
             }
         }
@@ -1341,6 +2053,15 @@ private fun DailyTimelineChart(
     val deviceColor = MaterialTheme.colorScheme.primary
     val guideLineColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.14f)
     val axisTextColor = MaterialTheme.colorScheme.onSurfaceVariant
+    val stagedRevealTarget = rememberDelayedFloatTarget(
+        targetValue = if (buckets.any { it.deviceMillis > 0L }) 1f else 0f,
+        delayMillis = 160,
+    )
+    val revealProgress by animateFloatAsState(
+        targetValue = stagedRevealTarget,
+        animationSpec = tween(durationMillis = 720),
+        label = "timeline_bar_reveal",
+    )
     BoxWithConstraints {
         val chartHeight = if (maxWidth < 360.dp) 138.dp else 156.dp
         val axisWidth = if (maxWidth < 360.dp) 32.dp else 40.dp
@@ -1385,8 +2106,13 @@ private fun DailyTimelineChart(
 
                 buckets.forEachIndexed { index, bucket ->
                     val x = slotWidth * index + (slotWidth - barWidth) / 2f
-                    val deviceHeight = size.height * (bucket.deviceMillis.toFloat() / deviceMax.toFloat()).coerceIn(0f, 1f)
-                    val top = size.height - maxOf(6f, deviceHeight)
+                    val rawHeight = size.height * (bucket.deviceMillis.toFloat() / deviceMax.toFloat()).coerceIn(0f, 1f)
+                    val deviceHeight = if (bucket.deviceMillis > 0L) {
+                        maxOf(6f * revealProgress, rawHeight * revealProgress)
+                    } else {
+                        0f
+                    }
+                    val top = size.height - deviceHeight
                     drawRoundRect(
                         brush = Brush.verticalGradient(
                             colors = listOf(
@@ -1397,7 +2123,7 @@ private fun DailyTimelineChart(
                             endY = baseY,
                         ),
                         topLeft = Offset(x, top),
-                        size = Size(barWidth, maxOf(6f, deviceHeight)),
+                        size = Size(barWidth, deviceHeight),
                         cornerRadius = CornerRadius(barWidth / 2f, barWidth / 2f),
                     )
                 }
@@ -1430,12 +2156,14 @@ private fun PeriodDistributionCard(
     val total = periodUsage.sumOf { it.deviceMillis }.coerceAtLeast(1L)
     val dominantIndex = periodUsage.indexOfFirst { it.deviceMillis == (periodUsage.maxOfOrNull { item -> item.deviceMillis } ?: 0L) }
     val dominantItem = dominantIndex.takeIf { it >= 0 }?.let { periodUsage[it] }
-    val colors = listOf(
-        Color(0xFF8FB8FF),
-        Color(0xFFFFC857),
-        Color(0xFFFF8C69),
-        Color(0xFF6B8F71),
+    val reportColors = LocalReportColors.current
+    val animatedDominantMillis = animateLongValue(
+        targetValue = dominantItem?.deviceMillis ?: 0L,
+        label = "period_dominant_value",
+        durationMillis = 840,
+        delayMillis = 240,
     )
+    val colors = reportColors.periodPalette
     Surface(
         modifier = modifier,
         shape = RoundedCornerShape(24.dp),
@@ -1462,6 +2190,7 @@ private fun PeriodDistributionCard(
                             values = periodUsage.map { it.deviceMillis },
                             colors = colors,
                             highlightedIndex = dominantIndex.takeIf { it >= 0 },
+                            delayMillis = 200,
                             modifier = Modifier.size(donutSize),
                         )
                         Column(
@@ -1474,7 +2203,7 @@ private fun PeriodDistributionCard(
                                 fontWeight = FontWeight.Bold,
                             )
                             Text(
-                                text = dominantItem?.let { formatDuration(it.deviceMillis) } ?: "--",
+                                text = dominantItem?.let { formatDuration(animatedDominantMillis) } ?: "--",
                                 style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -1500,18 +2229,28 @@ private fun PeriodDonutChart(
     values: List<Long>,
     colors: List<Color>,
     highlightedIndex: Int? = null,
+    delayMillis: Int = 0,
     modifier: Modifier = Modifier,
 ) {
     val total = values.sum().coerceAtLeast(1L)
-    val revealProgress by animateFloatAsState(
+    val stagedRevealTarget = rememberDelayedFloatTarget(
         targetValue = if (values.any { it > 0L }) 1f else 0f,
+        delayMillis = delayMillis,
+    )
+    val revealProgress by animateFloatAsState(
+        targetValue = stagedRevealTarget,
         animationSpec = spring(dampingRatio = 0.92f, stiffness = 160f),
         label = "donut_reveal_progress",
+    )
+    val rotationProgress by animateFloatAsState(
+        targetValue = stagedRevealTarget,
+        animationSpec = tween(durationMillis = 920),
+        label = "donut_rotation_progress",
     )
     Canvas(modifier = modifier) {
         val baseStroke = size.minDimension * 0.13f
         val diameter = size.minDimension - baseStroke
-        var startAngle = -90f
+        var startAngle = -90f - (1f - rotationProgress) * 360f
         values.forEachIndexed { index, value ->
             val sweep = 360f * (value.toFloat() / total.toFloat()) * revealProgress
             val isHighlighted = highlightedIndex == index && value > 0L
@@ -1586,9 +2325,10 @@ private fun PeriodLegendRow(
 
 @Composable
 private fun PeakMomentsCard(
-    behaviorInsight: UsageBehaviorInsight?,
+    timelineState: TimelineSectionData?,
     modifier: Modifier = Modifier,
 ) {
+    val behaviorInsight = timelineState
     Surface(
         modifier = modifier,
         shape = RoundedCornerShape(22.dp),
@@ -1603,7 +2343,7 @@ private fun PeakMomentsCard(
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Bold,
             )
-            if (behaviorInsight == null) {
+            if (timelineState == null) {
                 Text(
                     text = "今天的样本还不足以判断峰值。",
                     style = MaterialTheme.typography.bodyMedium,
@@ -1647,21 +2387,9 @@ private fun rememberAppChartColors(
     packageNames: List<String>,
 ): Map<String, Color> {
     val context = LocalContext.current
+    val reportColors = LocalReportColors.current
     val stablePackages = remember(packageNames) { packageNames.distinct() }
-    val fallbackColors = remember {
-        listOf(
-            Color(0xFF4F7BFF),
-            Color(0xFF17A398),
-            Color(0xFFF59E0B),
-            Color(0xFFE85D75),
-            Color(0xFF8B5CF6),
-            Color(0xFF06B6D4),
-            Color(0xFF84CC16),
-            Color(0xFFF97316),
-            Color(0xFF0EA5E9),
-            Color(0xFFA855F7),
-        )
-    }
+    val fallbackColors = remember(reportColors) { reportColors.appChartPalette }
     val colors by produceState(
         initialValue = stablePackages.mapIndexed { index, pkg -> pkg to fallbackColors[index % fallbackColors.size] }.toMap(),
         key1 = stablePackages,
@@ -1741,19 +2469,9 @@ private fun normalizeChartColor(
     }
 }
 
+@Composable
 private fun fallbackChartColor(index: Int): Color {
-    val colors = listOf(
-        Color(0xFF4F7BFF),
-        Color(0xFF17A398),
-        Color(0xFFF59E0B),
-        Color(0xFFE85D75),
-        Color(0xFF8B5CF6),
-        Color(0xFF06B6D4),
-        Color(0xFF84CC16),
-        Color(0xFFF97316),
-        Color(0xFF0EA5E9),
-        Color(0xFFA855F7),
-    )
+    val colors = LocalReportColors.current.appChartPalette
     return colors[index % colors.size]
 }
 
@@ -1767,6 +2485,19 @@ private fun TopUsageBarRow(
 ) {
     val isTopRank = rank == 1
     val share = if (totalUsage > 0L) item.value.toFloat() / totalUsage.toFloat() else 0f
+    val delayMillis = 300 + ((rank - 1) * 35)
+    val animatedDuration = animateLongValue(
+        targetValue = item.value,
+        label = "top_usage_duration_${item.packageName}",
+        durationMillis = 820,
+        delayMillis = delayMillis,
+    )
+    val animatedShare = animateFractionValue(
+        targetValue = share,
+        label = "top_usage_share_${item.packageName}",
+        durationMillis = 760,
+        delayMillis = delayMillis + 30,
+    )
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(18.dp),
@@ -1812,16 +2543,17 @@ private fun TopUsageBarRow(
                 GradientProgressBar(
                     progress = (item.value.toFloat() / maxUsage.toFloat()).coerceIn(0f, 1f),
                     color = color,
+                    delayMillis = delayMillis,
                 )
             }
             Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 Text(
-                    text = formatDuration(item.value),
+                    text = formatDuration(animatedDuration),
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
                 )
                 Text(
-                    text = "${(share * 100).roundToInt()}%",
+                    text = "${(animatedShare * 100).roundToInt()}%",
                     style = MaterialTheme.typography.labelMedium,
                     color = color,
                     fontWeight = FontWeight.SemiBold,
@@ -1835,10 +2567,15 @@ private fun TopUsageBarRow(
 private fun GradientProgressBar(
     progress: Float,
     color: Color,
+    delayMillis: Int = 0,
     modifier: Modifier = Modifier,
 ) {
-    val animatedProgress by animateFloatAsState(
+    val stagedProgress = rememberDelayedFloatTarget(
         targetValue = progress.coerceIn(0f, 1f),
+        delayMillis = delayMillis,
+    )
+    val animatedProgress by animateFloatAsState(
+        targetValue = stagedProgress,
         animationSpec = spring(dampingRatio = 0.92f, stiffness = 220f),
         label = "gradient_progress",
     )
@@ -1868,8 +2605,9 @@ private fun GradientProgressBar(
 
 @Composable
 private fun AppChartsCard(
-    usageTopApps: List<AppDisplayItem>,
+    topAppsState: SectionState<TopAppsSectionData>,
 ) {
+    val usageTopApps = (topAppsState as? SectionState.Ready)?.data?.usageTopApps.orEmpty()
     val appColors = rememberAppChartColors(usageTopApps.map { it.packageName })
     ReportCard {
         Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -1878,7 +2616,10 @@ private fun AppChartsCard(
                 title = "Top 10 应用",
                 subtitle = "只看今天使用时长最高的 10 个应用，并尽量使用它们自己的主题色。",
             )
-            if (usageTopApps.isEmpty()) {
+            if (topAppsState == SectionState.Loading) {
+                SkeletonUsageSharePanel()
+                SkeletonRankingPanel()
+            } else if (topAppsState == SectionState.Empty || usageTopApps.isEmpty()) {
                 Text(
                     text = "今天还没有形成足够的前台使用记录。",
                     style = MaterialTheme.typography.bodyMedium,
@@ -1931,6 +2672,12 @@ private fun AppUsageShareCard(
                     )
                 } else {
                     val total = items.sumOf { it.value }.coerceAtLeast(1L)
+                    val animatedTotal = animateLongValue(
+                        targetValue = total,
+                        label = "app_usage_share_total",
+                        durationMillis = 860,
+                        delayMillis = 260,
+                    )
                     Box(
                         modifier = Modifier.fillMaxWidth(),
                         contentAlignment = Alignment.Center,
@@ -1940,6 +2687,7 @@ private fun AppUsageShareCard(
                                 values = items.map { it.value },
                                 colors = items.mapIndexed { index, item -> appColors[item.packageName] ?: fallbackChartColor(index) },
                                 highlightedIndex = 0,
+                                delayMillis = 220,
                                 modifier = Modifier.size(donutSize),
                             )
                             Column(
@@ -1947,7 +2695,7 @@ private fun AppUsageShareCard(
                                 verticalArrangement = Arrangement.spacedBy(4.dp),
                             ) {
                                 Text(
-                                    text = formatDuration(total),
+                                    text = formatDuration(animatedTotal),
                                     style = if (compact) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleLarge,
                                     fontWeight = FontWeight.Bold,
                                 )
@@ -1969,9 +2717,10 @@ private fun AppUsageShareCard(
                         val item = items[index]
                         val color = appColors[item.packageName] ?: fallbackChartColor(index)
                         AppShareChip(
-                            shareText = "${((item.value.toFloat() / total.toFloat()) * 100).roundToInt()}%",
+                            share = item.value.toFloat() / total.toFloat(),
                             packageName = item.packageName,
                             color = color,
+                            delayMillis = 360 + index * 30,
                             modifier = chipModifier,
                         )
                     }
@@ -1983,11 +2732,18 @@ private fun AppUsageShareCard(
 
 @Composable
 private fun AppShareChip(
-    shareText: String,
+    share: Float,
     packageName: String,
     color: Color,
+    delayMillis: Int = 0,
     modifier: Modifier = Modifier,
 ) {
+    val animatedShare = animateFractionValue(
+        targetValue = share.coerceIn(0f, 1f),
+        label = "app_share_chip_$packageName",
+        durationMillis = 780,
+        delayMillis = delayMillis,
+    )
     Surface(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
@@ -2010,7 +2766,7 @@ private fun AppShareChip(
                 )
             }
             Text(
-                text = shareText,
+                text = "${(animatedShare * 100).roundToInt()}%",
                 style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.Bold,
                 color = color,
@@ -2066,9 +2822,21 @@ private fun MiniInsightCard(
     label: String,
     value: String,
     visualRatio: Float? = null,
+    delayMillis: Int = when (icon) {
+        Icons.Default.Schedule -> 460
+        Icons.Default.AccessTime -> 500
+        Icons.Default.TouchApp -> 540
+        Icons.Default.RocketLaunch -> 580
+        else -> 620
+    },
     modifier: Modifier = Modifier,
 ) {
     val accent = MaterialTheme.colorScheme.primary
+    val animatedValue = animateMetricDisplayText(
+        rawText = value,
+        label = "mini_insight_${label.hashCode()}",
+        delayMillis = delayMillis,
+    )
     Surface(
         modifier = modifier,
         shape = RoundedCornerShape(18.dp),
@@ -2085,11 +2853,12 @@ private fun MiniInsightCard(
                 modifier = Modifier.size(16.dp),
             )
             Text(text = label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(text = value, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+            Text(text = animatedValue, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
             if (visualRatio != null) {
                 GradientProgressBar(
                     progress = visualRatio.coerceIn(0f, 1f),
                     color = accent,
+                    delayMillis = delayMillis,
                 )
             }
         }
@@ -2098,8 +2867,9 @@ private fun MiniInsightCard(
 
 @Composable
 private fun BehaviorCard(
-    behaviorInsight: UsageBehaviorInsight?,
+    behaviorState: SectionState<BehaviorSectionData>,
 ) {
+    val behaviorInsight = (behaviorState as? SectionState.Ready)?.data?.behaviorInsight
     ReportCard {
         Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
             SectionHeader(
@@ -2107,7 +2877,28 @@ private fun BehaviorCard(
                 title = "行为分析",
                 subtitle = "继续观察会话长度、碎片化程度和睡前起床的使用切片。",
             )
-            if (behaviorInsight == null) {
+            if (behaviorState == SectionState.Loading) {
+                AdaptiveRowGrid(
+                    itemCount = 5,
+                    compactColumns = 2,
+                    expandedColumns = 2,
+                ) { modifier, _ ->
+                    SkeletonMetricChip(modifier = modifier)
+                }
+                AdaptiveRowGrid(
+                    itemCount = 2,
+                    compactColumns = 1,
+                    expandedColumns = 2,
+                    horizontalSpacing = 12.dp,
+                    verticalSpacing = 12.dp,
+                ) { modifier, _ ->
+                    SkeletonBlock(
+                        modifier = modifier,
+                        height = 72.dp,
+                        shape = RoundedCornerShape(20.dp),
+                    )
+                }
+            } else if (behaviorInsight == null) {
                 Text(
                     text = "今天还没有形成足够的使用痕迹。",
                     style = MaterialTheme.typography.bodyMedium,
@@ -2244,7 +3035,7 @@ private fun BehaviorMomentCard(
 
 @Composable
 private fun ComparisonCard(
-    comparisons: List<ComparisonMetric>,
+    comparisonState: SectionState<ComparisonSectionData>,
 ) {
     ReportCard {
         Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -2253,15 +3044,33 @@ private fun ComparisonCard(
                 title = "今日对比",
                 subtitle = "只比较日报里最稳定、最能解释的核心指标。",
             )
-            if (comparisons.isEmpty()) {
+            if (comparisonState == SectionState.Loading) {
+                repeat(3) { index ->
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        SkeletonLine(width = 72.dp, height = 12.dp)
+                        SkeletonLine(width = 96.dp, height = 24.dp)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            SkeletonPill(width = 78.dp)
+                            SkeletonPill(width = 84.dp)
+                        }
+                    }
+                    if (index != 2) {
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f))
+                    }
+                }
+            } else if (comparisonState == SectionState.Empty) {
                 Text(
                     text = "今日样本还不足，暂时不展示对比。",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             } else {
+                val comparisons = (comparisonState as SectionState.Ready).data.comparisons
                 comparisons.forEachIndexed { index, item ->
-                    ComparisonRow(item)
+                    ComparisonRow(
+                        item = item,
+                        delayMillis = 660 + index * 50,
+                    )
                     if (index != comparisons.lastIndex) {
                         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f))
                     }
@@ -2273,10 +3082,18 @@ private fun ComparisonCard(
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun ComparisonRow(item: ComparisonMetric) {
+private fun ComparisonRow(
+    item: ComparisonMetric,
+    delayMillis: Int = 0,
+) {
+    val animatedTodayValue = animateMetricDisplayText(
+        rawText = item.todayValue,
+        label = "comparison_${item.label.hashCode()}",
+        delayMillis = delayMillis,
+    )
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(text = item.label, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-        Text(text = item.todayValue, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+        Text(text = animatedTodayValue, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
         FlowRow(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -2390,6 +3207,208 @@ private fun formatDuration(durationMillis: Long): String {
         hours > 0 -> "${hours}h"
         else -> "${minutes}m"
     }
+}
+
+@Composable
+private fun animateLongValue(
+    targetValue: Long,
+    label: String,
+    durationMillis: Int = 800,
+    delayMillis: Int = 0,
+): Long {
+    val delayedTargetValue = rememberDelayedLongTarget(
+        targetValue = targetValue.coerceAtLeast(0L),
+        delayMillis = delayMillis,
+    )
+    val animatedValue by animateFloatAsState(
+        targetValue = delayedTargetValue.toFloat(),
+        animationSpec = tween(durationMillis = durationMillis),
+        label = label,
+    )
+    return animatedValue.roundToLong().coerceAtLeast(0L)
+}
+
+@Composable
+private fun animateIntValue(
+    targetValue: Int,
+    label: String,
+    durationMillis: Int = 700,
+    delayMillis: Int = 0,
+): Int {
+    val delayedTargetValue = rememberDelayedIntTarget(
+        targetValue = targetValue.coerceAtLeast(0),
+        delayMillis = delayMillis,
+    )
+    val animatedValue by animateFloatAsState(
+        targetValue = delayedTargetValue.toFloat(),
+        animationSpec = tween(durationMillis = durationMillis),
+        label = label,
+    )
+    return animatedValue.roundToInt().coerceAtLeast(0)
+}
+
+@Composable
+private fun animateFractionValue(
+    targetValue: Float,
+    label: String,
+    durationMillis: Int = 760,
+    delayMillis: Int = 0,
+): Float {
+    val delayedTargetValue = rememberDelayedFloatTarget(
+        targetValue = targetValue.coerceIn(0f, 1f),
+        delayMillis = delayMillis,
+    )
+    val animatedValue by animateFloatAsState(
+        targetValue = delayedTargetValue,
+        animationSpec = tween(durationMillis = durationMillis),
+        label = label,
+    )
+    return animatedValue.coerceIn(0f, 1f)
+}
+
+@Composable
+private fun animateDecimalValue(
+    targetValue: Float,
+    label: String,
+    durationMillis: Int = 760,
+    delayMillis: Int = 0,
+): Float {
+    val delayedTargetValue = rememberDelayedFloatTarget(
+        targetValue = targetValue.coerceAtLeast(0f),
+        delayMillis = delayMillis,
+    )
+    val animatedValue by animateFloatAsState(
+        targetValue = delayedTargetValue,
+        animationSpec = tween(durationMillis = durationMillis),
+        label = label,
+    )
+    return animatedValue.coerceAtLeast(0f)
+}
+
+@Composable
+private fun animateMetricDisplayText(
+    rawText: String,
+    label: String,
+    delayMillis: Int = 0,
+): String {
+    val durationMatch = Regex("""(\d+)h(?: (\d+)m)?|(\d+)m""").find(rawText)
+    if (durationMatch != null) {
+        val animatedDuration = animateLongValue(
+            targetValue = parseDisplayDuration(durationMatch.value),
+            label = "${label}_duration",
+            durationMillis = 860,
+            delayMillis = delayMillis,
+        )
+        return rawText.replaceRange(durationMatch.range, formatDuration(animatedDuration))
+    }
+
+    val percentMatch = Regex("""(\d+)%""").find(rawText)
+    if (percentMatch != null) {
+        val animatedPercent = animateIntValue(
+            targetValue = percentMatch.groupValues[1].toIntOrNull() ?: 0,
+            label = "${label}_percent",
+            durationMillis = 760,
+            delayMillis = delayMillis,
+        )
+        return rawText.replaceRange(percentMatch.range, "${animatedPercent}%")
+    }
+
+    val decimalMatch = Regex("""(\d+\.\d+)""").find(rawText)
+    if (decimalMatch != null) {
+        val animatedDecimal = animateDecimalValue(
+            targetValue = decimalMatch.groupValues[1].toFloatOrNull() ?: 0f,
+            label = "${label}_decimal",
+            durationMillis = 760,
+            delayMillis = delayMillis,
+        )
+        return rawText.replaceRange(
+            decimalMatch.range,
+            String.format(Locale.CHINA, "%.1f", animatedDecimal),
+        )
+    }
+
+    val countMatch = Regex("""\d+""").find(rawText)
+    if (countMatch != null) {
+        val animatedCount = animateIntValue(
+            targetValue = countMatch.value.toIntOrNull() ?: 0,
+            label = "${label}_count",
+            durationMillis = 720,
+            delayMillis = delayMillis,
+        )
+        return rawText.replaceRange(countMatch.range, animatedCount.toString())
+    }
+
+    return rawText
+}
+
+private fun parseDisplayDuration(durationText: String): Long {
+    val hourMinuteMatch = Regex("""(?:(\d+)h)?(?: ?(\d+)m)?""").matchEntire(durationText)
+    if (hourMinuteMatch != null) {
+        val hours = hourMinuteMatch.groupValues[1].toLongOrNull() ?: 0L
+        val minutes = hourMinuteMatch.groupValues[2].toLongOrNull() ?: 0L
+        return (hours * 60L + minutes) * 60_000L
+    }
+    return 0L
+}
+
+@Composable
+private fun rememberDelayedLongTarget(
+    targetValue: Long,
+    delayMillis: Int,
+): Long {
+    val sanitizedTarget = targetValue.coerceAtLeast(0L)
+    val delayedTarget by produceState(
+        initialValue = if (delayMillis > 0) 0L else sanitizedTarget,
+        key1 = sanitizedTarget,
+        key2 = delayMillis,
+    ) {
+        if (delayMillis > 0) {
+            value = 0L
+            delay(delayMillis.toLong())
+        }
+        value = sanitizedTarget
+    }
+    return delayedTarget
+}
+
+@Composable
+private fun rememberDelayedIntTarget(
+    targetValue: Int,
+    delayMillis: Int,
+): Int {
+    val sanitizedTarget = targetValue.coerceAtLeast(0)
+    val delayedTarget by produceState(
+        initialValue = if (delayMillis > 0) 0 else sanitizedTarget,
+        key1 = sanitizedTarget,
+        key2 = delayMillis,
+    ) {
+        if (delayMillis > 0) {
+            value = 0
+            delay(delayMillis.toLong())
+        }
+        value = sanitizedTarget
+    }
+    return delayedTarget
+}
+
+@Composable
+private fun rememberDelayedFloatTarget(
+    targetValue: Float,
+    delayMillis: Int,
+): Float {
+    val sanitizedTarget = targetValue.coerceAtLeast(0f)
+    val delayedTarget by produceState(
+        initialValue = if (delayMillis > 0) 0f else sanitizedTarget,
+        key1 = sanitizedTarget,
+        key2 = delayMillis,
+    ) {
+        if (delayMillis > 0) {
+            value = 0f
+            delay(delayMillis.toLong())
+        }
+        value = sanitizedTarget
+    }
+    return delayedTarget
 }
 
 private fun formatAxisDuration(durationMillis: Long): String {
