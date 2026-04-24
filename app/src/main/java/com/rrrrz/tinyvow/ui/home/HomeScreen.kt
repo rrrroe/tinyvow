@@ -82,6 +82,8 @@ import com.rrrrz.tinyvow.data.db.AppDatabase
 import com.rrrrz.tinyvow.data.notification.NotificationPermissionChecker
 import com.rrrrz.tinyvow.data.repository.AppGroupWithApps
 import com.rrrrz.tinyvow.data.repository.AppLimitRepository
+import com.rrrrz.tinyvow.data.repository.DailyArchiveRepository
+import com.rrrrz.tinyvow.data.repository.PointsRepository
 import com.rrrrz.tinyvow.data.settings.ManagedAppPreferences
 import com.rrrrz.tinyvow.data.usage.UsageAccessStateChecker
 import com.rrrrz.tinyvow.data.usage.UsageAccessStatus
@@ -104,7 +106,7 @@ import com.rrrrz.tinyvow.data.db.RedemptionHistoryEntity
 import com.rrrrz.tinyvow.ui.rewards.RedeemScreen
 import com.rrrrz.tinyvow.ui.rewards.AchievementScreen
 
-enum class Screen { HOME, REWARDS, STATS, ME, LABORATORY }
+enum class Screen { HOME, REWARDS, STATS, ME, LABORATORY, HISTORY }
 
 @Composable
 fun RewardsHome(
@@ -181,8 +183,10 @@ fun HomeRoute(
     var isIgnoringBattery by remember { mutableStateOf(powerManager.isIgnoringBatteryOptimizations(context.packageName)) }
     
     val database = remember(context) { AppDatabase.getDatabase(context) }
-    val appLimitRepository = remember(database) { AppLimitRepository(database) }
+    val appLimitRepository = remember(database, context) { AppLimitRepository(context, database) }
     val usageRepository = remember(context) { UsageStatsUsageRepository(context) }
+    val pointsRepository = remember(database, context) { PointsRepository(context, database) }
+    val dailyArchiveRepository = remember(database, context) { DailyArchiveRepository(context, database) }
     
     val groupsWithApps by appLimitRepository.getAllGroupsWithApps().collectAsState(initial = emptyList())
     val userPoints by preferences.userPoints.collectAsState(initial = 0.0)
@@ -232,6 +236,7 @@ fun HomeRoute(
 
     LaunchedEffect(Unit) {
         appLimitRepository.clearExpiredBonusTime(System.currentTimeMillis())
+        dailyArchiveRepository.ensureArchivesUpToYesterday()
         
         // 每日总结逻辑
         val today = LocalDate.now().toString()
@@ -306,7 +311,7 @@ fun HomeRoute(
             SnackbarHost(hostState = snackbarHostState)
         },
         bottomBar = {
-            if (currentScreen != Screen.LABORATORY) {
+            if (currentScreen == Screen.HOME || currentScreen == Screen.REWARDS || currentScreen == Screen.STATS || currentScreen == Screen.ME) {
                 NavigationBar(
                     containerColor = MaterialTheme.colorScheme.surface,
                     tonalElevation = 8.dp
@@ -396,10 +401,7 @@ fun HomeRoute(
                         redemptionHistory = redemptionHistory,
                         onRedeem = { reward, gId -> 
                             coroutineScope.launch {
-                                val result = appLimitRepository.redeemReward(reward, gId)
-                                if (result != null) {
-                                    preferences.addUserPoints(-result.pointCost.toDouble())
-                                }
+                                appLimitRepository.redeemReward(reward, gId)
                             }
                         },
                         onAddReward = { name, cost, stock, desc ->
@@ -417,6 +419,7 @@ fun HomeRoute(
                         groupsWithApps = groupsWithApps,
                         userPoints = userPoints,
                         todayPoints = todayPoints,
+                        archiveRepository = dailyArchiveRepository,
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
@@ -426,13 +429,26 @@ fun HomeRoute(
                         currentTheme = selectedTheme,
                         onSetTheme = { i -> coroutineScope.launch { preferences.setSelectedTheme(i) } },
                         onNavigateToLaboratory = { currentScreen = Screen.LABORATORY },
+                        onNavigateToHistory = { currentScreen = Screen.HISTORY },
                         onNavigateToAchievements = { currentScreen = Screen.REWARDS },
                         onNavigateToRedeem = { currentScreen = Screen.REWARDS }
                     )
                 }
+                Screen.HISTORY -> {
+                    HistoryRoute(
+                        archiveRepository = dailyArchiveRepository,
+                        onBack = { currentScreen = Screen.ME },
+                    )
+                }
                 Screen.LABORATORY -> {
                     LaboratoryScreen(
-                        onAddPoints = { pts -> coroutineScope.launch { preferences.addUserPoints(pts); appLimitRepository.checkAchievements(preferences.userPoints.first()) } },
+                        onAddPoints = {
+                            pts ->
+                            coroutineScope.launch {
+                                pointsRepository.recordManualAdjustment(pts, "Laboratory adjustment")
+                                appLimitRepository.checkAchievements(preferences.userPoints.first())
+                            }
+                        },
                         onResetSummary = { coroutineScope.launch { preferences.setLastSummaryShownDate("reset") } },
                         onTriggerSummary = { showYesterdaySummary = true },
                         onBack = { currentScreen = Screen.ME }

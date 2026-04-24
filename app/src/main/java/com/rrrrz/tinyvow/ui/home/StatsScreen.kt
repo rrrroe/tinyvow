@@ -16,6 +16,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Arrangement
@@ -35,11 +36,14 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.CallSplit
 import androidx.compose.material.icons.automirrored.filled.CompareArrows
 import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Insights
 import androidx.compose.material.icons.filled.NightsStay
 import androidx.compose.material.icons.filled.PhoneAndroid
@@ -48,15 +52,18 @@ import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Timeline
 import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material.icons.filled.WbSunny
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -82,7 +89,11 @@ import androidx.core.graphics.drawable.toBitmap
 import coil.compose.AsyncImage
 import com.rrrrz.tinyvow.data.apps.InstalledAppRepository
 import com.rrrrz.tinyvow.data.apps.ManagedApp
+import com.rrrrz.tinyvow.data.db.DailyAppArchiveEntity
+import com.rrrrz.tinyvow.data.db.DailyArchiveEntity
 import com.rrrrz.tinyvow.data.repository.AppGroupWithApps
+import com.rrrrz.tinyvow.data.repository.ArchiveDateUtils
+import com.rrrrz.tinyvow.data.repository.DailyArchiveRepository
 import com.rrrrz.tinyvow.data.usage.AppSession
 import com.rrrrz.tinyvow.data.usage.UsageAccessStatus
 import com.rrrrz.tinyvow.data.usage.UsageRepository
@@ -91,11 +102,14 @@ import com.rrrrz.tinyvow.ui.theme.LocalReportColors
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import java.time.LocalDate
+import java.time.YearMonth
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import kotlin.math.ceil
 import kotlin.math.roundToInt
 import kotlin.math.roundToLong
 
@@ -166,6 +180,7 @@ private data class UsageBehaviorInsight(
     val nightUsageMillis: Long,
     val longestSession: AppDisplayItem?,
     val averageSessionMillis: Long,
+    val activeHourCount: Int,
     val shortSessionRatio: Float,
     val reopenIntensity: Float,
     val predictedSleepLabel: String,
@@ -216,6 +231,18 @@ private data class ComparisonSectionData(
     val comparisons: List<ComparisonMetric>,
 )
 
+private data class ArchivedAppSnapshot(
+    val archiveDate: String,
+    val packageName: String,
+    val label: String,
+    val usageMillis: Long,
+    val openCount: Int,
+    val sessionCount: Int,
+    val longestSessionMillis: Long,
+    val nightUsageMillis: Long,
+    val hourlyBuckets: LongArray,
+)
+
 private sealed interface SectionState<out T> {
     data object Loading : SectionState<Nothing>
     data object Empty : SectionState<Nothing>
@@ -231,6 +258,10 @@ private data class DailyReportUiState(
     val topAppsState: SectionState<TopAppsSectionData> = SectionState.Loading,
     val behaviorState: SectionState<BehaviorSectionData> = SectionState.Loading,
     val comparisonState: SectionState<ComparisonSectionData> = SectionState.Loading,
+    val selectedArchiveDate: String? = null,
+    val previousArchiveDate: String? = null,
+    val nextArchiveDate: String? = null,
+    val availableArchiveDates: List<String> = emptyList(),
     val placeholderTitle: String? = null,
     val placeholderDescription: String? = null,
 )
@@ -241,32 +272,19 @@ fun StatsRoute(
     groupsWithApps: List<AppGroupWithApps>,
     userPoints: Double,
     todayPoints: Double,
+    archiveRepository: DailyArchiveRepository,
     modifier: Modifier = Modifier,
 ) {
-    val context = LocalContext.current
     val zoneId = remember { ZoneId.systemDefault() }
     var selectedTab by remember { mutableStateOf(ReportTab.DAY) }
+    var selectedArchiveDate by remember { mutableStateOf<String?>(null) }
     var uiState by remember { mutableStateOf(DailyReportUiState(selectedTab = selectedTab)) }
-
-    val installedAppsState by produceState(
-        initialValue = InstalledAppsState(),
-        key1 = usageAccessStatus,
-    ) {
-        if (usageAccessStatus != UsageAccessStatus.GRANTED) {
-            value = InstalledAppsState()
-            return@produceState
-        }
-        value = InstalledAppsState(isLoading = true)
-        val apps = InstalledAppRepository(context).getAllInstalledApps()
-        value = InstalledAppsState(apps = apps, isLoading = false)
-    }
 
     LaunchedEffect(
         usageAccessStatus,
         groupsWithApps,
         selectedTab,
-        installedAppsState.apps,
-        installedAppsState.isLoading,
+        selectedArchiveDate,
         userPoints,
         todayPoints,
     ) {
@@ -275,41 +293,80 @@ fun StatsRoute(
                 isPermissionGranted = false,
                 selectedTab = selectedTab,
                 isRefreshing = false,
+                selectedArchiveDate = selectedArchiveDate,
             )
             return@LaunchedEffect
         }
 
-        if (installedAppsState.isLoading) {
-            uiState = createRefreshingUiState(selectedTab = selectedTab)
-            return@LaunchedEffect
-        }
-
-        val usageRepository = UsageStatsUsageRepository(context)
-        if (selectedTab != ReportTab.DAY) {
-            uiState = buildPlaceholderUiState(selectedTab)
-            return@LaunchedEffect
-        }
-
-        while (isActive) {
-            uiState = createRefreshingUiState(
-                selectedTab = selectedTab,
-                previous = uiState,
-            )
-            buildDailyReportUiState(
-                context = context,
-                zoneId = zoneId,
-                usageRepository = usageRepository,
-                groupsWithApps = groupsWithApps,
-                installedApps = installedAppsState.apps,
-                updateState = { transform -> uiState = transform(uiState) },
-            )
-            delay(30_000L)
+        when (selectedTab) {
+            ReportTab.DAY -> {
+                uiState =
+                    createRefreshingUiState(
+                        selectedTab = selectedTab,
+                        previous = uiState,
+                        selectedArchiveDate = selectedArchiveDate,
+                    )
+                val recentArchives =
+                    archiveRepository
+                        .getRecentArchives(limit = 3650)
+                        .first()
+                        .sortedByDescending { it.archiveDate }
+                val normalizedSelectedDate =
+                    when {
+                        recentArchives.isEmpty() -> null
+                        selectedArchiveDate != null &&
+                            recentArchives.any { it.archiveDate == selectedArchiveDate } -> selectedArchiveDate
+                        else -> recentArchives.first().archiveDate
+                    }
+                if (normalizedSelectedDate != selectedArchiveDate) {
+                    selectedArchiveDate = normalizedSelectedDate
+                }
+                buildArchivedDayReportUiState(
+                    selectedDate = normalizedSelectedDate,
+                    recentArchives = recentArchives,
+                    archiveRepository = archiveRepository,
+                    updateState = { transform -> uiState = transform(uiState) },
+                )
+                return@LaunchedEffect
+            }
+            ReportTab.WEEK, ReportTab.MONTH -> {
+                uiState =
+                    createRefreshingUiState(
+                        selectedTab = selectedTab,
+                        previous = uiState,
+                        selectedArchiveDate = selectedArchiveDate,
+                    )
+                buildArchivedWindowReportUiState(
+                    selectedTab = selectedTab,
+                    zoneId = zoneId,
+                    archiveRepository = archiveRepository,
+                    updateState = { transform -> uiState = transform(uiState) },
+                )
+                return@LaunchedEffect
+            }
+            ReportTab.YEAR -> {
+                uiState = buildPlaceholderUiState(selectedTab)
+                return@LaunchedEffect
+            }
         }
     }
 
     StatsScreenLayout(
         state = uiState,
         onTabSelected = { selectedTab = it },
+        onPreviousArchiveDate = {
+            uiState.previousArchiveDate?.let { previousDate ->
+                selectedArchiveDate = previousDate
+            }
+        },
+        onNextArchiveDate = {
+            uiState.nextArchiveDate?.let { nextDate ->
+                selectedArchiveDate = nextDate
+            }
+        },
+        onSelectArchiveDate = { date ->
+            selectedArchiveDate = date
+        },
         modifier = modifier,
     )
 }
@@ -317,6 +374,7 @@ fun StatsRoute(
 private fun createRefreshingUiState(
     selectedTab: ReportTab,
     previous: DailyReportUiState? = null,
+    selectedArchiveDate: String? = previous?.selectedArchiveDate,
 ): DailyReportUiState {
     return DailyReportUiState(
         isPermissionGranted = true,
@@ -327,6 +385,623 @@ private fun createRefreshingUiState(
         topAppsState = previous?.topAppsState ?: SectionState.Loading,
         behaviorState = previous?.behaviorState ?: SectionState.Loading,
         comparisonState = previous?.comparisonState ?: SectionState.Loading,
+        selectedArchiveDate = selectedArchiveDate,
+        previousArchiveDate = previous?.previousArchiveDate,
+        nextArchiveDate = previous?.nextArchiveDate,
+        availableArchiveDates = previous?.availableArchiveDates.orEmpty(),
+    )
+}
+
+private suspend fun buildArchivedWindowReportUiState(
+    selectedTab: ReportTab,
+    zoneId: ZoneId,
+    archiveRepository: DailyArchiveRepository,
+    updateState: ((DailyReportUiState) -> DailyReportUiState) -> Unit,
+) {
+    val today = LocalDate.now(zoneId)
+    val endDate = today.minusDays(1)
+    val windowDays = archiveWindowDays(selectedTab)
+    val currentStart = endDate.minusDays((windowDays - 1).toLong())
+    val previousEnd = currentStart.minusDays(1)
+    val previousStart = previousEnd.minusDays((windowDays - 1).toLong())
+    val recentArchives = archiveRepository.getRecentArchives(limit = windowDays * 4).first()
+
+    val currentArchives =
+        recentArchives
+            .filter {
+                val date = LocalDate.parse(it.archiveDate)
+                !date.isBefore(currentStart) && !date.isAfter(endDate)
+            }
+            .sortedBy { it.archiveDate }
+    val previousArchives =
+        recentArchives
+            .filter {
+                val date = LocalDate.parse(it.archiveDate)
+                !date.isBefore(previousStart) && !date.isAfter(previousEnd)
+            }
+            .sortedBy { it.archiveDate }
+
+    val currentAppArchives =
+        archiveRepository
+            .getAppArchivesByRange(
+                from = ArchiveDateUtils.formatDate(currentStart),
+                to = ArchiveDateUtils.formatDate(endDate),
+            ).first()
+    val previousAppArchives =
+        archiveRepository
+            .getAppArchivesByRange(
+                from = ArchiveDateUtils.formatDate(previousStart),
+                to = ArchiveDateUtils.formatDate(previousEnd),
+            ).first()
+
+    val currentSnapshots = mergeArchivedAppSnapshots(currentAppArchives)
+    val previousSnapshots = mergeArchivedAppSnapshots(previousAppArchives)
+    val currentMetrics = buildArchivedWindowMetrics(currentSnapshots)
+    val previousMetrics = buildArchivedWindowMetrics(previousSnapshots)
+    val timelineBuckets = buildArchiveTimelineBuckets(currentArchives)
+    val periodUsage = buildArchivePeriodUsageStats(selectedTab, timelineBuckets)
+    val topApps =
+        archiveRepository
+            .getTopAppsByRange(
+                from = ArchiveDateUtils.formatDate(currentStart),
+                to = ArchiveDateUtils.formatDate(endDate),
+                limit = 10,
+            ).first()
+            .map {
+                AppDisplayItem(
+                    packageName = it.packageName,
+                    label = it.appLabel,
+                    value = it.totalUsageMillis,
+                )
+            }
+    val overview =
+        ScopeOverview(
+            totalUsageMillis = currentArchives.sumOf { it.totalUsageMillis },
+            openCount = currentMetrics.deviceOpenCount,
+            activeBucketCount = timelineBuckets.count { it.deviceMillis > 0L },
+            topApp = topApps.firstOrNull(),
+        )
+    val averagePerDayUsage =
+        if (currentArchives.isEmpty()) {
+            0L
+        } else {
+            currentArchives.sumOf { it.totalUsageMillis } / currentArchives.size
+        }
+    val summary =
+        buildArchivedReportSummary(
+            selectedTab = selectedTab,
+            startDate = currentStart,
+            endDate = endDate,
+            overview = overview,
+            previousMetrics = previousMetrics,
+            dominantPeriod = periodUsage.maxByOrNull { it.deviceMillis }?.label ?: "--",
+            pointsNet = currentArchives.sumOf { it.pointsNet },
+            redemptionCount = currentArchives.sumOf { it.redemptionCount },
+            averagePerDayUsage = averagePerDayUsage,
+        )
+    val comparisons =
+        buildArchivedComparisonMetrics(
+            selectedTab = selectedTab,
+            overview = overview,
+            currentMetrics = currentMetrics,
+            previousMetrics = previousMetrics,
+            averagePerDayUsage = averagePerDayUsage,
+        )
+    val timelineStateData =
+        buildArchiveTimelineSectionData(
+            selectedTab = selectedTab,
+            timelineBuckets = timelineBuckets,
+            nightUsageMillis = currentMetrics.nightUsageMillis,
+            periodUsage = periodUsage,
+        )
+
+    updateState { current ->
+        current.copy(
+            isRefreshing = false,
+            heroState =
+                SectionState.Ready(
+                    HeroSectionData(
+                        summary = summary,
+                        overview = overview,
+                        nightUsageMillis = currentMetrics.nightUsageMillis,
+                    ),
+                ),
+            timelineState =
+                if (timelineBuckets.isEmpty()) {
+                    SectionState.Empty
+                } else {
+                    SectionState.Ready(timelineStateData)
+                },
+            topAppsState =
+                if (topApps.isEmpty()) {
+                    SectionState.Empty
+                } else {
+                    SectionState.Ready(TopAppsSectionData(usageTopApps = topApps))
+                },
+            behaviorState = SectionState.Empty,
+            comparisonState =
+                if (comparisons.isEmpty()) {
+                    SectionState.Empty
+                } else {
+                    SectionState.Ready(ComparisonSectionData(comparisons = comparisons))
+                },
+            selectedArchiveDate = null,
+            previousArchiveDate = null,
+            nextArchiveDate = null,
+            placeholderTitle = null,
+            placeholderDescription = null,
+        )
+    }
+}
+
+private fun archiveWindowDays(tab: ReportTab): Int =
+    when (tab) {
+        ReportTab.DAY -> 1
+        ReportTab.WEEK -> 7
+        ReportTab.MONTH -> 30
+        ReportTab.YEAR -> 365
+    }
+
+private fun mergeArchivedAppSnapshots(items: List<DailyAppArchiveEntity>): List<ArchivedAppSnapshot> {
+    return items
+        .groupBy { it.archiveDate to it.packageName }
+        .map { (_, groupedItems) ->
+            val representative = groupedItems.maxByOrNull { it.dailyUsageMillis } ?: groupedItems.first()
+            ArchivedAppSnapshot(
+                archiveDate = representative.archiveDate,
+                packageName = representative.packageName,
+                label = representative.appLabel,
+                usageMillis = groupedItems.maxOf { it.dailyUsageMillis },
+                openCount = groupedItems.maxOf { it.openCount },
+                sessionCount = groupedItems.maxOf { it.sessionCount },
+                longestSessionMillis = groupedItems.maxOf { it.longestSessionMillis },
+                nightUsageMillis = groupedItems.maxOf { it.nightUsageMillis },
+                hourlyBuckets =
+                    LongArray(24) { hour ->
+                        groupedItems.maxOf { appItem -> appHourlyBucketAt(appItem, hour) }
+                    },
+            )
+        }
+}
+
+private fun buildArchivedWindowMetrics(items: List<ArchivedAppSnapshot>): WindowMetrics {
+    return WindowMetrics(
+        deviceUsageMillis = items.sumOf { it.usageMillis },
+        deviceOpenCount = items.sumOf { it.openCount },
+        longestSessionMillis = items.maxOfOrNull { it.longestSessionMillis } ?: 0L,
+        nightUsageMillis = items.sumOf { it.nightUsageMillis },
+    )
+}
+
+private fun buildArchiveTimelineBuckets(archives: List<DailyArchiveEntity>): List<DailyTimelineBucket> {
+    return archives.mapIndexed { index, archive ->
+        DailyTimelineBucket(
+            hour = index,
+            label =
+                LocalDate
+                    .parse(archive.archiveDate)
+                    .format(DateTimeFormatter.ofPattern("M/d", Locale.CHINA)),
+            deviceMillis = archive.totalUsageMillis,
+        )
+    }
+}
+
+private fun buildArchivePeriodUsageStats(
+    selectedTab: ReportTab,
+    timelineBuckets: List<DailyTimelineBucket>,
+): List<PeriodUsageStat> {
+    if (timelineBuckets.isEmpty()) {
+        return emptyList()
+    }
+    val labels =
+        when (selectedTab) {
+            ReportTab.WEEK -> listOf("周初", "周中", "周后段")
+            ReportTab.MONTH -> listOf("第 1 周", "第 2 周", "第 3 周", "第 4 周+")
+            else -> emptyList()
+        }
+    if (labels.isEmpty()) {
+        return emptyList()
+    }
+    val chunkSize = ceil(timelineBuckets.size.toDouble() / labels.size.toDouble()).toInt().coerceAtLeast(1)
+    return labels.mapIndexed { index, label ->
+        val startIndex = index * chunkSize
+        val endIndex = minOf(startIndex + chunkSize, timelineBuckets.size)
+        val segment =
+            if (startIndex < timelineBuckets.size) {
+                timelineBuckets.subList(startIndex, endIndex)
+            } else {
+                emptyList()
+            }
+        PeriodUsageStat(
+            label = label,
+            deviceMillis = segment.sumOf { it.deviceMillis },
+        )
+    }
+}
+
+private suspend fun buildArchivedDayReportUiState(
+    selectedDate: String?,
+    recentArchives: List<DailyArchiveEntity>,
+    archiveRepository: DailyArchiveRepository,
+    updateState: ((DailyReportUiState) -> DailyReportUiState) -> Unit,
+) {
+    if (selectedDate == null || recentArchives.isEmpty()) {
+        updateState { current ->
+            current.copy(
+                isRefreshing = false,
+                heroState = SectionState.Empty,
+                timelineState = SectionState.Empty,
+                topAppsState = SectionState.Empty,
+                behaviorState = SectionState.Empty,
+                comparisonState = SectionState.Empty,
+                selectedArchiveDate = null,
+                previousArchiveDate = null,
+                nextArchiveDate = null,
+                availableArchiveDates = emptyList(),
+                placeholderTitle = "暂无已归档日报",
+                placeholderDescription = "日报只展示昨天和更早的归档数据。等到明天再回来，就能看到第一条记录。",
+            )
+        }
+        return
+    }
+
+    val archivesDesc = recentArchives.sortedByDescending { it.archiveDate }
+    val selectedIndex = archivesDesc.indexOfFirst { it.archiveDate == selectedDate }.takeIf { it >= 0 } ?: 0
+    val selectedArchive = archivesDesc[selectedIndex]
+    val previousArchive = archivesDesc.getOrNull(selectedIndex + 1)
+    val nextArchive = archivesDesc.getOrNull(selectedIndex - 1)
+    val currentSnapshots =
+        mergeArchivedAppSnapshots(
+            archiveRepository.getAppArchivesByDate(selectedArchive.archiveDate).first(),
+        )
+    val previousSnapshots =
+        previousArchive?.let {
+            mergeArchivedAppSnapshots(
+                archiveRepository.getAppArchivesByDate(it.archiveDate).first(),
+            )
+        }.orEmpty()
+    val currentMetrics = buildArchivedWindowMetrics(currentSnapshots)
+    val previousMetrics = buildArchivedWindowMetrics(previousSnapshots)
+    val timelineBuckets = buildArchivedDayTimelineBuckets(currentSnapshots)
+    val periodUsage = buildPeriodUsageStats(timelineBuckets)
+    val topApps =
+        currentSnapshots
+            .sortedByDescending { it.usageMillis }
+            .take(10)
+            .map {
+                AppDisplayItem(
+                    packageName = it.packageName,
+                    label = it.label,
+                    value = it.usageMillis,
+                )
+            }
+    val overview =
+        ScopeOverview(
+            totalUsageMillis = selectedArchive.totalUsageMillis,
+            openCount = currentMetrics.deviceOpenCount,
+            activeBucketCount = timelineBuckets.count { it.deviceMillis > 0L },
+            topApp = topApps.firstOrNull(),
+        )
+    val earlierArchives = archivesDesc.drop(selectedIndex + 1).take(7)
+    val averagePerDayUsage =
+        if (earlierArchives.isEmpty()) {
+            0L
+        } else {
+            earlierArchives.sumOf { it.totalUsageMillis } / earlierArchives.size
+        }
+    val summary =
+        buildArchivedDaySummary(
+            archive = selectedArchive,
+            overview = overview,
+            previousMetrics = previousMetrics,
+            averagePerDayUsage = averagePerDayUsage,
+            dominantPeriod = periodUsage.maxByOrNull { it.deviceMillis }?.label ?: "全天",
+        )
+    val behaviorInsight = buildArchivedDayBehaviorInsight(currentSnapshots, timelineBuckets)
+    val comparisons =
+        buildArchivedDayComparisonMetrics(
+            currentArchive = selectedArchive,
+            currentMetrics = currentMetrics,
+            previousArchive = previousArchive,
+            previousMetrics = previousMetrics,
+            averagePerDayUsage = averagePerDayUsage,
+        )
+    val timelineStateData =
+        buildArchiveTimelineSectionData(
+            selectedTab = ReportTab.DAY,
+            timelineBuckets = timelineBuckets,
+            nightUsageMillis = currentMetrics.nightUsageMillis,
+            periodUsage = periodUsage,
+        )
+
+    updateState { current ->
+        current.copy(
+            isRefreshing = false,
+            heroState =
+                SectionState.Ready(
+                    HeroSectionData(
+                        summary = summary,
+                        overview = overview,
+                        nightUsageMillis = currentMetrics.nightUsageMillis,
+                    ),
+                ),
+            timelineState =
+                if (timelineBuckets.any { it.deviceMillis > 0L }) {
+                    SectionState.Ready(timelineStateData)
+                } else {
+                    SectionState.Empty
+                },
+            topAppsState =
+                if (topApps.isEmpty()) {
+                    SectionState.Empty
+                } else {
+                    SectionState.Ready(TopAppsSectionData(usageTopApps = topApps))
+                },
+            behaviorState =
+                if (behaviorInsight == null) {
+                    SectionState.Empty
+                } else {
+                    SectionState.Ready(BehaviorSectionData(behaviorInsight = behaviorInsight))
+                },
+            comparisonState =
+                if (comparisons.isEmpty()) {
+                    SectionState.Empty
+                } else {
+                    SectionState.Ready(ComparisonSectionData(comparisons = comparisons))
+                },
+            selectedArchiveDate = selectedArchive.archiveDate,
+            previousArchiveDate = previousArchive?.archiveDate,
+            nextArchiveDate = nextArchive?.archiveDate,
+            availableArchiveDates = archivesDesc.map { it.archiveDate },
+            placeholderTitle = null,
+            placeholderDescription = null,
+        )
+    }
+}
+
+private fun buildArchiveTimelineSectionData(
+    selectedTab: ReportTab,
+    timelineBuckets: List<DailyTimelineBucket>,
+    nightUsageMillis: Long,
+    periodUsage: List<PeriodUsageStat>,
+): TimelineSectionData {
+    val peakBucket = timelineBuckets.maxByOrNull { it.deviceMillis }
+    val peakPair =
+        timelineBuckets
+            .windowed(size = 2, step = 1, partialWindows = false)
+            .map { buckets -> buckets to buckets.sumOf { it.deviceMillis } }
+            .maxByOrNull { it.second }
+    return TimelineSectionData(
+        buckets = timelineBuckets,
+        periodUsage = periodUsage,
+        peakHourLabel = peakBucket?.label ?: "--",
+        peakHourMillis = peakBucket?.deviceMillis ?: 0L,
+        peakTwoHourLabel =
+            peakPair?.first?.let {
+                val tailLabel = if (selectedTab == ReportTab.DAY) dayHourLabel(it.last().hour + 1) else it.last().label
+                "${it.first().label}-$tailLabel"
+            } ?: "--",
+        peakTwoHourMillis = peakPair?.second ?: 0L,
+        nightUsageMillis = nightUsageMillis,
+    )
+}
+
+private fun buildArchivedReportSummary(
+    selectedTab: ReportTab,
+    startDate: LocalDate,
+    endDate: LocalDate,
+    overview: ScopeOverview,
+    previousMetrics: WindowMetrics,
+    dominantPeriod: String,
+    pointsNet: Double,
+    redemptionCount: Int,
+    averagePerDayUsage: Long,
+): DailyReportSummary {
+    val title =
+        when (selectedTab) {
+            ReportTab.DAY -> "归档日报"
+            ReportTab.WEEK -> "近 7 日趋势"
+            ReportTab.MONTH -> "近 30 日趋势"
+            ReportTab.YEAR -> "年度趋势"
+        }
+    val subtitle =
+        "${startDate.format(DateTimeFormatter.ofPattern("M/d", Locale.CHINA))} - ${endDate.format(DateTimeFormatter.ofPattern("M/d", Locale.CHINA))}"
+    val usageMessage =
+        when {
+            previousMetrics.deviceUsageMillis > 0L &&
+                overview.totalUsageMillis > previousMetrics.deviceUsageMillis * 1.15f -> "较上一窗口更重"
+            previousMetrics.deviceUsageMillis > 0L &&
+                overview.totalUsageMillis < previousMetrics.deviceUsageMillis * 0.85f -> "较上一窗口更轻"
+            else -> "与上一窗口接近"
+        }
+    val formattedPoints = String.format(Locale.CHINA, "%.1f", pointsNet)
+    val pointTag = if (pointsNet >= 0) "净积分 +$formattedPoints" else "净积分 $formattedPoints"
+    return DailyReportSummary(
+        title = title,
+        subtitle = subtitle,
+        capturedAt = "归档截至 ${endDate.format(DateTimeFormatter.ofPattern("M/d", Locale.CHINA))}",
+        message = "$usageMessage，主要集中在 $dominantPeriod。",
+        primaryValue = formatDuration(overview.totalUsageMillis),
+        secondaryValue = deltaDescription(overview.totalUsageMillis, previousMetrics.deviceUsageMillis, "较上一窗口"),
+        tertiaryValue = "日均 ${formatDuration(averagePerDayUsage)}",
+        tags = listOf(pointTag, "$redemptionCount 次兑换", dominantPeriod),
+    )
+}
+
+private fun buildArchivedComparisonMetrics(
+    selectedTab: ReportTab,
+    overview: ScopeOverview,
+    currentMetrics: WindowMetrics,
+    previousMetrics: WindowMetrics,
+    averagePerDayUsage: Long,
+): List<ComparisonMetric> {
+    return listOf(
+        ComparisonMetric(
+            label = "窗口总时长",
+            todayValue = formatDuration(overview.totalUsageMillis),
+            yesterdayDelta = deltaDescription(overview.totalUsageMillis, previousMetrics.deviceUsageMillis, "较上一窗口"),
+            averageDelta = "日均 ${formatDuration(averagePerDayUsage)}",
+        ),
+        ComparisonMetric(
+            label = "打开次数",
+            todayValue = "${overview.openCount} 次",
+            yesterdayDelta = deltaDescription(overview.openCount.toLong(), previousMetrics.deviceOpenCount.toLong(), "较上一窗口", countUnit = "次"),
+            averageDelta = "日均 ${(overview.openCount.toFloat() / archiveWindowDays(selectedTab).coerceAtLeast(1)).roundToInt()} 次",
+        ),
+        ComparisonMetric(
+            label = "夜间使用",
+            todayValue = formatDuration(currentMetrics.nightUsageMillis),
+            yesterdayDelta = deltaDescription(currentMetrics.nightUsageMillis, previousMetrics.nightUsageMillis, "较上一窗口"),
+            averageDelta = null,
+        ),
+        ComparisonMetric(
+            label = "最长单次会话",
+            todayValue = formatDuration(currentMetrics.longestSessionMillis),
+            yesterdayDelta = deltaDescription(currentMetrics.longestSessionMillis, previousMetrics.longestSessionMillis, "较上一窗口"),
+            averageDelta = null,
+        ),
+    )
+}
+
+private fun buildArchivedDayTimelineBuckets(items: List<ArchivedAppSnapshot>): List<DailyTimelineBucket> {
+    return (0 until 24).map { hour ->
+        DailyTimelineBucket(
+            hour = hour,
+            label = dayHourLabel(hour),
+            deviceMillis = items.sumOf { snapshot -> snapshot.hourlyBuckets.getOrElse(hour) { 0L } },
+        )
+    }
+}
+
+private fun buildArchivedDaySummary(
+    archive: DailyArchiveEntity,
+    overview: ScopeOverview,
+    previousMetrics: WindowMetrics,
+    averagePerDayUsage: Long,
+    dominantPeriod: String,
+): DailyReportSummary {
+    val message =
+        when {
+            previousMetrics.deviceUsageMillis > 0L &&
+                overview.totalUsageMillis > previousMetrics.deviceUsageMillis * 1.15f -> "这一天的使用明显高于上一条归档。"
+            previousMetrics.deviceUsageMillis > 0L &&
+                overview.totalUsageMillis < previousMetrics.deviceUsageMillis * 0.85f -> "这一天的使用明显低于上一条归档。"
+            else -> "这一天的使用强度与上一条归档接近。"
+        }
+    return DailyReportSummary(
+        title = "归档日报",
+        subtitle = formatArchiveDate(archive.archiveDate, "M月d日 EEEE"),
+        capturedAt = "归档日期 ${formatArchiveDate(archive.archiveDate, "M/d")}",
+        message = "$message 主要集中在 $dominantPeriod。",
+        primaryValue = formatDuration(overview.totalUsageMillis),
+        secondaryValue = deltaDescription(overview.totalUsageMillis, previousMetrics.deviceUsageMillis, "较上一条归档"),
+        tertiaryValue = if (averagePerDayUsage > 0L) "近 7 个归档日日均 ${formatDuration(averagePerDayUsage)}" else "暂无更早归档均值",
+        tags = listOf("净积分 ${formatSignedPointsLocal(archive.pointsNet)}", "${archive.redemptionCount} 次兑换", "节省 ${formatDuration(archive.savedMillis)}"),
+    )
+}
+
+private fun buildArchivedDayBehaviorInsight(
+    items: List<ArchivedAppSnapshot>,
+    timelineBuckets: List<DailyTimelineBucket>,
+): UsageBehaviorInsight? {
+    if (items.isEmpty() && timelineBuckets.none { it.deviceMillis > 0L }) {
+        return null
+    }
+    val peakHour = timelineBuckets.maxByOrNull { it.deviceMillis }
+    val peakTwoHour =
+        timelineBuckets
+            .windowed(size = 2, step = 1, partialWindows = false)
+            .map { buckets -> buckets to buckets.sumOf { it.deviceMillis } }
+            .maxByOrNull { it.second }
+    val longestSession =
+        items.maxByOrNull { it.longestSessionMillis }?.let {
+            AppDisplayItem(
+                packageName = it.packageName,
+                label = it.label,
+                value = it.longestSessionMillis,
+            )
+        }
+    val mostOpened =
+        items.maxByOrNull { it.openCount }?.let {
+            AppDisplayItem(
+                packageName = it.packageName,
+                label = it.label,
+                value = it.openCount.toLong(),
+            )
+        }
+    val nightLeader =
+        items.maxByOrNull { it.nightUsageMillis }?.takeIf { it.nightUsageMillis > 0L }?.let {
+            AppDisplayItem(
+                packageName = it.packageName,
+                label = it.label,
+                value = it.nightUsageMillis,
+            )
+        }
+    val totalSessions = items.sumOf { it.sessionCount }
+    val totalUsage = items.sumOf { it.usageMillis }
+    val activeHours = timelineBuckets.count { it.deviceMillis > 0L }
+    return UsageBehaviorInsight(
+        peakHourLabel = peakHour?.label ?: "--",
+        peakHourMillis = peakHour?.deviceMillis ?: 0L,
+        peakTwoHourLabel =
+            peakTwoHour?.first?.let { "${it.first().label}-${dayHourLabel(it.last().hour + 1)}" } ?: "--",
+        peakTwoHourMillis = peakTwoHour?.second ?: 0L,
+        nightUsageMillis = items.sumOf { it.nightUsageMillis },
+        longestSession = longestSession,
+        averageSessionMillis = if (totalSessions > 0) totalUsage / totalSessions else 0L,
+        activeHourCount = activeHours,
+        shortSessionRatio = 0f,
+        reopenIntensity = if (activeHours > 0) items.sumOf { it.openCount }.toFloat() / activeHours.toFloat() else 0f,
+        predictedSleepLabel = if (nightLeader != null) "${nightLeader.label} · ${formatDuration(nightLeader.value)}" else "暂无记录",
+        predictedSleepDurationLabel = if (mostOpened != null) "${mostOpened.label} · ${mostOpened.value.toInt()} 次" else "暂无记录",
+        beforeSleep = BehaviorAppMoment(
+            label = "夜间主导应用",
+            packageName = nightLeader?.packageName,
+            appLabel = nightLeader?.label,
+        ),
+        afterWake = BehaviorAppMoment(
+            label = "打开次数最多",
+            packageName = mostOpened?.packageName,
+            appLabel = mostOpened?.label,
+        ),
+    )
+}
+
+private fun buildArchivedDayComparisonMetrics(
+    currentArchive: DailyArchiveEntity,
+    currentMetrics: WindowMetrics,
+    previousArchive: DailyArchiveEntity?,
+    previousMetrics: WindowMetrics,
+    averagePerDayUsage: Long,
+): List<ComparisonMetric> {
+    if (previousArchive == null) {
+        return emptyList()
+    }
+    return listOf(
+        ComparisonMetric(
+            label = "总使用时长",
+            todayValue = formatDuration(currentArchive.totalUsageMillis),
+            yesterdayDelta = deltaDescription(currentArchive.totalUsageMillis, previousArchive.totalUsageMillis, "较上一条归档"),
+            averageDelta = if (averagePerDayUsage > 0L) "近 7 个归档日日均 ${formatDuration(averagePerDayUsage)}" else null,
+        ),
+        ComparisonMetric(
+            label = "打开次数",
+            todayValue = "${currentMetrics.deviceOpenCount} 次",
+            yesterdayDelta = deltaDescription(currentMetrics.deviceOpenCount.toLong(), previousMetrics.deviceOpenCount.toLong(), "较上一条归档", countUnit = "次"),
+            averageDelta = null,
+        ),
+        ComparisonMetric(
+            label = "夜间使用",
+            todayValue = formatDuration(currentMetrics.nightUsageMillis),
+            yesterdayDelta = deltaDescription(currentMetrics.nightUsageMillis, previousMetrics.nightUsageMillis, "较上一条归档"),
+            averageDelta = null,
+        ),
+        ComparisonMetric(
+            label = "最长单次会话",
+            todayValue = formatDuration(currentMetrics.longestSessionMillis),
+            yesterdayDelta = deltaDescription(currentMetrics.longestSessionMillis, previousMetrics.longestSessionMillis, "较上一条归档"),
+            averageDelta = null,
+        ),
     )
 }
 
@@ -618,11 +1293,12 @@ private suspend fun buildBehaviorInsight(
     return UsageBehaviorInsight(
         peakHourLabel = peakHour?.label ?: "--",
         peakHourMillis = peakHour?.deviceMillis ?: 0L,
-        peakTwoHourLabel = peakTwoHour?.first?.let { "${it.first().label}-${it.last().hour + 1}时" } ?: "--",
+        peakTwoHourLabel = peakTwoHour?.first?.let { "${it.first().label}-${dayHourLabel(it.last().hour + 1)}" } ?: "--",
         peakTwoHourMillis = peakTwoHour?.second ?: 0L,
         nightUsageMillis = timelineBuckets.filter { it.hour < 6 || it.hour >= 22 }.sumOf { it.deviceMillis },
         longestSession = longestSession,
         averageSessionMillis = averageSessionMillis,
+        activeHourCount = timelineBuckets.count { it.deviceMillis > 0L },
         shortSessionRatio = shortSessionRatio,
         reopenIntensity = reopenIntensity,
         predictedSleepLabel = predictedSleepLabel,
@@ -733,7 +1409,7 @@ private fun buildTimelineBuckets(
         val bucketEnd = minOf(bucketStart + 60L * 60_000L, endMillis)
         DailyTimelineBucket(
             hour = hour,
-            label = "${hour}时",
+            label = dayHourLabel(hour),
             deviceMillis = bucketDuration(deviceSessions, bucketStart, bucketEnd),
         )
     }
@@ -871,6 +1547,9 @@ private fun resolveAppLabel(
 private fun StatsScreenLayout(
     state: DailyReportUiState,
     onTabSelected: (ReportTab) -> Unit,
+    onPreviousArchiveDate: () -> Unit,
+    onNextArchiveDate: () -> Unit,
+    onSelectArchiveDate: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val reportColors = LocalReportColors.current
@@ -885,13 +1564,16 @@ private fun StatsScreenLayout(
     ) {
         when {
             !state.isPermissionGranted -> PermissionRequiredState()
-            state.selectedTab != ReportTab.DAY -> PlaceholderReportScreen(
+            state.placeholderTitle != null || state.selectedTab == ReportTab.YEAR -> PlaceholderReportScreen(
                 state = state,
                 onTabSelected = onTabSelected,
             )
             else -> DailyReportScreen(
                 state = state,
                 onTabSelected = onTabSelected,
+                onPreviousArchiveDate = onPreviousArchiveDate,
+                onNextArchiveDate = onNextArchiveDate,
+                onSelectArchiveDate = onSelectArchiveDate,
             )
         }
     }
@@ -901,6 +1583,9 @@ private fun StatsScreenLayout(
 private fun DailyReportScreen(
     state: DailyReportUiState,
     onTabSelected: (ReportTab) -> Unit,
+    onPreviousArchiveDate: () -> Unit,
+    onNextArchiveDate: () -> Unit,
+    onSelectArchiveDate: (String) -> Unit,
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -914,14 +1599,40 @@ private fun DailyReportScreen(
                 verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
                 ReportTabRow(selectedTab = state.selectedTab, onTabSelected = onTabSelected)
-                if (state.isRefreshing) {
-                    LoadingHintChip()
+                if (state.selectedTab == ReportTab.DAY && state.selectedArchiveDate != null) {
+                    ArchiveDateNavigator(
+                        selectedArchiveDate = state.selectedArchiveDate,
+                        previousArchiveDate = state.previousArchiveDate,
+                        nextArchiveDate = state.nextArchiveDate,
+                        availableArchiveDates = state.availableArchiveDates,
+                        onPreviousArchiveDate = onPreviousArchiveDate,
+                        onNextArchiveDate = onNextArchiveDate,
+                        onSelectArchiveDate = onSelectArchiveDate,
+                    )
                 }
-                DeviceHeroCard(heroState = state.heroState)
-                TimelineCard(timelineState = state.timelineState)
-                AppChartsCard(topAppsState = state.topAppsState)
-                BehaviorCard(behaviorState = state.behaviorState)
-                ComparisonCard(comparisonState = state.comparisonState)
+                if (state.isRefreshing) {
+                    LoadingHintChip(selectedTab = state.selectedTab)
+                }
+                DeviceHeroCard(
+                    selectedTab = state.selectedTab,
+                    heroState = state.heroState,
+                )
+                TimelineCard(
+                    selectedTab = state.selectedTab,
+                    timelineState = state.timelineState,
+                )
+                AppChartsCard(
+                    selectedTab = state.selectedTab,
+                    topAppsState = state.topAppsState,
+                )
+                BehaviorCard(
+                    selectedTab = state.selectedTab,
+                    behaviorState = state.behaviorState,
+                )
+                ComparisonCard(
+                    selectedTab = state.selectedTab,
+                    comparisonState = state.comparisonState,
+                )
                 Spacer(modifier = Modifier.height(24.dp))
             }
         }
@@ -929,7 +1640,14 @@ private fun DailyReportScreen(
 }
 
 @Composable
-private fun LoadingHintChip() {
+private fun LoadingHintChip(selectedTab: ReportTab) {
+    val label =
+        when (selectedTab) {
+            ReportTab.DAY -> "正在读取归档日报"
+            ReportTab.WEEK -> "正在更新近 7 日趋势"
+            ReportTab.MONTH -> "正在更新近 30 日趋势"
+            ReportTab.YEAR -> "正在准备年报"
+        }
     Surface(
         shape = RoundedCornerShape(999.dp),
         color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f),
@@ -944,12 +1662,238 @@ private fun LoadingHintChip() {
                 strokeWidth = 2.dp,
             )
             Text(
-                text = "正在刷新今日战报",
+                text = label,
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.onSecondaryContainer,
             )
         }
     }
+}
+
+@Composable
+private fun ArchiveDateNavigator(
+    selectedArchiveDate: String,
+    previousArchiveDate: String?,
+    nextArchiveDate: String?,
+    availableArchiveDates: List<String>,
+    onPreviousArchiveDate: () -> Unit,
+    onNextArchiveDate: () -> Unit,
+    onSelectArchiveDate: (String) -> Unit,
+) {
+    var showCalendar by remember(selectedArchiveDate) { mutableStateOf(false) }
+    val availableDates = remember(availableArchiveDates) { availableArchiveDates.map(LocalDate::parse).toSet() }
+    Surface(
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.84f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.28f)),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            IconButton(
+                onClick = onPreviousArchiveDate,
+                enabled = previousArchiveDate != null,
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "前一天",
+                )
+            }
+            Surface(
+                modifier =
+                    Modifier
+                        .weight(1f)
+                        .clickable { showCalendar = true },
+                shape = RoundedCornerShape(14.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f),
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.CalendarMonth,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                    ) {
+                        Text(
+                            text = formatArchiveDate(selectedArchiveDate, "M月d日 EEEE"),
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                        )
+                        Text(
+                            text = "只可选择有归档的日期",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+            IconButton(
+                onClick = onNextArchiveDate,
+                enabled = nextArchiveDate != null,
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                    contentDescription = "后一天",
+                )
+            }
+        }
+    }
+    if (showCalendar) {
+        ArchiveCalendarDialog(
+            selectedArchiveDate = LocalDate.parse(selectedArchiveDate),
+            availableDates = availableDates,
+            onDismiss = { showCalendar = false },
+            onSelectDate = { date ->
+                showCalendar = false
+                onSelectArchiveDate(ArchiveDateUtils.formatDate(date))
+            },
+        )
+    }
+}
+
+@Composable
+private fun ArchiveCalendarDialog(
+    selectedArchiveDate: LocalDate,
+    availableDates: Set<LocalDate>,
+    onDismiss: () -> Unit,
+    onSelectDate: (LocalDate) -> Unit,
+) {
+    var displayedMonth by remember(selectedArchiveDate, availableDates) {
+        mutableStateOf(
+            availableDates
+                .firstOrNull { it == selectedArchiveDate }
+                ?.let { YearMonth.from(it) }
+                ?: YearMonth.from(selectedArchiveDate),
+        )
+    }
+    val minMonth = remember(availableDates) { availableDates.minOrNull()?.let { YearMonth.from(it) } ?: YearMonth.from(selectedArchiveDate) }
+    val maxMonth = remember(availableDates) { availableDates.maxOrNull()?.let { YearMonth.from(it) } ?: YearMonth.from(selectedArchiveDate) }
+    val firstOfMonth = displayedMonth.atDay(1)
+    val leadingBlankDays = (firstOfMonth.dayOfWeek.value + 6) % 7
+    val daysInMonth = displayedMonth.lengthOfMonth()
+    val daySlots =
+        buildList<LocalDate?> {
+            repeat(leadingBlankDays) { add(null) }
+            repeat(daysInMonth) { offset ->
+                add(displayedMonth.atDay(offset + 1))
+            }
+        }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text("关闭")
+            }
+        },
+        title = {
+            Text(
+                text = "选择归档日期",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+            )
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    IconButton(
+                        onClick = { displayedMonth = displayedMonth.minusMonths(1) },
+                        enabled = displayedMonth > minMonth,
+                    ) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "上个月")
+                    }
+                    Text(
+                        text = displayedMonth.format(DateTimeFormatter.ofPattern("yyyy年M月", Locale.CHINA)),
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    IconButton(
+                        onClick = { displayedMonth = displayedMonth.plusMonths(1) },
+                        enabled = displayedMonth < maxMonth,
+                    ) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "下个月")
+                    }
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                ) {
+                    listOf("一", "二", "三", "四", "五", "六", "日").forEach { dayLabel ->
+                        Text(
+                            text = dayLabel,
+                            modifier = Modifier.width(32.dp),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+                daySlots.chunked(7).forEach { week ->
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        week.forEach { date ->
+                            when {
+                                date == null -> Spacer(modifier = Modifier.size(32.dp))
+                                else -> {
+                                    val isSelected = date == selectedArchiveDate
+                                    val isEnabled = date in availableDates
+                                    Surface(
+                                        modifier =
+                                            Modifier
+                                                .size(32.dp)
+                                                .clickable(enabled = isEnabled) { onSelectDate(date) },
+                                        shape = CircleShape,
+                                        color =
+                                            when {
+                                                isSelected -> MaterialTheme.colorScheme.primary
+                                                isEnabled -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                                                else -> Color.Transparent
+                                            },
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center) {
+                                            Text(
+                                                text = date.dayOfMonth.toString(),
+                                                style = MaterialTheme.typography.labelMedium,
+                                                color =
+                                                    when {
+                                                        isSelected -> MaterialTheme.colorScheme.onPrimary
+                                                        isEnabled -> MaterialTheme.colorScheme.onSurface
+                                                        else -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.28f)
+                                                    },
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        repeat(7 - week.size) {
+                            Spacer(modifier = Modifier.size(32.dp))
+                        }
+                    }
+                }
+                Text(
+                    text = "没有归档数据的日期不可选。",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        },
+    )
 }
 
 @Composable
@@ -1576,6 +2520,7 @@ private fun ReportTabRow(
 
 @Composable
 private fun DeviceHeroCard(
+    selectedTab: ReportTab,
     heroState: SectionState<HeroSectionData>,
 ) {
     ReportCard {
@@ -1588,6 +2533,7 @@ private fun DeviceHeroCard(
         ) { modifier, index ->
             when (index) {
                 0 -> DeviceHeroVisualPanel(
+                    selectedTab = selectedTab,
                     heroState = heroState,
                     modifier = modifier,
                 )
@@ -1603,12 +2549,13 @@ private fun DeviceHeroCard(
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun DeviceHeroVisualPanel(
+    selectedTab: ReportTab,
     heroState: SectionState<HeroSectionData>,
     modifier: Modifier = Modifier,
 ) {
     val data = (heroState as? SectionState.Ready)?.data
     val summary = data?.summary ?: DailyReportSummary(
-        title = "今日战报",
+        title = "归档日报",
         subtitle = "",
         capturedAt = "",
         message = "",
@@ -1653,7 +2600,7 @@ private fun DeviceHeroVisualPanel(
                             )
                         }
                         Text(
-                            text = data?.summary?.title ?: "今日战报",
+                            text = data?.summary?.title ?: "归档日报",
                             style = MaterialTheme.typography.headlineSmall,
                             fontWeight = FontWeight.Bold,
                         )
@@ -1678,6 +2625,7 @@ private fun DeviceHeroVisualPanel(
                         UsageDialChart(
                             usageMillis = data.overview.totalUsageMillis,
                             activeBucketCount = data.overview.activeBucketCount,
+                            capMillis = usageDialCapMillis(selectedTab),
                             modifier = Modifier.size(dialSize),
                         )
                     }
@@ -1755,7 +2703,7 @@ private fun DeviceHeroMetricsPanel(
                         )
                         1 -> HeroMetricChip(
                             icon = Icons.AutoMirrored.Filled.CompareArrows,
-                            label = "对比昨天",
+                            label = if (data.summary.title == "归档日报") "对比上一条" else "对比基线",
                             value = data.summary.secondaryValue,
                             modifier = childModifier,
                         )
@@ -1801,7 +2749,7 @@ private fun DeviceHeroMetricsPanel(
                             AppIconCircle(topApp.packageName)
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = "今日主导 App",
+                                    text = if (data.summary.title == "归档日报") "当日主导应用" else "窗口主导应用",
                                     style = MaterialTheme.typography.labelMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
@@ -1831,9 +2779,9 @@ private fun DeviceHeroMetricsPanel(
 private fun UsageDialChart(
     usageMillis: Long,
     activeBucketCount: Int,
+    capMillis: Long,
     modifier: Modifier = Modifier,
 ) {
-    val capMillis = 12L * 60L * 60_000L
     val stagedUsageMillis = rememberDelayedLongTarget(usageMillis, 40)
     val animatedUsageMillis = animateLongValue(
         targetValue = stagedUsageMillis,
@@ -1889,6 +2837,14 @@ private fun UsageDialChart(
         }
     }
 }
+
+private fun usageDialCapMillis(selectedTab: ReportTab): Long =
+    when (selectedTab) {
+        ReportTab.DAY -> 12L * 60L * 60_000L
+        ReportTab.WEEK -> 56L * 60L * 60_000L
+        ReportTab.MONTH -> 180L * 60L * 60_000L
+        ReportTab.YEAR -> 720L * 60L * 60_000L
+    }
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -1988,20 +2944,27 @@ private fun HeroMetricChip(
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun TimelineCard(
+    selectedTab: ReportTab,
     timelineState: SectionState<TimelineSectionData>,
 ) {
     ReportCard {
         Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
             SectionHeader(
                 icon = Icons.Default.Timeline,
-                title = "全天痕迹",
+                title = if (selectedTab == ReportTab.DAY) "24 小时分布" else "归档趋势",
             )
             when (timelineState) {
                 SectionState.Loading -> SkeletonTimelineChart()
                 SectionState.Empty -> DailyTimelineChart(emptyList())
                 is SectionState.Ready -> DailyTimelineChart(timelineState.data.buckets)
             }
-            TimelineFooter()
+            TimelineFooter(
+                labels =
+                    buildTimelineFooterLabels(
+                        selectedTab = selectedTab,
+                        buckets = (timelineState as? SectionState.Ready)?.data?.buckets.orEmpty(),
+                    ),
+            )
             AdaptiveRowGrid(
                 itemCount = 2,
                 compactColumns = 1,
@@ -2025,6 +2988,7 @@ private fun TimelineCard(
                             )
                         } else {
                             PeakMomentsCard(
+                                selectedTab = selectedTab,
                                 timelineState = null,
                                 modifier = modifier,
                             )
@@ -2036,6 +3000,7 @@ private fun TimelineCard(
                             modifier = modifier,
                         )
                         else -> PeakMomentsCard(
+                            selectedTab = selectedTab,
                             timelineState = timelineState.data,
                             modifier = modifier,
                         )
@@ -2133,12 +3098,12 @@ private fun DailyTimelineChart(
 }
 
 @Composable
-private fun TimelineFooter() {
+private fun TimelineFooter(labels: List<String>) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        listOf("0", "6", "12", "18", "24").forEach { label ->
+        labels.forEach { label ->
             Text(
                 text = label,
                 style = MaterialTheme.typography.labelSmall,
@@ -2146,6 +3111,23 @@ private fun TimelineFooter() {
             )
         }
     }
+}
+
+private fun buildTimelineFooterLabels(
+    selectedTab: ReportTab,
+    buckets: List<DailyTimelineBucket>,
+): List<String> {
+    if (selectedTab == ReportTab.DAY || buckets.isEmpty()) {
+        return listOf("00:00", "06:00", "12:00", "18:00", "24:00")
+    }
+    val candidateIndexes =
+        listOf(
+            0,
+            buckets.lastIndex / 3,
+            (buckets.lastIndex * 2) / 3,
+            buckets.lastIndex,
+        ).distinct()
+    return candidateIndexes.map { buckets[it].label }
 }
 
 @Composable
@@ -2325,6 +3307,7 @@ private fun PeriodLegendRow(
 
 @Composable
 private fun PeakMomentsCard(
+    selectedTab: ReportTab,
     timelineState: TimelineSectionData?,
     modifier: Modifier = Modifier,
 ) {
@@ -2345,7 +3328,7 @@ private fun PeakMomentsCard(
             )
             if (timelineState == null) {
                 Text(
-                    text = "今天的样本还不足以判断峰值。",
+                    text = if (selectedTab == ReportTab.DAY) "这个归档日的样本还不足以判断峰值。" else "这个归档窗口的样本还不足以判断峰值。",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -2605,6 +3588,7 @@ private fun GradientProgressBar(
 
 @Composable
 private fun AppChartsCard(
+    selectedTab: ReportTab,
     topAppsState: SectionState<TopAppsSectionData>,
 ) {
     val usageTopApps = (topAppsState as? SectionState.Ready)?.data?.usageTopApps.orEmpty()
@@ -2613,15 +3597,15 @@ private fun AppChartsCard(
         Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
             SectionHeader(
                 icon = Icons.Default.BarChart,
-                title = "Top 10 应用",
-                subtitle = "只看今天使用时长最高的 10 个应用，并尽量使用它们自己的主题色。",
+                title = "前 10 个应用",
+                subtitle = if (selectedTab == ReportTab.DAY) "只看当前归档日使用时长最高的 10 个应用。" else "只看当前归档窗口内使用时长最高的 10 个应用。",
             )
             if (topAppsState == SectionState.Loading) {
                 SkeletonUsageSharePanel()
                 SkeletonRankingPanel()
             } else if (topAppsState == SectionState.Empty || usageTopApps.isEmpty()) {
                 Text(
-                    text = "今天还没有形成足够的前台使用记录。",
+                    text = if (selectedTab == ReportTab.DAY) "这个归档日还没有足够的使用记录。" else "这个归档窗口还没有足够的使用记录。",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -2700,7 +3684,7 @@ private fun AppUsageShareCard(
                                     fontWeight = FontWeight.Bold,
                                 )
                                 Text(
-                                    text = "Top 10 总时长",
+                                    text = "前 10 个应用总时长",
                                     style = MaterialTheme.typography.labelMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
@@ -2867,6 +3851,7 @@ private fun MiniInsightCard(
 
 @Composable
 private fun BehaviorCard(
+    selectedTab: ReportTab,
     behaviorState: SectionState<BehaviorSectionData>,
 ) {
     val behaviorInsight = (behaviorState as? SectionState.Ready)?.data?.behaviorInsight
@@ -2875,7 +3860,7 @@ private fun BehaviorCard(
             SectionHeader(
                 icon = Icons.Default.Insights,
                 title = "行为分析",
-                subtitle = "继续观察会话长度、碎片化程度和睡前起床的使用切片。",
+                subtitle = if (selectedTab == ReportTab.DAY) "只展示已归档数据能够直接支撑的行为指标。" else "当前只保留由归档数据稳定支持的分析项。",
             )
             if (behaviorState == SectionState.Loading) {
                 AdaptiveRowGrid(
@@ -2900,7 +3885,7 @@ private fun BehaviorCard(
                 }
             } else if (behaviorInsight == null) {
                 Text(
-                    text = "今天还没有形成足够的使用痕迹。",
+                    text = if (selectedTab == ReportTab.DAY) "这个归档日还没有足够的行为样本。" else "当前窗口还没有足够的行为样本。",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -2927,23 +3912,23 @@ private fun BehaviorCard(
                             modifier = modifier,
                         )
                         2 -> MiniInsightCard(
-                            icon = Icons.Default.TouchApp,
-                            label = "碎片化程度",
-                            value = "${(insight.shortSessionRatio * 100).roundToInt()}% 短会话",
-                            visualRatio = insight.shortSessionRatio.coerceIn(0f, 1f),
+                            icon = Icons.Default.Timeline,
+                            label = if (selectedTab == ReportTab.DAY) "高峰时段" else "高峰时段",
+                            value = "${insight.peakHourLabel} · ${formatDuration(insight.peakHourMillis)}",
+                            visualRatio = (insight.peakHourMillis.toFloat() / (2 * 60 * 60_000L).toFloat()).coerceIn(0f, 1f),
                             modifier = modifier,
                         )
                         3 -> MiniInsightCard(
                             icon = Icons.Default.RocketLaunch,
-                            label = "重复打开强度",
-                            value = String.format(Locale.CHINA, "%.1f 次/活跃小时", insight.reopenIntensity),
-                            visualRatio = (insight.reopenIntensity / 6f).coerceIn(0f, 1f),
+                            label = if (selectedTab == ReportTab.DAY) "活跃小时" else "重复打开强度",
+                            value = if (selectedTab == ReportTab.DAY) "${insight.activeHourCount} 小时" else String.format(Locale.CHINA, "%.1f 次/活跃小时", insight.reopenIntensity),
+                            visualRatio = if (selectedTab == ReportTab.DAY) (insight.activeHourCount / 24f).coerceIn(0f, 1f) else (insight.reopenIntensity / 6f).coerceIn(0f, 1f),
                             modifier = modifier,
                         )
                         4 -> MiniInsightCard(
                             icon = Icons.Default.NightsStay,
-                            label = "预测睡眠时间",
-                            value = "${insight.predictedSleepLabel} · ${insight.predictedSleepDurationLabel}",
+                            label = if (selectedTab == ReportTab.DAY) "夜间使用" else "预测睡眠时间",
+                            value = if (selectedTab == ReportTab.DAY) formatDuration(insight.nightUsageMillis) else "${insight.predictedSleepLabel} · ${insight.predictedSleepDurationLabel}",
                             visualRatio = null,
                             modifier = modifier,
                         )
@@ -3035,14 +4020,15 @@ private fun BehaviorMomentCard(
 
 @Composable
 private fun ComparisonCard(
+    selectedTab: ReportTab,
     comparisonState: SectionState<ComparisonSectionData>,
 ) {
     ReportCard {
         Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
             SectionHeader(
                 icon = Icons.AutoMirrored.Filled.CompareArrows,
-                title = "今日对比",
-                subtitle = "只比较日报里最稳定、最能解释的核心指标。",
+                title = if (selectedTab == ReportTab.DAY) "归档对比" else "窗口对比",
+                subtitle = if (selectedTab == ReportTab.DAY) "只比较当前归档日与上一条归档之间最稳定的指标。" else "只比较归档窗口里最稳定的核心指标。",
             )
             if (comparisonState == SectionState.Loading) {
                 repeat(3) { index ->
@@ -3060,7 +4046,7 @@ private fun ComparisonCard(
                 }
             } else if (comparisonState == SectionState.Empty) {
                 Text(
-                    text = "今日样本还不足，暂时不展示对比。",
+                    text = if (selectedTab == ReportTab.DAY) "更早的归档样本还不够，暂时不展示对比。" else "当前窗口样本还不够，暂时不展示对比。",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -3428,6 +4414,51 @@ private fun formatClockTime(epochMillis: Long, zoneId: ZoneId): String {
         .format(DateTimeFormatter.ofPattern("HH:mm", Locale.CHINA))
 }
 
+private fun formatArchiveDate(date: String, pattern: String): String {
+    return LocalDate
+        .parse(date)
+        .format(DateTimeFormatter.ofPattern(pattern, Locale.CHINA))
+}
+
+private fun dayHourLabel(hour: Int): String {
+    return "${hour.toString().padStart(2, '0')}:00"
+}
+
+private fun appHourlyBucketAt(appItem: DailyAppArchiveEntity, hour: Int): Long {
+    return when (hour) {
+        0 -> appItem.hour00Millis
+        1 -> appItem.hour01Millis
+        2 -> appItem.hour02Millis
+        3 -> appItem.hour03Millis
+        4 -> appItem.hour04Millis
+        5 -> appItem.hour05Millis
+        6 -> appItem.hour06Millis
+        7 -> appItem.hour07Millis
+        8 -> appItem.hour08Millis
+        9 -> appItem.hour09Millis
+        10 -> appItem.hour10Millis
+        11 -> appItem.hour11Millis
+        12 -> appItem.hour12Millis
+        13 -> appItem.hour13Millis
+        14 -> appItem.hour14Millis
+        15 -> appItem.hour15Millis
+        16 -> appItem.hour16Millis
+        17 -> appItem.hour17Millis
+        18 -> appItem.hour18Millis
+        19 -> appItem.hour19Millis
+        20 -> appItem.hour20Millis
+        21 -> appItem.hour21Millis
+        22 -> appItem.hour22Millis
+        23 -> appItem.hour23Millis
+        else -> 0L
+    }
+}
+
+private fun formatSignedPointsLocal(value: Double): String {
+    val formatted = String.format(Locale.CHINA, "%.1f", kotlin.math.abs(value))
+    return if (value >= 0) "+$formatted" else "-$formatted"
+}
+
 private fun deltaDescription(
     current: Long,
     baseline: Long,
@@ -3437,7 +4468,7 @@ private fun deltaDescription(
     if (baseline <= 0L && current <= 0L) return "$prefix 持平"
     val delta = current - baseline
     if (delta == 0L) return "$prefix 持平"
-    val direction = if (delta > 0L) "多" else "少"
+    val direction = if (delta > 0L) "增加" else "减少"
     val deltaValue = countUnit?.let { "${kotlin.math.abs(delta)} $it" } ?: formatDuration(kotlin.math.abs(delta))
     return "$prefix $direction $deltaValue"
 }

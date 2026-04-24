@@ -20,6 +20,9 @@ interface CrossRefDao {
     @Query("SELECT * FROM group_app_cross_ref WHERE is_deleted = 0")
     fun getAllValidCrossRefs(): Flow<List<GroupAppCrossRef>>
 
+    @Query("SELECT * FROM group_app_cross_ref WHERE is_deleted = 0")
+    fun getAllValidCrossRefsSync(): List<GroupAppCrossRef>
+
     /** 同步查询：给定 packageName，返回它所属的所有 groupId */
     @Query("SELECT group_id FROM group_app_cross_ref WHERE package_name = :packageName AND is_deleted = 0")
     fun getGroupIdsForPackageSync(packageName: String): List<String>

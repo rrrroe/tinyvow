@@ -17,6 +17,7 @@ import androidx.core.graphics.toColorInt
 
 import com.rrrrz.tinyvow.data.settings.ManagedAppPreferences
 import com.rrrrz.tinyvow.data.db.GroupType
+import com.rrrrz.tinyvow.data.repository.PointsRepository
 
 @android.annotation.SuppressLint("all")
 @Suppress("all")
@@ -24,6 +25,7 @@ class AppLimitAccessibilityService : AccessibilityService() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private lateinit var enforcer: GroupLimitEnforcer
     private lateinit var preferences: ManagedAppPreferences
+    private lateinit var pointsRepository: PointsRepository
     private val database by lazy { com.rrrrz.tinyvow.data.db.AppDatabase.getDatabase(applicationContext) }
 
     // 积分积累状态
@@ -35,6 +37,7 @@ class AppLimitAccessibilityService : AccessibilityService() {
         super.onServiceConnected()
         enforcer = GroupLimitEnforcer(applicationContext)
         preferences = ManagedAppPreferences(applicationContext)
+        pointsRepository = PointsRepository(applicationContext, database)
 
         // 启动定时结算协程
         startPeriodicPointsTicker()
@@ -160,7 +163,7 @@ class AppLimitAccessibilityService : AccessibilityService() {
                 if (group.type == GroupType.ENCOURAGE && group.pointsPerMinute > 0) {
                     // 基础每分钟积分
                     val pointsEarned = (durationMs / 60000.0) * group.pointsPerMinute
-                    preferences.addUserPoints(pointsEarned)
+                    pointsRepository.recordUsageEarn(group, pointsEarned)
                     
                     // 检查是否达成今日目标大奖
                     checkAndGrantBonus(group)
@@ -189,7 +192,7 @@ class AppLimitAccessibilityService : AccessibilityService() {
         if (totalTodayUsageMs >= targetMs) {
             // 达成目标！发放奖励：目标分钟 * 鼓励金比例
             val bonusPoints = group.limitMinutes * group.pointsPerMinute
-            preferences.addUserPoints(bonusPoints)
+            pointsRepository.recordTargetBonusEarn(group, bonusPoints)
             
             // 更新数据库标记
             database.appGroupDao().insertGroup(group.copy(lastBonusAt = nowMillis))

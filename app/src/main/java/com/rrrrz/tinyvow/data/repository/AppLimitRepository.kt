@@ -1,6 +1,9 @@
 package com.rrrrz.tinyvow.data.repository
 
+import android.content.Context
+import androidx.room.withTransaction
 import com.rrrrz.tinyvow.data.db.*
+import com.rrrrz.tinyvow.data.settings.ManagedAppPreferences
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -21,13 +24,18 @@ data class RedemptionResult(
     val message: String,
 )
 
-class AppLimitRepository(private val database: AppDatabase) {
+class AppLimitRepository(
+    context: Context,
+    private val database: AppDatabase,
+) {
     private val groupDao = database.appGroupDao()
     private val crossRefDao = database.crossRefDao()
     private val redemptionDao = database.redemptionDao()
     private val bonusTimeDao = database.bonusTimeDao()
     private val achievementDao = database.achievementDao()
     private val redemptionHistoryDao = database.redemptionHistoryDao()
+    private val pointLedgerDao = database.pointLedgerDao()
+    private val preferences = ManagedAppPreferences(context)
 
     private val _newAchievementsAction = MutableSharedFlow<AchievementEntity>()
     val newAchievementsAction: SharedFlow<AchievementEntity> = _newAchievementsAction.asSharedFlow()
@@ -41,9 +49,10 @@ class AppLimitRepository(private val database: AppDatabase) {
 
     suspend fun recordRedemption(title: String, pointCost: Int) {
         withContext(Dispatchers.IO) {
+            val redemptionHistoryId = UUID.randomUUID().toString()
             redemptionHistoryDao.insertHistory(
                 RedemptionHistoryEntity(
-                    id = UUID.randomUUID().toString(),
+                    id = redemptionHistoryId,
                     rewardTitle = title,
                     pointCost = pointCost,
                     historyType = RedemptionHistoryType.CUSTOM,
@@ -61,41 +70,87 @@ class AppLimitRepository(private val database: AppDatabase) {
             val latestReward = redemptionDao.getRedemptionById(reward.id) ?: return@withContext null
             if (!latestReward.isActive || latestReward.stock == 0) return@withContext null
 
+            val redeemedAt = System.currentTimeMillis()
+            val redemptionHistoryId = UUID.randomUUID().toString()
+            val ledgerEntryId = UUID.randomUUID().toString()
+            var createdBonusId: String? = null
             val targetGroupName =
                 if (latestReward.rewardType == RewardType.TIME_PACK && targetGroupId != null) {
                     groupDao.getGroupByIdSync(targetGroupId)?.name
                 } else {
                     null
                 }
+            val redeemedGroupId =
+                if (latestReward.rewardType == RewardType.TIME_PACK) {
+                    targetGroupId ?: return@withContext null
+                } else {
+                    null
+                }
 
-            if (latestReward.rewardType == RewardType.TIME_PACK) {
-                if (targetGroupId == null) return@withContext null
-                redeemTimePack(targetGroupId, latestReward.bonusMinutes)
-            }
+            database.withTransaction {
+                if (latestReward.rewardType == RewardType.TIME_PACK) {
+                    val bonusId = UUID.randomUUID().toString()
+                    insertTimePackBonus(
+                        bonusId = bonusId,
+                        groupId = redeemedGroupId!!,
+                        extraMinutes = latestReward.bonusMinutes,
+                        createdAt = redeemedAt,
+                    )
+                    createdBonusId = bonusId
+                }
 
-            if (latestReward.stock > 0) {
-                redemptionDao.insertRedemption(
-                    latestReward.copy(
-                        stock = latestReward.stock - 1,
-                        updatedAt = System.currentTimeMillis(),
+                if (latestReward.stock > 0) {
+                    redemptionDao.insertRedemption(
+                        latestReward.copy(
+                            stock = latestReward.stock - 1,
+                            updatedAt = redeemedAt,
+                        )
+                    )
+                }
+
+                redemptionHistoryDao.insertHistory(
+                    RedemptionHistoryEntity(
+                        id = redemptionHistoryId,
+                        rewardTitle = latestReward.title,
+                        pointCost = latestReward.pointCost,
+                        historyType = when (latestReward.rewardType) {
+                            RewardType.TIME_PACK -> RedemptionHistoryType.TIME_PACK
+                            RewardType.CUSTOM -> RedemptionHistoryType.CUSTOM
+                        },
+                        bonusMinutes = latestReward.bonusMinutes,
+                        targetGroupName = targetGroupName,
+                        redeemedAt = redeemedAt,
+                    )
+                )
+
+                pointLedgerDao.insert(
+                    PointLedgerEntity(
+                        id = ledgerEntryId,
+                        occurredAt = redeemedAt,
+                        ledgerDate = ArchiveDateUtils.formatDate(ArchiveDateUtils.localDateAt(redeemedAt, java.time.ZoneId.systemDefault())),
+                        entryType = PointLedgerEntryType.REWARD_SPEND,
+                        deltaPoints = -latestReward.pointCost.toDouble(),
+                        rewardId = latestReward.id,
+                        rewardTitleSnapshot = latestReward.title,
+                        sourceRefId = redemptionHistoryId,
+                        createdAt = redeemedAt,
                     )
                 )
             }
 
-            redemptionHistoryDao.insertHistory(
-                RedemptionHistoryEntity(
-                    id = UUID.randomUUID().toString(),
-                    rewardTitle = latestReward.title,
-                    pointCost = latestReward.pointCost,
-                    historyType = when (latestReward.rewardType) {
-                        RewardType.TIME_PACK -> RedemptionHistoryType.TIME_PACK
-                        RewardType.CUSTOM -> RedemptionHistoryType.CUSTOM
-                    },
-                    bonusMinutes = latestReward.bonusMinutes,
-                    targetGroupName = targetGroupName,
-                    redeemedAt = System.currentTimeMillis(),
-                )
-            )
+            try {
+                preferences.addUserPoints(-latestReward.pointCost.toDouble())
+            } catch (error: Exception) {
+                database.withTransaction {
+                    if (latestReward.stock > 0) {
+                        redemptionDao.insertRedemption(latestReward)
+                    }
+                    redemptionHistoryDao.deleteById(redemptionHistoryId)
+                    pointLedgerDao.deleteById(ledgerEntryId)
+                    createdBonusId?.let { bonusTimeDao.deleteById(it) }
+                }
+                throw error
+            }
 
             val message = when (latestReward.rewardType) {
                 RewardType.TIME_PACK -> {
@@ -210,19 +265,12 @@ class AppLimitRepository(private val database: AppDatabase) {
     /** 兑换加时包 */
     suspend fun redeemTimePack(groupId: String, extraMinutes: Int) {
         withContext(Dispatchers.IO) {
-            val calendar = Calendar.getInstance().apply {
-                set(Calendar.HOUR_OF_DAY, 23)
-                set(Calendar.MINUTE, 59)
-                set(Calendar.SECOND, 59)
-            }
-            val bonus = BonusTimeEntity(
-                id = UUID.randomUUID().toString(),
-                targetGroupId = groupId,
+            insertTimePackBonus(
+                bonusId = UUID.randomUUID().toString(),
+                groupId = groupId,
                 extraMinutes = extraMinutes,
-                expiryTime = calendar.timeInMillis,
-                createdAt = System.currentTimeMillis()
+                createdAt = System.currentTimeMillis(),
             )
-            bonusTimeDao.insertBonusTime(bonus)
         }
     }
 
@@ -230,6 +278,29 @@ class AppLimitRepository(private val database: AppDatabase) {
         withContext(Dispatchers.IO) {
             bonusTimeDao.clearExpiredBonusTime(now)
         }
+    }
+
+    private suspend fun insertTimePackBonus(
+        bonusId: String,
+        groupId: String,
+        extraMinutes: Int,
+        createdAt: Long,
+    ) {
+        val calendar = Calendar.getInstance().apply {
+            timeInMillis = createdAt
+            set(Calendar.HOUR_OF_DAY, 23)
+            set(Calendar.MINUTE, 59)
+            set(Calendar.SECOND, 59)
+        }
+        val bonus =
+            BonusTimeEntity(
+                id = bonusId,
+                targetGroupId = groupId,
+                extraMinutes = extraMinutes,
+                expiryTime = calendar.timeInMillis,
+                createdAt = createdAt,
+            )
+        bonusTimeDao.insertBonusTime(bonus)
     }
 
     suspend fun addReward(title: String, cost: Int, type: RewardType, stock: Int = -1, description: String = "", bonusMinutes: Int = 0) {
