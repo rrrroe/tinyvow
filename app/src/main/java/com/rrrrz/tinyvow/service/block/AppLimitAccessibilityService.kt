@@ -16,8 +16,12 @@ import kotlinx.coroutines.isActive
 import androidx.core.graphics.toColorInt
 
 import com.rrrrz.tinyvow.data.settings.ManagedAppPreferences
+import com.rrrrz.tinyvow.data.db.BlockEventEntity
 import com.rrrrz.tinyvow.data.db.GroupType
+import com.rrrrz.tinyvow.data.repository.ArchiveDateUtils
 import com.rrrrz.tinyvow.data.repository.PointsRepository
+import java.time.ZoneId
+import java.util.UUID
 
 @android.annotation.SuppressLint("all")
 @Suppress("all")
@@ -89,10 +93,31 @@ class AppLimitAccessibilityService : AccessibilityService() {
         }
         lastBlockedPackage = packageName
         lastBlockElapsedRealtime = blockNow
+        recordBlockEvent(packageName, result)
 
         kotlinx.coroutines.withContext(Dispatchers.Main) {
             showBlockOverlay(packageName, result.groupName, result.exceededMillis)
         }
+    }
+
+    private suspend fun recordBlockEvent(
+        packageName: String,
+        result: com.rrrrz.tinyvow.domain.limit.GroupExceededResult,
+    ) {
+        val nowMillis = System.currentTimeMillis()
+        val zoneId = ZoneId.systemDefault()
+        database.blockEventDao().insert(
+            BlockEventEntity(
+                id = UUID.randomUUID().toString(),
+                eventDate = ArchiveDateUtils.formatDate(ArchiveDateUtils.localDateAt(nowMillis, zoneId)),
+                occurredAt = nowMillis,
+                packageName = packageName,
+                groupId = result.groupId,
+                groupNameSnapshot = result.groupName,
+                exceededMillis = result.exceededMillis,
+                createdAt = nowMillis,
+            )
+        )
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {

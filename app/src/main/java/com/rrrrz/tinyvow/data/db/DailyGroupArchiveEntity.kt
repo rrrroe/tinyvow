@@ -44,6 +44,8 @@ data class DailyGroupArchiveEntity(
     val remainingMillisAtClose: Long = 0L,
     @ColumnInfo(name = "exceeded_millis_at_close")
     val exceededMillisAtClose: Long = 0L,
+    @ColumnInfo(name = "block_event_count")
+    val blockEventCount: Int = 0,
     @ColumnInfo(name = "earned_points")
     val earnedPoints: Double = 0.0,
     @ColumnInfo(name = "spent_points")

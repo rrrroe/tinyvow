@@ -20,6 +20,9 @@ interface DailyArchiveDao {
     @Query("SELECT * FROM daily_archives WHERE archive_date = :date LIMIT 1")
     suspend fun getByDateSync(date: String): DailyArchiveEntity?
 
+    @Query("SELECT * FROM daily_archives WHERE archive_date BETWEEN :from AND :to ORDER BY archive_date ASC")
+    fun getByDateRange(from: String, to: String): Flow<List<DailyArchiveEntity>>
+
     @Query("SELECT archive_date FROM daily_archives ORDER BY archive_date ASC")
     suspend fun getAllArchiveDatesAsc(): List<String>
 }

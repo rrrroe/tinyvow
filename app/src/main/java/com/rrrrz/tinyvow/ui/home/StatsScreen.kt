@@ -3,7 +3,10 @@ package com.rrrrz.tinyvow.ui.home
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
+import android.graphics.Paint
+import android.graphics.RectF
 import android.provider.Settings
+import android.widget.Toast
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
@@ -44,6 +47,8 @@ import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.EmojiEvents
+import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Insights
 import androidx.compose.material.icons.filled.NightsStay
 import androidx.compose.material.icons.filled.PhoneAndroid
@@ -80,17 +85,21 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.drawable.toBitmap
+import androidx.core.content.FileProvider
 import coil.compose.AsyncImage
 import com.rrrrz.tinyvow.data.apps.InstalledAppRepository
 import com.rrrrz.tinyvow.data.apps.ManagedApp
 import com.rrrrz.tinyvow.data.db.DailyAppArchiveEntity
 import com.rrrrz.tinyvow.data.db.DailyArchiveEntity
+import com.rrrrz.tinyvow.data.db.DailyGroupArchiveEntity
+import com.rrrrz.tinyvow.data.db.GroupType
 import com.rrrrz.tinyvow.data.repository.AppGroupWithApps
 import com.rrrrz.tinyvow.data.repository.ArchiveDateUtils
 import com.rrrrz.tinyvow.data.repository.DailyArchiveRepository
@@ -109,7 +118,10 @@ import java.time.YearMonth
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import java.io.File
+import java.io.FileOutputStream
 import kotlin.math.ceil
+import kotlin.math.max
 import kotlin.math.roundToInt
 import kotlin.math.roundToLong
 
@@ -231,6 +243,72 @@ private data class ComparisonSectionData(
     val comparisons: List<ComparisonMetric>,
 )
 
+private data class DailyFocusSectionData(
+    val control: DailyModeSummary,
+    val encourage: DailyModeSummary,
+)
+
+private data class DailyModeSummary(
+    val title: String,
+    val description: String,
+    val primaryLabel: String,
+    val primaryValue: String,
+    val metrics: List<DailyFocusMetric>,
+    val progress: Float,
+    val spotlightLabel: String,
+    val spotlightValue: String,
+    val isWarning: Boolean = false,
+)
+
+private data class DailyFocusMetric(
+    val label: String,
+    val value: String,
+)
+
+private data class WindowFocusSectionData(
+    val control: DailyModeSummary,
+    val encourage: DailyModeSummary,
+    val highlights: List<DailyFocusMetric>,
+)
+
+private data class HeatmapSectionData(
+    val title: String,
+    val subtitle: String,
+    val days: List<HeatmapDayData>,
+)
+
+private data class HeatmapDayData(
+    val label: String,
+    val valueMillis: Long,
+    val exceeded: Boolean,
+    val selected: Boolean,
+)
+
+private data class YearDualScopeSectionData(
+    val naturalYear: YearScopeSummary,
+    val rollingYear: YearScopeSummary,
+)
+
+private data class YearScopeSummary(
+    val title: String,
+    val rangeLabel: String,
+    val totalUsage: String,
+    val averageUsage: String,
+    val activeDays: String,
+    val savedUsage: String,
+    val pointsNet: String,
+)
+
+private data class ShareReportData(
+    val title: String,
+    val subtitle: String,
+    val primaryValue: String,
+    val primaryLabel: String,
+    val metrics: List<DailyFocusMetric>,
+    val insight: String,
+    val topApps: List<AppDisplayItem>,
+)
+
 private data class ArchivedAppSnapshot(
     val archiveDate: String,
     val packageName: String,
@@ -254,6 +332,11 @@ private data class DailyReportUiState(
     val selectedTab: ReportTab = ReportTab.DAY,
     val isRefreshing: Boolean = true,
     val heroState: SectionState<HeroSectionData> = SectionState.Loading,
+    val dailyFocusState: SectionState<DailyFocusSectionData> = SectionState.Loading,
+    val windowFocusState: SectionState<WindowFocusSectionData> = SectionState.Loading,
+    val heatmapState: SectionState<HeatmapSectionData> = SectionState.Loading,
+    val yearDualScopeState: SectionState<YearDualScopeSectionData> = SectionState.Loading,
+    val shareState: SectionState<ShareReportData> = SectionState.Loading,
     val timelineState: SectionState<TimelineSectionData> = SectionState.Loading,
     val topAppsState: SectionState<TopAppsSectionData> = SectionState.Loading,
     val behaviorState: SectionState<BehaviorSectionData> = SectionState.Loading,
@@ -329,7 +412,7 @@ fun StatsRoute(
                 )
                 return@LaunchedEffect
             }
-            ReportTab.WEEK, ReportTab.MONTH -> {
+            ReportTab.WEEK, ReportTab.MONTH, ReportTab.YEAR -> {
                 uiState =
                     createRefreshingUiState(
                         selectedTab = selectedTab,
@@ -342,10 +425,6 @@ fun StatsRoute(
                     archiveRepository = archiveRepository,
                     updateState = { transform -> uiState = transform(uiState) },
                 )
-                return@LaunchedEffect
-            }
-            ReportTab.YEAR -> {
-                uiState = buildPlaceholderUiState(selectedTab)
                 return@LaunchedEffect
             }
         }
@@ -381,6 +460,31 @@ private fun createRefreshingUiState(
         selectedTab = selectedTab,
         isRefreshing = true,
         heroState = previous?.heroState ?: SectionState.Loading,
+        dailyFocusState =
+            if (selectedTab == ReportTab.DAY) {
+                previous?.dailyFocusState ?: SectionState.Loading
+            } else {
+                SectionState.Empty
+            },
+        windowFocusState =
+            if (selectedTab == ReportTab.DAY) {
+                SectionState.Empty
+            } else {
+                previous?.windowFocusState ?: SectionState.Loading
+            },
+        heatmapState =
+            if (selectedTab == ReportTab.MONTH || selectedTab == ReportTab.YEAR) {
+                previous?.heatmapState ?: SectionState.Loading
+            } else {
+                SectionState.Empty
+            },
+        yearDualScopeState =
+            if (selectedTab == ReportTab.YEAR) {
+                previous?.yearDualScopeState ?: SectionState.Loading
+            } else {
+                SectionState.Empty
+            },
+        shareState = previous?.shareState ?: SectionState.Loading,
         timelineState = previous?.timelineState ?: SectionState.Loading,
         topAppsState = previous?.topAppsState ?: SectionState.Loading,
         behaviorState = previous?.behaviorState ?: SectionState.Loading,
@@ -401,50 +505,64 @@ private suspend fun buildArchivedWindowReportUiState(
     val today = LocalDate.now(zoneId)
     val endDate = today.minusDays(1)
     val windowDays = archiveWindowDays(selectedTab)
-    val currentStart = endDate.minusDays((windowDays - 1).toLong())
+    val currentStart =
+        if (selectedTab == ReportTab.YEAR) {
+            LocalDate.of(endDate.year, 1, 1)
+        } else {
+            endDate.minusDays((windowDays - 1).toLong())
+        }
+    val actualWindowDays = (endDate.toEpochDay() - currentStart.toEpochDay() + 1L).coerceAtLeast(1L).toInt()
     val previousEnd = currentStart.minusDays(1)
-    val previousStart = previousEnd.minusDays((windowDays - 1).toLong())
-    val recentArchives = archiveRepository.getRecentArchives(limit = windowDays * 4).first()
+    val previousStart = previousEnd.minusDays((actualWindowDays - 1).toLong())
+    val currentFrom = ArchiveDateUtils.formatDate(currentStart)
+    val currentTo = ArchiveDateUtils.formatDate(endDate)
+    val previousFrom = ArchiveDateUtils.formatDate(previousStart)
+    val previousTo = ArchiveDateUtils.formatDate(previousEnd)
 
-    val currentArchives =
-        recentArchives
-            .filter {
-                val date = LocalDate.parse(it.archiveDate)
-                !date.isBefore(currentStart) && !date.isAfter(endDate)
-            }
-            .sortedBy { it.archiveDate }
-    val previousArchives =
-        recentArchives
-            .filter {
-                val date = LocalDate.parse(it.archiveDate)
-                !date.isBefore(previousStart) && !date.isAfter(previousEnd)
-            }
-            .sortedBy { it.archiveDate }
+    val currentArchives = archiveRepository.getArchivesByRange(currentFrom, currentTo).first()
+    val previousArchives = archiveRepository.getArchivesByRange(previousFrom, previousTo).first()
+    val rollingYearStart = endDate.minusDays(364)
+    val rollingYearArchives =
+        if (selectedTab == ReportTab.YEAR) {
+            archiveRepository
+                .getArchivesByRange(
+                    from = ArchiveDateUtils.formatDate(rollingYearStart),
+                    to = currentTo,
+                ).first()
+        } else {
+            emptyList()
+        }
 
     val currentAppArchives =
         archiveRepository
             .getAppArchivesByRange(
-                from = ArchiveDateUtils.formatDate(currentStart),
-                to = ArchiveDateUtils.formatDate(endDate),
+                from = currentFrom,
+                to = currentTo,
             ).first()
     val previousAppArchives =
         archiveRepository
             .getAppArchivesByRange(
-                from = ArchiveDateUtils.formatDate(previousStart),
-                to = ArchiveDateUtils.formatDate(previousEnd),
+                from = previousFrom,
+                to = previousTo,
             ).first()
+    val currentGroupArchives = archiveRepository.getGroupArchivesByRange(currentFrom, currentTo).first()
 
     val currentSnapshots = mergeArchivedAppSnapshots(currentAppArchives)
     val previousSnapshots = mergeArchivedAppSnapshots(previousAppArchives)
     val currentMetrics = buildArchivedWindowMetrics(currentSnapshots)
     val previousMetrics = buildArchivedWindowMetrics(previousSnapshots)
-    val timelineBuckets = buildArchiveTimelineBuckets(currentArchives)
+    val timelineBuckets =
+        if (selectedTab == ReportTab.YEAR) {
+            buildYearTimelineBuckets(currentArchives)
+        } else {
+            buildArchiveTimelineBuckets(currentArchives)
+        }
     val periodUsage = buildArchivePeriodUsageStats(selectedTab, timelineBuckets)
     val topApps =
         archiveRepository
             .getTopAppsByRange(
-                from = ArchiveDateUtils.formatDate(currentStart),
-                to = ArchiveDateUtils.formatDate(endDate),
+                from = currentFrom,
+                to = currentTo,
                 limit = 10,
             ).first()
             .map {
@@ -467,6 +585,8 @@ private suspend fun buildArchivedWindowReportUiState(
         } else {
             currentArchives.sumOf { it.totalUsageMillis } / currentArchives.size
         }
+    val pointsNet = currentArchives.sumOf { it.pointsNet }
+    val redemptionCount = currentArchives.sumOf { it.redemptionCount }
     val summary =
         buildArchivedReportSummary(
             selectedTab = selectedTab,
@@ -475,10 +595,11 @@ private suspend fun buildArchivedWindowReportUiState(
             overview = overview,
             previousMetrics = previousMetrics,
             dominantPeriod = periodUsage.maxByOrNull { it.deviceMillis }?.label ?: "--",
-            pointsNet = currentArchives.sumOf { it.pointsNet },
-            redemptionCount = currentArchives.sumOf { it.redemptionCount },
+            pointsNet = pointsNet,
+            redemptionCount = redemptionCount,
             averagePerDayUsage = averagePerDayUsage,
         )
+    val behaviorInsight = buildArchivedDayBehaviorInsight(currentSnapshots, timelineBuckets)
     val comparisons =
         buildArchivedComparisonMetrics(
             selectedTab = selectedTab,
@@ -494,6 +615,53 @@ private suspend fun buildArchivedWindowReportUiState(
             nightUsageMillis = currentMetrics.nightUsageMillis,
             periodUsage = periodUsage,
         )
+    val windowFocusData =
+        buildWindowFocusSectionData(
+            selectedTab = selectedTab,
+            archives = currentArchives,
+            groupArchives = currentGroupArchives,
+            activeDayCount = currentArchives.size,
+        )
+    val heatmapData =
+        if (selectedTab == ReportTab.MONTH || selectedTab == ReportTab.YEAR) {
+            buildHeatmapSectionData(
+                selectedTab = selectedTab,
+                startDate = currentStart,
+                endDate = endDate,
+                archives = currentArchives,
+            )
+        } else {
+            null
+        }
+    val yearDualScopeData =
+        if (selectedTab == ReportTab.YEAR) {
+            YearDualScopeSectionData(
+                naturalYear =
+                    buildYearScopeSummary(
+                        title = "自然年",
+                        startDate = currentStart,
+                        endDate = endDate,
+                        archives = currentArchives,
+                    ),
+                rollingYear =
+                    buildYearScopeSummary(
+                        title = "近 365 天",
+                        startDate = rollingYearStart,
+                        endDate = endDate,
+                        archives = rollingYearArchives,
+                    ),
+            )
+        } else {
+            null
+        }
+    val shareData =
+        buildShareReportData(
+            selectedTab = selectedTab,
+            summary = summary,
+            archives = currentArchives,
+            windowFocus = windowFocusData,
+            topApps = topApps,
+        )
 
     updateState { current ->
         current.copy(
@@ -506,6 +674,16 @@ private suspend fun buildArchivedWindowReportUiState(
                         nightUsageMillis = currentMetrics.nightUsageMillis,
                     ),
                 ),
+            dailyFocusState = SectionState.Empty,
+            windowFocusState =
+                if (currentArchives.isEmpty()) {
+                    SectionState.Empty
+                } else {
+                    SectionState.Ready(windowFocusData)
+                },
+            heatmapState = heatmapData?.let { SectionState.Ready(it) } ?: SectionState.Empty,
+            yearDualScopeState = yearDualScopeData?.let { SectionState.Ready(it) } ?: SectionState.Empty,
+            shareState = SectionState.Ready(shareData),
             timelineState =
                 if (timelineBuckets.isEmpty()) {
                     SectionState.Empty
@@ -518,7 +696,12 @@ private suspend fun buildArchivedWindowReportUiState(
                 } else {
                     SectionState.Ready(TopAppsSectionData(usageTopApps = topApps))
                 },
-            behaviorState = SectionState.Empty,
+            behaviorState =
+                if (behaviorInsight == null) {
+                    SectionState.Empty
+                } else {
+                    SectionState.Ready(BehaviorSectionData(behaviorInsight = behaviorInsight))
+                },
             comparisonState =
                 if (comparisons.isEmpty()) {
                     SectionState.Empty
@@ -541,6 +724,361 @@ private fun archiveWindowDays(tab: ReportTab): Int =
         ReportTab.MONTH -> 30
         ReportTab.YEAR -> 365
     }
+
+private fun buildDailyFocusSectionData(
+    archive: DailyArchiveEntity,
+    groupArchives: List<DailyGroupArchiveEntity>,
+): DailyFocusSectionData {
+    val controlGroups = groupArchives.filter { it.groupType == GroupType.CONTROL }
+    val encourageGroups = groupArchives.filter { it.groupType == GroupType.ENCOURAGE }
+    val exceededControlGroup = controlGroups.maxByOrNull { it.exceededMillisAtClose }
+        ?.takeIf { it.exceededMillisAtClose > 0L }
+    val bestControlGroup =
+        exceededControlGroup
+            ?: controlGroups.maxWithOrNull(
+                compareBy<DailyGroupArchiveEntity> { it.remainingMillisAtClose }
+                    .thenByDescending { it.completed }
+                    .thenBy { it.dailyUsageMillis },
+            )
+    val bestEncourageGroup =
+        encourageGroups.maxWithOrNull(
+            compareBy<DailyGroupArchiveEntity> { it.earnedPoints }
+                .thenBy { it.dailyUsageMillis }
+                .thenByDescending { it.completed },
+        )
+
+    val controlProgress =
+        when {
+            controlGroups.isNotEmpty() ->
+                archive.controlCompletedGroupCount.toFloat() / controlGroups.size.toFloat()
+            archive.savedMillis > 0L -> 1f
+            else -> 0f
+        }.coerceIn(0f, 1f)
+    val encourageProgress =
+        when {
+            encourageGroups.isNotEmpty() ->
+                archive.encourageCompletedGroupCount.toFloat() / encourageGroups.size.toFloat()
+            archive.encourageUsageMillis > 0L -> 1f
+            else -> 0f
+        }.coerceIn(0f, 1f)
+
+    return DailyFocusSectionData(
+        control =
+            DailyModeSummary(
+                title = "管控成效",
+                description = if (archive.controlExceededGroupCount > 0) "今天仍有超限，需要收紧重点分组。" else "管控分组整体稳定。",
+                primaryLabel = "节省时长",
+                primaryValue = formatDuration(archive.savedMillis),
+                metrics =
+                    listOf(
+                        DailyFocusMetric("达标", "${archive.controlCompletedGroupCount} 组"),
+                        DailyFocusMetric("超限", "${archive.controlExceededGroupCount} 组"),
+                        DailyFocusMetric("拦截", "${archive.controlBlockEventCount} 次"),
+                    ),
+                progress = controlProgress,
+                spotlightLabel =
+                    when {
+                        exceededControlGroup != null -> "重点关注"
+                        bestControlGroup != null -> "表现最好"
+                        else -> "管控分组"
+                    },
+                spotlightValue =
+                    when {
+                        exceededControlGroup != null ->
+                            "${exceededControlGroup.groupName} · 超限 ${formatDuration(exceededControlGroup.exceededMillisAtClose)}"
+                        bestControlGroup != null && bestControlGroup.remainingMillisAtClose > 0L ->
+                            "${bestControlGroup.groupName} · 剩余 ${formatDuration(bestControlGroup.remainingMillisAtClose)}"
+                        bestControlGroup != null -> bestControlGroup.groupName
+                        else -> "暂无分组归档"
+                    },
+                isWarning = archive.controlExceededGroupCount > 0 || archive.controlBlockEventCount > 0,
+            ),
+        encourage =
+            DailyModeSummary(
+                title = "鼓励进度",
+                description = if (archive.pointsNet >= 0.0) "鼓励使用带来正向积分收益。" else "今天积分净值为负，关注兑换节奏。",
+                primaryLabel = "净积分",
+                primaryValue = formatSignedPointsLocal(archive.pointsNet),
+                metrics =
+                    listOf(
+                        DailyFocusMetric("鼓励时长", formatDuration(archive.encourageUsageMillis)),
+                        DailyFocusMetric("达标", "${archive.encourageCompletedGroupCount} 组"),
+                        DailyFocusMetric("兑换", "${archive.redemptionCount} 次"),
+                    ),
+                progress = encourageProgress,
+                spotlightLabel = if (bestEncourageGroup != null) "最佳鼓励" else "鼓励分组",
+                spotlightValue =
+                    if (bestEncourageGroup != null) {
+                        val points = formatSignedPointsLocal(bestEncourageGroup.earnedPoints)
+                        "${bestEncourageGroup.groupName} · $points / ${formatDuration(bestEncourageGroup.dailyUsageMillis)}"
+                    } else {
+                        "暂无分组归档"
+                    },
+                isWarning = archive.pointsNet < 0.0,
+            ),
+    )
+}
+
+private fun buildWindowFocusSectionData(
+    selectedTab: ReportTab,
+    archives: List<DailyArchiveEntity>,
+    groupArchives: List<DailyGroupArchiveEntity>,
+    activeDayCount: Int,
+): WindowFocusSectionData {
+    val controlGroups = groupArchives.filter { it.groupType == GroupType.CONTROL }
+    val encourageGroups = groupArchives.filter { it.groupType == GroupType.ENCOURAGE }
+    val controlGroupSummaries =
+        controlGroups
+            .groupBy { it.groupId to it.groupName }
+            .map { (key, items) ->
+                GroupWindowSummary(
+                    groupId = key.first,
+                    groupName = key.second,
+                    usageMillis = items.sumOf { it.dailyUsageMillis },
+                    remainingMillis = items.sumOf { it.remainingMillisAtClose },
+                    exceededMillis = items.sumOf { it.exceededMillisAtClose },
+                    blockCount = items.sumOf { it.blockEventCount },
+                    earnedPoints = items.sumOf { it.earnedPoints },
+                    completedCount = items.count { it.completed },
+                )
+            }
+    val encourageGroupSummaries =
+        encourageGroups
+            .groupBy { it.groupId to it.groupName }
+            .map { (key, items) ->
+                GroupWindowSummary(
+                    groupId = key.first,
+                    groupName = key.second,
+                    usageMillis = items.sumOf { it.dailyUsageMillis },
+                    remainingMillis = items.sumOf { it.remainingMillisAtClose },
+                    exceededMillis = items.sumOf { it.exceededMillisAtClose },
+                    blockCount = items.sumOf { it.blockEventCount },
+                    earnedPoints = items.sumOf { it.earnedPoints },
+                    completedCount = items.count { it.completed },
+                )
+            }
+    val totalSaved = archives.sumOf { it.savedMillis }
+    val totalExceededGroups = archives.sumOf { it.controlExceededGroupCount }
+    val totalControlCompleted = archives.sumOf { it.controlCompletedGroupCount }
+    val totalBlockEvents = archives.sumOf { it.controlBlockEventCount }
+    val totalEncourageCompleted = archives.sumOf { it.encourageCompletedGroupCount }
+    val totalEncourageUsage = archives.sumOf { it.encourageUsageMillis }
+    val totalRedemptions = archives.sumOf { it.redemptionCount }
+    val pointsNet = archives.sumOf { it.pointsNet }
+    val severeControl = controlGroupSummaries.maxByOrNull { it.exceededMillis }
+        ?.takeIf { it.exceededMillis > 0L }
+    val bestControl = severeControl ?: controlGroupSummaries.maxByOrNull { it.remainingMillis }
+    val bestEncourage = encourageGroupSummaries.maxWithOrNull(
+        compareBy<GroupWindowSummary> { it.earnedPoints }
+            .thenBy { it.completedCount }
+            .thenBy { it.usageMillis },
+    )
+    val controlProgress =
+        if (controlGroups.isNotEmpty()) {
+            totalControlCompleted.toFloat() / controlGroups.size.toFloat()
+        } else {
+            0f
+        }.coerceIn(0f, 1f)
+    val encourageProgress =
+        if (encourageGroups.isNotEmpty()) {
+            totalEncourageCompleted.toFloat() / encourageGroups.size.toFloat()
+        } else {
+            0f
+        }.coerceIn(0f, 1f)
+    val dayUnit =
+        when (selectedTab) {
+            ReportTab.WEEK -> "本周"
+            ReportTab.MONTH -> "本月"
+            ReportTab.YEAR -> "今年"
+            ReportTab.DAY -> "今日"
+        }
+
+    return WindowFocusSectionData(
+        control =
+            DailyModeSummary(
+                title = "管控成效",
+                description = if (totalExceededGroups > 0) "$dayUnit 有 $totalExceededGroups 次分组超限。" else "$dayUnit 管控整体稳定。",
+                primaryLabel = "节省时长",
+                primaryValue = formatDuration(totalSaved),
+                metrics =
+                    listOf(
+                        DailyFocusMetric("达标", "$totalControlCompleted 次"),
+                        DailyFocusMetric("超限", "$totalExceededGroups 次"),
+                        DailyFocusMetric("拦截", "$totalBlockEvents 次"),
+                    ),
+                progress = controlProgress,
+                spotlightLabel = if (severeControl != null) "重点关注" else "表现最好",
+                spotlightValue =
+                    when {
+                        severeControl != null -> "${severeControl.groupName} · 超限 ${formatDuration(severeControl.exceededMillis)}"
+                        bestControl != null && bestControl.remainingMillis > 0L -> "${bestControl.groupName} · 剩余 ${formatDuration(bestControl.remainingMillis)}"
+                        bestControl != null -> bestControl.groupName
+                        else -> "暂无管控分组归档"
+                    },
+                isWarning = totalExceededGroups > 0 || totalBlockEvents > 0,
+            ),
+        encourage =
+            DailyModeSummary(
+                title = "鼓励进度",
+                description = if (pointsNet >= 0.0) "$dayUnit 净积分保持正向。" else "$dayUnit 兑换超过积分收益。",
+                primaryLabel = "净积分",
+                primaryValue = formatSignedPointsLocal(pointsNet),
+                metrics =
+                    listOf(
+                        DailyFocusMetric("鼓励时长", formatDuration(totalEncourageUsage)),
+                        DailyFocusMetric("达标", "$totalEncourageCompleted 次"),
+                        DailyFocusMetric("兑换", "$totalRedemptions 次"),
+                    ),
+                progress = encourageProgress,
+                spotlightLabel = if (bestEncourage != null) "最佳鼓励" else "鼓励分组",
+                spotlightValue =
+                    if (bestEncourage != null) {
+                        "${bestEncourage.groupName} · ${formatSignedPointsLocal(bestEncourage.earnedPoints)} / ${formatDuration(bestEncourage.usageMillis)}"
+                    } else {
+                        "暂无鼓励分组归档"
+                    },
+                isWarning = pointsNet < 0.0,
+            ),
+        highlights =
+            listOf(
+                DailyFocusMetric("活跃天数", "$activeDayCount 天"),
+                DailyFocusMetric("日均时长", formatDuration(if (activeDayCount > 0) archives.sumOf { it.totalUsageMillis } / activeDayCount else 0L)),
+                DailyFocusMetric("节省总量", formatDuration(totalSaved)),
+            ),
+    )
+}
+
+private data class GroupWindowSummary(
+    val groupId: String,
+    val groupName: String,
+    val usageMillis: Long,
+    val remainingMillis: Long,
+    val exceededMillis: Long,
+    val blockCount: Int,
+    val earnedPoints: Double,
+    val completedCount: Int,
+)
+
+private fun buildYearTimelineBuckets(archives: List<DailyArchiveEntity>): List<DailyTimelineBucket> {
+    return (1..12).map { month ->
+        val monthArchives = archives.filter { LocalDate.parse(it.archiveDate).monthValue == month }
+        DailyTimelineBucket(
+            hour = month - 1,
+            label = "${month}月",
+            deviceMillis = monthArchives.sumOf { it.totalUsageMillis },
+        )
+    }
+}
+
+private fun buildHeatmapSectionData(
+    selectedTab: ReportTab,
+    startDate: LocalDate,
+    endDate: LocalDate,
+    archives: List<DailyArchiveEntity>,
+): HeatmapSectionData {
+    val archiveByDate = archives.associateBy { it.archiveDate }
+    return if (selectedTab == ReportTab.YEAR) {
+        val monthValues =
+            (1..12).map { month ->
+                val monthArchives = archives.filter { LocalDate.parse(it.archiveDate).monthValue == month }
+                val total = monthArchives.sumOf { it.totalUsageMillis }
+                HeatmapDayData(
+                    label = "${month}月",
+                    valueMillis = total,
+                    exceeded = monthArchives.any { it.controlExceededGroupCount > 0 },
+                    selected = total == archives
+                        .groupBy { LocalDate.parse(it.archiveDate).monthValue }
+                        .maxOfOrNull { entry -> entry.value.sumOf { it.totalUsageMillis } },
+                )
+            }
+        HeatmapSectionData(
+            title = "年度月份热力",
+            subtitle = "颜色越深代表这个月越值得复盘，红点表示出现过管控超限。",
+            days = monthValues,
+        )
+    } else {
+        val days = mutableListOf<HeatmapDayData>()
+        var date = startDate
+        val maxUsage = archives.maxOfOrNull { it.totalUsageMillis } ?: 0L
+        while (!date.isAfter(endDate)) {
+            val archive = archiveByDate[ArchiveDateUtils.formatDate(date)]
+            days += HeatmapDayData(
+                label = date.dayOfMonth.toString(),
+                valueMillis = archive?.totalUsageMillis ?: 0L,
+                exceeded = (archive?.controlExceededGroupCount ?: 0) > 0,
+                selected = archive != null && archive.totalUsageMillis == maxUsage && maxUsage > 0L,
+            )
+            date = date.plusDays(1)
+        }
+        HeatmapSectionData(
+            title = "月历热力",
+            subtitle = "每天一个格子，快速看出高峰、低谷和超限日。",
+            days = days,
+        )
+    }
+}
+
+private fun buildYearScopeSummary(
+    title: String,
+    startDate: LocalDate,
+    endDate: LocalDate,
+    archives: List<DailyArchiveEntity>,
+): YearScopeSummary {
+    val activeDays = archives.size
+    val totalUsage = archives.sumOf { it.totalUsageMillis }
+    val averageUsage = if (activeDays > 0) totalUsage / activeDays else 0L
+    return YearScopeSummary(
+        title = title,
+        rangeLabel = "${startDate.format(DateTimeFormatter.ofPattern("M/d", Locale.CHINA))} - ${endDate.format(DateTimeFormatter.ofPattern("M/d", Locale.CHINA))}",
+        totalUsage = formatDuration(totalUsage),
+        averageUsage = formatDuration(averageUsage),
+        activeDays = "$activeDays 天",
+        savedUsage = formatDuration(archives.sumOf { it.savedMillis }),
+        pointsNet = formatSignedPointsLocal(archives.sumOf { it.pointsNet }),
+    )
+}
+
+private fun buildShareReportData(
+    selectedTab: ReportTab,
+    summary: DailyReportSummary,
+    archives: List<DailyArchiveEntity>,
+    windowFocus: WindowFocusSectionData?,
+    topApps: List<AppDisplayItem>,
+): ShareReportData {
+    val tabName =
+        when (selectedTab) {
+            ReportTab.DAY -> "日报"
+            ReportTab.WEEK -> "周报"
+            ReportTab.MONTH -> "月报"
+            ReportTab.YEAR -> "年报"
+        }
+    val bestDay = archives.maxByOrNull { it.totalUsageMillis }
+    val calmDay = archives.filter { it.totalUsageMillis > 0L }.minByOrNull { it.totalUsageMillis }
+    val insight =
+        when {
+            bestDay != null && calmDay != null ->
+                "峰值 ${formatArchiveDate(bestDay.archiveDate, "M/d")} · ${formatDuration(bestDay.totalUsageMillis)}，最低 ${formatArchiveDate(calmDay.archiveDate, "M/d")} · ${formatDuration(calmDay.totalUsageMillis)}。"
+            bestDay != null -> "峰值 ${formatArchiveDate(bestDay.archiveDate, "M/d")} · ${formatDuration(bestDay.totalUsageMillis)}。"
+            else -> "还没有足够归档，下一次复盘会更完整。"
+        }
+    val metrics =
+        windowFocus?.let {
+            listOf(
+                DailyFocusMetric("管控节省", it.control.primaryValue),
+                DailyFocusMetric("鼓励净值", it.encourage.primaryValue),
+                DailyFocusMetric("Top 应用", topApps.firstOrNull()?.label ?: "暂无"),
+            )
+        } ?: summary.tags.take(3).mapIndexed { index, tag -> DailyFocusMetric("亮点 ${index + 1}", tag) }
+    return ShareReportData(
+        title = "Tiny Vow $tabName",
+        subtitle = summary.subtitle,
+        primaryValue = summary.primaryValue,
+        primaryLabel = "总使用时长",
+        metrics = metrics,
+        insight = insight,
+        topApps = topApps.take(3),
+    )
+}
 
 private fun mergeArchivedAppSnapshots(items: List<DailyAppArchiveEntity>): List<ArchivedAppSnapshot> {
     return items
@@ -597,6 +1135,7 @@ private fun buildArchivePeriodUsageStats(
         when (selectedTab) {
             ReportTab.WEEK -> listOf("周初", "周中", "周后段")
             ReportTab.MONTH -> listOf("第 1 周", "第 2 周", "第 3 周", "第 4 周+")
+            ReportTab.YEAR -> listOf("春", "夏", "秋", "冬")
             else -> emptyList()
         }
     if (labels.isEmpty()) {
@@ -630,6 +1169,11 @@ private suspend fun buildArchivedDayReportUiState(
             current.copy(
                 isRefreshing = false,
                 heroState = SectionState.Empty,
+                dailyFocusState = SectionState.Empty,
+                windowFocusState = SectionState.Empty,
+                heatmapState = SectionState.Empty,
+                yearDualScopeState = SectionState.Empty,
+                shareState = SectionState.Empty,
                 timelineState = SectionState.Empty,
                 topAppsState = SectionState.Empty,
                 behaviorState = SectionState.Empty,
@@ -654,6 +1198,7 @@ private suspend fun buildArchivedDayReportUiState(
         mergeArchivedAppSnapshots(
             archiveRepository.getAppArchivesByDate(selectedArchive.archiveDate).first(),
         )
+    val currentGroupArchives = archiveRepository.getGroupArchivesByDate(selectedArchive.archiveDate).first()
     val previousSnapshots =
         previousArchive?.let {
             mergeArchivedAppSnapshots(
@@ -713,6 +1258,15 @@ private suspend fun buildArchivedDayReportUiState(
             nightUsageMillis = currentMetrics.nightUsageMillis,
             periodUsage = periodUsage,
         )
+    val dailyFocusData = buildDailyFocusSectionData(selectedArchive, currentGroupArchives)
+    val shareData =
+        buildShareReportData(
+            selectedTab = ReportTab.DAY,
+            summary = summary,
+            archives = listOf(selectedArchive),
+            windowFocus = null,
+            topApps = topApps,
+        )
 
     updateState { current ->
         current.copy(
@@ -725,6 +1279,11 @@ private suspend fun buildArchivedDayReportUiState(
                         nightUsageMillis = currentMetrics.nightUsageMillis,
                     ),
                 ),
+            dailyFocusState = SectionState.Ready(dailyFocusData),
+            windowFocusState = SectionState.Empty,
+            heatmapState = SectionState.Empty,
+            yearDualScopeState = SectionState.Empty,
+            shareState = SectionState.Ready(shareData),
             timelineState =
                 if (timelineBuckets.any { it.deviceMillis > 0L }) {
                     SectionState.Ready(timelineStateData)
@@ -1564,7 +2123,7 @@ private fun StatsScreenLayout(
     ) {
         when {
             !state.isPermissionGranted -> PermissionRequiredState()
-            state.placeholderTitle != null || state.selectedTab == ReportTab.YEAR -> PlaceholderReportScreen(
+            state.placeholderTitle != null -> PlaceholderReportScreen(
                 state = state,
                 onTabSelected = onTabSelected,
             )
@@ -1617,10 +2176,21 @@ private fun DailyReportScreen(
                     selectedTab = state.selectedTab,
                     heroState = state.heroState,
                 )
+                if (state.selectedTab == ReportTab.DAY) {
+                    DailyFocusCard(focusState = state.dailyFocusState)
+                } else {
+                    WindowFocusCard(focusState = state.windowFocusState)
+                }
+                if (state.selectedTab == ReportTab.YEAR) {
+                    YearDualScopeCard(yearState = state.yearDualScopeState)
+                }
                 TimelineCard(
                     selectedTab = state.selectedTab,
                     timelineState = state.timelineState,
                 )
+                if (state.selectedTab == ReportTab.MONTH || state.selectedTab == ReportTab.YEAR) {
+                    HeatmapCard(heatmapState = state.heatmapState)
+                }
                 AppChartsCard(
                     selectedTab = state.selectedTab,
                     topAppsState = state.topAppsState,
@@ -1632,6 +2202,10 @@ private fun DailyReportScreen(
                 ComparisonCard(
                     selectedTab = state.selectedTab,
                     comparisonState = state.comparisonState,
+                )
+                ShareReportCard(
+                    selectedTab = state.selectedTab,
+                    shareState = state.shareState,
                 )
                 Spacer(modifier = Modifier.height(24.dp))
             }
@@ -2528,8 +3102,8 @@ private fun DeviceHeroCard(
             itemCount = 2,
             compactColumns = 1,
             expandedColumns = 2,
-            horizontalSpacing = 16.dp,
-            verticalSpacing = 16.dp,
+            horizontalSpacing = 12.dp,
+            verticalSpacing = 12.dp,
         ) { modifier, index ->
             when (index) {
                 0 -> DeviceHeroVisualPanel(
@@ -2888,6 +3462,475 @@ private fun AdaptiveRowGrid(
                     }
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun DailyFocusCard(
+    focusState: SectionState<DailyFocusSectionData>,
+) {
+    when (focusState) {
+        SectionState.Empty -> Unit
+        SectionState.Loading -> {
+            AdaptiveRowGrid(
+                itemCount = 2,
+                compactColumns = 2,
+                expandedColumns = 2,
+                horizontalSpacing = 8.dp,
+                verticalSpacing = 8.dp,
+            ) { modifier, _ ->
+                SkeletonBlock(
+                    modifier = modifier,
+                    height = 208.dp,
+                    shape = RoundedCornerShape(28.dp),
+                )
+            }
+        }
+        is SectionState.Ready -> {
+            AdaptiveRowGrid(
+                itemCount = 2,
+                compactColumns = 2,
+                expandedColumns = 2,
+                horizontalSpacing = 8.dp,
+                verticalSpacing = 8.dp,
+            ) { modifier, index ->
+                if (index == 0) {
+                    DailyModeSummaryCard(
+                        summary = focusState.data.control,
+                        icon = Icons.Default.Bolt,
+                        modifier = modifier,
+                    )
+                } else {
+                    DailyModeSummaryCard(
+                        summary = focusState.data.encourage,
+                        icon = Icons.Default.RocketLaunch,
+                        modifier = modifier,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun WindowFocusCard(
+    focusState: SectionState<WindowFocusSectionData>,
+) {
+    when (focusState) {
+        SectionState.Empty -> Unit
+        SectionState.Loading -> {
+            ReportCard {
+                SkeletonSectionHeader()
+                AdaptiveRowGrid(itemCount = 2, compactColumns = 1, expandedColumns = 2) { modifier, _ ->
+                    SkeletonBlock(modifier = modifier, height = 210.dp, shape = RoundedCornerShape(24.dp))
+                }
+            }
+        }
+        is SectionState.Ready -> {
+            ReportCard {
+                SectionHeader(
+                    icon = Icons.Default.EmojiEvents,
+                    title = "管控与鼓励复盘",
+                    subtitle = "把限制、奖励、积分和重点分组收拢到一个窗口里看。",
+                )
+                AdaptiveRowGrid(
+                    itemCount = 2,
+                    compactColumns = 1,
+                    expandedColumns = 2,
+                    horizontalSpacing = 10.dp,
+                    verticalSpacing = 10.dp,
+                ) { modifier, index ->
+                    if (index == 0) {
+                        DailyModeSummaryCard(
+                            summary = focusState.data.control,
+                            icon = Icons.Default.Bolt,
+                            modifier = modifier,
+                        )
+                    } else {
+                        DailyModeSummaryCard(
+                            summary = focusState.data.encourage,
+                            icon = Icons.Default.RocketLaunch,
+                            modifier = modifier,
+                        )
+                    }
+                }
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    focusState.data.highlights.forEachIndexed { index, metric ->
+                        FocusMetricPill(
+                            metric = metric,
+                            accent = MaterialTheme.colorScheme.primary,
+                            delayMillis = 180 + index * 40,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun YearDualScopeCard(
+    yearState: SectionState<YearDualScopeSectionData>,
+) {
+    when (yearState) {
+        SectionState.Empty -> Unit
+        SectionState.Loading -> {
+            ReportCard {
+                SkeletonSectionHeader()
+                AdaptiveRowGrid(itemCount = 2, compactColumns = 1, expandedColumns = 2) { modifier, _ ->
+                    SkeletonMetricChip(modifier = modifier)
+                }
+            }
+        }
+        is SectionState.Ready -> {
+            ReportCard {
+                SectionHeader(
+                    icon = Icons.Default.CalendarMonth,
+                    title = "年度双口径",
+                    subtitle = "自然年看正式总结，近 365 天看长期惯性。",
+                )
+                AdaptiveRowGrid(
+                    itemCount = 2,
+                    compactColumns = 1,
+                    expandedColumns = 2,
+                    horizontalSpacing = 10.dp,
+                    verticalSpacing = 10.dp,
+                ) { modifier, index ->
+                    YearScopePanel(
+                        summary = if (index == 0) yearState.data.naturalYear else yearState.data.rollingYear,
+                        modifier = modifier,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun YearScopePanel(
+    summary: YearScopeSummary,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.76f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.24f)),
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Text(summary.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text(summary.rangeLabel, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(summary.totalUsage, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+            AdaptiveRowGrid(itemCount = 4, compactColumns = 2, expandedColumns = 2, verticalSpacing = 8.dp) { childModifier, index ->
+                val metric =
+                    when (index) {
+                        0 -> DailyFocusMetric("日均", summary.averageUsage)
+                        1 -> DailyFocusMetric("活跃", summary.activeDays)
+                        2 -> DailyFocusMetric("节省", summary.savedUsage)
+                        else -> DailyFocusMetric("净积分", summary.pointsNet)
+                    }
+                FocusMetricPill(
+                    metric = metric,
+                    accent = MaterialTheme.colorScheme.primary,
+                    delayMillis = 120 + index * 40,
+                    modifier = childModifier,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun HeatmapCard(
+    heatmapState: SectionState<HeatmapSectionData>,
+) {
+    ReportCard {
+        when (heatmapState) {
+            SectionState.Loading -> {
+                SkeletonSectionHeader()
+                SkeletonBlock(modifier = Modifier.fillMaxWidth(), height = 180.dp, shape = RoundedCornerShape(24.dp))
+            }
+            SectionState.Empty -> {
+                SectionHeader(Icons.Default.CalendarMonth, "热力分布", "暂无足够归档生成热力图。")
+            }
+            is SectionState.Ready -> {
+                SectionHeader(
+                    icon = Icons.Default.CalendarMonth,
+                    title = heatmapState.data.title,
+                    subtitle = heatmapState.data.subtitle,
+                )
+                HeatmapGrid(data = heatmapState.data)
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun HeatmapGrid(data: HeatmapSectionData) {
+    val reportColors = LocalReportColors.current
+    val maxValue = data.days.maxOfOrNull { it.valueMillis }?.coerceAtLeast(1L) ?: 1L
+    FlowRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(7.dp),
+        verticalArrangement = Arrangement.spacedBy(7.dp),
+    ) {
+        data.days.forEach { day ->
+            val ratio = (day.valueMillis.toFloat() / maxValue.toFloat()).coerceIn(0f, 1f)
+            val cellColor =
+                when {
+                    day.exceeded -> reportColors.warning.copy(alpha = 0.26f + ratio * 0.58f)
+                    day.valueMillis > 0L -> MaterialTheme.colorScheme.primary.copy(alpha = 0.18f + ratio * 0.64f)
+                    else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.36f)
+                }
+            Surface(
+                modifier = Modifier.size(if (data.days.size <= 12) 56.dp else 34.dp),
+                shape = RoundedCornerShape(if (data.days.size <= 12) 16.dp else 10.dp),
+                color = cellColor,
+                border = if (day.selected) BorderStroke(1.dp, MaterialTheme.colorScheme.primary) else null,
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Text(
+                        text = day.label,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = if (day.selected) FontWeight.Bold else FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ShareReportCard(
+    selectedTab: ReportTab,
+    shareState: SectionState<ShareReportData>,
+) {
+    val context = LocalContext.current
+    val reportColors = LocalReportColors.current
+    val primary = MaterialTheme.colorScheme.primary
+    val surface = MaterialTheme.colorScheme.surface
+    val onSurface = MaterialTheme.colorScheme.onSurface
+    val onSurfaceVariant = MaterialTheme.colorScheme.onSurfaceVariant
+    val data = (shareState as? SectionState.Ready)?.data
+    ReportCard {
+        SectionHeader(
+            icon = Icons.Default.Share,
+            title = "分享战报",
+            subtitle = "生成一张当前${selectedTab.label}摘要海报，适合直接发给朋友或留作记录。",
+        )
+        if (data == null) {
+            SkeletonBlock(modifier = Modifier.fillMaxWidth(), height = 126.dp, shape = RoundedCornerShape(24.dp))
+        } else {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(24.dp),
+                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.42f),
+            ) {
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Text(data.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    Text(data.insight, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Button(
+                        onClick = {
+                            runCatching {
+                                shareReportImage(
+                                    context = context,
+                                    data = data,
+                                    primary = primary,
+                                    surface = surface,
+                                    onSurface = onSurface,
+                                    onSurfaceVariant = onSurfaceVariant,
+                                    palette = reportColors.appChartPalette,
+                                )
+                            }.onFailure { error ->
+                                Toast.makeText(context, error.message ?: "分享图生成失败", Toast.LENGTH_SHORT).show()
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(18.dp))
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("生成并分享 PNG")
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun DailyModeSummaryCard(
+    summary: DailyModeSummary,
+    icon: ImageVector,
+    modifier: Modifier = Modifier,
+) {
+    val reportColors = LocalReportColors.current
+    val accent =
+        when {
+            summary.isWarning -> reportColors.warning
+            summary.title == "鼓励进度" -> reportColors.positive
+            else -> MaterialTheme.colorScheme.primary
+        }
+    val animatedPrimaryValue = animateMetricDisplayText(
+        rawText = summary.primaryValue,
+        label = "daily_focus_${summary.title}_${summary.primaryLabel}",
+        delayMillis = 120,
+    )
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)),
+        shadowElevation = 0.dp,
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Surface(
+                modifier = Modifier.size(36.dp),
+                shape = RoundedCornerShape(12.dp),
+                color = accent.copy(alpha = 0.16f),
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        tint = accent,
+                        modifier = Modifier.size(19.dp),
+                    )
+                }
+            }
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    text = summary.title,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = summary.description,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Text(
+                text = summary.primaryLabel,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                text = animatedPrimaryValue,
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                color = accent,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        GradientProgressBar(
+            progress = summary.progress,
+            color = accent,
+            delayMillis = 160,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            summary.metrics.forEachIndexed { index, metric ->
+                FocusMetricPill(
+                    metric = metric,
+                    accent = accent,
+                    delayMillis = 180 + index * 40,
+                )
+            }
+        }
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(18.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.52f),
+        ) {
+            Column(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(3.dp),
+            ) {
+                Text(
+                    text = summary.spotlightLabel,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    text = summary.spotlightValue,
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        }
+    }
+}
+
+@Composable
+private fun FocusMetricPill(
+    metric: DailyFocusMetric,
+    accent: Color,
+    delayMillis: Int,
+    modifier: Modifier = Modifier,
+) {
+    val animatedValue = animateMetricDisplayText(
+        rawText = metric.value,
+        label = "daily_focus_metric_${metric.label}_${metric.value}",
+        delayMillis = delayMillis,
+    )
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(14.dp),
+        color = accent.copy(alpha = 0.1f),
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            Text(
+                text = metric.label,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                text = animatedValue,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
         }
     }
 }
@@ -4180,6 +5223,201 @@ fun AppIconCircle(pkg: String) {
                 modifier = Modifier.padding(6.dp),
             )
         }
+    }
+}
+
+private fun shareReportImage(
+    context: Context,
+    data: ShareReportData,
+    primary: Color,
+    surface: Color,
+    onSurface: Color,
+    onSurfaceVariant: Color,
+    palette: List<Color>,
+) {
+    val bitmap = renderShareReportBitmap(
+        data = data,
+        primary = primary,
+        surface = surface,
+        onSurface = onSurface,
+        onSurfaceVariant = onSurfaceVariant,
+        palette = palette,
+    )
+    val shareDir = File(context.cacheDir, "share").apply { mkdirs() }
+    val file = File(shareDir, "tinyvow-report-${System.currentTimeMillis()}.png")
+    FileOutputStream(file).use { output ->
+        bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)
+    }
+    val uri =
+        FileProvider.getUriForFile(
+            context,
+            "${context.packageName}.fileprovider",
+            file,
+        )
+    val intent =
+        Intent(Intent.ACTION_SEND).apply {
+            type = "image/png"
+            putExtra(Intent.EXTRA_STREAM, uri)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+    context.startActivity(Intent.createChooser(intent, "分享战报"))
+}
+
+private fun renderShareReportBitmap(
+    data: ShareReportData,
+    primary: Color,
+    surface: Color,
+    onSurface: Color,
+    onSurfaceVariant: Color,
+    palette: List<Color>,
+): Bitmap {
+    val width = 1080
+    val height = 1600
+    val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+    val canvas = android.graphics.Canvas(bitmap)
+    val primaryArgb = primary.toArgb()
+    val surfaceArgb = surface.toArgb()
+    val textArgb = onSurface.toArgb()
+    val mutedArgb = onSurfaceVariant.toArgb()
+    val backgroundPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        shader =
+            android.graphics.LinearGradient(
+                0f,
+                0f,
+                0f,
+                height.toFloat(),
+                intArrayOf(surfaceArgb, primary.copy(alpha = 0.18f).toArgb(), surfaceArgb),
+                null,
+                android.graphics.Shader.TileMode.CLAMP,
+            )
+    }
+    canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), backgroundPaint)
+
+    val cardPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = android.graphics.Color.WHITE }
+    val softPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = primary.copy(alpha = 0.12f).toArgb() }
+    val titlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = textArgb
+        textSize = 58f
+        typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
+    }
+    val subtitlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = mutedArgb
+        textSize = 30f
+    }
+    val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = mutedArgb
+        textSize = 28f
+    }
+    val valuePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = primaryArgb
+        textSize = 104f
+        typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
+    }
+    val bodyPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = textArgb
+        textSize = 34f
+    }
+    canvas.drawRoundRect(RectF(64f, 76f, width - 64f, height - 76f), 54f, 54f, cardPaint)
+    canvas.drawRoundRect(RectF(104f, 116f, width - 104f, 520f), 42f, 42f, softPaint)
+    canvas.drawText(data.title, 136f, 190f, titlePaint)
+    canvas.drawText(data.subtitle, 136f, 242f, subtitlePaint)
+    canvas.drawText(data.primaryLabel, 136f, 330f, labelPaint)
+    canvas.drawText(data.primaryValue, 136f, 438f, valuePaint)
+
+    var y = 620f
+    data.metrics.take(3).forEachIndexed { index, metric ->
+        val left = 104f + index * 300f
+        val right = left + 276f
+        val color = palette.getOrNull(index)?.copy(alpha = 0.18f)?.toArgb() ?: primary.copy(alpha = 0.14f).toArgb()
+        val pillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { this.color = color }
+        canvas.drawRoundRect(RectF(left, y, right, y + 150f), 30f, 30f, pillPaint)
+        canvas.drawText(metric.label, left + 26f, y + 52f, labelPaint)
+        drawEllipsizedText(canvas, metric.value, left + 26f, y + 108f, 220f, bodyPaint)
+    }
+
+    y += 250f
+    val insightTitlePaint = Paint(titlePaint).apply { textSize = 42f }
+    canvas.drawText("复盘高光", 104f, y, insightTitlePaint)
+    y += 58f
+    drawMultilineText(canvas, data.insight, 104f, y, width - 208f, bodyPaint, 48f, 3)
+    y += 210f
+    canvas.drawText("Top 应用", 104f, y, insightTitlePaint)
+    y += 70f
+    data.topApps.take(3).forEachIndexed { index, app ->
+        val rankPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = palette.getOrNull(index)?.toArgb() ?: primaryArgb
+            textSize = 42f
+            typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
+        }
+        canvas.drawText("${index + 1}", 112f, y, rankPaint)
+        drawEllipsizedText(canvas, app.label, 170f, y, 430f, bodyPaint)
+        canvas.drawText(formatDuration(app.value), 780f, y, bodyPaint)
+        y += 64f
+    }
+    val footerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = mutedArgb
+        textSize = 28f
+    }
+    canvas.drawText("Tiny Vow · 把注意力还给生活", 104f, height - 144f, footerPaint)
+    return bitmap
+}
+
+private fun drawEllipsizedText(
+    canvas: android.graphics.Canvas,
+    text: String,
+    x: Float,
+    y: Float,
+    maxWidth: Float,
+    paint: Paint,
+) {
+    var output = text
+    while (paint.measureText(output) > maxWidth && output.length > 2) {
+        output = output.dropLast(2) + "…"
+    }
+    canvas.drawText(output, x, y, paint)
+}
+
+private fun drawMultilineText(
+    canvas: android.graphics.Canvas,
+    text: String,
+    x: Float,
+    y: Float,
+    maxWidth: Float,
+    paint: Paint,
+    lineHeight: Float,
+    maxLines: Int,
+) {
+    val words =
+        if (text.contains(" ")) {
+            text.split(" ")
+        } else {
+            text.map { it.toString() }
+        }
+    val lines = mutableListOf<String>()
+    var current = ""
+    words.forEach { word ->
+        val separator = if (text.contains(" ")) " " else ""
+        val candidate = if (current.isEmpty()) word else "$current$separator$word"
+        if (paint.measureText(candidate) <= maxWidth) {
+            current = candidate
+        } else {
+            if (current.isNotEmpty()) lines += current
+            current = word
+        }
+    }
+    if (current.isNotEmpty()) lines += current
+    lines.take(maxLines).forEachIndexed { index, rawLine ->
+        val line =
+            if (index == maxLines - 1 && lines.size > maxLines) {
+                var output = "$rawLine…"
+                while (paint.measureText(output) > maxWidth && output.length > 2) {
+                    output = output.dropLast(2) + "…"
+                }
+                output
+            } else {
+                rawLine
+            }
+        canvas.drawText(line, x, y + index * lineHeight, paint)
     }
 }
 

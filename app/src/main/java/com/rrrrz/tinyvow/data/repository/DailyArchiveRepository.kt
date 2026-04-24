@@ -42,12 +42,19 @@ class DailyArchiveRepository(
     private val dailyAppArchiveDao = database.dailyAppArchiveDao()
     private val pointLedgerDao = database.pointLedgerDao()
     private val stateDao = database.dailyArchiveStateDao()
+    private val blockEventDao = database.blockEventDao()
 
     fun getRecentArchives(limit: Int = 90): Flow<List<DailyArchiveEntity>> = dailyArchiveDao.getRecent(limit)
 
     fun getArchiveByDate(date: String): Flow<DailyArchiveEntity?> = dailyArchiveDao.getByDate(date)
 
+    fun getArchivesByRange(from: String, to: String): Flow<List<DailyArchiveEntity>> =
+        dailyArchiveDao.getByDateRange(from, to)
+
     fun getGroupArchivesByDate(date: String): Flow<List<DailyGroupArchiveEntity>> = dailyGroupArchiveDao.getByDate(date)
+
+    fun getGroupArchivesByRange(from: String, to: String): Flow<List<DailyGroupArchiveEntity>> =
+        dailyGroupArchiveDao.getByDateRange(from, to)
 
     fun getAppArchivesByDate(date: String): Flow<List<DailyAppArchiveEntity>> = dailyAppArchiveDao.getByDate(date)
 
@@ -247,6 +254,7 @@ class DailyArchiveRepository(
                         periodUsageByStart[
                             ArchiveDateUtils.periodStart(date, group.limitPeriod)
                         ].orEmpty(),
+                    blockEventCount = blockEventDao.countByDateAndGroup(archiveDate, group.id),
                 )
             }
         val groupSnapshots = groupBuildResults.map { it.archive }
@@ -319,6 +327,7 @@ class DailyArchiveRepository(
                     groupSnapshots.count {
                         it.groupType == GroupType.CONTROL && it.exceededMillisAtClose > 0L
                     },
+                controlBlockEventCount = blockEventDao.countByDate(archiveDate),
                 controlCompletedGroupCount =
                     groupSnapshots.count {
                         it.groupType == GroupType.CONTROL &&
@@ -355,6 +364,7 @@ class DailyArchiveRepository(
         sortOrder: Int,
         dailyUsageByPackage: Map<String, Long>,
         periodUsageByPackage: Map<String, Long>,
+        blockEventCount: Int,
     ): GroupArchiveBuildResult {
         val dayStart = ArchiveDateUtils.startOfDayMillis(date, zoneId)
         val dailyUsageMillis = packageNames.sumOf { packageName -> dailyUsageByPackage[packageName] ?: 0L }
@@ -388,6 +398,7 @@ class DailyArchiveRepository(
                     effectiveLimitMillisAtClose = effectiveLimitMillisAtClose,
                     remainingMillisAtClose = remainingMillisAtClose,
                     exceededMillisAtClose = exceededMillisAtClose,
+                    blockEventCount = blockEventCount,
                     earnedPoints = earnedPoints,
                     spentPoints = 0.0,
                     completed = completed,

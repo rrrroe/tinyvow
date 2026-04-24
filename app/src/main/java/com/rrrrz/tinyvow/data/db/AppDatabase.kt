@@ -20,8 +20,9 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         DailyAppArchiveEntity::class,
         PointLedgerEntity::class,
         DailyArchiveStateEntity::class,
+        BlockEventEntity::class,
     ],
-    version = 12,
+    version = 13,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -36,6 +37,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun dailyAppArchiveDao(): DailyAppArchiveDao
     abstract fun pointLedgerDao(): PointLedgerDao
     abstract fun dailyArchiveStateDao(): DailyArchiveStateDao
+    abstract fun blockEventDao(): BlockEventDao
 
     companion object {
         private const val DEFAULT_DATABASE_NAME = "tinyvow_database"
@@ -390,6 +392,42 @@ abstract class AppDatabase : RoomDatabase() {
                 }
             }
 
+        val MIGRATION_12_13 =
+            object : Migration(12, 13) {
+                override fun migrate(db: SupportSQLiteDatabase) {
+                    db.execSQL(
+                        "ALTER TABLE `daily_archives` ADD COLUMN `control_block_event_count` INTEGER NOT NULL DEFAULT 0"
+                    )
+                    db.execSQL(
+                        "ALTER TABLE `daily_group_archives` ADD COLUMN `block_event_count` INTEGER NOT NULL DEFAULT 0"
+                    )
+                    db.execSQL(
+                        """
+                        CREATE TABLE IF NOT EXISTS `block_events` (
+                            `id` TEXT NOT NULL,
+                            `event_date` TEXT NOT NULL,
+                            `occurred_at` INTEGER NOT NULL,
+                            `package_name` TEXT NOT NULL,
+                            `group_id` TEXT NOT NULL,
+                            `group_name_snapshot` TEXT NOT NULL,
+                            `exceeded_millis` INTEGER NOT NULL,
+                            `created_at` INTEGER NOT NULL,
+                            PRIMARY KEY(`id`)
+                        )
+                        """.trimIndent()
+                    )
+                    db.execSQL(
+                        "CREATE INDEX IF NOT EXISTS `index_block_events_event_date` ON `block_events` (`event_date`)"
+                    )
+                    db.execSQL(
+                        "CREATE INDEX IF NOT EXISTS `index_block_events_group_id_event_date` ON `block_events` (`group_id`, `event_date`)"
+                    )
+                    db.execSQL(
+                        "CREATE INDEX IF NOT EXISTS `index_block_events_package_name_event_date` ON `block_events` (`package_name`, `event_date`)"
+                    )
+                }
+            }
+
         @Volatile
         private var INSTANCE: AppDatabase? = null
         @Volatile
@@ -410,7 +448,7 @@ abstract class AppDatabase : RoomDatabase() {
                         AppDatabase::class.java,
                         databaseName,
                     )
-                        .addMigrations(MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12)
+                        .addMigrations(MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13)
                         .build()
                 INSTANCE = instance
                 instanceDatabaseName = databaseName

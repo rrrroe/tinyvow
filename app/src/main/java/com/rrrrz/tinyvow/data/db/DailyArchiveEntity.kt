@@ -28,6 +28,8 @@ data class DailyArchiveEntity(
     val savedMillis: Long = 0L,
     @ColumnInfo(name = "control_exceeded_group_count")
     val controlExceededGroupCount: Int = 0,
+    @ColumnInfo(name = "control_block_event_count")
+    val controlBlockEventCount: Int = 0,
     @ColumnInfo(name = "control_completed_group_count")
     val controlCompletedGroupCount: Int = 0,
     @ColumnInfo(name = "encourage_completed_group_count")

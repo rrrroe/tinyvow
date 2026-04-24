@@ -17,6 +17,16 @@ interface DailyGroupArchiveDao {
     @Query("SELECT * FROM daily_group_archives WHERE archive_date = :date ORDER BY sort_order ASC, created_at ASC")
     fun getByDate(date: String): Flow<List<DailyGroupArchiveEntity>>
 
+    @Query(
+        """
+        SELECT *
+        FROM daily_group_archives
+        WHERE archive_date BETWEEN :from AND :to
+        ORDER BY archive_date ASC, sort_order ASC, created_at ASC
+        """
+    )
+    fun getByDateRange(from: String, to: String): Flow<List<DailyGroupArchiveEntity>>
+
     @Query("SELECT COUNT(*) FROM daily_group_archives WHERE archive_date = :date AND package_count > 0")
     suspend fun countGroupsWithPackagesByDate(date: String): Int
 }

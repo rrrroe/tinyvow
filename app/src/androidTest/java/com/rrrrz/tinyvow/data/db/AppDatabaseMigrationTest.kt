@@ -20,7 +20,7 @@ class AppDatabaseMigrationTest {
     }
 
     @Test
-    fun migrate9To12_createsArchiveAndLedgerTables() {
+    fun migrate9To13_createsArchiveLedgerAndBlockEventTables() {
         context.deleteDatabase(databaseName)
         createVersion9Database()
 
@@ -32,18 +32,20 @@ class AppDatabaseMigrationTest {
         assertTrue(tableExists("daily_app_archives"))
         assertTrue(tableExists("point_ledger"))
         assertTrue(tableExists("daily_archive_state"))
+        assertTrue(tableExists("block_events"))
         assertTrue(indexExists("index_daily_archives_archive_date"))
         assertTrue(indexExists("index_daily_group_archives_archive_date_group_id"))
         assertTrue(indexExists("index_daily_app_archives_archive_date_package_name_scope_key"))
         assertTrue(indexExists("index_daily_app_archives_is_grouped_archive_date"))
         assertTrue(indexExists("index_point_ledger_source_ref_id"))
+        assertTrue(indexExists("index_block_events_group_id_event_date"))
         assertTrue(tableRowCount("daily_app_archives") == 0)
 
         database.close()
     }
 
     @Test
-    fun migrate11To12_preservesGroupedAppArchives() {
+    fun migrate11To13_preservesGroupedAppArchives() {
         context.deleteDatabase(databaseName)
         createVersion11DatabaseWithAppArchive()
 
@@ -55,6 +57,24 @@ class AppDatabaseMigrationTest {
         assertEquals(1, intValue("SELECT is_grouped FROM daily_app_archives WHERE id = 'app-archive-1'"))
         assertEquals("group-a", stringValue("SELECT group_id FROM daily_app_archives WHERE id = 'app-archive-1'"))
         assertTrue(indexExists("index_daily_app_archives_archive_date_package_name_scope_key"))
+
+        database.close()
+    }
+
+    @Test
+    fun migrate11To13_addsBlockEventArchiveColumnsWithDefaults() {
+        context.deleteDatabase(databaseName)
+        createVersion11DatabaseWithAppArchive()
+
+        val database = AppDatabase.getDatabase(context, databaseName)
+        database.openHelper.writableDatabase
+
+        assertTrue(tableExists("block_events"))
+        assertTrue(indexExists("index_block_events_event_date"))
+        assertTrue(indexExists("index_block_events_group_id_event_date"))
+        assertTrue(indexExists("index_block_events_package_name_event_date"))
+        assertEquals(0, intValue("SELECT control_block_event_count FROM daily_archives WHERE id = 'archive-1'"))
+        assertEquals(0, intValue("SELECT block_event_count FROM daily_group_archives WHERE id = 'group-archive-1'"))
 
         database.close()
     }
@@ -230,6 +250,98 @@ class AppDatabaseMigrationTest {
                 0.0,
                 1,
                 0,0,0,0,0,0,120000,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,
+                1,
+                1
+            )
+            """.trimIndent()
+        )
+        sqliteDatabase.execSQL(
+            """
+            INSERT INTO daily_archives (
+                id,
+                archive_date,
+                day_start_at,
+                day_end_at,
+                control_usage_millis,
+                encourage_usage_millis,
+                total_usage_millis,
+                saved_millis,
+                control_exceeded_group_count,
+                control_completed_group_count,
+                encourage_completed_group_count,
+                points_earned,
+                points_spent,
+                points_net,
+                redemption_count,
+                archive_version,
+                created_at,
+                updated_at
+            ) VALUES (
+                'archive-1',
+                '2026-04-23',
+                1,
+                2,
+                120000,
+                0,
+                120000,
+                60000,
+                0,
+                1,
+                0,
+                0.0,
+                0.0,
+                0.0,
+                0,
+                1,
+                1,
+                1
+            )
+            """.trimIndent()
+        )
+        sqliteDatabase.execSQL(
+            """
+            INSERT INTO daily_group_archives (
+                id,
+                archive_date,
+                group_id,
+                group_name,
+                group_type,
+                limit_period,
+                limit_minutes,
+                bonus_minutes,
+                points_per_minute,
+                package_count,
+                daily_usage_millis,
+                period_usage_millis_at_close,
+                effective_limit_millis_at_close,
+                remaining_millis_at_close,
+                exceeded_millis_at_close,
+                earned_points,
+                spent_points,
+                completed,
+                sort_order,
+                created_at,
+                updated_at
+            ) VALUES (
+                'group-archive-1',
+                '2026-04-23',
+                'group-a',
+                'Group A',
+                'CONTROL',
+                'DAILY',
+                30,
+                0,
+                0.0,
+                1,
+                120000,
+                120000,
+                1800000,
+                1680000,
+                0,
+                0.0,
+                0.0,
+                1,
+                0,
                 1,
                 1
             )
