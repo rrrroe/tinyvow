@@ -1,46 +1,52 @@
 package com.rrrrz.tinyvow.service.block
 
 import android.accessibilityservice.AccessibilityService
+import android.annotation.SuppressLint
 import android.content.Intent
 import android.os.SystemClock
+import android.util.Log
 import android.view.accessibility.AccessibilityEvent
-import com.rrrrz.tinyvow.data.usage.UsageAccessStateChecker
-import com.rrrrz.tinyvow.data.usage.UsageAccessStatus
-import com.rrrrz.tinyvow.domain.limit.GroupLimitEnforcer
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.isActive
 import androidx.core.graphics.toColorInt
-
-import com.rrrrz.tinyvow.data.settings.ManagedAppPreferences
+import com.rrrrz.tinyvow.data.db.AppDatabase
+import com.rrrrz.tinyvow.data.db.AppGroupEntity
 import com.rrrrz.tinyvow.data.db.BlockEventEntity
 import com.rrrrz.tinyvow.data.db.GroupType
 import com.rrrrz.tinyvow.data.repository.ArchiveDateUtils
 import com.rrrrz.tinyvow.data.repository.PointsRepository
+import com.rrrrz.tinyvow.data.usage.UsageAccessStateChecker
+import com.rrrrz.tinyvow.data.usage.UsageAccessStatus
+import com.rrrrz.tinyvow.data.usage.UsageStatsUsageRepository
+import com.rrrrz.tinyvow.domain.limit.GroupExceededResult
+import com.rrrrz.tinyvow.domain.limit.GroupLimitEnforcer
 import java.time.ZoneId
 import java.util.UUID
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
-@android.annotation.SuppressLint("all")
-@Suppress("all")
 class AppLimitAccessibilityService : AccessibilityService() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private lateinit var enforcer: GroupLimitEnforcer
-    private lateinit var preferences: ManagedAppPreferences
     private lateinit var pointsRepository: PointsRepository
-    private val database by lazy { com.rrrrz.tinyvow.data.db.AppDatabase.getDatabase(applicationContext) }
+    private val database by lazy { AppDatabase.getDatabase(applicationContext) }
+    private val usageAccessStateChecker by lazy { UsageAccessStateChecker(applicationContext) }
+    private val usageRepository by lazy { UsageStatsUsageRepository(applicationContext) }
 
     // 积分积累状态
     private var lastPackageForPoints: String? = null
-    private var startTimeForPoints: Long = 0L
     private var lastUpdateElapsedRealtime: Long = 0L
+    private var lastCheckedPackage: String? = null
+    private var lastCheckElapsedRealtime: Long = 0L
+    private var lastBlockedPackage: String? = null
+    private var lastBlockElapsedRealtime: Long = 0L
 
     override fun onServiceConnected() {
         super.onServiceConnected()
         enforcer = GroupLimitEnforcer(applicationContext)
-        preferences = ManagedAppPreferences(applicationContext)
         pointsRepository = PointsRepository(applicationContext, database)
 
         // 启动定时结算协程
@@ -52,8 +58,8 @@ class AppLimitAccessibilityService : AccessibilityService() {
     private fun startPeriodicPointsTicker() {
         serviceScope.launch(Dispatchers.IO) {
             while (this.isActive) {
-                kotlinx.coroutines.delay(60_000L) // 每分钟检查一次
-                val currentPackage = lastPackageForPoints
+                kotlinx.coroutines.delay(POINTS_TICK_INTERVAL_MS)
+                val currentPackage = currentPackageForPoints()
                 if (currentPackage != null) {
                     handlePointsAccumulation(currentPackage, SystemClock.elapsedRealtime())
                 }
@@ -75,12 +81,12 @@ class AppLimitAccessibilityService : AccessibilityService() {
     }
 
     private suspend fun evaluateAndBlock(packageName: String) {
-        val usagePermission = UsageAccessStateChecker(applicationContext).getStatus()
+        val usagePermission = usageAccessStateChecker.getStatus()
         if (usagePermission != UsageAccessStatus.GRANTED) return
 
         val result = enforcer.evaluate(packageName)
         if (result == null || result.groupType == GroupType.ENCOURAGE) {
-            kotlinx.coroutines.withContext(Dispatchers.Main) {
+            withContext(Dispatchers.Main) {
                 removeBlockOverlay()
             }
             return
@@ -95,14 +101,14 @@ class AppLimitAccessibilityService : AccessibilityService() {
         lastBlockElapsedRealtime = blockNow
         recordBlockEvent(packageName, result)
 
-        kotlinx.coroutines.withContext(Dispatchers.Main) {
+        withContext(Dispatchers.Main) {
             showBlockOverlay(packageName, result.groupName, result.exceededMillis)
         }
     }
 
     private suspend fun recordBlockEvent(
         packageName: String,
-        result: com.rrrrz.tinyvow.domain.limit.GroupExceededResult,
+        result: GroupExceededResult,
     ) {
         val nowMillis = System.currentTimeMillis()
         val zoneId = ZoneId.systemDefault()
@@ -149,13 +155,13 @@ class AppLimitAccessibilityService : AccessibilityService() {
         eventChannel.trySend(packageName)
     }
 
+    @Synchronized
     private fun handlePointsAccumulation(packageName: String, now: Long) {
         val oldPackage = lastPackageForPoints
         
         if (oldPackage == null) {
             // 第一次记录
             lastPackageForPoints = packageName
-            startTimeForPoints = now
             lastUpdateElapsedRealtime = now
             return
         }
@@ -163,22 +169,24 @@ class AppLimitAccessibilityService : AccessibilityService() {
         if (oldPackage != packageName) {
             // 包名切换：结算旧包的最后一段 deltas
             val durationMs = now - lastUpdateElapsedRealtime
-            if (durationMs > 1000) {
+            if (durationMs > MIN_CREDIT_DURATION_MS) {
                 creditPoints(oldPackage, durationMs)
             }
             // 重置状态
             lastPackageForPoints = packageName
-            startTimeForPoints = now
             lastUpdateElapsedRealtime = now
         } else {
             // 同一个包：每隔 1 分钟结算一次
             val durationMs = now - lastUpdateElapsedRealtime
-            if (durationMs >= 60_000L) {
+            if (durationMs >= POINTS_TICK_INTERVAL_MS) {
                 creditPoints(packageName, durationMs)
                 lastUpdateElapsedRealtime = now
             }
         }
     }
+
+    @Synchronized
+    private fun currentPackageForPoints(): String? = lastPackageForPoints
 
     private fun creditPoints(packageName: String, durationMs: Long) {
         serviceScope.launch(Dispatchers.IO) {
@@ -197,7 +205,7 @@ class AppLimitAccessibilityService : AccessibilityService() {
         }
     }
 
-    private suspend fun checkAndGrantBonus(group: com.rrrrz.tinyvow.data.db.AppGroupEntity) {
+    private suspend fun checkAndGrantBonus(group: AppGroupEntity) {
         val nowMillis = System.currentTimeMillis()
         val todayStart = getStartOfDay(nowMillis)
         
@@ -207,10 +215,9 @@ class AppLimitAccessibilityService : AccessibilityService() {
 
         // 获取该分组今日总用量
         val packages = database.crossRefDao().getPackageNamesForGroupSync(group.id)
-        val usageRepo = com.rrrrz.tinyvow.data.usage.UsageStatsUsageRepository(applicationContext)
         var totalTodayUsageMs = 0L
         for (pkg in packages) {
-            totalTodayUsageMs += usageRepo.getTodayUsageMillis(pkg)
+            totalTodayUsageMs += usageRepository.getTodayUsageMillis(pkg)
         }
 
         val targetMs = group.limitMinutes * 60_000L
@@ -222,7 +229,7 @@ class AppLimitAccessibilityService : AccessibilityService() {
             // 更新数据库标记
             database.appGroupDao().insertGroup(group.copy(lastBonusAt = nowMillis))
             
-            android.util.Log.i("AppLimitService", "Group ${group.name} reached daily target! Bonus $bonusPoints pts granted.")
+            Log.i(TAG, "Group ${group.name} reached daily target! Bonus $bonusPoints pts granted.")
         }
     }
 
@@ -236,22 +243,11 @@ class AppLimitAccessibilityService : AccessibilityService() {
         return calendar.timeInMillis
     }
 
-    private suspend fun getEncouragementPointsPerMinute(packageName: String): Double {
-        val groupIds = database.crossRefDao().getGroupIdsForPackageSync(packageName)
-        var maxRate = 0.0
-        for (gid in groupIds) {
-            val group = database.appGroupDao().getGroupByIdSync(gid)
-            if (group?.type == GroupType.ENCOURAGE) {
-                maxRate = maxOf(maxRate, group.pointsPerMinute)
-            }
-        }
-        return maxRate
-    }
-
     // ──────── Overlay ────────
 
     private var blockView: android.view.View? = null
 
+    @SuppressLint("SetTextI18n")
     private fun showBlockOverlay(packageName: String, groupName: String, exceededMillis: Long) {
         if (blockView != null) return
 
@@ -333,9 +329,9 @@ class AppLimitAccessibilityService : AccessibilityService() {
         try {
             windowManager.addView(layout, params)
             blockView = layout
-            android.util.Log.i("AppLimitService", "Overlay added successfully!")
+            Log.i(TAG, "Overlay added successfully!")
         } catch (e: Exception) {
-            android.util.Log.e("AppLimitService", "Failed to add overlay", e)
+            Log.e(TAG, "Failed to add overlay", e)
         }
     }
 
@@ -357,18 +353,18 @@ class AppLimitAccessibilityService : AccessibilityService() {
 
     override fun onDestroy() {
         removeBlockOverlay()
+        eventChannel.close()
         serviceScope.cancel()
         super.onDestroy()
     }
 
     companion object {
+        private const val TAG = "AppLimitService"
         /** 评估防抖窗口：缩短以提升响应速度 */
         private const val CHECK_DEBOUNCE_MS = 300L
         /** 阻断弹窗防抖窗口：缩短以确保点击关闭后能较快再次生效 */
         private const val BLOCK_DEBOUNCE_MS = 500L
-        private var lastCheckedPackage: String? = null
-        private var lastCheckElapsedRealtime: Long = 0L
-        private var lastBlockedPackage: String? = null
-        private var lastBlockElapsedRealtime: Long = 0L
+        private const val POINTS_TICK_INTERVAL_MS = 60_000L
+        private const val MIN_CREDIT_DURATION_MS = 1_000L
     }
 }

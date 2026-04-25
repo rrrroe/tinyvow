@@ -1,6 +1,7 @@
 package com.rrrrz.tinyvow.ui.home
 
 import android.content.Context
+import android.content.ClipData
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.Paint
@@ -17,6 +18,7 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -30,6 +32,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -84,9 +87,11 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -206,6 +211,16 @@ private data class ComparisonMetric(
     val todayValue: String,
     val yesterdayDelta: String?,
     val averageDelta: String?,
+    val chartData: ComparisonChartData? = null,
+)
+
+private data class ComparisonChartData(
+    val currentValue: Long,
+    val previousValue: Long?,
+    val averageValue: Long?,
+    val currentLabel: String,
+    val previousLabel: String? = null,
+    val averageLabel: String? = null,
 )
 
 private data class WindowMetrics(
@@ -219,6 +234,8 @@ private data class HeroSectionData(
     val summary: DailyReportSummary,
     val overview: ScopeOverview,
     val nightUsageMillis: Long,
+    val dailyGoalMillis: Long = 0L,
+    val goalCompletionProgress: Float? = null,
 )
 
 private data class TimelineSectionData(
@@ -229,6 +246,7 @@ private data class TimelineSectionData(
     val peakTwoHourLabel: String,
     val peakTwoHourMillis: Long,
     val nightUsageMillis: Long,
+    val targetMillisPerBucket: Long? = null,
 )
 
 private data class TopAppsSectionData(
@@ -302,11 +320,28 @@ private data class YearScopeSummary(
 private data class ShareReportData(
     val title: String,
     val subtitle: String,
+    val statusTitle: String,
     val primaryValue: String,
     val primaryLabel: String,
     val metrics: List<DailyFocusMetric>,
     val insight: String,
     val topApps: List<AppDisplayItem>,
+    val totalUsageMillis: Long,
+    val goalMillis: Long,
+    val goalProgress: Float?,
+    val savedMillis: Long,
+    val pointsNet: Double,
+    val blockEventCount: Int,
+    val redemptionCount: Int,
+    val controlCompletedGroupCount: Int,
+    val controlExceededGroupCount: Int,
+    val encourageCompletedGroupCount: Int,
+    val encourageUsageMillis: Long,
+    val nightUsageMillis: Long,
+    val hourlyUsageMillis: List<Long>,
+    val targetMillisPerBucket: Long?,
+    val comparisonLabel: String,
+    val dominantPeriod: String,
 )
 
 private data class ArchivedAppSnapshot(
@@ -661,6 +696,16 @@ private suspend fun buildArchivedWindowReportUiState(
             archives = currentArchives,
             windowFocus = windowFocusData,
             topApps = topApps,
+            timelineBuckets = timelineBuckets,
+            dailyGoalMillis = 0L,
+            goalCompletionProgress = null,
+            savedMillis = currentArchives.sumOf { it.savedMillis },
+            pointsNet = pointsNet,
+            blockEventCount = currentArchives.sumOf { it.controlBlockEventCount },
+            redemptionCount = currentArchives.sumOf { it.redemptionCount },
+            nightUsageMillis = currentMetrics.nightUsageMillis,
+            comparisonLabel = summary.secondaryValue,
+            dominantPeriod = periodUsage.maxByOrNull { it.deviceMillis }?.label ?: "--",
         )
 
     updateState { current ->
@@ -801,7 +846,7 @@ private fun buildDailyFocusSectionData(
                 primaryValue = formatSignedPointsLocal(archive.pointsNet),
                 metrics =
                     listOf(
-                        DailyFocusMetric("鼓励时长", formatDuration(archive.encourageUsageMillis)),
+                        DailyFocusMetric("时长", formatDuration(archive.encourageUsageMillis)),
                         DailyFocusMetric("达标", "${archive.encourageCompletedGroupCount} 组"),
                         DailyFocusMetric("兑换", "${archive.redemptionCount} 次"),
                     ),
@@ -1044,6 +1089,16 @@ private fun buildShareReportData(
     archives: List<DailyArchiveEntity>,
     windowFocus: WindowFocusSectionData?,
     topApps: List<AppDisplayItem>,
+    timelineBuckets: List<DailyTimelineBucket> = emptyList(),
+    dailyGoalMillis: Long = 0L,
+    goalCompletionProgress: Float? = null,
+    savedMillis: Long = archives.sumOf { it.savedMillis },
+    pointsNet: Double = archives.sumOf { it.pointsNet },
+    blockEventCount: Int = archives.sumOf { it.controlBlockEventCount },
+    redemptionCount: Int = archives.sumOf { it.redemptionCount },
+    nightUsageMillis: Long = timelineBuckets.filter { it.hour < 6 || it.hour >= 22 }.sumOf { it.deviceMillis },
+    comparisonLabel: String = summary.secondaryValue,
+    dominantPeriod: String = "--",
 ): ShareReportData {
     val tabName =
         when (selectedTab) {
@@ -1068,15 +1123,46 @@ private fun buildShareReportData(
                 DailyFocusMetric("鼓励净值", it.encourage.primaryValue),
                 DailyFocusMetric("Top 应用", topApps.firstOrNull()?.label ?: "暂无"),
             )
-        } ?: summary.tags.take(3).mapIndexed { index, tag -> DailyFocusMetric("亮点 ${index + 1}", tag) }
+        } ?: listOf(
+            DailyFocusMetric("节省", formatDuration(savedMillis)),
+            DailyFocusMetric("净积分", formatSignedPointsLocal(pointsNet)),
+            DailyFocusMetric(
+                if (blockEventCount > 0) "拦截" else "达标",
+                if (blockEventCount > 0) "$blockEventCount 次" else "${((goalCompletionProgress ?: 0f) * 100f).roundToInt()}%",
+            ),
+        )
+    val statusTitle =
+        when {
+            dailyGoalMillis > 0L && archives.sumOf { it.totalUsageMillis } <= dailyGoalMillis -> "今天把注意力拿回来了"
+            savedMillis > 0L -> "今天守住了自己的节奏"
+            pointsNet > 0.0 -> "今天攒下了一点行动力"
+            else -> "今天完成了一次诚实复盘"
+        }
     return ShareReportData(
         title = "Tiny Vow $tabName",
         subtitle = summary.subtitle,
+        statusTitle = statusTitle,
         primaryValue = summary.primaryValue,
         primaryLabel = "总使用时长",
         metrics = metrics,
         insight = insight,
-        topApps = topApps.take(3),
+        topApps = topApps.take(5),
+        totalUsageMillis = archives.sumOf { it.totalUsageMillis },
+        goalMillis = dailyGoalMillis,
+        goalProgress = goalCompletionProgress,
+        savedMillis = savedMillis,
+        pointsNet = pointsNet,
+        blockEventCount = blockEventCount,
+        redemptionCount = redemptionCount,
+        controlCompletedGroupCount = archives.sumOf { it.controlCompletedGroupCount },
+        controlExceededGroupCount = archives.sumOf { it.controlExceededGroupCount },
+        encourageCompletedGroupCount = archives.sumOf { it.encourageCompletedGroupCount },
+        encourageUsageMillis = archives.sumOf { it.encourageUsageMillis },
+        nightUsageMillis = nightUsageMillis,
+        hourlyUsageMillis = timelineBuckets.map { it.deviceMillis },
+        targetMillisPerBucket = dailyGoalMillis.takeIf { it > 0L }?.let { it / 24L },
+        comparisonLabel = comparisonLabel,
+        dominantPeriod = dominantPeriod,
     )
 }
 
@@ -1234,6 +1320,32 @@ private suspend fun buildArchivedDayReportUiState(
         } else {
             earlierArchives.sumOf { it.totalUsageMillis } / earlierArchives.size
         }
+    val earlierMetrics =
+        earlierArchives.map { archive ->
+            buildArchivedWindowMetrics(
+                mergeArchivedAppSnapshots(
+                    archiveRepository.getAppArchivesByDate(archive.archiveDate).first(),
+                ),
+            )
+        }
+    val averageMetrics =
+        WindowMetrics(
+            deviceUsageMillis = averagePerDayUsage,
+            deviceOpenCount = if (earlierMetrics.isEmpty()) 0 else earlierMetrics.map { it.deviceOpenCount }.average().roundToInt(),
+            longestSessionMillis = earlierMetrics.map { it.longestSessionMillis }.average().roundToLongSafe(),
+            nightUsageMillis = earlierMetrics.map { it.nightUsageMillis }.average().roundToLongSafe(),
+        )
+    val dailyGoalMillis =
+        currentGroupArchives
+            .filter { it.groupType == GroupType.CONTROL && it.limitPeriod == com.rrrrz.tinyvow.data.db.LimitPeriod.DAILY }
+            .sumOf { it.effectiveLimitMillisAtClose }
+    val controlGroupCount = currentGroupArchives.count { it.groupType == GroupType.CONTROL }
+    val goalCompletionProgress =
+        if (controlGroupCount > 0) {
+            selectedArchive.controlCompletedGroupCount.toFloat() / controlGroupCount.toFloat()
+        } else {
+            null
+        }
     val summary =
         buildArchivedDaySummary(
             archive = selectedArchive,
@@ -1250,6 +1362,7 @@ private suspend fun buildArchivedDayReportUiState(
             previousArchive = previousArchive,
             previousMetrics = previousMetrics,
             averagePerDayUsage = averagePerDayUsage,
+            averageMetrics = averageMetrics,
         )
     val timelineStateData =
         buildArchiveTimelineSectionData(
@@ -1257,8 +1370,13 @@ private suspend fun buildArchivedDayReportUiState(
             timelineBuckets = timelineBuckets,
             nightUsageMillis = currentMetrics.nightUsageMillis,
             periodUsage = periodUsage,
+            targetMillisPerBucket = dailyGoalMillis.takeIf { it > 0L }?.let { it / 24L },
         )
-    val dailyFocusData = buildDailyFocusSectionData(selectedArchive, currentGroupArchives)
+    val dailyFocusData =
+        buildDailyFocusSectionData(
+            archive = selectedArchive,
+            groupArchives = currentGroupArchives,
+        )
     val shareData =
         buildShareReportData(
             selectedTab = ReportTab.DAY,
@@ -1266,6 +1384,16 @@ private suspend fun buildArchivedDayReportUiState(
             archives = listOf(selectedArchive),
             windowFocus = null,
             topApps = topApps,
+            timelineBuckets = timelineBuckets,
+            dailyGoalMillis = dailyGoalMillis,
+            goalCompletionProgress = goalCompletionProgress,
+            savedMillis = selectedArchive.savedMillis,
+            pointsNet = selectedArchive.pointsNet,
+            blockEventCount = selectedArchive.controlBlockEventCount,
+            redemptionCount = selectedArchive.redemptionCount,
+            nightUsageMillis = currentMetrics.nightUsageMillis,
+            comparisonLabel = summary.secondaryValue,
+            dominantPeriod = periodUsage.maxByOrNull { it.deviceMillis }?.label ?: "全天",
         )
 
     updateState { current ->
@@ -1277,6 +1405,8 @@ private suspend fun buildArchivedDayReportUiState(
                         summary = summary,
                         overview = overview,
                         nightUsageMillis = currentMetrics.nightUsageMillis,
+                        dailyGoalMillis = dailyGoalMillis,
+                        goalCompletionProgress = goalCompletionProgress,
                     ),
                 ),
             dailyFocusState = SectionState.Ready(dailyFocusData),
@@ -1323,6 +1453,7 @@ private fun buildArchiveTimelineSectionData(
     timelineBuckets: List<DailyTimelineBucket>,
     nightUsageMillis: Long,
     periodUsage: List<PeriodUsageStat>,
+    targetMillisPerBucket: Long? = null,
 ): TimelineSectionData {
     val peakBucket = timelineBuckets.maxByOrNull { it.deviceMillis }
     val peakPair =
@@ -1342,6 +1473,7 @@ private fun buildArchiveTimelineSectionData(
             } ?: "--",
         peakTwoHourMillis = peakPair?.second ?: 0L,
         nightUsageMillis = nightUsageMillis,
+        targetMillisPerBucket = targetMillisPerBucket,
     )
 }
 
@@ -1532,6 +1664,7 @@ private fun buildArchivedDayComparisonMetrics(
     previousArchive: DailyArchiveEntity?,
     previousMetrics: WindowMetrics,
     averagePerDayUsage: Long,
+    averageMetrics: WindowMetrics = WindowMetrics(0L, 0, 0L, 0L),
 ): List<ComparisonMetric> {
     if (previousArchive == null) {
         return emptyList()
@@ -1542,24 +1675,60 @@ private fun buildArchivedDayComparisonMetrics(
             todayValue = formatDuration(currentArchive.totalUsageMillis),
             yesterdayDelta = deltaDescription(currentArchive.totalUsageMillis, previousArchive.totalUsageMillis, "较上一条归档"),
             averageDelta = if (averagePerDayUsage > 0L) "近 7 个归档日日均 ${formatDuration(averagePerDayUsage)}" else null,
+            chartData =
+                ComparisonChartData(
+                    currentValue = currentArchive.totalUsageMillis,
+                    previousValue = previousArchive.totalUsageMillis,
+                    averageValue = averagePerDayUsage.takeIf { it > 0L },
+                    currentLabel = formatDuration(currentArchive.totalUsageMillis),
+                    previousLabel = formatDuration(previousArchive.totalUsageMillis),
+                    averageLabel = averagePerDayUsage.takeIf { it > 0L }?.let(::formatDuration),
+                ),
         ),
         ComparisonMetric(
             label = "打开次数",
             todayValue = "${currentMetrics.deviceOpenCount} 次",
             yesterdayDelta = deltaDescription(currentMetrics.deviceOpenCount.toLong(), previousMetrics.deviceOpenCount.toLong(), "较上一条归档", countUnit = "次"),
             averageDelta = null,
+            chartData =
+                ComparisonChartData(
+                    currentValue = currentMetrics.deviceOpenCount.toLong(),
+                    previousValue = previousMetrics.deviceOpenCount.toLong(),
+                    averageValue = averageMetrics.deviceOpenCount.toLong().takeIf { it > 0L },
+                    currentLabel = currentMetrics.deviceOpenCount.toString(),
+                    previousLabel = previousMetrics.deviceOpenCount.toString(),
+                    averageLabel = averageMetrics.deviceOpenCount.takeIf { it > 0 }?.toString(),
+                ),
         ),
         ComparisonMetric(
             label = "夜间使用",
             todayValue = formatDuration(currentMetrics.nightUsageMillis),
             yesterdayDelta = deltaDescription(currentMetrics.nightUsageMillis, previousMetrics.nightUsageMillis, "较上一条归档"),
             averageDelta = null,
+            chartData =
+                ComparisonChartData(
+                    currentValue = currentMetrics.nightUsageMillis,
+                    previousValue = previousMetrics.nightUsageMillis,
+                    averageValue = averageMetrics.nightUsageMillis.takeIf { it > 0L },
+                    currentLabel = formatDuration(currentMetrics.nightUsageMillis),
+                    previousLabel = formatDuration(previousMetrics.nightUsageMillis),
+                    averageLabel = averageMetrics.nightUsageMillis.takeIf { it > 0L }?.let(::formatDuration),
+                ),
         ),
         ComparisonMetric(
             label = "最长单次会话",
             todayValue = formatDuration(currentMetrics.longestSessionMillis),
             yesterdayDelta = deltaDescription(currentMetrics.longestSessionMillis, previousMetrics.longestSessionMillis, "较上一条归档"),
             averageDelta = null,
+            chartData =
+                ComparisonChartData(
+                    currentValue = currentMetrics.longestSessionMillis,
+                    previousValue = previousMetrics.longestSessionMillis,
+                    averageValue = averageMetrics.longestSessionMillis.takeIf { it > 0L },
+                    currentLabel = formatDuration(currentMetrics.longestSessionMillis),
+                    previousLabel = formatDuration(previousMetrics.longestSessionMillis),
+                    averageLabel = averageMetrics.longestSessionMillis.takeIf { it > 0L }?.let(::formatDuration),
+                ),
         ),
     )
 }
@@ -3151,7 +3320,7 @@ private fun DeviceHeroVisualPanel(
     ) {
         BoxWithConstraints {
             val compact = maxWidth < 360.dp
-            val dialSize = if (compact) 156.dp else 188.dp
+            val chartHeight = if (compact) 126.dp else 146.dp
             val contentPadding = if (compact) 16.dp else 18.dp
             val contentSpacing = if (compact) 12.dp else 14.dp
             Column(
@@ -3194,13 +3363,21 @@ private fun DeviceHeroVisualPanel(
                     contentAlignment = Alignment.Center,
                 ) {
                     if (data == null) {
-                        SkeletonDonutChart(chartSize = dialSize)
+                        SkeletonBlock(
+                            modifier = Modifier.fillMaxWidth(),
+                            height = chartHeight,
+                            shape = RoundedCornerShape(24.dp),
+                        )
                     } else {
-                        UsageDialChart(
+                        UsageGoalChart(
                             usageMillis = data.overview.totalUsageMillis,
-                            activeBucketCount = data.overview.activeBucketCount,
-                            capMillis = usageDialCapMillis(selectedTab),
-                            modifier = Modifier.size(dialSize),
+                            capMillis = data.dailyGoalMillis.takeIf { selectedTab == ReportTab.DAY && it > 0L }
+                                ?: usageDialCapMillis(selectedTab),
+                            goalLabel = data.dailyGoalMillis.takeIf { selectedTab == ReportTab.DAY && it > 0L }
+                                ?.let { "目标 ${formatDuration(it)}" },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(chartHeight),
                         )
                     }
                 }
@@ -3289,8 +3466,18 @@ private fun DeviceHeroMetricsPanel(
                         )
                         else -> HeroMetricChip(
                             icon = Icons.Default.NightsStay,
-                            label = "夜间使用",
-                            value = formatDuration(data.nightUsageMillis),
+                            label =
+                                if (data.summary.title == "归档日报" && data.goalCompletionProgress != null) {
+                                    "目标完成"
+                                } else {
+                                    "夜间使用"
+                                },
+                            value =
+                                if (data.summary.title == "归档日报" && data.goalCompletionProgress != null) {
+                                    "${(data.goalCompletionProgress * 100f).roundToInt()}%"
+                                } else {
+                                    formatDuration(data.nightUsageMillis)
+                                },
                             modifier = childModifier,
                         )
                     }
@@ -3302,7 +3489,7 @@ private fun DeviceHeroMetricsPanel(
                         shape = RoundedCornerShape(20.dp),
                     )
                 } else {
-                    overview?.topApp?.let { topApp ->
+                    overview.topApp?.let { topApp ->
                     Surface(
                         shape = RoundedCornerShape(20.dp),
                         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.86f),
@@ -3350,10 +3537,10 @@ private fun DeviceHeroMetricsPanel(
 }
 
 @Composable
-private fun UsageDialChart(
+private fun UsageGoalChart(
     usageMillis: Long,
-    activeBucketCount: Int,
     capMillis: Long,
+    goalLabel: String?,
     modifier: Modifier = Modifier,
 ) {
     val stagedUsageMillis = rememberDelayedLongTarget(usageMillis, 40)
@@ -3362,52 +3549,109 @@ private fun UsageDialChart(
         label = "usage_dial_value",
         durationMillis = 880,
     )
-    val progress by animateFloatAsState(
-        targetValue = (stagedUsageMillis.toFloat() / capMillis.toFloat()).coerceIn(0f, 1f),
-        animationSpec = spring(dampingRatio = 0.9f, stiffness = 180f),
-        label = "usage_dial_progress",
+    val animatedProgress = animateDecimalValue(
+        targetValue = (stagedUsageMillis.toFloat() / capMillis.coerceAtLeast(1L).toFloat()).coerceIn(0f, 1.15f),
+        label = "usage_goal_bar_progress",
+        durationMillis = 840,
+        delayMillis = 120,
     )
-    val rotationProgress by animateFloatAsState(
-        targetValue = if (stagedUsageMillis > 0L) 1f else 0f,
-        animationSpec = tween(durationMillis = 900),
-        label = "usage_dial_rotation",
-    )
-    val arcColor = MaterialTheme.colorScheme.primary
-    Box(modifier = modifier, contentAlignment = Alignment.Center) {
-        Canvas(modifier = Modifier.fillMaxSize()) {
-            val stroke = size.minDimension * 0.1f
-            val diameter = size.minDimension - stroke
-            val startAngle = 145f - (1f - rotationProgress) * 360f
-            drawArc(
-                color = arcColor.copy(alpha = 0.14f),
-                startAngle = startAngle,
-                sweepAngle = 250f,
-                useCenter = false,
-                topLeft = Offset((size.width - diameter) / 2f, (size.height - diameter) / 2f),
-                size = Size(diameter, diameter),
-                style = androidx.compose.ui.graphics.drawscope.Stroke(width = stroke),
-            )
-            drawArc(
-                color = arcColor,
-                startAngle = startAngle,
-                sweepAngle = 250f * progress,
-                useCenter = false,
-                topLeft = Offset((size.width - diameter) / 2f, (size.height - diameter) / 2f),
-                size = Size(diameter, diameter),
-                style = androidx.compose.ui.graphics.drawscope.Stroke(width = stroke),
-            )
-        }
-        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(
-                text = formatDuration(animatedUsageMillis),
-                style = MaterialTheme.typography.headlineMedium,
-                fontWeight = FontWeight.Bold,
-            )
-            Text(
-                text = "$activeBucketCount 个活跃小时",
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+    val reportColors = LocalReportColors.current
+    val primary = MaterialTheme.colorScheme.primary
+    val warning = reportColors.warning
+    val overLimit = usageMillis > capMillis && capMillis > 0L
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.76f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.22f)),
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.Bottom,
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(
+                        text = "总使用",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        text = formatDuration(animatedUsageMillis),
+                        style = MaterialTheme.typography.headlineMedium,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+                Text(
+                    text =
+                        goalLabel ?: if (capMillis > 0L) {
+                            "参考 ${formatDuration(capMillis)}"
+                        } else {
+                            "暂无目标"
+                        },
+                    style = MaterialTheme.typography.labelLarge,
+                    color = if (overLimit) warning else MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+            Canvas(modifier = Modifier.fillMaxWidth().height(42.dp)) {
+                val trackHeight = size.height * 0.46f
+                val top = (size.height - trackHeight) / 2f
+                val radius = trackHeight / 2f
+                drawRoundRect(
+                    color = primary.copy(alpha = 0.12f),
+                    topLeft = Offset(0f, top),
+                    size = Size(size.width, trackHeight),
+                    cornerRadius = CornerRadius(radius, radius),
+                )
+                val cappedProgress = animatedProgress.coerceIn(0f, 1f)
+                drawRoundRect(
+                    brush = Brush.horizontalGradient(
+                        colors = listOf(
+                            primary.copy(alpha = 0.72f),
+                            if (overLimit) warning.copy(alpha = 0.92f) else primary,
+                        ),
+                    ),
+                    topLeft = Offset(0f, top),
+                    size = Size(size.width * cappedProgress, trackHeight),
+                    cornerRadius = CornerRadius(radius, radius),
+                )
+                if (animatedProgress > 1f) {
+                    val overWidth = size.width * (animatedProgress - 1f).coerceIn(0f, 0.15f) / 0.15f
+                    drawRoundRect(
+                        color = warning.copy(alpha = 0.28f),
+                        topLeft = Offset(size.width - overWidth, top - 5f),
+                        size = Size(overWidth, trackHeight + 10f),
+                        cornerRadius = CornerRadius(radius, radius),
+                    )
+                }
+                drawLine(
+                    color = if (overLimit) warning else primary.copy(alpha = 0.55f),
+                    start = Offset(size.width, top - 6f),
+                    end = Offset(size.width, top + trackHeight + 6f),
+                    strokeWidth = 3f,
+                )
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text(
+                    text = if (overLimit) "已超出 ${formatDuration(usageMillis - capMillis)}" else "剩余 ${formatDuration((capMillis - usageMillis).coerceAtLeast(0L))}",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = if (overLimit) warning else MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    text = "${((usageMillis.toFloat() / capMillis.coerceAtLeast(1L).toFloat()) * 100f).roundToInt()}%",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = if (overLimit) warning else primary,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
         }
     }
 }
@@ -3722,11 +3966,30 @@ private fun ShareReportCard(
     val onSurface = MaterialTheme.colorScheme.onSurface
     val onSurfaceVariant = MaterialTheme.colorScheme.onSurfaceVariant
     val data = (shareState as? SectionState.Ready)?.data
+    var previewBitmap by remember(data) { mutableStateOf<Bitmap?>(null) }
+    fun generatePreview() {
+        val readyData = data ?: return
+        runCatching {
+            renderShareReportBitmap(
+                context = context,
+                data = readyData,
+                primary = primary,
+                surface = surface,
+                onSurface = onSurface,
+                onSurfaceVariant = onSurfaceVariant,
+                palette = reportColors.appChartPalette,
+            )
+        }.onSuccess { bitmap ->
+            previewBitmap = bitmap
+        }.onFailure { error ->
+            Toast.makeText(context, error.message ?: "分享图生成失败", Toast.LENGTH_SHORT).show()
+        }
+    }
     ReportCard {
         SectionHeader(
             icon = Icons.Default.Share,
             title = "分享战报",
-            subtitle = "生成一张当前${selectedTab.label}摘要海报，适合直接发给朋友或留作记录。",
+            subtitle = "先预览海报，再分享给朋友或留作记录。",
         )
         if (data == null) {
             SkeletonBlock(modifier = Modifier.fillMaxWidth(), height = 126.dp, shape = RoundedCornerShape(24.dp))
@@ -3743,30 +4006,69 @@ private fun ShareReportCard(
                     Text(data.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                     Text(data.insight, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Button(
-                        onClick = {
-                            runCatching {
-                                shareReportImage(
-                                    context = context,
-                                    data = data,
-                                    primary = primary,
-                                    surface = surface,
-                                    onSurface = onSurface,
-                                    onSurfaceVariant = onSurfaceVariant,
-                                    palette = reportColors.appChartPalette,
-                                )
-                            }.onFailure { error ->
-                                Toast.makeText(context, error.message ?: "分享图生成失败", Toast.LENGTH_SHORT).show()
-                            }
-                        },
+                        onClick = { generatePreview() },
                         modifier = Modifier.fillMaxWidth(),
                     ) {
                         Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("生成并分享 PNG")
+                        Text("预览分享海报")
                     }
                 }
             }
         }
+    }
+    previewBitmap?.let { bitmap ->
+        AlertDialog(
+            onDismissRequest = { previewBitmap = null },
+            title = {
+                Text("分享预览", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    Surface(
+                        shape = RoundedCornerShape(20.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerLow,
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+                    ) {
+                        Image(
+                            bitmap = bitmap.asImageBitmap(),
+                            contentDescription = "战报海报预览",
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(520.dp)
+                                .padding(8.dp)
+                                .clip(RoundedCornerShape(16.dp)),
+                            contentScale = ContentScale.Fit,
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        runCatching {
+                            shareReportBitmap(context = context, bitmap = bitmap)
+                        }.onFailure { error ->
+                            Toast.makeText(context, error.message ?: "分享图生成失败", Toast.LENGTH_SHORT).show()
+                        }
+                    },
+                ) {
+                    Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("分享")
+                }
+            },
+            dismissButton = {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(onClick = { generatePreview() }) {
+                        Text("重新生成")
+                    }
+                    TextButton(onClick = { previewBitmap = null }) {
+                        Text("关闭")
+                    }
+                }
+            },
+        )
     }
 }
 
@@ -3851,22 +4153,30 @@ private fun DailyModeSummaryCard(
                 overflow = TextOverflow.Ellipsis,
             )
         }
-        GradientProgressBar(
-            progress = summary.progress,
-            color = accent,
-            delayMillis = 160,
+        Box(
             modifier = Modifier.fillMaxWidth(),
-        )
-        FlowRow(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            contentAlignment = Alignment.Center,
         ) {
-            summary.metrics.forEachIndexed { index, metric ->
+            FocusProgressRing(
+                progress = summary.progress,
+                color = accent,
+                label = "${(summary.progress * 100f).roundToInt()}%",
+                modifier = Modifier.size(76.dp),
+            )
+        }
+        AdaptiveRowGrid(
+            itemCount = summary.metrics.size,
+            compactColumns = 3,
+            expandedColumns = 3,
+            horizontalSpacing = 8.dp,
+            verticalSpacing = 8.dp,
+        ) { metricModifier, index ->
+            summary.metrics.getOrNull(index)?.let { metric ->
                 FocusMetricPill(
                     metric = metric,
                     accent = accent,
                     delayMillis = 180 + index * 40,
+                    modifier = metricModifier,
                 )
             }
         }
@@ -3894,6 +4204,52 @@ private fun DailyModeSummaryCard(
             }
         }
         }
+    }
+}
+
+@Composable
+private fun FocusProgressRing(
+    progress: Float,
+    color: Color,
+    label: String,
+    modifier: Modifier = Modifier,
+) {
+    val animatedProgress = animateFractionValue(
+        targetValue = progress.coerceIn(0f, 1f),
+        label = "focus_progress_ring_$label",
+        delayMillis = 160,
+    )
+    Box(modifier = modifier, contentAlignment = Alignment.Center) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val stroke = size.minDimension * 0.14f
+            val diameter = size.minDimension - stroke
+            val topLeft = Offset((size.width - diameter) / 2f, (size.height - diameter) / 2f)
+            val chartSize = Size(diameter, diameter)
+            drawArc(
+                color = color.copy(alpha = 0.14f),
+                startAngle = -90f,
+                sweepAngle = 360f,
+                useCenter = false,
+                topLeft = topLeft,
+                size = chartSize,
+                style = androidx.compose.ui.graphics.drawscope.Stroke(width = stroke),
+            )
+            drawArc(
+                color = color,
+                startAngle = -90f,
+                sweepAngle = 360f * animatedProgress,
+                useCenter = false,
+                topLeft = topLeft,
+                size = chartSize,
+                style = androidx.compose.ui.graphics.drawscope.Stroke(width = stroke),
+            )
+        }
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.Bold,
+            color = color,
+        )
     }
 }
 
@@ -3999,7 +4355,10 @@ private fun TimelineCard(
             when (timelineState) {
                 SectionState.Loading -> SkeletonTimelineChart()
                 SectionState.Empty -> DailyTimelineChart(emptyList())
-                is SectionState.Ready -> DailyTimelineChart(timelineState.data.buckets)
+                is SectionState.Ready -> DailyTimelineChart(
+                    buckets = timelineState.data.buckets,
+                    targetMillisPerBucket = timelineState.data.targetMillisPerBucket,
+                )
             }
             TimelineFooter(
                 labels =
@@ -4009,7 +4368,7 @@ private fun TimelineCard(
                     ),
             )
             AdaptiveRowGrid(
-                itemCount = 2,
+                itemCount = if (selectedTab == ReportTab.DAY) 1 else 2,
                 compactColumns = 1,
                 expandedColumns = 2,
                 horizontalSpacing = 14.dp,
@@ -4017,14 +4376,16 @@ private fun TimelineCard(
             ) { modifier, index ->
                 when (timelineState) {
                     SectionState.Loading -> {
-                        if (index == 0) {
-                            SkeletonDonutPanel(modifier = modifier)
-                        } else {
-                            SkeletonPeakPanel(modifier = modifier)
-                        }
+                        SkeletonPeakPanel(modifier = modifier)
                     }
                     SectionState.Empty -> {
-                        if (index == 0) {
+                        if (selectedTab == ReportTab.DAY) {
+                            PeakMomentsCard(
+                                selectedTab = selectedTab,
+                                timelineState = null,
+                                modifier = modifier,
+                            )
+                        } else if (index == 0) {
                             PeriodDistributionCard(
                                 periodUsage = emptyList(),
                                 modifier = modifier,
@@ -4037,7 +4398,13 @@ private fun TimelineCard(
                             )
                         }
                     }
-                    is SectionState.Ready -> when (index) {
+                    is SectionState.Ready -> if (selectedTab == ReportTab.DAY) {
+                        PeakMomentsCard(
+                            selectedTab = selectedTab,
+                            timelineState = timelineState.data,
+                            modifier = modifier,
+                        )
+                    } else when (index) {
                         0 -> PeriodDistributionCard(
                             periodUsage = timelineState.data.periodUsage,
                             modifier = modifier,
@@ -4057,6 +4424,7 @@ private fun TimelineCard(
 @Composable
 private fun DailyTimelineChart(
     buckets: List<DailyTimelineBucket>,
+    targetMillisPerBucket: Long? = null,
 ) {
     val deviceColor = MaterialTheme.colorScheme.primary
     val guideLineColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.14f)
@@ -4085,7 +4453,10 @@ private fun DailyTimelineChart(
                 verticalArrangement = Arrangement.SpaceBetween,
                 horizontalAlignment = Alignment.End,
             ) {
-                val maxUsage = buckets.maxOfOrNull { it.deviceMillis }?.coerceAtLeast(1L) ?: 1L
+                val maxUsage = maxOf(
+                    buckets.maxOfOrNull { it.deviceMillis }?.coerceAtLeast(1L) ?: 1L,
+                    targetMillisPerBucket ?: 0L,
+                )
                 listOf(maxUsage, maxUsage * 2 / 3, maxUsage / 3, 0L).forEach { tick ->
                     Text(
                         text = if (tick == 0L) "0" else formatAxisDuration(tick),
@@ -4098,6 +4469,7 @@ private fun DailyTimelineChart(
             Canvas(modifier = Modifier.weight(1f).height(chartHeight)) {
                 if (buckets.isEmpty()) return@Canvas
                 val deviceMax = buckets.maxOfOrNull { it.deviceMillis }?.coerceAtLeast(1L) ?: 1L
+                val chartMax = maxOf(deviceMax, targetMillisPerBucket ?: 0L, 1L)
                 val slotWidth = size.width / buckets.size
                 val barWidth = slotWidth * 0.48f
                 val baseY = size.height
@@ -4114,7 +4486,7 @@ private fun DailyTimelineChart(
 
                 buckets.forEachIndexed { index, bucket ->
                     val x = slotWidth * index + (slotWidth - barWidth) / 2f
-                    val rawHeight = size.height * (bucket.deviceMillis.toFloat() / deviceMax.toFloat()).coerceIn(0f, 1f)
+                    val rawHeight = size.height * (bucket.deviceMillis.toFloat() / chartMax.toFloat()).coerceIn(0f, 1f)
                     val deviceHeight = if (bucket.deviceMillis > 0L) {
                         maxOf(6f * revealProgress, rawHeight * revealProgress)
                     } else {
@@ -4134,6 +4506,20 @@ private fun DailyTimelineChart(
                         size = Size(barWidth, deviceHeight),
                         cornerRadius = CornerRadius(barWidth / 2f, barWidth / 2f),
                     )
+                }
+                targetMillisPerBucket?.takeIf { it > 0L }?.let { target ->
+                    val targetY = size.height - size.height * (target.toFloat() / chartMax.toFloat()).coerceIn(0f, 1f)
+                    val dashWidth = slotWidth * 0.42f
+                    var startX = 0f
+                    while (startX < size.width) {
+                        drawLine(
+                            color = androidx.compose.ui.graphics.Color(0xFFFFB300).copy(alpha = 0.78f),
+                            start = Offset(startX, targetY),
+                            end = Offset(minOf(startX + dashWidth, size.width), targetY),
+                            strokeWidth = 2f,
+                        )
+                        startX += dashWidth * 1.8f
+                    }
                 }
             }
         }
@@ -4657,10 +5043,6 @@ private fun AppChartsCard(
                     items = usageTopApps,
                     appColors = appColors,
                 )
-                TopUsageRankingCard(
-                    items = usageTopApps,
-                    appColors = appColors,
-                )
             }
         }
     }
@@ -4680,14 +5062,13 @@ private fun AppUsageShareCard(
     ) {
         BoxWithConstraints {
             val compact = maxWidth < 360.dp
-            val donutSize = if (compact) 156.dp else 186.dp
-            val shareChipCount = if (compact) minOf(items.size, 4) else minOf(items.size, 6)
+            val donutSize = if (compact) 176.dp else 216.dp
             Column(
                 modifier = Modifier.padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 Text(
-                    text = "使用时长占比",
+                    text = "应用时长",
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                 )
@@ -4699,6 +5080,14 @@ private fun AppUsageShareCard(
                     )
                 } else {
                     val total = items.sumOf { it.value }.coerceAtLeast(1L)
+                    val visibleItems = items.take(6)
+                    val otherUsage = items.drop(6).sumOf { it.value }
+                    val donutValues =
+                        if (otherUsage > 0L) {
+                            visibleItems.map { it.value } + otherUsage
+                        } else {
+                            visibleItems.map { it.value }
+                        }
                     val animatedTotal = animateLongValue(
                         targetValue = total,
                         label = "app_usage_share_total",
@@ -4711,8 +5100,12 @@ private fun AppUsageShareCard(
                     ) {
                         Box(contentAlignment = Alignment.Center) {
                             PeriodDonutChart(
-                                values = items.map { it.value },
-                                colors = items.mapIndexed { index, item -> appColors[item.packageName] ?: fallbackChartColor(index) },
+                                values = donutValues,
+                                colors =
+                                    donutValues.mapIndexed { index, _ ->
+                                        visibleItems.getOrNull(index)?.let { appColors[it.packageName] }
+                                            ?: fallbackChartColor(index)
+                                    },
                                 highlightedIndex = 0,
                                 delayMillis = 220,
                                 modifier = Modifier.size(donutSize),
@@ -4734,22 +5127,25 @@ private fun AppUsageShareCard(
                             }
                         }
                     }
-                    AdaptiveRowGrid(
-                        itemCount = shareChipCount,
-                        compactColumns = 4,
-                        expandedColumns = 6,
-                        horizontalSpacing = 6.dp,
-                        verticalSpacing = 6.dp,
-                    ) { chipModifier, index ->
-                        val item = items[index]
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.38f))
+                    Text(
+                        text = "时长排名",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    val maxUsage = items.maxOfOrNull { it.value }?.coerceAtLeast(1L) ?: 1L
+                    items.forEachIndexed { index, item ->
                         val color = appColors[item.packageName] ?: fallbackChartColor(index)
-                        AppShareChip(
-                            share = item.value.toFloat() / total.toFloat(),
-                            packageName = item.packageName,
+                        TopUsageBarRow(
+                            rank = index + 1,
+                            item = item,
+                            maxUsage = maxUsage,
+                            totalUsage = total,
                             color = color,
-                            delayMillis = 360 + index * 30,
-                            modifier = chipModifier,
                         )
+                        if (index != items.lastIndex) {
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.28f))
+                        }
                     }
                 }
             }
@@ -4962,17 +5358,16 @@ private fun BehaviorCard(
                             modifier = modifier,
                         )
                         3 -> MiniInsightCard(
-                            icon = Icons.Default.RocketLaunch,
-                            label = if (selectedTab == ReportTab.DAY) "活跃小时" else "重复打开强度",
-                            value = if (selectedTab == ReportTab.DAY) "${insight.activeHourCount} 小时" else String.format(Locale.CHINA, "%.1f 次/活跃小时", insight.reopenIntensity),
-                            visualRatio = if (selectedTab == ReportTab.DAY) (insight.activeHourCount / 24f).coerceIn(0f, 1f) else (insight.reopenIntensity / 6f).coerceIn(0f, 1f),
+                            icon = Icons.Default.TouchApp,
+                            label = "打开强度",
+                            value = String.format(Locale.CHINA, "%.1f 次/活跃小时", insight.reopenIntensity),
+                            visualRatio = (insight.reopenIntensity / 6f).coerceIn(0f, 1f),
                             modifier = modifier,
                         )
-                        4 -> MiniInsightCard(
-                            icon = Icons.Default.NightsStay,
-                            label = if (selectedTab == ReportTab.DAY) "夜间使用" else "预测睡眠时间",
-                            value = if (selectedTab == ReportTab.DAY) formatDuration(insight.nightUsageMillis) else "${insight.predictedSleepLabel} · ${insight.predictedSleepDurationLabel}",
-                            visualRatio = null,
+                        4 -> BehaviorRingsCard(
+                            activeHourCount = insight.activeHourCount,
+                            nightUsageMillis = insight.nightUsageMillis,
+                            peakHourMillis = insight.peakHourMillis,
                             modifier = modifier,
                         )
                         else -> Spacer(modifier = modifier)
@@ -5004,6 +5399,70 @@ private fun BehaviorCard(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun BehaviorRingsCard(
+    activeHourCount: Int,
+    nightUsageMillis: Long,
+    peakHourMillis: Long,
+    modifier: Modifier = Modifier,
+) {
+    val reportColors = LocalReportColors.current
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.56f),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            CompactMetricRing(
+                progress = (activeHourCount / 24f).coerceIn(0f, 1f),
+                value = "$activeHourCount",
+                label = "活跃小时",
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.weight(1f),
+            )
+            CompactMetricRing(
+                progress = if (peakHourMillis > 0L) (nightUsageMillis.toFloat() / (peakHourMillis * 6f)).coerceIn(0f, 1f) else 0f,
+                value = formatDuration(nightUsageMillis),
+                label = "夜间",
+                color = reportColors.warning,
+                modifier = Modifier.weight(1f),
+            )
+        }
+    }
+}
+
+@Composable
+private fun CompactMetricRing(
+    progress: Float,
+    value: String,
+    label: String,
+    color: Color,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        FocusProgressRing(
+            progress = progress,
+            color = color,
+            label = value,
+            modifier = Modifier.size(58.dp),
+        )
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+        )
     }
 }
 
@@ -5095,14 +5554,19 @@ private fun ComparisonCard(
                 )
             } else {
                 val comparisons = (comparisonState as SectionState.Ready).data.comparisons
-                comparisons.forEachIndexed { index, item ->
+                AdaptiveRowGrid(
+                    itemCount = comparisons.size,
+                    compactColumns = 1,
+                    expandedColumns = 2,
+                    horizontalSpacing = 12.dp,
+                    verticalSpacing = 12.dp,
+                ) { modifier, index ->
+                    val item = comparisons[index]
                     ComparisonRow(
                         item = item,
                         delayMillis = 660 + index * 50,
+                        modifier = modifier,
                     )
-                    if (index != comparisons.lastIndex) {
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f))
-                    }
                 }
             }
         }
@@ -5114,26 +5578,140 @@ private fun ComparisonCard(
 private fun ComparisonRow(
     item: ComparisonMetric,
     delayMillis: Int = 0,
+    modifier: Modifier = Modifier,
 ) {
     val animatedTodayValue = animateMetricDisplayText(
         rawText = item.todayValue,
         label = "comparison_${item.label.hashCode()}",
         delayMillis = delayMillis,
     )
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(text = item.label, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-        Text(text = animatedTodayValue, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-        FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.72f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.24f)),
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(7.dp),
         ) {
-            item.yesterdayDelta?.let {
-                ComparisonChip(text = it)
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(text = item.label, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                Text(text = animatedTodayValue, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             }
-            item.averageDelta?.let {
-                ComparisonChip(text = it)
+            item.chartData?.let { data ->
+                ComparisonMiniBars(data = data, delayMillis = delayMillis)
+            }
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                item.yesterdayDelta?.let {
+                    ComparisonChip(text = it)
+                }
+                item.averageDelta?.let {
+                    ComparisonChip(text = it)
+                }
             }
         }
+    }
+}
+
+@Composable
+private fun ComparisonMiniBars(
+    data: ComparisonChartData,
+    delayMillis: Int,
+) {
+    val values = listOfNotNull(data.previousValue, data.averageValue, data.currentValue)
+    val maxValue = values.maxOrNull()?.coerceAtLeast(1L) ?: 1L
+    val reportColors = LocalReportColors.current
+    val bars =
+        listOf(
+            Triple("上次", data.previousValue, data.previousLabel),
+            Triple("均值", data.averageValue, data.averageLabel),
+            Triple("当前", data.currentValue, data.currentLabel),
+        )
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(5.dp),
+    ) {
+        bars.forEachIndexed { index, (label, value, display) ->
+            val color =
+                when (index) {
+                    0 -> MaterialTheme.colorScheme.outline
+                    1 -> reportColors.warning
+                    else -> MaterialTheme.colorScheme.primary
+                }
+            ComparisonBar(
+                label = label,
+                value = value,
+                display = display,
+                maxValue = maxValue,
+                color = color,
+                delayMillis = delayMillis + index * 40,
+            )
+        }
+    }
+}
+
+@Composable
+private fun ComparisonBar(
+    label: String,
+    value: Long?,
+    display: String?,
+    maxValue: Long,
+    color: Color,
+    delayMillis: Int,
+    modifier: Modifier = Modifier,
+) {
+    val progress = if (value != null && maxValue > 0L) (value.toFloat() / maxValue.toFloat()).coerceIn(0f, 1f) else 0f
+    val animatedProgress = animateFractionValue(
+        targetValue = progress,
+        label = "comparison_bar_${label}_${display.orEmpty()}",
+        delayMillis = delayMillis,
+    )
+    Row(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(18.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            modifier = Modifier.width(30.dp),
+        )
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .height(7.dp)
+                .clip(CircleShape)
+                .background(color.copy(alpha = 0.13f)),
+            contentAlignment = Alignment.CenterStart,
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(maxOf(0.04f, animatedProgress))
+                    .fillMaxHeight()
+                    .clip(CircleShape)
+                    .background(color.copy(alpha = if (value == null) 0.12f else 0.72f)),
+            )
+        }
+        Text(
+            text = display ?: "--",
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.SemiBold,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.width(58.dp),
+        )
     }
 }
 
@@ -5226,23 +5804,10 @@ fun AppIconCircle(pkg: String) {
     }
 }
 
-private fun shareReportImage(
+private fun shareReportBitmap(
     context: Context,
-    data: ShareReportData,
-    primary: Color,
-    surface: Color,
-    onSurface: Color,
-    onSurfaceVariant: Color,
-    palette: List<Color>,
+    bitmap: Bitmap,
 ) {
-    val bitmap = renderShareReportBitmap(
-        data = data,
-        primary = primary,
-        surface = surface,
-        onSurface = onSurface,
-        onSurfaceVariant = onSurfaceVariant,
-        palette = palette,
-    )
     val shareDir = File(context.cacheDir, "share").apply { mkdirs() }
     val file = File(shareDir, "tinyvow-report-${System.currentTimeMillis()}.png")
     FileOutputStream(file).use { output ->
@@ -5258,12 +5823,15 @@ private fun shareReportImage(
         Intent(Intent.ACTION_SEND).apply {
             type = "image/png"
             putExtra(Intent.EXTRA_STREAM, uri)
+            putExtra(Intent.EXTRA_TITLE, "Tiny Vow 战报")
+            clipData = ClipData.newUri(context.contentResolver, "Tiny Vow 战报", uri)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
     context.startActivity(Intent.createChooser(intent, "分享战报"))
 }
 
 private fun renderShareReportBitmap(
+    context: Context,
     data: ShareReportData,
     primary: Color,
     surface: Color,
@@ -5272,13 +5840,15 @@ private fun renderShareReportBitmap(
     palette: List<Color>,
 ): Bitmap {
     val width = 1080
-    val height = 1600
+    val height = 1920
     val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
     val canvas = android.graphics.Canvas(bitmap)
     val primaryArgb = primary.toArgb()
-    val surfaceArgb = surface.toArgb()
     val textArgb = onSurface.toArgb()
     val mutedArgb = onSurfaceVariant.toArgb()
+    val displayTypeface = android.graphics.Typeface.create("sans-serif-black", android.graphics.Typeface.BOLD)
+    val titleTypeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.BOLD)
+    val bodyTypeface = android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.NORMAL)
     val backgroundPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         shader =
             android.graphics.LinearGradient(
@@ -5286,80 +5856,577 @@ private fun renderShareReportBitmap(
                 0f,
                 0f,
                 height.toFloat(),
-                intArrayOf(surfaceArgb, primary.copy(alpha = 0.18f).toArgb(), surfaceArgb),
+                intArrayOf(
+                    android.graphics.Color.rgb(231, 247, 255),
+                    android.graphics.Color.rgb(247, 252, 255),
+                    android.graphics.Color.rgb(226, 242, 252),
+                ),
                 null,
                 android.graphics.Shader.TileMode.CLAMP,
             )
     }
     canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), backgroundPaint)
+    drawSharePosterBackground(canvas, width, height, primary)
 
-    val cardPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = android.graphics.Color.WHITE }
-    val softPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = primary.copy(alpha = 0.12f).toArgb() }
+    val cardPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = android.graphics.Color.argb(238, 255, 255, 255) }
+    val glassPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = android.graphics.Color.argb(190, 255, 255, 255) }
+    val softPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = primary.copy(alpha = 0.11f).toArgb() }
+    val warningArgb = android.graphics.Color.rgb(236, 150, 54)
+    val positiveArgb = android.graphics.Color.rgb(46, 157, 92)
     val titlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = textArgb
-        textSize = 58f
-        typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
+        textSize = 52f
+        typeface = titleTypeface
     }
     val subtitlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = mutedArgb
-        textSize = 30f
+        textSize = 29f
+        typeface = bodyTypeface
     }
     val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = mutedArgb
-        textSize = 28f
+        textSize = 27f
+        typeface = bodyTypeface
     }
     val valuePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = primaryArgb
-        textSize = 104f
-        typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
+        textSize = 118f
+        typeface = displayTypeface
     }
     val bodyPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = textArgb
-        textSize = 34f
-    }
-    canvas.drawRoundRect(RectF(64f, 76f, width - 64f, height - 76f), 54f, 54f, cardPaint)
-    canvas.drawRoundRect(RectF(104f, 116f, width - 104f, 520f), 42f, 42f, softPaint)
-    canvas.drawText(data.title, 136f, 190f, titlePaint)
-    canvas.drawText(data.subtitle, 136f, 242f, subtitlePaint)
-    canvas.drawText(data.primaryLabel, 136f, 330f, labelPaint)
-    canvas.drawText(data.primaryValue, 136f, 438f, valuePaint)
-
-    var y = 620f
-    data.metrics.take(3).forEachIndexed { index, metric ->
-        val left = 104f + index * 300f
-        val right = left + 276f
-        val color = palette.getOrNull(index)?.copy(alpha = 0.18f)?.toArgb() ?: primary.copy(alpha = 0.14f).toArgb()
-        val pillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { this.color = color }
-        canvas.drawRoundRect(RectF(left, y, right, y + 150f), 30f, 30f, pillPaint)
-        canvas.drawText(metric.label, left + 26f, y + 52f, labelPaint)
-        drawEllipsizedText(canvas, metric.value, left + 26f, y + 108f, 220f, bodyPaint)
+        textSize = 32f
+        typeface = bodyTypeface
     }
 
-    y += 250f
-    val insightTitlePaint = Paint(titlePaint).apply { textSize = 42f }
-    canvas.drawText("复盘高光", 104f, y, insightTitlePaint)
-    y += 58f
-    drawMultilineText(canvas, data.insight, 104f, y, width - 208f, bodyPaint, 48f, 3)
-    y += 210f
-    canvas.drawText("Top 应用", 104f, y, insightTitlePaint)
-    y += 70f
-    data.topApps.take(3).forEachIndexed { index, app ->
-        val rankPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = palette.getOrNull(index)?.toArgb() ?: primaryArgb
-            textSize = 42f
-            typeface = android.graphics.Typeface.create(android.graphics.Typeface.DEFAULT, android.graphics.Typeface.BOLD)
+    canvas.drawRoundRect(RectF(50f, 58f, width - 50f, height - 58f), 58f, 58f, cardPaint)
+
+    drawSharePosterIcon(
+        context = context,
+        canvas = canvas,
+        packageName = context.packageName,
+        label = "T",
+        left = 100f,
+        top = 112f,
+        size = 70f,
+        fallbackColor = primaryArgb,
+    )
+    canvas.drawText(data.title, 192f, 145f, titlePaint)
+    canvas.drawText(data.subtitle, 192f, 188f, subtitlePaint)
+
+    val heroTop = 242f
+    canvas.drawRoundRect(RectF(86f, heroTop, width - 86f, 598f), 46f, 46f, softPaint)
+    canvas.drawText(data.statusTitle, 126f, heroTop + 70f, Paint(titlePaint).apply { textSize = 46f })
+    canvas.drawText(data.primaryLabel, 126f, heroTop + 130f, labelPaint)
+    canvas.drawText(data.primaryValue, 126f, heroTop + 250f, valuePaint)
+    val goalText =
+        if (data.goalMillis > 0L) {
+            val delta = data.goalMillis - data.totalUsageMillis
+            if (delta >= 0L) "目标内 · 剩余 ${formatDuration(delta)}" else "超出 ${formatDuration(-delta)}"
+        } else {
+            data.comparisonLabel
         }
-        canvas.drawText("${index + 1}", 112f, y, rankPaint)
-        drawEllipsizedText(canvas, app.label, 170f, y, 430f, bodyPaint)
-        canvas.drawText(formatDuration(app.value), 780f, y, bodyPaint)
-        y += 64f
+    canvas.drawText(goalText, 126f, heroTop + 310f, Paint(bodyPaint).apply {
+        color = if (data.goalMillis > 0L && data.totalUsageMillis > data.goalMillis) warningArgb else positiveArgb
+        typeface = titleTypeface
+    })
+
+    val progressLeft = 610f
+    val progressTop = heroTop + 266f
+    val progressWidth = 300f
+    val progressHeight = 28f
+    val goalBase = data.goalMillis.takeIf { it > 0L } ?: max(data.totalUsageMillis, 1L)
+    val progress = (data.totalUsageMillis.toFloat() / goalBase.toFloat()).coerceIn(0f, 1.15f)
+    val trackPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = primary.copy(alpha = 0.15f).toArgb() }
+    canvas.drawRoundRect(
+        RectF(progressLeft, progressTop, progressLeft + progressWidth, progressTop + progressHeight),
+        18f,
+        18f,
+        trackPaint,
+    )
+    val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        shader =
+            android.graphics.LinearGradient(
+                progressLeft,
+                progressTop,
+                progressLeft + progressWidth,
+                progressTop,
+                intArrayOf(primary.copy(alpha = 0.78f).toArgb(), if (progress > 1f) warningArgb else primaryArgb),
+                null,
+                android.graphics.Shader.TileMode.CLAMP,
+            )
     }
+    canvas.drawRoundRect(
+        RectF(progressLeft, progressTop, progressLeft + progressWidth * progress.coerceIn(0f, 1f), progressTop + progressHeight),
+        18f,
+        18f,
+        fillPaint,
+    )
+    canvas.drawLine(
+        progressLeft + progressWidth,
+        progressTop - 9f,
+        progressLeft + progressWidth,
+        progressTop + progressHeight + 9f,
+        Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = if (progress > 1f) warningArgb else primaryArgb
+            strokeWidth = 4f
+        },
+    )
+    canvas.drawText(
+        if (data.goalMillis > 0L) "目标 ${formatDuration(data.goalMillis)}" else "使用进度",
+        progressLeft,
+        progressTop + 68f,
+        labelPaint,
+    )
+    canvas.drawText(
+        "${(progress * 100f).roundToInt()}%",
+        progressLeft + 250f,
+        progressTop + 68f,
+        Paint(bodyPaint).apply {
+            color = if (progress > 1f) warningArgb else primaryArgb
+            typeface = displayTypeface
+        },
+    )
+
+    drawShareFocusCards(
+        canvas = canvas,
+        data = data,
+        left = 86f,
+        top = 638f,
+        width = width - 172f,
+        primaryArgb = primaryArgb,
+        positiveArgb = positiveArgb,
+        warningArgb = warningArgb,
+        textArgb = textArgb,
+        mutedArgb = mutedArgb,
+        surfaceArgb = android.graphics.Color.argb(226, 255, 255, 255),
+    )
+
+    val sectionTitlePaint = Paint(titlePaint).apply { textSize = 40f }
+    val distributionTop = 930f
+    canvas.drawRoundRect(RectF(86f, distributionTop - 28f, width - 86f, distributionTop + 406f), 42f, 42f, glassPaint)
+    drawShareAppDistribution(
+        context = context,
+        canvas = canvas,
+        apps = data.topApps,
+        centerX = 344f,
+        centerY = distributionTop + 200f,
+        radius = 188f,
+        palette = palette,
+        textColor = textArgb,
+        mutedColor = mutedArgb,
+        primaryColor = primary,
+    )
+
+    val insightTop = 1510f
+    canvas.drawRoundRect(RectF(86f, insightTop - 54f, width - 86f, insightTop + 134f), 34f, 34f, softPaint)
+    canvas.drawText("复盘一句话", 126f, insightTop, Paint(sectionTitlePaint).apply { textSize = 34f })
+    val posterInsight = buildSharePosterInsight(data)
+    drawMultilineText(canvas, posterInsight, 126f, insightTop + 50f, width - 252f, Paint(bodyPaint).apply { textSize = 29f }, 40f, 2)
+
     val footerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = mutedArgb
         textSize = 28f
+        typeface = bodyTypeface
     }
-    canvas.drawText("Tiny Vow · 把注意力还给生活", 104f, height - 144f, footerPaint)
+    canvas.drawText("Tiny Vow · 把注意力还给生活", 104f, height - 88f, footerPaint)
     return bitmap
+}
+
+private fun drawSharePosterBackground(
+    canvas: android.graphics.Canvas,
+    width: Int,
+    height: Int,
+    primary: Color,
+) {
+    val cloudPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = android.graphics.Color.argb(118, 255, 255, 255) }
+    listOf(
+        RectF(-80f, 250f, 360f, 430f),
+        RectF(720f, 300f, 1160f, 470f),
+        RectF(40f, 1500f, 520f, 1700f),
+    ).forEach { rect ->
+        canvas.drawOval(rect, cloudPaint)
+    }
+    val mountainPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = primary.copy(alpha = 0.12f).toArgb()
+        style = Paint.Style.FILL
+    }
+    val path = android.graphics.Path().apply {
+        moveTo(0f, height * 0.72f)
+        lineTo(width * 0.24f, height * 0.62f)
+        lineTo(width * 0.48f, height * 0.70f)
+        lineTo(width * 0.72f, height * 0.60f)
+        lineTo(width.toFloat(), height * 0.69f)
+        lineTo(width.toFloat(), height.toFloat())
+        lineTo(0f, height.toFloat())
+        close()
+    }
+    canvas.drawPath(path, mountainPaint)
+    val dotPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = primary.copy(alpha = 0.11f).toArgb() }
+    for (row in 0 until 8) {
+        for (col in 0 until 6) {
+            canvas.drawCircle(720f + col * 48f, 112f + row * 38f, 3.2f, dotPaint)
+        }
+    }
+}
+
+private fun drawShareAppDistribution(
+    context: Context,
+    canvas: android.graphics.Canvas,
+    apps: List<AppDisplayItem>,
+    centerX: Float,
+    centerY: Float,
+    radius: Float,
+    palette: List<Color>,
+    textColor: Int,
+    mutedColor: Int,
+    primaryColor: Color,
+) {
+    val total = apps.sumOf { it.value }.coerceAtLeast(1L)
+    val displayApps = apps.take(5)
+    val values =
+        if (displayApps.isEmpty()) {
+            listOf(1L)
+        } else {
+            displayApps.map { it.value.coerceAtLeast(1L) }
+        }
+    val colors =
+        values.mapIndexed { index, _ ->
+            displayApps.getOrNull(index)?.let { app ->
+                extractAppChartColor(
+                    context = context,
+                    packageName = app.packageName,
+                    fallback = palette.getOrNull(index) ?: primaryColor,
+                )
+            } ?: palette.getOrNull(index) ?: primaryColor
+        }
+    val stroke = 42f
+    val chartRect = RectF(centerX - radius, centerY - radius, centerX + radius, centerY + radius)
+    val basePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = primaryColor.copy(alpha = 0.08f).toArgb()
+        style = Paint.Style.STROKE
+        strokeWidth = stroke
+        strokeCap = Paint.Cap.ROUND
+    }
+    canvas.drawArc(chartRect, 138f, 264f, false, basePaint)
+    var startAngle = 138f
+    values.forEachIndexed { index, value ->
+        val sweep = (value.toFloat() / values.sum().toFloat()) * 264f
+        val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = colors[index].toArgb()
+            style = Paint.Style.STROKE
+            strokeWidth = stroke
+            strokeCap = Paint.Cap.BUTT
+        }
+        canvas.drawArc(chartRect, startAngle, (sweep - 4f).coerceAtLeast(3f), false, paint)
+        startAngle += sweep
+    }
+    val centerTitlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = textColor
+        textSize = 32f
+        textAlign = Paint.Align.CENTER
+        typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.BOLD)
+    }
+    val centerLabelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = mutedColor
+        textSize = 24f
+        textAlign = Paint.Align.CENTER
+    }
+    val topUsage = displayApps.sumOf { it.value }
+    canvas.drawText(if (topUsage > 0L) formatDuration(topUsage) else "--", centerX, centerY - 8f, centerTitlePaint)
+    canvas.drawText("Top ${displayApps.size.coerceAtLeast(1)}", centerX, centerY + 34f, centerLabelPaint)
+
+    val rowLeft = centerX + radius + 92f
+    val rowTop = centerY - 166f
+    val namePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = textColor
+        textSize = 27f
+        typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.BOLD)
+    }
+    val percentPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = mutedColor
+        textSize = 23f
+    }
+    val valuePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = mutedColor
+        textSize = 23f
+        textAlign = Paint.Align.RIGHT
+    }
+    if (displayApps.isEmpty()) {
+        canvas.drawText("暂无应用明细", rowLeft, centerY, namePaint)
+        return
+    }
+    displayApps.forEachIndexed { index, app ->
+        val y = rowTop + index * 72f
+        val color = colors[index]
+        val barLeft = rowLeft + 58f
+        val barRight = rowLeft + 310f
+        val barTop = y + 38f
+        drawSharePosterIcon(
+            context = context,
+            canvas = canvas,
+            packageName = app.packageName,
+            label = app.label.take(1),
+            left = rowLeft,
+            top = y,
+            size = 44f,
+            fallbackColor = color.toArgb(),
+        )
+        drawEllipsizedText(canvas, app.label, rowLeft + 58f, y + 25f, 150f, namePaint)
+        val percent = ((app.value.toFloat() / total.toFloat()) * 100f).roundToInt()
+        canvas.drawText("${formatDuration(app.value)} · $percent%", rowLeft + 322f, y + 25f, valuePaint)
+        canvas.drawRoundRect(
+            RectF(barLeft, barTop, barRight, barTop + 11f),
+            8f,
+            8f,
+            Paint(Paint.ANTI_ALIAS_FLAG).apply { this.color = color.copy(alpha = 0.13f).toArgb() },
+        )
+        canvas.drawRoundRect(
+            RectF(
+                barLeft,
+                barTop,
+                barLeft + (barRight - barLeft) * (app.value.toFloat() / displayApps.maxOf { it.value }.coerceAtLeast(1L).toFloat()).coerceIn(0.04f, 1f),
+                barTop + 11f,
+            ),
+            8f,
+            8f,
+            Paint(Paint.ANTI_ALIAS_FLAG).apply { this.color = color.toArgb() },
+        )
+        canvas.drawCircle(rowLeft - 24f, y + 23f, 8f, Paint(Paint.ANTI_ALIAS_FLAG).apply { this.color = color.toArgb() })
+    }
+}
+
+private fun drawShareFocusCards(
+    canvas: android.graphics.Canvas,
+    data: ShareReportData,
+    left: Float,
+    top: Float,
+    width: Float,
+    primaryArgb: Int,
+    positiveArgb: Int,
+    warningArgb: Int,
+    textArgb: Int,
+    mutedArgb: Int,
+    surfaceArgb: Int,
+) {
+    val gap = 28f
+    val cardWidth = (width - gap) / 2f
+    val cardHeight = 236f
+    drawShareFocusCard(
+        canvas = canvas,
+        rect = RectF(left, top, left + cardWidth, top + cardHeight),
+        title = "管控成效",
+        primaryLabel = "节省时长",
+        primaryValue = formatDuration(data.savedMillis),
+        accent = if (data.blockEventCount > 0) warningArgb else positiveArgb,
+        progress = data.goalProgress ?: if (data.controlExceededGroupCount == 0) 1f else 0f,
+        metrics =
+            listOf(
+                DailyFocusMetric("达标", "${data.controlCompletedGroupCount} 组"),
+                DailyFocusMetric("超限", "${data.controlExceededGroupCount} 组"),
+                DailyFocusMetric("拦截", "${data.blockEventCount} 次"),
+            ),
+        textArgb = textArgb,
+        mutedArgb = mutedArgb,
+        surfaceArgb = surfaceArgb,
+    )
+    drawShareFocusCard(
+        canvas = canvas,
+        rect = RectF(left + cardWidth + gap, top, left + width, top + cardHeight),
+        title = "鼓励进度",
+        primaryLabel = "净积分",
+        primaryValue = formatSignedPointsLocal(data.pointsNet),
+        accent = if (data.pointsNet >= 0.0) positiveArgb else warningArgb,
+        progress = if (data.encourageCompletedGroupCount > 0 || data.redemptionCount > 0) {
+            data.encourageCompletedGroupCount.toFloat() /
+                (data.encourageCompletedGroupCount + data.redemptionCount).coerceAtLeast(1).toFloat()
+        } else {
+            0f
+        },
+        metrics =
+            listOf(
+                DailyFocusMetric("时长", formatDuration(data.encourageUsageMillis)),
+                DailyFocusMetric("达标", "${data.encourageCompletedGroupCount} 组"),
+                DailyFocusMetric("兑换", "${data.redemptionCount} 次"),
+            ),
+        textArgb = textArgb,
+        mutedArgb = mutedArgb,
+        surfaceArgb = surfaceArgb,
+    )
+}
+
+private fun drawShareFocusCard(
+    canvas: android.graphics.Canvas,
+    rect: RectF,
+    title: String,
+    primaryLabel: String,
+    primaryValue: String,
+    accent: Int,
+    progress: Float,
+    metrics: List<DailyFocusMetric>,
+    textArgb: Int,
+    mutedArgb: Int,
+    surfaceArgb: Int,
+) {
+    canvas.drawRoundRect(
+        rect,
+        34f,
+        34f,
+        Paint(Paint.ANTI_ALIAS_FLAG).apply { color = surfaceArgb },
+    )
+    canvas.drawRoundRect(
+        rect,
+        34f,
+        34f,
+        Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = android.graphics.Color.argb(46, android.graphics.Color.red(accent), android.graphics.Color.green(accent), android.graphics.Color.blue(accent))
+            style = Paint.Style.STROKE
+            strokeWidth = 2f
+        },
+    )
+    canvas.drawRoundRect(
+        RectF(rect.left + 24f, rect.top + 24f, rect.left + 66f, rect.top + 66f),
+        14f,
+        14f,
+        Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = android.graphics.Color.argb(40, android.graphics.Color.red(accent), android.graphics.Color.green(accent), android.graphics.Color.blue(accent))
+        },
+    )
+    val titleTypeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.BOLD)
+    val titlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = textArgb
+        textSize = 32f
+        typeface = titleTypeface
+    }
+    val iconPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = accent
+        strokeWidth = 5f
+        strokeCap = Paint.Cap.ROUND
+    }
+    val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = mutedArgb
+        textSize = 24f
+    }
+    val valuePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = accent
+        textSize = 48f
+        typeface = android.graphics.Typeface.create("sans-serif-black", android.graphics.Typeface.BOLD)
+    }
+    val bodyPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = mutedArgb
+        textSize = 22f
+        typeface = android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.NORMAL)
+    }
+    canvas.drawLine(rect.left + 38f, rect.top + 45f, rect.left + 52f, rect.top + 45f, iconPaint)
+    canvas.drawLine(rect.left + 45f, rect.top + 38f, rect.left + 45f, rect.top + 52f, iconPaint)
+    canvas.drawText(title, rect.left + 78f, rect.top + 54f, titlePaint)
+    canvas.drawText(primaryLabel, rect.left + 28f, rect.top + 104f, labelPaint)
+    drawEllipsizedText(canvas, primaryValue, rect.left + 28f, rect.top + 154f, rect.width() - 154f, valuePaint)
+
+    val ringCenterX = rect.right - 72f
+    val ringCenterY = rect.top + 116f
+    val ringRadius = 43f
+    val ringRect = RectF(ringCenterX - ringRadius, ringCenterY - ringRadius, ringCenterX + ringRadius, ringCenterY + ringRadius)
+    val ringStroke = 11f
+    val ringBasePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = android.graphics.Color.argb(34, android.graphics.Color.red(accent), android.graphics.Color.green(accent), android.graphics.Color.blue(accent))
+        style = Paint.Style.STROKE
+        strokeWidth = ringStroke
+        strokeCap = Paint.Cap.ROUND
+    }
+    val ringPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = accent
+        style = Paint.Style.STROKE
+        strokeWidth = ringStroke
+        strokeCap = Paint.Cap.ROUND
+    }
+    canvas.drawArc(ringRect, -90f, 360f, false, ringBasePaint)
+    canvas.drawArc(ringRect, -90f, 360f * progress.coerceIn(0f, 1f), false, ringPaint)
+    val ringTextPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = accent
+        textSize = 22f
+        textAlign = Paint.Align.CENTER
+        typeface = titleTypeface
+    }
+    canvas.drawText("${(progress.coerceIn(0f, 1f) * 100f).roundToInt()}%", ringCenterX, ringCenterY + 8f, ringTextPaint)
+
+    val pillTop = rect.top + 174f
+    val pillGap = 8f
+    val pillWidth = (rect.width() - 56f - pillGap * 2f) / 3f
+    metrics.take(3).forEachIndexed { index, metric ->
+        val pillLeft = rect.left + 28f + index * (pillWidth + pillGap)
+        val pillRect = RectF(pillLeft, pillTop, pillLeft + pillWidth, pillTop + 42f)
+        canvas.drawRoundRect(
+            pillRect,
+            18f,
+            18f,
+            Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = android.graphics.Color.argb(28, android.graphics.Color.red(accent), android.graphics.Color.green(accent), android.graphics.Color.blue(accent))
+            },
+        )
+        drawEllipsizedText(canvas, metric.label, pillLeft + 12f, pillTop + 17f, pillWidth - 24f, bodyPaint)
+        drawEllipsizedText(canvas, metric.value, pillLeft + 12f, pillTop + 35f, pillWidth - 24f, Paint(bodyPaint).apply {
+            color = textArgb
+            typeface = titleTypeface
+        })
+    }
+}
+
+private fun drawSharePosterIcon(
+    context: Context,
+    canvas: android.graphics.Canvas,
+    packageName: String,
+    label: String,
+    left: Float,
+    top: Float,
+    size: Float,
+    fallbackColor: Int,
+) {
+    val rect = RectF(left, top, left + size, top + size)
+    val iconBitmap =
+        runCatching {
+            context.packageManager.getApplicationIcon(packageName).toBitmap(
+                width = size.roundToInt(),
+                height = size.roundToInt(),
+                config = Bitmap.Config.ARGB_8888,
+            )
+        }.getOrNull()
+    canvas.drawRoundRect(
+        rect,
+        size * 0.28f,
+        size * 0.28f,
+        Paint(Paint.ANTI_ALIAS_FLAG).apply { color = android.graphics.Color.WHITE },
+    )
+    if (iconBitmap != null) {
+        val path = android.graphics.Path().apply {
+            addRoundRect(rect, size * 0.28f, size * 0.28f, android.graphics.Path.Direction.CW)
+        }
+        canvas.save()
+        canvas.clipPath(path)
+        canvas.drawBitmap(iconBitmap, null, rect, Paint(Paint.ANTI_ALIAS_FLAG))
+        canvas.restore()
+    } else {
+        canvas.drawRoundRect(
+            rect,
+            size * 0.28f,
+            size * 0.28f,
+            Paint(Paint.ANTI_ALIAS_FLAG).apply { color = fallbackColor },
+        )
+        val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = android.graphics.Color.WHITE
+            textSize = size * 0.46f
+            textAlign = Paint.Align.CENTER
+            typeface = android.graphics.Typeface.create("sans-serif-black", android.graphics.Typeface.BOLD)
+        }
+        val baseline = top + size / 2f - (textPaint.descent() + textPaint.ascent()) / 2f
+        canvas.drawText(label.ifBlank { "T" }.take(1), left + size / 2f, baseline, textPaint)
+    }
+}
+
+private fun buildSharePosterInsight(data: ShareReportData): String {
+    val nightText = if (data.nightUsageMillis > 0L) "夜间 ${formatDuration(data.nightUsageMillis)}" else "夜间很轻"
+    val appText = data.topApps.firstOrNull()?.let { "Top 应用是 ${it.label}" } ?: "应用使用很分散"
+    return "${data.comparisonLabel}，主要集中在 ${data.dominantPeriod}，$nightText，$appText。"
 }
 
 private fun drawEllipsizedText(
