@@ -44,14 +44,15 @@ class GroupLimitEnforcer(context: Context) {
             // 统计周期内的历史用量
             val totalUsedMillis = getCachedGroupUsage(group.id, group.limitPeriod, now)
 
-            if (totalUsedMillis >= totalLimitMillis) {
+            val exceededMillis = totalUsedMillis - totalLimitMillis
+            if (isControlTimeout(exceededMillis)) {
                 return GroupExceededResult(
                     groupName = group.name,
                     groupId = group.id,
                     groupType = group.type,
                     limitMinutes = group.limitMinutes + (bonusMillis / 60_000).toInt(),
                     totalUsedMillis = totalUsedMillis,
-                    exceededMillis = totalUsedMillis - totalLimitMillis
+                    exceededMillis = exceededMillis,
                 )
             }
         }

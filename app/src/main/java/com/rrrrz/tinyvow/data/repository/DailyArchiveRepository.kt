@@ -13,6 +13,7 @@ import com.rrrrz.tinyvow.data.db.LimitPeriod
 import com.rrrrz.tinyvow.data.db.TopAppArchiveSummary
 import com.rrrrz.tinyvow.data.usage.UsageRepository
 import com.rrrrz.tinyvow.data.usage.UsageStatsUsageRepository
+import com.rrrrz.tinyvow.domain.limit.isControlTimeout
 import java.time.LocalDate
 import java.time.ZoneId
 import java.util.UUID
@@ -230,6 +231,18 @@ class DailyArchiveRepository(
                         nextDayStart,
                     )
                 }
+        val periodUsageBeforeDayByStart =
+            groups
+                .map { ArchiveDateUtils.periodStart(date, it.limitPeriod) }
+                .distinct()
+                .associateWith { periodStart ->
+                    val periodStartMillis = ArchiveDateUtils.startOfDayMillis(periodStart, zoneId)
+                    if (periodStartMillis >= dayStart) {
+                        emptyMap()
+                    } else {
+                        usageRepository.getUsageStats(periodStartMillis, dayStart)
+                    }
+                }
 
         val groupBuildResults =
             groups.mapIndexed { index, group ->
@@ -252,6 +265,10 @@ class DailyArchiveRepository(
                     dailyUsageByPackage = dailyUsageByPackage,
                     periodUsageByPackage =
                         periodUsageByStart[
+                            ArchiveDateUtils.periodStart(date, group.limitPeriod)
+                        ].orEmpty(),
+                    periodUsageBeforeDayByPackage =
+                        periodUsageBeforeDayByStart[
                             ArchiveDateUtils.periodStart(date, group.limitPeriod)
                         ].orEmpty(),
                     blockEventCount = blockEventDao.countByDateAndGroup(archiveDate, group.id),
@@ -308,7 +325,9 @@ class DailyArchiveRepository(
             }
         val appArchives = groupedAppArchives + ungroupedAppArchives
 
-        val pointsEarned = pointLedgerDao.sumEarnedByDate(archiveDate)
+        val pointsEarned =
+            groupSnapshots.sumOf { it.earnedPoints } +
+                pointLedgerDao.sumUngroupedEarnedByDate(archiveDate)
         val pointsSpent = pointLedgerDao.sumSpentByDate(archiveDate)
         val dailyArchive =
             DailyArchiveEntity(
@@ -325,7 +344,8 @@ class DailyArchiveRepository(
                         .sumOf { it.remainingMillisAtClose },
                 controlExceededGroupCount =
                     groupSnapshots.count {
-                        it.groupType == GroupType.CONTROL && it.exceededMillisAtClose > 0L
+                        it.groupType == GroupType.CONTROL &&
+                            isControlTimeout(it.exceededMillisAtClose)
                     },
                 controlBlockEventCount = blockEventDao.countByDate(archiveDate),
                 controlCompletedGroupCount =
@@ -364,20 +384,37 @@ class DailyArchiveRepository(
         sortOrder: Int,
         dailyUsageByPackage: Map<String, Long>,
         periodUsageByPackage: Map<String, Long>,
+        periodUsageBeforeDayByPackage: Map<String, Long>,
         blockEventCount: Int,
     ): GroupArchiveBuildResult {
         val dayStart = ArchiveDateUtils.startOfDayMillis(date, zoneId)
         val dailyUsageMillis = packageNames.sumOf { packageName -> dailyUsageByPackage[packageName] ?: 0L }
         val periodUsageMillisAtClose = packageNames.sumOf { packageName -> periodUsageByPackage[packageName] ?: 0L }
+        val periodUsageMillisBeforeDay = packageNames.sumOf { packageName -> periodUsageBeforeDayByPackage[packageName] ?: 0L }
         val bonusMinutes = bonusTimeDao.sumBonusMinutesAffectingDay(group.id, dayStart, dayEnd)
         val effectiveLimitMillisAtClose = (group.limitMinutes + bonusMinutes) * 60_000L
         val remainingMillisAtClose = max(effectiveLimitMillisAtClose - periodUsageMillisAtClose, 0L)
         val exceededMillisAtClose = max(periodUsageMillisAtClose - effectiveLimitMillisAtClose, 0L)
-        val earnedPoints = pointLedgerDao.sumEarnedByDateAndGroup(archiveDate, group.id)
         val completed =
             when (group.type) {
-                GroupType.CONTROL -> exceededMillisAtClose == 0L
+                GroupType.CONTROL -> !isControlTimeout(exceededMillisAtClose)
                 GroupType.ENCOURAGE -> periodUsageMillisAtClose >= effectiveLimitMillisAtClose
+            }
+        val targetMillis = group.limitMinutes * 60_000L
+        val targetReachedDuringDay =
+            group.type == GroupType.ENCOURAGE &&
+                periodUsageMillisBeforeDay < targetMillis &&
+                periodUsageMillisAtClose >= targetMillis
+        val earnedPoints =
+            when (group.type) {
+                GroupType.CONTROL -> pointLedgerDao.sumEarnedByDateAndGroup(archiveDate, group.id)
+                GroupType.ENCOURAGE ->
+                    calculateEncourageEarnedPoints(
+                        usageMillis = dailyUsageMillis,
+                        targetMinutes = group.limitMinutes,
+                        pointsPerMinute = group.pointsPerMinute,
+                        targetReachedDuringWindow = targetReachedDuringDay,
+                    )
             }
 
         return GroupArchiveBuildResult(

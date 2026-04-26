@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import java.util.UUID
 import java.util.Calendar
@@ -69,20 +70,27 @@ class AppLimitRepository(
         return withContext(Dispatchers.IO) {
             val latestReward = redemptionDao.getRedemptionById(reward.id) ?: return@withContext null
             if (!latestReward.isActive || latestReward.stock == 0) return@withContext null
+            if (latestReward.pointCost <= 0) return@withContext null
+            if (preferences.userPoints.first() < latestReward.pointCost) return@withContext null
 
             val redeemedAt = System.currentTimeMillis()
             val redemptionHistoryId = UUID.randomUUID().toString()
             val ledgerEntryId = UUID.randomUUID().toString()
             var createdBonusId: String? = null
-            val targetGroupName =
-                if (latestReward.rewardType == RewardType.TIME_PACK && targetGroupId != null) {
-                    groupDao.getGroupByIdSync(targetGroupId)?.name
+            val targetGroup =
+                if (latestReward.rewardType == RewardType.TIME_PACK) {
+                    if (latestReward.bonusMinutes <= 0) return@withContext null
+                    val groupId = targetGroupId ?: return@withContext null
+                    groupDao.getGroupByIdSync(groupId)
+                        ?.takeIf { it.type == GroupType.CONTROL }
+                        ?: return@withContext null
                 } else {
                     null
                 }
+            val targetGroupName = targetGroup?.name
             val redeemedGroupId =
                 if (latestReward.rewardType == RewardType.TIME_PACK) {
-                    targetGroupId ?: return@withContext null
+                    targetGroup!!.id
                 } else {
                     null
                 }

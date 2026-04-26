@@ -339,6 +339,7 @@ private data class ShareReportData(
     val encourageUsageMillis: Long,
     val nightUsageMillis: Long,
     val hourlyUsageMillis: List<Long>,
+    val trendUsageMillis: List<Long>,
     val targetMillisPerBucket: Long?,
     val comparisonLabel: String,
     val dominantPeriod: String,
@@ -1097,6 +1098,7 @@ private fun buildShareReportData(
     blockEventCount: Int = archives.sumOf { it.controlBlockEventCount },
     redemptionCount: Int = archives.sumOf { it.redemptionCount },
     nightUsageMillis: Long = timelineBuckets.filter { it.hour < 6 || it.hour >= 22 }.sumOf { it.deviceMillis },
+    trendUsageMillis: List<Long> = archives.map { it.totalUsageMillis },
     comparisonLabel: String = summary.secondaryValue,
     dominantPeriod: String = "--",
 ): ShareReportData {
@@ -1160,6 +1162,7 @@ private fun buildShareReportData(
         encourageUsageMillis = archives.sumOf { it.encourageUsageMillis },
         nightUsageMillis = nightUsageMillis,
         hourlyUsageMillis = timelineBuckets.map { it.deviceMillis },
+        trendUsageMillis = trendUsageMillis,
         targetMillisPerBucket = dailyGoalMillis.takeIf { it > 0L }?.let { it / 24L },
         comparisonLabel = comparisonLabel,
         dominantPeriod = dominantPeriod,
@@ -1392,6 +1395,7 @@ private suspend fun buildArchivedDayReportUiState(
             blockEventCount = selectedArchive.controlBlockEventCount,
             redemptionCount = selectedArchive.redemptionCount,
             nightUsageMillis = currentMetrics.nightUsageMillis,
+            trendUsageMillis = (earlierArchives.asReversed() + selectedArchive).takeLast(7).map { it.totalUsageMillis },
             comparisonLabel = summary.secondaryValue,
             dominantPeriod = periodUsage.maxByOrNull { it.deviceMillis }?.label ?: "全天",
         )
@@ -3970,7 +3974,7 @@ private fun ShareReportCard(
     fun generatePreview() {
         val readyData = data ?: return
         runCatching {
-            renderShareReportBitmap(
+            renderShareReportBitmapV2(
                 context = context,
                 data = readyData,
                 primary = primary,
@@ -5828,6 +5832,570 @@ private fun shareReportBitmap(
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
     context.startActivity(Intent.createChooser(intent, "分享战报"))
+}
+
+private fun renderShareReportBitmapV2(
+    context: Context,
+    data: ShareReportData,
+    primary: Color,
+    surface: Color,
+    onSurface: Color,
+    onSurfaceVariant: Color,
+    palette: List<Color>,
+): Bitmap {
+    val width = 1080
+    val height = 1920
+    val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+    val canvas = android.graphics.Canvas(bitmap)
+    val primaryArgb = primary.toArgb()
+    val textArgb = onSurface.toArgb()
+    val mutedArgb = onSurfaceVariant.toArgb()
+    val positiveArgb = android.graphics.Color.rgb(34, 174, 118)
+    val warningArgb = android.graphics.Color.rgb(242, 158, 44)
+    val displayTypeface = android.graphics.Typeface.create("sans-serif-black", android.graphics.Typeface.BOLD)
+    val titleTypeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.BOLD)
+    val bodyTypeface = android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.NORMAL)
+
+    drawSharePosterBackgroundV2(context, canvas, width, height, primary)
+    canvas.drawRoundRect(
+        RectF(50f, 58f, width - 50f, height - 58f),
+        58f,
+        58f,
+        Paint(Paint.ANTI_ALIAS_FLAG).apply { color = surface.copy(alpha = 0.94f).toArgb() },
+    )
+
+    val titlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = textArgb
+        textSize = 54f
+        typeface = titleTypeface
+    }
+    val subtitlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = mutedArgb
+        textSize = 30f
+        typeface = bodyTypeface
+    }
+    val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = mutedArgb
+        textSize = 27f
+        typeface = bodyTypeface
+    }
+    val bodyPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = textArgb
+        textSize = 30f
+        typeface = bodyTypeface
+    }
+
+    drawSharePosterIcon(context, canvas, context.packageName, "T", 104f, 106f, 82f, primaryArgb)
+    canvas.drawText(data.title, 208f, 142f, titlePaint)
+    canvas.drawText(data.subtitle, 208f, 190f, subtitlePaint)
+    drawShareStatusPill(canvas, RectF(width - 276f, 120f, width - 104f, 176f), positiveArgb, "节奏守护")
+
+    val heroRect = RectF(104f, 232f, width - 104f, 560f)
+    canvas.drawRoundRect(
+        heroRect,
+        42f,
+        42f,
+        Paint(Paint.ANTI_ALIAS_FLAG).apply { color = primary.copy(alpha = 0.08f).toArgb() },
+    )
+    drawShareTransparentAppIcon(context, canvas, heroRect.right - 420f, heroRect.top - 54f, 500f, 28)
+    canvas.drawCircle(154f, heroRect.top + 52f, 11f, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = positiveArgb })
+    canvas.drawText(
+        "今日状态",
+        178f,
+        heroRect.top + 64f,
+        Paint(bodyPaint).apply {
+            color = android.graphics.Color.rgb(36, 135, 96)
+            textSize = 30f
+            typeface = titleTypeface
+        },
+    )
+    canvas.drawText(data.statusTitle, 148f, heroRect.top + 132f, Paint(titlePaint).apply { textSize = 44f })
+    canvas.drawText(
+        data.primaryValue,
+        148f,
+        heroRect.top + 250f,
+        Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = android.graphics.Color.rgb(154, 166, 185)
+            textSize = 106f
+            typeface = displayTypeface
+        },
+    )
+    val goalDelta = data.goalMillis - data.totalUsageMillis
+    val goalText =
+        if (data.goalMillis > 0L) {
+            if (goalDelta >= 0L) "剩余 ${formatDuration(goalDelta)}" else "超出 ${formatDuration(-goalDelta)}"
+        } else {
+            data.comparisonLabel
+        }
+    val goalColor = if (data.goalMillis > 0L && goalDelta < 0L) warningArgb else positiveArgb
+    canvas.drawText(goalText, 148f, heroRect.top + 298f, Paint(bodyPaint).apply {
+        color = goalColor
+        textSize = 31f
+        typeface = titleTypeface
+    })
+
+    val progressLeft = 604f
+    val progressTop = heroRect.top + 208f
+    val progressWidth = 330f
+    val progressHeight = 28f
+    val goalBase = data.goalMillis.takeIf { it > 0L } ?: max(data.totalUsageMillis, 1L)
+    val progress = (data.totalUsageMillis.toFloat() / goalBase.toFloat()).coerceIn(0f, 1.18f)
+    canvas.drawRoundRect(
+        RectF(progressLeft, progressTop, progressLeft + progressWidth, progressTop + progressHeight),
+        18f,
+        18f,
+        Paint(Paint.ANTI_ALIAS_FLAG).apply { color = android.graphics.Color.argb(42, 126, 142, 158) },
+    )
+    val progressPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        shader =
+            android.graphics.LinearGradient(
+                progressLeft,
+                progressTop,
+                progressLeft + progressWidth,
+                progressTop,
+                intArrayOf(android.graphics.Color.argb(180, 174, 184, 198), warningArgb),
+                null,
+                android.graphics.Shader.TileMode.CLAMP,
+            )
+    }
+    canvas.drawRoundRect(
+        RectF(progressLeft, progressTop, progressLeft + progressWidth * progress.coerceIn(0f, 1f), progressTop + progressHeight),
+        18f,
+        18f,
+        progressPaint,
+    )
+    canvas.drawLine(
+        progressLeft + progressWidth,
+        progressTop - 10f,
+        progressLeft + progressWidth,
+        progressTop + progressHeight + 10f,
+        Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = warningArgb
+            strokeWidth = 4f
+        },
+    )
+    canvas.drawText(
+        if (data.goalMillis > 0L) "目标 ${formatDuration(data.goalMillis)}" else "使用进度",
+        progressLeft,
+        progressTop + 68f,
+        Paint(labelPaint).apply { typeface = titleTypeface },
+    )
+    canvas.drawText(
+        "${(progress * 100f).roundToInt()}%",
+        progressLeft + 236f,
+        progressTop + 68f,
+        Paint(bodyPaint).apply {
+            color = warningArgb
+            textSize = 34f
+            typeface = displayTypeface
+        },
+    )
+
+    drawShareFocusCards(
+        canvas = canvas,
+        data = data,
+        left = 104f,
+        top = 584f,
+        width = width - 208f,
+        primaryArgb = primaryArgb,
+        positiveArgb = positiveArgb,
+        warningArgb = warningArgb,
+        textArgb = textArgb,
+        mutedArgb = mutedArgb,
+        surfaceArgb = android.graphics.Color.argb(222, 255, 255, 255),
+    )
+
+    drawShareAppConsumption(context, canvas, data.topApps, 308f, 1054f, 164f, palette, textArgb, mutedArgb, primary)
+    drawShareWeeklyTrend(
+        canvas = canvas,
+        values = data.trendUsageMillis,
+        rect = RectF(104f, 1256f, width - 104f, 1546f),
+        textArgb = textArgb,
+        mutedArgb = mutedArgb,
+        positiveArgb = positiveArgb,
+        warningArgb = warningArgb,
+        comparisonLabel = data.comparisonLabel,
+    )
+
+    val insightRect = RectF(104f, 1572f, width - 104f, 1738f)
+    canvas.drawRoundRect(
+        insightRect,
+        32f,
+        32f,
+        Paint(Paint.ANTI_ALIAS_FLAG).apply { color = primary.copy(alpha = 0.08f).toArgb() },
+    )
+    canvas.drawText(
+        "↩  复盘一句话",
+        136f,
+        insightRect.top + 54f,
+        Paint(titlePaint).apply {
+            textSize = 32f
+            color = textArgb
+        },
+    )
+    drawMultilineText(
+        canvas,
+        buildSharePosterInsight(data),
+        136f,
+        insightRect.top + 106f,
+        insightRect.width() - 64f,
+        Paint(bodyPaint).apply { textSize = 28f },
+        38f,
+        2,
+    )
+    canvas.drawText(
+        "Tiny Vow · 把注意力还给生活",
+        104f,
+        height - 92f,
+        Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = mutedArgb
+            textSize = 30f
+            typeface = titleTypeface
+        },
+    )
+    return bitmap
+}
+
+private fun drawSharePosterBackgroundV2(
+    context: Context,
+    canvas: android.graphics.Canvas,
+    width: Int,
+    height: Int,
+    primary: Color,
+) {
+    val backgroundPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        shader =
+            android.graphics.LinearGradient(
+                0f,
+                0f,
+                width.toFloat(),
+                height.toFloat(),
+                intArrayOf(
+                    android.graphics.Color.rgb(249, 253, 255),
+                    android.graphics.Color.rgb(232, 249, 248),
+                    android.graphics.Color.rgb(211, 236, 247),
+                ),
+                null,
+                android.graphics.Shader.TileMode.CLAMP,
+            )
+    }
+    canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), backgroundPaint)
+    canvas.drawOval(
+        RectF(660f, -80f, 1240f, 430f),
+        Paint(Paint.ANTI_ALIAS_FLAG).apply { color = android.graphics.Color.argb(70, 90, 204, 190) },
+    )
+    canvas.drawOval(
+        RectF(-180f, 1320f, 440f, 2020f),
+        Paint(Paint.ANTI_ALIAS_FLAG).apply { color = primary.copy(alpha = 0.12f).toArgb() },
+    )
+    canvas.drawOval(
+        RectF(500f, 1540f, 1120f, 2180f),
+        Paint(Paint.ANTI_ALIAS_FLAG).apply { color = android.graphics.Color.argb(42, 92, 168, 210) },
+    )
+    drawShareTransparentAppIcon(context, canvas, 612f, 255f, 560f, 18)
+    drawShareTransparentAppIcon(context, canvas, 612f, 1180f, 520f, 14)
+}
+
+private fun drawShareTransparentAppIcon(
+    context: Context,
+    canvas: android.graphics.Canvas,
+    left: Float,
+    top: Float,
+    size: Float,
+    alpha: Int,
+) {
+    val rect = RectF(left, top, left + size, top + size)
+    val iconBitmap =
+        runCatching {
+            context.packageManager.getApplicationIcon(context.packageName).toBitmap(
+                width = size.roundToInt(),
+                height = size.roundToInt(),
+                config = Bitmap.Config.ARGB_8888,
+            )
+        }.getOrNull()
+    if (iconBitmap != null) {
+        canvas.drawBitmap(
+            iconBitmap,
+            null,
+            rect,
+            Paint(Paint.ANTI_ALIAS_FLAG).apply { this.alpha = alpha },
+        )
+    } else {
+        canvas.drawCircle(
+            rect.centerX(),
+            rect.centerY(),
+            size / 2f,
+            Paint(Paint.ANTI_ALIAS_FLAG).apply { color = android.graphics.Color.argb(alpha, 34, 174, 118) },
+        )
+    }
+}
+
+private fun drawShareStatusPill(
+    canvas: android.graphics.Canvas,
+    rect: RectF,
+    accent: Int,
+    text: String,
+) {
+    canvas.drawRoundRect(
+        rect,
+        28f,
+        28f,
+        Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = android.graphics.Color.argb(24, android.graphics.Color.red(accent), android.graphics.Color.green(accent), android.graphics.Color.blue(accent))
+        },
+    )
+    val checkPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = accent
+        strokeWidth = 5f
+        strokeCap = Paint.Cap.ROUND
+        strokeJoin = Paint.Join.ROUND
+    }
+    val checkPath = android.graphics.Path().apply {
+        moveTo(rect.left + 30f, rect.centerY() + 2f)
+        lineTo(rect.left + 42f, rect.centerY() + 14f)
+        lineTo(rect.left + 62f, rect.centerY() - 10f)
+    }
+    canvas.drawPath(checkPath, checkPaint)
+    canvas.drawText(
+        text,
+        rect.left + 76f,
+        rect.centerY() + 12f,
+        Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = accent
+            textSize = 28f
+            typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.BOLD)
+        },
+    )
+}
+
+private fun drawShareAppConsumption(
+    context: Context,
+    canvas: android.graphics.Canvas,
+    apps: List<AppDisplayItem>,
+    centerX: Float,
+    centerY: Float,
+    radius: Float,
+    palette: List<Color>,
+    textArgb: Int,
+    mutedArgb: Int,
+    primary: Color,
+) {
+    val displayApps = apps.take(5)
+    val total = displayApps.sumOf { it.value }.coerceAtLeast(1L)
+    val colors =
+        displayApps.mapIndexed { index, app ->
+            extractAppChartColor(context, app.packageName, palette.getOrNull(index) ?: primary)
+        }
+    val chartRect = RectF(centerX - radius, centerY - radius, centerX + radius, centerY + radius)
+    val stroke = 46f
+    canvas.drawArc(
+        chartRect,
+        -92f,
+        360f,
+        false,
+        Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = primary.copy(alpha = 0.08f).toArgb()
+            style = Paint.Style.STROKE
+            strokeWidth = stroke
+            strokeCap = Paint.Cap.BUTT
+        },
+    )
+    var start = -92f
+    displayApps.forEachIndexed { index, app ->
+        val sweep = app.value.toFloat() / total.toFloat() * 360f
+        canvas.drawArc(
+            chartRect,
+            start,
+            (sweep - 9f).coerceAtLeast(5f),
+            false,
+            Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = colors[index].toArgb()
+                style = Paint.Style.STROKE
+                strokeWidth = stroke
+                strokeCap = Paint.Cap.BUTT
+            },
+        )
+        start += sweep
+    }
+    val centerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = textArgb
+        textSize = 42f
+        textAlign = Paint.Align.CENTER
+        typeface = android.graphics.Typeface.create("sans-serif-black", android.graphics.Typeface.BOLD)
+    }
+    val centerLabelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = mutedArgb
+        textSize = 28f
+        textAlign = Paint.Align.CENTER
+        typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.BOLD)
+    }
+    canvas.drawText(if (displayApps.isEmpty()) "--" else formatDuration(total), centerX, centerY - 4f, centerPaint)
+    canvas.drawText("Top ${displayApps.size.coerceAtLeast(1)}", centerX, centerY + 48f, centerLabelPaint)
+
+    val titlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = textArgb
+        textSize = 36f
+        typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.BOLD)
+    }
+    canvas.drawText("应用消耗", 552f, centerY - 164f, titlePaint)
+    canvas.drawText(
+        "占比",
+        930f,
+        centerY - 164f,
+        Paint(titlePaint).apply {
+            color = mutedArgb
+            textSize = 29f
+        },
+    )
+    if (displayApps.isEmpty()) {
+        canvas.drawText("暂无应用明细", 552f, centerY, Paint(titlePaint).apply { textSize = 30f })
+        return
+    }
+    val namePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = textArgb
+        textSize = 28f
+        typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.BOLD)
+    }
+    val valuePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = mutedArgb
+        textSize = 26f
+        textAlign = Paint.Align.RIGHT
+        typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.BOLD)
+    }
+    val maxValue = displayApps.maxOf { it.value }.coerceAtLeast(1L)
+    displayApps.forEachIndexed { index, app ->
+        val y = centerY - 126f + index * 66f
+        val color = colors[index]
+        canvas.drawCircle(558f, y + 23f, 7f, Paint(Paint.ANTI_ALIAS_FLAG).apply { this.color = color.toArgb() })
+        drawSharePosterIcon(context, canvas, app.packageName, app.label.take(1), 580f, y, 42f, color.toArgb())
+        drawEllipsizedText(canvas, app.label, 640f, y + 26f, 220f, namePaint)
+        val percent = (app.value.toFloat() / total.toFloat() * 100f).roundToInt()
+        canvas.drawText("${formatDuration(app.value)} · $percent%", 976f, y + 27f, valuePaint)
+        canvas.drawRoundRect(
+            RectF(640f, y + 38f, 836f, y + 49f),
+            7f,
+            7f,
+            Paint(Paint.ANTI_ALIAS_FLAG).apply { this.color = android.graphics.Color.argb(26, 126, 142, 158) },
+        )
+        canvas.drawRoundRect(
+            RectF(640f, y + 38f, 640f + 196f * (app.value.toFloat() / maxValue.toFloat()).coerceIn(0.06f, 1f), y + 49f),
+            7f,
+            7f,
+            Paint(Paint.ANTI_ALIAS_FLAG).apply { this.color = color.toArgb() },
+        )
+    }
+}
+
+private fun drawShareWeeklyTrend(
+    canvas: android.graphics.Canvas,
+    values: List<Long>,
+    rect: RectF,
+    textArgb: Int,
+    mutedArgb: Int,
+    positiveArgb: Int,
+    warningArgb: Int,
+    comparisonLabel: String,
+) {
+    canvas.drawRoundRect(
+        rect,
+        32f,
+        32f,
+        Paint(Paint.ANTI_ALIAS_FLAG).apply { color = android.graphics.Color.argb(188, 255, 255, 255) },
+    )
+    canvas.drawRoundRect(
+        rect,
+        32f,
+        32f,
+        Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = android.graphics.Color.argb(26, 126, 142, 158)
+            style = Paint.Style.STROKE
+            strokeWidth = 1.5f
+        },
+    )
+    val titlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = textArgb
+        textSize = 34f
+        typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.BOLD)
+    }
+    canvas.drawText("一周屏幕节奏", rect.left + 34f, rect.top + 60f, titlePaint)
+    canvas.drawText(
+        comparisonLabel,
+        rect.right - 34f,
+        rect.top + 60f,
+        Paint(titlePaint).apply {
+            color = if (comparisonLabel.contains("+") || comparisonLabel.contains("增")) warningArgb else positiveArgb
+            textSize = 26f
+            textAlign = Paint.Align.RIGHT
+        },
+    )
+    val trend = values.takeLast(7).let { if (it.size < 7) List(7 - it.size) { 0L } + it else it }
+    val maxValue = trend.maxOrNull()?.coerceAtLeast(1L) ?: 1L
+    val chartLeft = rect.left + 34f
+    val chartRight = rect.right - 34f
+    val chartTop = rect.top + 102f
+    val chartBottom = rect.bottom - 62f
+    val points =
+        trend.mapIndexed { index, value ->
+            val x = chartLeft + (chartRight - chartLeft) * index / 6f
+            val y = chartBottom - (chartBottom - chartTop) * (value.toFloat() / maxValue.toFloat()).coerceIn(0f, 1f)
+            x to y
+        }
+    val linePath = android.graphics.Path()
+    points.forEachIndexed { index, point ->
+        if (index == 0) {
+            linePath.moveTo(point.first, point.second)
+        } else {
+            val previous = points[index - 1]
+            val midX = (previous.first + point.first) / 2f
+            linePath.cubicTo(midX, previous.second, midX, point.second, point.first, point.second)
+        }
+    }
+    val fillPath = android.graphics.Path(linePath).apply {
+        lineTo(chartRight, chartBottom)
+        lineTo(chartLeft, chartBottom)
+        close()
+    }
+    canvas.drawPath(
+        fillPath,
+        Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            shader =
+                android.graphics.LinearGradient(
+                    0f,
+                    chartTop,
+                    0f,
+                    chartBottom,
+                    intArrayOf(android.graphics.Color.argb(58, 34, 174, 118), android.graphics.Color.argb(0, 34, 174, 118)),
+                    null,
+                    android.graphics.Shader.TileMode.CLAMP,
+                )
+        },
+    )
+    canvas.drawPath(
+        linePath,
+        Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = positiveArgb
+            strokeWidth = 7f
+            style = Paint.Style.STROKE
+            strokeCap = Paint.Cap.ROUND
+            strokeJoin = Paint.Join.ROUND
+        },
+    )
+    points.drop(1).forEachIndexed { index, point ->
+        if (index % 2 == 0 || index == points.size - 2) {
+            canvas.drawCircle(point.first, point.second, 13f, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = android.graphics.Color.WHITE })
+            canvas.drawCircle(point.first, point.second, 8f, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = positiveArgb })
+        }
+    }
+    val dayPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = mutedArgb
+        textSize = 25f
+        textAlign = Paint.Align.CENTER
+        typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.BOLD)
+    }
+    listOf("一", "二", "三", "四", "五", "六", "日").forEachIndexed { index, label ->
+        val x = chartLeft + (chartRight - chartLeft) * index / 6f
+        canvas.drawText(label, x, rect.bottom - 28f, dayPaint)
+    }
 }
 
 private fun renderShareReportBitmap(

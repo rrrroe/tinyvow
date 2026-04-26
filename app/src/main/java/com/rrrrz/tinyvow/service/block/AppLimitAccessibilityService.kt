@@ -13,6 +13,8 @@ import com.rrrrz.tinyvow.data.db.BlockEventEntity
 import com.rrrrz.tinyvow.data.db.GroupType
 import com.rrrrz.tinyvow.data.repository.ArchiveDateUtils
 import com.rrrrz.tinyvow.data.repository.PointsRepository
+import com.rrrrz.tinyvow.data.repository.calculateTargetBonusPoints
+import com.rrrrz.tinyvow.data.repository.calculateUsageEarnedPoints
 import com.rrrrz.tinyvow.data.usage.UsageAccessStateChecker
 import com.rrrrz.tinyvow.data.usage.UsageAccessStatus
 import com.rrrrz.tinyvow.data.usage.UsageStatsUsageRepository
@@ -129,8 +131,8 @@ class AppLimitAccessibilityService : AccessibilityService() {
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         val packageName = event?.packageName?.toString() ?: return
 
-        // 忽略自身
-        if (packageName == this.packageName) return
+        // Tiny Vow 自身不赚积分，但需要触发上一个应用结算
+        val isOwnPackage = packageName == this.packageName
 
         // 只关注窗口切换事件
         if (
@@ -141,7 +143,16 @@ class AppLimitAccessibilityService : AccessibilityService() {
         val now = SystemClock.elapsedRealtime()
 
         // 1. 积分累加逻辑：当包切换时，结算上个包的积分
-        handlePointsAccumulation(packageName, now)
+        handlePointsAccumulation(
+            packageName = packageName.takeUnless { isOwnPackage },
+            now = now,
+        )
+
+        // 只跳过 Tiny Vow 的限额检查；上一个应用已在上面结算
+        if (isOwnPackage) {
+            removeBlockOverlay()
+            return
+        }
 
         // 2. 限额评估逻辑
         // 高频事件防抖
@@ -156,13 +167,15 @@ class AppLimitAccessibilityService : AccessibilityService() {
     }
 
     @Synchronized
-    private fun handlePointsAccumulation(packageName: String, now: Long) {
+    private fun handlePointsAccumulation(packageName: String?, now: Long) {
         val oldPackage = lastPackageForPoints
         
         if (oldPackage == null) {
             // 第一次记录
-            lastPackageForPoints = packageName
-            lastUpdateElapsedRealtime = now
+            if (packageName != null) {
+                lastPackageForPoints = packageName
+                lastUpdateElapsedRealtime = now
+            }
             return
         }
 
@@ -174,12 +187,12 @@ class AppLimitAccessibilityService : AccessibilityService() {
             }
             // 重置状态
             lastPackageForPoints = packageName
-            lastUpdateElapsedRealtime = now
+            lastUpdateElapsedRealtime = if (packageName != null) now else 0L
         } else {
             // 同一个包：每隔 1 分钟结算一次
             val durationMs = now - lastUpdateElapsedRealtime
             if (durationMs >= POINTS_TICK_INTERVAL_MS) {
-                creditPoints(packageName, durationMs)
+                creditPoints(oldPackage, durationMs)
                 lastUpdateElapsedRealtime = now
             }
         }
@@ -195,7 +208,7 @@ class AppLimitAccessibilityService : AccessibilityService() {
                 val group = database.appGroupDao().getGroupByIdSync(gid) ?: continue
                 if (group.type == GroupType.ENCOURAGE && group.pointsPerMinute > 0) {
                     // 基础每分钟积分
-                    val pointsEarned = (durationMs / 60000.0) * group.pointsPerMinute
+                    val pointsEarned = calculateUsageEarnedPoints(durationMs, group.pointsPerMinute)
                     pointsRepository.recordUsageEarn(group, pointsEarned)
                     
                     // 检查是否达成今日目标大奖
@@ -223,7 +236,7 @@ class AppLimitAccessibilityService : AccessibilityService() {
         val targetMs = group.limitMinutes * 60_000L
         if (totalTodayUsageMs >= targetMs) {
             // 达成目标！发放奖励：目标分钟 * 鼓励金比例
-            val bonusPoints = group.limitMinutes * group.pointsPerMinute
+            val bonusPoints = calculateTargetBonusPoints(group.limitMinutes, group.pointsPerMinute)
             pointsRepository.recordTargetBonusEarn(group, bonusPoints)
             
             // 更新数据库标记

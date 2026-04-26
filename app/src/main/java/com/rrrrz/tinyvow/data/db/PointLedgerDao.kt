@@ -24,6 +24,15 @@ interface PointLedgerDao {
 
     @Query(
         """
+        SELECT COALESCE(SUM(delta_points), 0)
+        FROM point_ledger
+        WHERE ledger_date = :date AND delta_points > 0 AND group_id IS NULL
+        """
+    )
+    suspend fun sumUngroupedEarnedByDate(date: String): Double
+
+    @Query(
+        """
         SELECT COALESCE(ABS(SUM(delta_points)), 0)
         FROM point_ledger
         WHERE ledger_date = :date AND delta_points < 0
