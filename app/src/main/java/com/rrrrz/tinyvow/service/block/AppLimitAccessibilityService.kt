@@ -46,7 +46,15 @@ class AppLimitAccessibilityService : AccessibilityService() {
     private var lastBlockedPackage: String? = null
     private var lastBlockElapsedRealtime: Long = 0L
     private val fastBlockCache = java.util.concurrent.ConcurrentHashMap<String, Pair<com.rrrrz.tinyvow.domain.limit.GroupExceededResult, Long>>()
-    private var encourageAppsCache: List<String> = emptyList()
+    
+    data class EncourageGroupCache(
+        val groupName: String,
+        val limitMinutes: Int,
+        val pointsPerMinute: Double,
+        val usageMs: Long,
+        val packages: List<String>
+    )
+    private var encourageAppsCache: List<EncourageGroupCache> = emptyList()
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -124,12 +132,25 @@ class AppLimitAccessibilityService : AccessibilityService() {
         recordBlockEvent(packageName, result)
         
         try {
-            val encouragePackages = mutableListOf<String>()
+            val encourageGroupsInfo = mutableListOf<EncourageGroupCache>()
             val encourageGroups = database.appGroupDao().getAllGroupsSync().filter { it.type == GroupType.ENCOURAGE }
             for (g in encourageGroups) {
-                encouragePackages.addAll(database.crossRefDao().getPackageNamesForGroupSync(g.id))
+                val pkgs = database.crossRefDao().getPackageNamesForGroupSync(g.id)
+                if (pkgs.isEmpty()) continue
+                
+                var usage = 0L
+                for (p in pkgs) {
+                    usage += usageRepository.getTodayUsageMillis(p)
+                }
+                encourageGroupsInfo.add(EncourageGroupCache(
+                    groupName = g.name,
+                    limitMinutes = g.limitMinutes,
+                    pointsPerMinute = g.pointsPerMinute,
+                    usageMs = usage,
+                    packages = pkgs
+                ))
             }
-            encourageAppsCache = encouragePackages.distinct()
+            encourageAppsCache = encourageGroupsInfo
         } catch (e: Exception) {
             Log.e(TAG, "Failed to list ENCOURAGE apps", e)
         }
@@ -301,7 +322,7 @@ class AppLimitAccessibilityService : AccessibilityService() {
     private var blockView: android.view.View? = null
 
     @SuppressLint("SetTextI18n")
-    private fun showBlockOverlay(packageName: String, groupName: String, exceededMillis: Long, encouragePackages: List<String>) {
+    private fun showBlockOverlay(packageName: String, groupName: String, exceededMillis: Long, encourageGroups: List<EncourageGroupCache>) {
         if (blockView != null) return
 
         val windowManager = getSystemService(WINDOW_SERVICE) as android.view.WindowManager
@@ -378,85 +399,22 @@ class AppLimitAccessibilityService : AccessibilityService() {
         layout.addView(body)
         layout.addView(btnGoHome)
 
-        if (encouragePackages.isNotEmpty()) {
-            val encourageContainer = android.widget.HorizontalScrollView(this).apply {
+        if (encourageGroups.isNotEmpty()) {
+            val groupsContainer = android.widget.LinearLayout(this).apply {
+                orientation = android.widget.LinearLayout.VERTICAL
                 layoutParams = android.widget.LinearLayout.LayoutParams(
                     android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
                     android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
                 ).apply {
                     topMargin = 60
                 }
-                isHorizontalScrollBarEnabled = false
-                isFillViewport = true
             }
             
-            val encourageList = android.widget.LinearLayout(this).apply {
-                orientation = android.widget.LinearLayout.HORIZONTAL
-                gravity = android.view.Gravity.CENTER
-                layoutParams = android.widget.FrameLayout.LayoutParams(
-                    android.widget.FrameLayout.LayoutParams.WRAP_CONTENT,
-                    android.widget.FrameLayout.LayoutParams.MATCH_PARENT
-                ).apply {
-                    gravity = android.view.Gravity.CENTER_HORIZONTAL
-                }
+            for (group in encourageGroups) {
+                val card = createGroupCardView(group)
+                groupsContainer.addView(card)
             }
-
-            val pm = packageManager
-            for (pkg in encouragePackages) {
-                try {
-                    val icon = pm.getApplicationIcon(pkg)
-                    val label = pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0))
-                    
-                    val appItem = android.widget.LinearLayout(this@AppLimitAccessibilityService).apply {
-                        orientation = android.widget.LinearLayout.VERTICAL
-                        gravity = android.view.Gravity.CENTER
-                        layoutParams = android.widget.LinearLayout.LayoutParams(
-                            180, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
-                        ).apply {
-                            marginEnd = 16
-                            marginStart = 16
-                        }
-                        
-                        val iv = android.widget.ImageView(this@AppLimitAccessibilityService).apply {
-                            setImageDrawable(icon)
-                            layoutParams = android.widget.LinearLayout.LayoutParams(110, 110).apply {
-                                bottomMargin = 16
-                            }
-                        }
-                        
-                        val tv = android.widget.TextView(this@AppLimitAccessibilityService).apply {
-                            text = label
-                            textSize = 12f
-                            setTextColor("#5F6266".toColorInt())
-                            gravity = android.view.Gravity.CENTER
-                            maxLines = 1
-                            ellipsize = android.text.TextUtils.TruncateAt.END
-                        }
-                        
-                        addView(iv)
-                        addView(tv)
-                        
-                        setOnClickListener {
-                            removeBlockOverlay()
-                            val intent = pm.getLaunchIntentForPackage(pkg)?.apply {
-                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                            }
-                            if (intent != null) {
-                                try {
-                                    startActivity(intent)
-                                } catch (e: Exception) {
-                                    Log.e(TAG, "Failed to launch encourage app: $pkg", e)
-                                }
-                            }
-                        }
-                    }
-                    encourageList.addView(appItem)
-                } catch (e: Exception) {
-                    // App might be uninstalled, ignore safely
-                }
-            }
-            encourageContainer.addView(encourageList)
-            layout.addView(encourageContainer)
+            layout.addView(groupsContainer)
         }
 
         try {
@@ -466,6 +424,169 @@ class AppLimitAccessibilityService : AccessibilityService() {
         } catch (e: Exception) {
             Log.e(TAG, "Failed to add overlay", e)
         }
+    }
+
+    @SuppressLint("SetTextI18n")
+    private fun createGroupCardView(group: EncourageGroupCache): android.view.View {
+        val card = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            background = android.graphics.drawable.GradientDrawable().apply {
+                setColor(android.graphics.Color.WHITE)
+                cornerRadius = 32f
+            }
+            layoutParams = android.widget.LinearLayout.LayoutParams(
+                android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                bottomMargin = 40
+            }
+            setPadding(40, 40, 40, 40)
+            elevation = 12f
+        }
+
+        // --- Header (Name + Rate) ---
+        val header = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.HORIZONTAL
+            layoutParams = android.widget.LinearLayout.LayoutParams(
+                android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                bottomMargin = 10
+            }
+            
+            val titleText = android.widget.TextView(this@AppLimitAccessibilityService).apply {
+                text = group.groupName
+                textSize = 16f
+                setTypeface(null, android.graphics.Typeface.BOLD)
+                setTextColor("#2F3133".toColorInt())
+                layoutParams = android.widget.LinearLayout.LayoutParams(
+                    0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f
+                )
+            }
+            
+            val formattedRate = if (group.pointsPerMinute % 1.0 == 0.0) group.pointsPerMinute.toInt().toString() else group.pointsPerMinute.toString()
+            val rateText = android.widget.TextView(this@AppLimitAccessibilityService).apply {
+                text = "+$formattedRate 分/分钟"
+                textSize = 12f
+                setTextColor("#8FB9C5".toColorInt()) // CloudPrimary
+                setTypeface(null, android.graphics.Typeface.BOLD)
+                gravity = android.view.Gravity.CENTER_VERTICAL or android.view.Gravity.END
+                layoutParams = android.widget.LinearLayout.LayoutParams(
+                    android.widget.LinearLayout.LayoutParams.WRAP_CONTENT,
+                    android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+                )
+            }
+            
+            addView(titleText)
+            addView(rateText)
+        }
+
+        // --- Progress Info ---
+        val usedMins = group.usageMs / 60_000
+        val targetMins = group.limitMinutes
+        val progressText = android.widget.TextView(this).apply {
+            text = "已进行 $usedMins 分钟 / 目标 $targetMins 分钟"
+            textSize = 12f
+            setTextColor("#5F6266".toColorInt()) // TextSecondary
+            layoutParams = android.widget.LinearLayout.LayoutParams(
+                android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply {
+                bottomMargin = 20
+            }
+        }
+        
+        val progressBar = android.widget.ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
+            max = if (targetMins > 0) targetMins else 100
+            progress = usedMins.toInt()
+            layoutParams = android.widget.LinearLayout.LayoutParams(
+                android.widget.LinearLayout.LayoutParams.MATCH_PARENT, 12
+            ).apply {
+                bottomMargin = 30
+            }
+            progressTintList = android.content.res.ColorStateList.valueOf("#8FB9C5".toColorInt())
+            progressBackgroundTintList = android.content.res.ColorStateList.valueOf("#EEF3F5".toColorInt())
+        }
+
+        // --- App Row ---
+        val scroller = android.widget.HorizontalScrollView(this).apply {
+            layoutParams = android.widget.LinearLayout.LayoutParams(
+                android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+                android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+            )
+            isHorizontalScrollBarEnabled = false
+        }
+        
+        val appsLayout = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.HORIZONTAL
+            layoutParams = android.widget.FrameLayout.LayoutParams(
+                android.widget.FrameLayout.LayoutParams.WRAP_CONTENT,
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT
+            )
+        }
+
+        val pm = packageManager
+        for (pkg in group.packages) {
+            try {
+                val icon = pm.getApplicationIcon(pkg)
+                val label = pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0))
+                
+                val appItem = android.widget.LinearLayout(this).apply {
+                    orientation = android.widget.LinearLayout.VERTICAL
+                    gravity = android.view.Gravity.CENTER
+                    layoutParams = android.widget.LinearLayout.LayoutParams(
+                        140, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+                    ).apply {
+                        marginEnd = 30
+                    }
+                    
+                    val iv = android.widget.ImageView(this@AppLimitAccessibilityService).apply {
+                        setImageDrawable(icon)
+                        layoutParams = android.widget.LinearLayout.LayoutParams(90, 90).apply {
+                            bottomMargin = 10
+                        }
+                    }
+                    
+                    val tv = android.widget.TextView(this@AppLimitAccessibilityService).apply {
+                        text = label
+                        textSize = 10f
+                        setTextColor("#5F6266".toColorInt())
+                        gravity = android.view.Gravity.CENTER
+                        maxLines = 1
+                        ellipsize = android.text.TextUtils.TruncateAt.END
+                    }
+                    
+                    addView(iv)
+                    addView(tv)
+                    
+                    setOnClickListener {
+                        removeBlockOverlay()
+                        val intent = pm.getLaunchIntentForPackage(pkg)?.apply {
+                            addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
+                        }
+                        if (intent != null) {
+                            try {
+                                startActivity(intent)
+                            } catch (e: Exception) {
+                                Log.e(TAG, "Failed to launch encourage app: $pkg", e)
+                            }
+                        }
+                    }
+                }
+                appsLayout.addView(appItem)
+            } catch (e: Exception) {
+                // Ignore missing apps
+            }
+        }
+        
+        scroller.addView(appsLayout)
+        
+        card.addView(header)
+        card.addView(progressText)
+        card.addView(progressBar)
+        card.addView(scroller)
+
+        return card
     }
 
     private fun removeBlockOverlay() {
