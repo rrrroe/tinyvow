@@ -108,8 +108,10 @@ import com.rrrrz.tinyvow.data.db.RedemptionEntity
 import com.rrrrz.tinyvow.data.db.RedemptionHistoryEntity
 import com.rrrrz.tinyvow.ui.rewards.RedeemScreen
 import com.rrrrz.tinyvow.ui.rewards.AchievementScreen
+import com.rrrrz.tinyvow.ui.theme.DefaultThemeSeed
+import com.rrrrz.tinyvow.ui.theme.LocalThemeColors
 
-enum class Screen { HOME, REWARDS, STATS, ME, LABORATORY, HISTORY }
+enum class Screen { HOME, REWARDS, STATS, ME, LABORATORY, HISTORY, THEME }
 
 private object PermissionPromptIds {
     const val USAGE_ACCESS = "usage_access"
@@ -202,9 +204,8 @@ fun HomeRoute(
     val groupsWithApps by appLimitRepository.getAllGroupsWithApps().collectAsState(initial = emptyList())
     val userPoints by preferences.userPoints.collectAsState(initial = 0.0)
     val todayPoints by preferences.todayPoints.collectAsState(initial = 0.0)
-    val selectedTheme by preferences.selectedTheme.collectAsState(initial = 0)
-    val customSeedColor by preferences.customSeedColor.collectAsState(initial = null)
-    val customSeedColorEnabled by preferences.customSeedColorEnabled.collectAsState(initial = false)
+    val selectedThemeId by preferences.selectedThemeId.collectAsState(initial = DefaultThemeSeed.id)
+    val customThemes by preferences.customThemes.collectAsState(initial = emptyList())
     val rewards by appLimitRepository.getAllRewards().collectAsState(initial = emptyList())
     val achievements by appLimitRepository.getAllAchievements().collectAsState(initial = emptyList())
     val redemptionHistory by appLimitRepository.getRedemptionHistory().collectAsState(initial = emptyList())
@@ -317,7 +318,12 @@ fun HomeRoute(
     }
 
     if (currentScreen != Screen.HOME) {
-        BackHandler { currentScreen = Screen.HOME }
+        BackHandler {
+            currentScreen = when (currentScreen) {
+                Screen.LABORATORY, Screen.HISTORY, Screen.THEME -> Screen.ME
+                else -> Screen.HOME
+            }
+        }
     }
 
     Scaffold(
@@ -452,25 +458,27 @@ fun HomeRoute(
                 Screen.ME -> {
                     MeScreen(
                         userPoints = userPoints,
-                        currentTheme = selectedTheme,
-                        customSeedColorEnabled = customSeedColorEnabled,
-                        customSeedColor = customSeedColor,
+                        selectedThemeId = selectedThemeId,
+                        customThemes = customThemes,
                         usageAccessGranted = usageAccessStatus == UsageAccessStatus.GRANTED,
                         accessibilityServiceEnabled = accessibilityServiceEnabled,
                         isAutoStartDismissed = isAutoStartDismissed,
                         isIgnoringBattery = isIgnoringBattery,
                         notificationPermissionGranted = notificationPermissionGranted,
                         dismissedPermissionPrompts = dismissedPermissionPrompts,
-                        onSetTheme = { i ->
+                        onSelectTheme = { themeId ->
                             coroutineScope.launch {
-                                preferences.setCustomSeedColorEnabled(false)
-                                preferences.setSelectedTheme(i)
+                                preferences.setSelectedThemeId(themeId)
                             }
                         },
-                        onSetCustomTheme = { enabled, color ->
+                        onSaveCustomTheme = { theme ->
                             coroutineScope.launch {
-                                preferences.setCustomSeedColorEnabled(enabled)
-                                color?.let { preferences.setCustomSeedColor(it) }
+                                preferences.upsertCustomTheme(theme)
+                            }
+                        },
+                        onDeleteCustomTheme = { themeId ->
+                            coroutineScope.launch {
+                                preferences.deleteCustomTheme(themeId)
                             }
                         },
                         onOpenUsageAccessSettings = {
@@ -532,7 +540,30 @@ fun HomeRoute(
                         onNavigateToLaboratory = { currentScreen = Screen.LABORATORY },
                         onNavigateToHistory = { currentScreen = Screen.HISTORY },
                         onNavigateToAchievements = { currentScreen = Screen.REWARDS },
-                        onNavigateToRedeem = { currentScreen = Screen.REWARDS }
+                        onNavigateToRedeem = { currentScreen = Screen.REWARDS },
+                        onNavigateToThemeSettings = { currentScreen = Screen.THEME },
+                    )
+                }
+                Screen.THEME -> {
+                    ThemeSettingsScreen(
+                        selectedThemeId = selectedThemeId,
+                        customThemes = customThemes,
+                        onSelectTheme = { themeId ->
+                            coroutineScope.launch {
+                                preferences.setSelectedThemeId(themeId)
+                            }
+                        },
+                        onSaveCustomTheme = { theme ->
+                            coroutineScope.launch {
+                                preferences.upsertCustomTheme(theme)
+                            }
+                        },
+                        onDeleteCustomTheme = { themeId ->
+                            coroutineScope.launch {
+                                preferences.deleteCustomTheme(themeId)
+                            }
+                        },
+                        onBack = { currentScreen = Screen.ME },
                     )
                 }
                 Screen.HISTORY -> {
@@ -623,21 +654,22 @@ fun HomeRoute(
 
 @Composable
 fun AchievementNotificationBanner(achievement: AchievementEntity) {
+    val themeColors = LocalThemeColors.current
     val tierGradient = when (achievement.tier) {
         AchievementTier.LEGENDARY -> listOf(
-            Color(0xFFFF6B6B), Color(0xFFFECA57), Color(0xFF48DBFB), Color(0xFFFF9FF3), Color(0xFFFF6B6B)
+            themeColors.control, themeColors.base, themeColors.encourage, themeColors.control
         )
         AchievementTier.DIAMOND -> listOf(
-            Color(0xFF64B5F6), Color(0xFF90CAF9), Color(0xFFE3F2FD), Color(0xFF64B5F6)
+            themeColors.base, themeColors.baseContainer, themeColors.encourageContainer, themeColors.base
         )
         AchievementTier.GOLD -> listOf(
-            Color(0xFFFFD700), Color(0xFFFFF59D), Color(0xFFFFA500), Color(0xFFFFD700)
+            themeColors.encourage, themeColors.encourageContainer, themeColors.base, themeColors.encourage
         )
         AchievementTier.SILVER -> listOf(
-            Color(0xFFB8C5D6), Color(0xFFE2E8F0), Color(0xFF8A9BB0), Color(0xFFB8C5D6)
+            themeColors.base, themeColors.baseContainer, themeColors.base
         )
         else -> listOf(
-            Color(0xFFCD9B6B), Color(0xFFDEB887), Color(0xFF8B6F47), Color(0xFFCD9B6B)
+            themeColors.control, themeColors.controlContainer, themeColors.control
         )
     }
 

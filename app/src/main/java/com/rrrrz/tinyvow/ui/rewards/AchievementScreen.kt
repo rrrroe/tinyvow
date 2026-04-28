@@ -31,12 +31,15 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rrrrz.tinyvow.data.db.AchievementEntity
 import com.rrrrz.tinyvow.data.db.AchievementTier
+import com.rrrrz.tinyvow.ui.theme.LocalThemeColors
+import com.rrrrz.tinyvow.ui.theme.ThemeTokens
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -46,30 +49,6 @@ import kotlin.math.cos
 import kotlin.math.sin
 
 // ──────── 等级颜色方案 ────────
-
-private object TierColors {
-    val bronzeStart = Color(0xFFCD9B6B)
-    val bronzeEnd = Color(0xFF8B6F47)
-    val bronzeGlow = Color(0xFFDEB887)
-    val bronzeBg = Color(0xFFFDF6EE)
-
-    val silverStart = Color(0xFFB8C5D6)
-    val silverEnd = Color(0xFF8A9BB0)
-    val silverGlow = Color(0xFFD0D8E8)
-    val silverBg = Color(0xFFF3F5F9)
-
-    val goldStart = Color(0xFFFFD700)
-    val goldMid = Color(0xFFFFA500)
-    val goldEnd = Color(0xFFDAA520)
-    val goldBg = Color(0xFFFFFDF0)
-
-    val legendaryColors = listOf(
-        Color(0xFFFF6B6B), Color(0xFFFECA57), Color(0xFF48DBFB),
-        Color(0xFFFF9FF3), Color(0xFF54A0FF), Color(0xFF5F27CD),
-        Color(0xFFFF6B6B)
-    )
-    val legendaryBg = Color(0xFFFFF8FD)
-}
 
 // ──────── Tab 定义 ────────
 
@@ -81,12 +60,12 @@ private data class TierTab(
     val bgColor: Color
 )
 
-private val tierTabs = listOf(
-    TierTab(AchievementTier.BRONZE, "🥉", "铜阶", TierColors.bronzeStart, TierColors.bronzeBg),
-    TierTab(AchievementTier.SILVER, "🥈", "银阶", TierColors.silverStart, TierColors.silverBg),
-    TierTab(AchievementTier.GOLD, "🥇", "金阶", TierColors.goldStart, TierColors.goldBg),
-    TierTab(AchievementTier.DIAMOND, "💎", "钻石阶", Color(0xFF64B5F6), Color(0xFFE3F2FD)),
-    TierTab(AchievementTier.LEGENDARY, "🌟", "传奇阶", Color(0xFFAB47BC), TierColors.legendaryBg),
+private fun tierTabsForTheme(tokens: ThemeTokens) = listOf(
+    TierTab(AchievementTier.BRONZE, "🥉", "铜阶", lerp(tokens.control, tokens.base, 0.28f), tokens.controlContainer.copy(alpha = 0.48f)),
+    TierTab(AchievementTier.SILVER, "🥈", "银阶", lerp(tokens.base, tokens.encourage, 0.22f), tokens.baseContainer.copy(alpha = 0.50f)),
+    TierTab(AchievementTier.GOLD, "🥇", "金阶", lerp(tokens.encourage, tokens.base, 0.18f), tokens.encourageContainer.copy(alpha = 0.52f)),
+    TierTab(AchievementTier.DIAMOND, "💎", "钻石阶", tokens.base, tokens.baseContainer.copy(alpha = 0.60f)),
+    TierTab(AchievementTier.LEGENDARY, "🌟", "传奇阶", tokens.encourage, lerp(tokens.encourageContainer, tokens.controlContainer, 0.32f).copy(alpha = 0.62f)),
 )
 
 // ──────── 主屏幕 ────────
@@ -103,13 +82,15 @@ fun AchievementScreen(
     encourageStreak: Int = 0,
     onBack: () -> Unit
 ) {
-    val grouped = remember(achievements) {
-        tierTabs.map { tab ->
+    val themeTokens = LocalThemeColors.current
+    val themedTierTabs = remember(themeTokens) { tierTabsForTheme(themeTokens) }
+    val grouped = remember(achievements, themedTierTabs) {
+        themedTierTabs.map { tab ->
             tab to achievements.filter { it.tier == tab.tier }
         }
     }
 
-    val pagerState = rememberPagerState(pageCount = { tierTabs.size })
+    val pagerState = rememberPagerState(pageCount = { themedTierTabs.size })
     val coroutineScope = rememberCoroutineScope()
 
     Column(
@@ -128,13 +109,13 @@ fun AchievementScreen(
                     TabRowDefaults.SecondaryIndicator(
                         modifier = Modifier.tabIndicatorOffset(tabPositions[pagerState.currentPage]),
                         height = 3.dp,
-                        color = tierTabs[pagerState.currentPage].accentColor
+                        color = themedTierTabs[pagerState.currentPage].accentColor
                     )
                 }
             },
             divider = {}
         ) {
-            tierTabs.forEachIndexed { index, tab ->
+            themedTierTabs.forEachIndexed { index, tab ->
                 val isSelected = pagerState.currentPage == index
                 
                 Tab(
@@ -394,6 +375,7 @@ private fun AchievementCard(
 
 @Composable
 private fun UnlockedAchievementCard(achievement: AchievementEntity) {
+    val themeTokens = LocalThemeColors.current
     val infiniteTransition = rememberInfiniteTransition(label = "unlocked_${achievement.id}")
 
     val shimmerOffset by infiniteTransition.animateFloat(
@@ -445,53 +427,52 @@ private fun UnlockedAchievementCard(achievement: AchievementEntity) {
     )
 
     val tierBgColor = when (achievement.tier) {
-        AchievementTier.LEGENDARY -> TierColors.legendaryBg
-        AchievementTier.GOLD -> TierColors.goldBg
-        AchievementTier.SILVER -> TierColors.silverBg
-        else -> TierColors.bronzeBg
+        AchievementTier.LEGENDARY -> lerp(themeTokens.encourageContainer, themeTokens.controlContainer, 0.32f).copy(alpha = 0.62f)
+        AchievementTier.GOLD -> themeTokens.encourageContainer.copy(alpha = 0.52f)
+        AchievementTier.SILVER -> themeTokens.baseContainer.copy(alpha = 0.50f)
+        else -> themeTokens.controlContainer.copy(alpha = 0.48f)
     }
 
     val tierGradient = when (achievement.tier) {
         AchievementTier.LEGENDARY -> Brush.linearGradient(
-            TierColors.legendaryColors,
+            listOf(themeTokens.control, themeTokens.base, themeTokens.encourage, lerp(themeTokens.control, themeTokens.encourage, 0.5f), themeTokens.control),
             start = Offset(shimmerOffset, 0f),
             end = Offset(shimmerOffset + 300f, 300f)
         )
         AchievementTier.GOLD -> Brush.linearGradient(
-            listOf(TierColors.goldStart, TierColors.goldMid, Color(0xFFFFFDE7), TierColors.goldEnd, TierColors.goldStart),
+            listOf(themeTokens.encourage, lerp(themeTokens.encourage, Color.White, 0.42f), themeTokens.base, themeTokens.encourage),
             start = Offset(shimmerOffset, 0f),
             end = Offset(shimmerOffset + 200f, 200f)
         )
         AchievementTier.SILVER -> Brush.linearGradient(
-            listOf(TierColors.silverStart, Color.White, TierColors.silverEnd, TierColors.silverStart),
+            listOf(themeTokens.base, lerp(themeTokens.base, Color.White, 0.55f), lerp(themeTokens.base, themeTokens.encourage, 0.35f), themeTokens.base),
             start = Offset(shimmerOffset, 0f),
             end = Offset(shimmerOffset + 150f, 150f)
         )
         else -> Brush.linearGradient(
-            listOf(TierColors.bronzeStart, TierColors.bronzeGlow, TierColors.bronzeEnd),
+            listOf(themeTokens.control, lerp(themeTokens.control, themeTokens.base, 0.42f), lerp(themeTokens.control, Color.Black, 0.12f)),
             start = Offset(shimmerOffset, 0f),
             end = Offset(shimmerOffset + 120f, 120f)
         )
     }
+    val legendaryRingColors = listOf(
+        themeTokens.control,
+        themeTokens.base,
+        themeTokens.encourage,
+        lerp(themeTokens.base, themeTokens.encourage, 0.55f),
+        lerp(themeTokens.control, themeTokens.encourage, 0.50f),
+        themeTokens.control,
+    )
 
-    val cardModifier = Modifier
-        .fillMaxWidth()
-        .then(
-            if (achievement.tier >= AchievementTier.GOLD) {
-                Modifier.graphicsLayer {
-                    scaleX = pulseScale
-                    scaleY = pulseScale
-                }
-            } else Modifier
-        )
+    val cardModifier = Modifier.fillMaxWidth()
 
     Box(modifier = Modifier.fillMaxWidth()) {
         Surface(
             modifier = cardModifier,
             shape = RoundedCornerShape(20.dp),
             color = tierBgColor,
-            tonalElevation = if (achievement.tier >= AchievementTier.GOLD) 6.dp else 2.dp,
-            shadowElevation = if (achievement.tier == AchievementTier.LEGENDARY) 12.dp else 4.dp
+            tonalElevation = 0.dp,
+            shadowElevation = 0.dp
         ) {
             Box(Modifier.fillMaxSize()) {
                 // 背景全息光泽流光
@@ -504,7 +485,7 @@ private fun UnlockedAchievementCard(achievement: AchievementEntity) {
                 // 全局粒子效果 (更高级动效)
                 if (achievement.tier == AchievementTier.LEGENDARY || achievement.tier == AchievementTier.DIAMOND) {
                     Canvas(modifier = Modifier.fillMaxSize()) {
-                        val baseColor = if (achievement.tier == AchievementTier.LEGENDARY) Color(0xFFFF9FF3) else Color(0xFF64B5F6)
+                        val baseColor = if (achievement.tier == AchievementTier.LEGENDARY) themeTokens.encourage else themeTokens.base
                         for (i in 0..8) {
                             val x = (size.width * 0.1f * i + shimmerOffset * 0.2f) % size.width
                             val y = (sin((x + shimmerOffset) * 0.05f) * 20f + size.height / 2)
@@ -532,7 +513,7 @@ private fun UnlockedAchievementCard(achievement: AchievementEntity) {
                             Canvas(modifier = Modifier.fillMaxSize()) {
                                 rotate(rainbowAngle) {
                                     drawCircle(
-                                        brush = Brush.sweepGradient(TierColors.legendaryColors),
+                                        brush = Brush.sweepGradient(legendaryRingColors),
                                         radius = size.minDimension / 2,
                                         style = Stroke(width = 4.dp.toPx(), cap = StrokeCap.Round)
                                     )
@@ -547,7 +528,7 @@ private fun UnlockedAchievementCard(achievement: AchievementEntity) {
                                     val x = center.x + (radius * cos(angle)).toFloat()
                                     val y = center.y + (radius * sin(angle)).toFloat()
                                     drawCircle(
-                                        color = TierColors.legendaryColors[i % TierColors.legendaryColors.size]
+                                        color = legendaryRingColors[i % legendaryRingColors.size]
                                             .copy(alpha = sparkleAlpha),
                                         radius = 3.dp.toPx(),
                                         center = Offset(x, y)
@@ -612,11 +593,11 @@ private fun UnlockedAchievementCard(achievement: AchievementEntity) {
                         Icons.Default.CheckCircle,
                         contentDescription = "已解锁",
                         tint = when (achievement.tier) {
-                            AchievementTier.LEGENDARY -> Color(0xFFAB47BC)
-                            AchievementTier.DIAMOND -> Color(0xFF64B5F6)
-                            AchievementTier.GOLD -> Color(0xFFFFB300)
-                            AchievementTier.SILVER -> Color(0xFF90A4AE)
-                            else -> Color(0xFFBCAAA4)
+                            AchievementTier.LEGENDARY -> themeTokens.encourage
+                            AchievementTier.DIAMOND -> themeTokens.base
+                            AchievementTier.GOLD -> lerp(themeTokens.encourage, themeTokens.base, 0.18f)
+                            AchievementTier.SILVER -> lerp(themeTokens.base, themeTokens.encourage, 0.22f)
+                            else -> lerp(themeTokens.control, themeTokens.base, 0.28f)
                         },
                         modifier = Modifier.size(32.dp).graphicsLayer {
                             if (achievement.tier == AchievementTier.LEGENDARY) {

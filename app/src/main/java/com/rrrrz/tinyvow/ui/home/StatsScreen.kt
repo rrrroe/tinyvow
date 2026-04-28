@@ -4470,6 +4470,7 @@ private fun DailyTimelineChart(
                     )
                 }
             }
+            val targetLineColor = LocalReportColors.current.warning.copy(alpha = 0.78f)
             Canvas(modifier = Modifier.weight(1f).height(chartHeight)) {
                 if (buckets.isEmpty()) return@Canvas
                 val deviceMax = buckets.maxOfOrNull { it.deviceMillis }?.coerceAtLeast(1L) ?: 1L
@@ -4517,7 +4518,7 @@ private fun DailyTimelineChart(
                     var startX = 0f
                     while (startX < size.width) {
                         drawLine(
-                            color = androidx.compose.ui.graphics.Color(0xFFFFB300).copy(alpha = 0.78f),
+                            color = targetLineColor,
                             start = Offset(startX, targetY),
                             end = Offset(minOf(startX + dashWidth, size.width), targetY),
                             strokeWidth = 2f,
@@ -5850,8 +5851,8 @@ private fun renderShareReportBitmapV2(
     val primaryArgb = primary.toArgb()
     val textArgb = onSurface.toArgb()
     val mutedArgb = onSurfaceVariant.toArgb()
-    val positiveArgb = android.graphics.Color.rgb(34, 174, 118)
-    val warningArgb = android.graphics.Color.rgb(242, 158, 44)
+    val positiveArgb = palette.getOrElse(2) { primary }.toArgb()
+    val warningArgb = palette.getOrElse(1) { primary }.toArgb()
     val displayTypeface = android.graphics.Typeface.create("sans-serif-black", android.graphics.Typeface.BOLD)
     val titleTypeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.BOLD)
     val bodyTypeface = android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.NORMAL)
@@ -5904,7 +5905,7 @@ private fun renderShareReportBitmapV2(
         178f,
         heroRect.top + 64f,
         Paint(bodyPaint).apply {
-            color = android.graphics.Color.rgb(36, 135, 96)
+            color = positiveArgb
             textSize = 30f
             typeface = titleTypeface
         },
@@ -5915,7 +5916,7 @@ private fun renderShareReportBitmapV2(
         148f,
         heroRect.top + 250f,
         Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = android.graphics.Color.rgb(154, 166, 185)
+            color = palette.getOrElse(0) { primary }.copy(alpha = 0.78f).toArgb()
             textSize = 106f
             typeface = displayTypeface
         },
@@ -6071,9 +6072,9 @@ private fun drawSharePosterBackgroundV2(
                 width.toFloat(),
                 height.toFloat(),
                 intArrayOf(
-                    android.graphics.Color.rgb(249, 253, 255),
-                    android.graphics.Color.rgb(232, 249, 248),
-                    android.graphics.Color.rgb(211, 236, 247),
+                    blendPosterColor(primary.toArgb(), android.graphics.Color.WHITE, 0.10f),
+                    blendPosterColor(primary.toArgb(), android.graphics.Color.WHITE, 0.18f),
+                    blendPosterColor(primary.toArgb(), android.graphics.Color.WHITE, 0.26f),
                 ),
                 null,
                 android.graphics.Shader.TileMode.CLAMP,
@@ -6082,7 +6083,7 @@ private fun drawSharePosterBackgroundV2(
     canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), backgroundPaint)
     canvas.drawOval(
         RectF(660f, -80f, 1240f, 430f),
-        Paint(Paint.ANTI_ALIAS_FLAG).apply { color = android.graphics.Color.argb(70, 90, 204, 190) },
+        Paint(Paint.ANTI_ALIAS_FLAG).apply { color = primary.copy(alpha = 0.18f).toArgb() },
     )
     canvas.drawOval(
         RectF(-180f, 1320f, 440f, 2020f),
@@ -6090,7 +6091,7 @@ private fun drawSharePosterBackgroundV2(
     )
     canvas.drawOval(
         RectF(500f, 1540f, 1120f, 2180f),
-        Paint(Paint.ANTI_ALIAS_FLAG).apply { color = android.graphics.Color.argb(42, 92, 168, 210) },
+        Paint(Paint.ANTI_ALIAS_FLAG).apply { color = primary.copy(alpha = 0.12f).toArgb() },
     )
     drawShareTransparentAppIcon(context, canvas, 612f, 255f, 560f, 18)
     drawShareTransparentAppIcon(context, canvas, 612f, 1180f, 520f, 14)
@@ -6425,9 +6426,9 @@ private fun renderShareReportBitmap(
                 0f,
                 height.toFloat(),
                 intArrayOf(
-                    android.graphics.Color.rgb(231, 247, 255),
-                    android.graphics.Color.rgb(247, 252, 255),
-                    android.graphics.Color.rgb(226, 242, 252),
+                    blendPosterColor(primary.toArgb(), android.graphics.Color.WHITE, 0.24f),
+                    blendPosterColor(primary.toArgb(), android.graphics.Color.WHITE, 0.10f),
+                    blendPosterColor(primary.toArgb(), android.graphics.Color.WHITE, 0.20f),
                 ),
                 null,
                 android.graphics.Shader.TileMode.CLAMP,
@@ -6439,8 +6440,8 @@ private fun renderShareReportBitmap(
     val cardPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = android.graphics.Color.argb(238, 255, 255, 255) }
     val glassPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = android.graphics.Color.argb(190, 255, 255, 255) }
     val softPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = primary.copy(alpha = 0.11f).toArgb() }
-    val warningArgb = android.graphics.Color.rgb(236, 150, 54)
-    val positiveArgb = android.graphics.Color.rgb(46, 157, 92)
+    val warningArgb = palette.getOrElse(1) { primary }.toArgb()
+    val positiveArgb = palette.getOrElse(2) { primary }.toArgb()
     val titlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = textArgb
         textSize = 52f
@@ -6636,6 +6637,16 @@ private fun drawSharePosterBackground(
             canvas.drawCircle(720f + col * 48f, 112f + row * 38f, 3.2f, dotPaint)
         }
     }
+}
+
+private fun blendPosterColor(foreground: Int, background: Int, ratio: Float): Int {
+    val clamped = ratio.coerceIn(0f, 1f)
+    val inverse = 1f - clamped
+    return android.graphics.Color.rgb(
+        (android.graphics.Color.red(foreground) * clamped + android.graphics.Color.red(background) * inverse).toInt(),
+        (android.graphics.Color.green(foreground) * clamped + android.graphics.Color.green(background) * inverse).toInt(),
+        (android.graphics.Color.blue(foreground) * clamped + android.graphics.Color.blue(background) * inverse).toInt(),
+    )
 }
 
 private fun drawShareAppDistribution(

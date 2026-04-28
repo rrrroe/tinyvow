@@ -25,19 +25,42 @@ internal val LocalReportColors = staticCompositionLocalOf {
     reportColorsFromScheme(lightColorScheme())
 }
 
+internal fun reportColorsFromTokens(
+    tokens: ThemeTokens,
+): ReportColors {
+    val colorScheme = tokens.colorScheme
+    return ReportColors(
+        pageGradient = tokens.pageGradient,
+        periodPalette = listOf(
+            tokens.base,
+            tokens.control,
+            tokens.encourage,
+            lerp(tokens.base, tokens.encourage, 0.45f),
+        ),
+        appChartPalette = tokens.chartPalette,
+        skeletonBase = colorScheme.surfaceContainerHighest.copy(alpha = 0.46f),
+        skeletonHighlight = colorScheme.surface.copy(alpha = 0.92f),
+        skeletonAccent = colorScheme.outlineVariant.copy(alpha = 0.32f),
+        positive = tokens.encourage,
+        warning = tokens.warning,
+        danger = tokens.control,
+        info = tokens.base,
+    )
+}
+
 internal fun reportColorsFromScheme(
     colorScheme: ColorScheme,
 ): ReportColors {
     val primarySoft = lerp(colorScheme.primary, colorScheme.secondary, 0.35f)
     val primaryBright = lerp(colorScheme.primary, Color.White, 0.18f)
     val secondaryBright = lerp(colorScheme.secondary, Color.White, 0.12f)
-    val tertiaryWarm = lerp(colorScheme.tertiary, Color(0xFFF5C15A), 0.42f)
+    val tertiaryWarm = lerp(colorScheme.tertiary, colorScheme.primary, 0.22f)
     val tertiarySoft = lerp(colorScheme.tertiary, colorScheme.primary, 0.45f)
     val surfaceTint = lerp(colorScheme.surfaceContainerLow, colorScheme.primaryContainer, 0.45f)
-    val info = lerp(colorScheme.secondary, Color(0xFF3B82F6), 0.42f)
-    val positive = lerp(colorScheme.primary, Color(0xFF22C55E), 0.4f)
-    val warning = lerp(colorScheme.tertiary, Color(0xFFF59E0B), 0.48f)
-    val danger = lerp(colorScheme.primary, Color(0xFFEF4444), 0.42f)
+    val info = colorScheme.primary
+    val positive = colorScheme.tertiary
+    val warning = lerp(colorScheme.secondary, colorScheme.tertiary, 0.36f)
+    val danger = colorScheme.secondary
 
     return ReportColors(
         pageGradient = listOf(

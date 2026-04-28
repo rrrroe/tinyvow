@@ -4,49 +4,55 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Science
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.ShoppingCart
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.Slider
-import androidx.compose.material3.AlertDialog
-import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -55,6 +61,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextStyle
@@ -62,21 +69,26 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rrrrz.tinyvow.R
+import com.rrrrz.tinyvow.ui.theme.LocalThemeColors
+import com.rrrrz.tinyvow.ui.theme.ThemePresets
+import com.rrrrz.tinyvow.ui.theme.ThemeSeed
+import com.rrrrz.tinyvow.ui.theme.argbToHex
+import com.rrrrz.tinyvow.ui.theme.createCustomTheme
 
 @Composable
 fun MeScreen(
     userPoints: Double,
-    currentTheme: Int,
-    customSeedColorEnabled: Boolean,
-    customSeedColor: Int?,
+    selectedThemeId: String,
+    customThemes: List<ThemeSeed>,
     usageAccessGranted: Boolean,
     accessibilityServiceEnabled: Boolean,
     isAutoStartDismissed: Boolean,
     isIgnoringBattery: Boolean,
     notificationPermissionGranted: Boolean,
     dismissedPermissionPrompts: Set<String>,
-    onSetTheme: (Int) -> Unit,
-    onSetCustomTheme: (Boolean, Int?) -> Unit,
+    onSelectTheme: (String) -> Unit,
+    onSaveCustomTheme: (ThemeSeed) -> Unit,
+    onDeleteCustomTheme: (String) -> Unit,
     onOpenUsageAccessSettings: () -> Unit,
     onOpenAccessibilitySettings: () -> Unit,
     onOpenAutoStartSettings: () -> Unit,
@@ -88,7 +100,9 @@ fun MeScreen(
     onNavigateToHistory: () -> Unit,
     onNavigateToAchievements: () -> Unit,
     onNavigateToRedeem: () -> Unit,
+    onNavigateToThemeSettings: () -> Unit,
 ) {
+    val themeColors = LocalThemeColors.current
     var showPermissionSettings by remember { mutableStateOf(false) }
 
     Column(
@@ -104,8 +118,8 @@ fun MeScreen(
                 .background(
                     Brush.verticalGradient(
                         colors = listOf(
-                            MaterialTheme.colorScheme.primary,
-                            MaterialTheme.colorScheme.primary.copy(alpha = 0.7f),
+                            themeColors.base,
+                            themeColors.base.copy(alpha = 0.76f),
                         )
                     )
                 )
@@ -118,7 +132,7 @@ fun MeScreen(
                 Surface(
                     modifier = Modifier.size(64.dp),
                     shape = CircleShape,
-                    color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.15f),
+                    color = themeColors.onBase.copy(alpha = 0.14f),
                 ) {
                     Image(
                         painter = painterResource(R.mipmap.ic_launcher_foreground),
@@ -133,13 +147,13 @@ fun MeScreen(
                     Text(
                         "自律达人",
                         style = MaterialTheme.typography.titleLarge,
-                        color = MaterialTheme.colorScheme.onPrimary,
+                        color = themeColors.onBase,
                         fontWeight = FontWeight.Bold,
                     )
                     Text(
                         "ID: 20260322",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.8f),
+                        color = themeColors.onBase.copy(alpha = 0.78f),
                     )
                 }
             }
@@ -162,21 +176,21 @@ fun MeScreen(
                     horizontalArrangement = Arrangement.SpaceAround,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    MeStatItem(value = userPoints.toInt().toString(), label = "当前积分", color = MaterialTheme.colorScheme.primary)
+                    MeStatItem(value = userPoints.toInt().toString(), label = "当前积分", color = themeColors.encourage)
                     HorizontalDivider(
                         modifier = Modifier
                             .width(1.dp)
                             .height(40.dp),
                         color = MaterialTheme.colorScheme.outlineVariant,
                     )
-                    MeStatItem(value = "0", label = "累计自律", color = MaterialTheme.colorScheme.secondary)
+                    MeStatItem(value = "0", label = "累计自律", color = themeColors.control)
                     HorizontalDivider(
                         modifier = Modifier
                             .width(1.dp)
                             .height(40.dp),
                         color = MaterialTheme.colorScheme.outlineVariant,
                     )
-                    MeStatItem(value = "1", label = "坚持天数", color = MaterialTheme.colorScheme.tertiary)
+                    MeStatItem(value = "1", label = "坚持天数", color = themeColors.base)
                 }
             }
 
@@ -187,13 +201,7 @@ fun MeScreen(
             }
 
             MeMenuSection("外观主题") {
-                ThemeSelectorRow(
-                    currentTheme = currentTheme,
-                    customSeedColorEnabled = customSeedColorEnabled,
-                    customSeedColor = customSeedColor,
-                    onThemeSelected = onSetTheme,
-                    onCustomThemeSelected = onSetCustomTheme
-                )
+                MeMenuItem(icon = Icons.Default.Palette, title = "主题管理", onClick = onNavigateToThemeSettings)
             }
 
             MeMenuSection("高级中心") {
@@ -201,7 +209,7 @@ fun MeScreen(
                     icon = Icons.Default.Science,
                     title = "实验室（调试工具）",
                     onClick = onNavigateToLaboratory,
-                    color = MaterialTheme.colorScheme.tertiary,
+                    color = themeColors.base,
                 )
                 MeMenuItem(icon = Icons.Default.History, title = "使用历史", onClick = onNavigateToHistory)
                 MeMenuItem(icon = Icons.AutoMirrored.Filled.HelpOutline, title = "帮助与反馈", onClick = {})
@@ -247,11 +255,8 @@ private fun PermissionSettingsSheet(
     onRequestNotificationPermission: () -> Unit,
     onClearDismissedPermissionPrompts: () -> Unit,
 ) {
-    val statusColor = if (usageAccessGranted) {
-        MaterialTheme.colorScheme.primary
-    } else {
-        MaterialTheme.colorScheme.error
-    }
+    val themeColors = LocalThemeColors.current
+    val statusColor = if (usageAccessGranted) themeColors.encourage else themeColors.control
 
     ModalBottomSheet(onDismissRequest = onDismiss) {
         Column(
@@ -292,7 +297,7 @@ private fun PermissionSettingsSheet(
                     color = MaterialTheme.colorScheme.surfaceContainerHigh,
                 ) {
                     Text(
-                        text = "已忽略 ${dismissedPermissionPrompts.size} 项：首页暂不显示这些提示，点击“取消忽略”后会重新显示。",
+                        text = "已忽略 ${dismissedPermissionPrompts.size} 项：取消忽略后，首页会重新显示这些提示。",
                         modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -322,173 +327,263 @@ private fun PermissionSettingsSheet(
 }
 
 @Composable
-fun ThemeSelectorRow(
-    currentTheme: Int,
-    customSeedColorEnabled: Boolean,
-    customSeedColor: Int?,
-    onThemeSelected: (Int) -> Unit,
-    onCustomThemeSelected: (Boolean, Int?) -> Unit
+private fun ThemeManager(
+    selectedThemeId: String,
+    customThemes: List<ThemeSeed>,
+    onSelectTheme: (String) -> Unit,
+    onSaveCustomTheme: (ThemeSeed) -> Unit,
+    onDeleteCustomTheme: (String) -> Unit,
 ) {
-    val themes = listOf(
-        ThemeOption(0, "云水谣", Color(0xFF8FB9C5), Color(0xFFA6C4CD), Color(0xFFC7D3D9)),
-        ThemeOption(1, "竹影摇", Color(0xFF94B49F), Color(0xFFB1C4B8), Color(0xFFC9D6CE)),
-        ThemeOption(2, "初雪辞", Color(0xFFA8B1C2), Color(0xFFC2C9D6), Color(0xFFD6DBE3)),
-        ThemeOption(3, "檀木禅意", Color(0xFF8E7B6D), Color(0xFFBFAE9F), Color(0xFFABB5A8)),
-        ThemeOption(4, "蜜桃气泡", Color(0xFFFF7E9D), Color(0xFFFFB2C1), Color(0xFFFFD1DC)),
-        ThemeOption(5, "青柠苏打", Color(0xFF2ECD71), Color(0xFF82E0AA), Color(0xFFA9DFBF)),
-        ThemeOption(6, "柑橘晚霞", Color(0xFFFB923C), Color(0xFFFFB37B), Color(0xFFFFD8A8)),
-    )
+    var editingTheme by remember { mutableStateOf<ThemeSeed?>(null) }
+    val allThemes = ThemePresets + customThemes
 
-    var showColorPicker by remember { mutableStateOf(false) }
-
-    Column(modifier = Modifier.padding(vertical = 16.dp)) {
+    Column(modifier = Modifier.padding(vertical = 14.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .horizontalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(16.dp),
+                .padding(horizontal = 14.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            themes.forEach { theme ->
-                val isSelected = currentTheme == theme.id && !customSeedColorEnabled
-                Column(
-                    modifier = Modifier
-                        .clickable { onThemeSelected(theme.id) }
-                        .padding(4.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .size(56.dp)
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.1f) else Color.Transparent)
-                            .padding(4.dp)
-                            .let {
-                                if (isSelected) {
-                                    it.then(Modifier.background(MaterialTheme.colorScheme.surface, RoundedCornerShape(12.dp)))
-                                } else {
-                                    it
-                                }
-                            },
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Row(modifier = Modifier.size(32.dp)) {
-                            ThemeStrip(theme.p, RoundedCornerShape(topStart = 4.dp, bottomStart = 4.dp))
-                            ThemeStrip(theme.s)
-                            ThemeStrip(theme.t, RoundedCornerShape(topEnd = 4.dp, bottomEnd = 4.dp))
+            allThemes.forEach { theme ->
+                ThemePreviewCard(
+                    theme = theme,
+                    selected = selectedThemeId == theme.id,
+                    onSelect = { onSelectTheme(theme.id) },
+                    onEdit = {
+                        editingTheme = if (theme.isCustom) {
+                            theme
+                        } else {
+                            createCustomTheme(
+                                name = "${theme.name} 自定义",
+                                controlColor = theme.controlColor,
+                                encourageColor = theme.encourageColor,
+                                baseColor = theme.baseColor,
+                            )
                         }
-                    }
-                    Text(
-                        theme.name,
-                        style = TextStyle(fontSize = 11.sp),
-                        color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                    )
-                }
+                    },
+                    onCopy = {
+                        editingTheme = createCustomTheme(
+                            name = "${theme.name} 副本",
+                            controlColor = theme.controlColor,
+                            encourageColor = theme.encourageColor,
+                            baseColor = theme.baseColor,
+                        )
+                    },
+                    onDelete = if (theme.isCustom) {
+                        { onDeleteCustomTheme(theme.id) }
+                    } else {
+                        null
+                    },
+                )
             }
-            
-            Column(
-                modifier = Modifier
-                    .clickable { showColorPicker = true }
-                    .padding(4.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(56.dp)
-                        .clip(RoundedCornerShape(16.dp))
-                        .background(if (customSeedColorEnabled) MaterialTheme.colorScheme.primary.copy(alpha = 0.1f) else Color.Transparent)
-                        .padding(4.dp)
-                        .let {
-                            if (customSeedColorEnabled) {
-                                it.then(Modifier.background(MaterialTheme.colorScheme.surface, RoundedCornerShape(12.dp)))
-                            } else {
-                                it
-                            }
-                        },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    val targetColor = customSeedColor?.let { Color(it) } ?: MaterialTheme.colorScheme.primary
-                    Row(modifier = Modifier.size(32.dp)) {
-                        ThemeStrip(targetColor, RoundedCornerShape(4.dp))
-                    }
-                }
-                Text(
-                    "自定义",
-                    style = TextStyle(fontSize = 11.sp),
-                    color = if (customSeedColorEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontWeight = if (customSeedColorEnabled) FontWeight.Bold else FontWeight.Normal,
+            AddThemeCard {
+                editingTheme = createCustomTheme(
+                    name = "自定义主题",
+                    controlColor = ThemePresets.first().controlColor,
+                    encourageColor = ThemePresets.first().encourageColor,
+                    baseColor = ThemePresets.first().baseColor,
                 )
             }
         }
+
+        Row(
+            modifier = Modifier.padding(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            ThemeLegendDot("限制", LocalThemeColors.current.control)
+            ThemeLegendDot("鼓励", LocalThemeColors.current.encourage)
+            ThemeLegendDot("基础", LocalThemeColors.current.base)
+        }
     }
 
-    if (showColorPicker) {
-        SimpleColorPicker(
-            initialColor = customSeedColor?.let { Color(it) } ?: Color(0xFF8FB9C5),
-            onColorSelected = { c ->
-                onCustomThemeSelected(true, c.toArgb())
-                showColorPicker = false
+    editingTheme?.let { theme ->
+        ThemeEditorDialog(
+            initialTheme = theme,
+            onDismiss = { editingTheme = null },
+            onSave = {
+                onSaveCustomTheme(it.copy(isCustom = true))
+                editingTheme = null
             },
-            onDismiss = { showColorPicker = false }
         )
     }
 }
 
 @Composable
-private fun RowScope.ThemeStrip(color: Color, shape: RoundedCornerShape = RoundedCornerShape(0.dp)) {
-    Box(
+private fun RowScope.ThemePreviewCard(
+    theme: ThemeSeed,
+    selected: Boolean,
+    onSelect: () -> Unit,
+    onEdit: () -> Unit,
+    onCopy: () -> Unit,
+    onDelete: (() -> Unit)?,
+) {
+    val borderColor = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
+    Surface(
         modifier = Modifier
-            .weight(1f)
-            .fillMaxHeight()
-            .background(color, shape)
+            .width(156.dp)
+            .clickable(onClick = onSelect),
+        shape = RoundedCornerShape(18.dp),
+        color = if (selected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.36f) else MaterialTheme.colorScheme.surface,
+        tonalElevation = if (selected) 2.dp else 0.dp,
+        border = androidx.compose.foundation.BorderStroke(1.dp, borderColor.copy(alpha = if (selected) 0.72f else 0.46f)),
+    ) {
+        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(modifier = Modifier.height(26.dp).clip(RoundedCornerShape(8.dp))) {
+                ThemeStrip(Color(theme.controlColor))
+                ThemeStrip(Color(theme.encourageColor))
+                ThemeStrip(Color(theme.baseColor))
+            }
+            Text(
+                text = theme.name,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                IconButton(onClick = onCopy, modifier = Modifier.size(30.dp)) {
+                    Icon(Icons.Default.ContentCopy, contentDescription = "复制", modifier = Modifier.size(16.dp))
+                }
+                IconButton(onClick = onEdit, modifier = Modifier.size(30.dp)) {
+                    Icon(Icons.Default.Edit, contentDescription = "编辑", modifier = Modifier.size(16.dp))
+                }
+                if (onDelete != null) {
+                    IconButton(onClick = onDelete, modifier = Modifier.size(30.dp)) {
+                        Icon(Icons.Default.Delete, contentDescription = "删除", modifier = Modifier.size(16.dp), tint = LocalThemeColors.current.control)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RowScope.AddThemeCard(onClick: () -> Unit) {
+    Surface(
+        modifier = Modifier
+            .width(126.dp)
+            .height(118.dp)
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.48f)),
+    ) {
+        Column(
+            modifier = Modifier.padding(12.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center,
+        ) {
+            Icon(Icons.Default.Add, contentDescription = "新建", tint = MaterialTheme.colorScheme.primary)
+            Text("新建主题", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
+    }
+}
+
+@Composable
+private fun ThemeEditorDialog(
+    initialTheme: ThemeSeed,
+    onDismiss: () -> Unit,
+    onSave: (ThemeSeed) -> Unit,
+) {
+    var name by remember(initialTheme.id) { mutableStateOf(initialTheme.name) }
+    var control by remember(initialTheme.id) { mutableStateOf(initialTheme.controlColor) }
+    var encourage by remember(initialTheme.id) { mutableStateOf(initialTheme.encourageColor) }
+    var base by remember(initialTheme.id) { mutableStateOf(initialTheme.baseColor) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("编辑主题", fontWeight = FontWeight.Bold) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text("主题名称") },
+                    singleLine = true,
+                )
+                ColorSliderGroup("限制色", control, onColorChange = { control = it })
+                ColorSliderGroup("鼓励色", encourage, onColorChange = { encourage = it })
+                ColorSliderGroup("基础色", base, onColorChange = { base = it })
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    onSave(
+                        initialTheme.copy(
+                            name = name.ifBlank { "自定义主题" },
+                            controlColor = control,
+                            encourageColor = encourage,
+                            baseColor = base,
+                            isCustom = true,
+                        )
+                    )
+                }
+            ) {
+                Text("保存")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("取消") }
+        },
     )
 }
 
-private data class ThemeOption(val id: Int, val name: String, val p: Color, val s: Color, val t: Color)
-
 @Composable
-fun SimpleColorPicker(initialColor: Color, onColorSelected: (Color) -> Unit, onDismiss: () -> Unit) {
+private fun ColorSliderGroup(
+    label: String,
+    color: Int,
+    onColorChange: (Int) -> Unit,
+) {
     var hue by remember { mutableFloatStateOf(0f) }
     var saturation by remember { mutableFloatStateOf(1f) }
     var value by remember { mutableFloatStateOf(1f) }
 
-    LaunchedEffect(initialColor) {
+    LaunchedEffect(color) {
         val hsv = FloatArray(3)
-        android.graphics.Color.colorToHSV(initialColor.toArgb(), hsv)
+        android.graphics.Color.colorToHSV(color, hsv)
         hue = hsv[0]
         saturation = hsv[1]
         value = hsv[2]
     }
 
-    val currentColor = Color(android.graphics.Color.HSVToColor(floatArrayOf(hue, saturation, value)))
+    fun emit() {
+        onColorChange(android.graphics.Color.HSVToColor(floatArrayOf(hue, saturation, value)))
+    }
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text("选取主题色", fontWeight = FontWeight.Bold) },
-        text = {
-            Column {
-                Box(modifier = Modifier.fillMaxWidth().height(80.dp).background(currentColor, RoundedCornerShape(12.dp)))
-                Spacer(Modifier.height(16.dp))
-                Text("色调 (Hue): ${hue.toInt()}", style = MaterialTheme.typography.bodySmall)
-                Slider(value = hue, onValueChange = { hue = it }, valueRange = 0f..360f)
-                
-                Text("饱和度 (Saturation)", style = MaterialTheme.typography.bodySmall)
-                Slider(value = saturation, onValueChange = { saturation = it })
-                
-                Text("亮度 (Value)", style = MaterialTheme.typography.bodySmall)
-                Slider(value = value, onValueChange = { value = it }, valueRange = 0.3f..1f)
-            }
-        },
-        confirmButton = {
-            Button(onClick = { onColorSelected(currentColor) }) { Text("应用颜色") }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text("取消") }
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            Box(
+                modifier = Modifier
+                    .size(28.dp)
+                    .clip(CircleShape)
+                    .background(Color(color))
+            )
+            Text("$label ${argbToHex(color)}", style = MaterialTheme.typography.labelMedium)
         }
+        Slider(value = hue, onValueChange = { hue = it; emit() }, valueRange = 0f..360f)
+        Slider(value = saturation, onValueChange = { saturation = it; emit() }, valueRange = 0.12f..0.82f)
+        Slider(value = value, onValueChange = { value = it; emit() }, valueRange = 0.36f..0.92f)
+    }
+}
+
+@Composable
+private fun RowScope.ThemeStrip(color: Color) {
+    Box(
+        modifier = Modifier
+            .weight(1f)
+            .fillMaxHeight()
+            .background(color)
     )
+}
+
+@Composable
+private fun ThemeLegendDot(label: String, color: Color) {
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+        Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(color))
+        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
 }
 
 @Composable

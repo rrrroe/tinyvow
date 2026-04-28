@@ -12,6 +12,8 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import com.rrrrz.tinyvow.data.settings.ManagedAppPreferences
+import com.rrrrz.tinyvow.ui.theme.DefaultThemeSeed
+import com.rrrrz.tinyvow.ui.theme.resolveThemeSeed
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -20,13 +22,14 @@ class MainActivity : ComponentActivity() {
         TinyVowNotifier(this).ensureChannel()
         setContent {
             val prefs = remember { ManagedAppPreferences(this@MainActivity) }
-            val themeIndex by prefs.selectedTheme.collectAsState(initial = 0)
-            val customSeedColor by prefs.customSeedColor.collectAsState(initial = null)
-            val customSeedColorEnabled by prefs.customSeedColorEnabled.collectAsState(initial = false)
+            val selectedThemeId by prefs.selectedThemeId.collectAsState(initial = DefaultThemeSeed.id)
+            val customThemes by prefs.customThemes.collectAsState(initial = emptyList())
+            val themeSeed = remember(selectedThemeId, customThemes) {
+                resolveThemeSeed(selectedThemeId, customThemes)
+            }
             
             TinyVowTheme(
-                themeIndex = themeIndex,
-                customSeedColor = if (customSeedColorEnabled) customSeedColor else null
+                themeSeed = themeSeed
             ) {
                 HomeRoute()
             }

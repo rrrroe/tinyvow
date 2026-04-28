@@ -21,6 +21,10 @@ import com.rrrrz.tinyvow.data.usage.UsageAccessStatus
 import com.rrrrz.tinyvow.data.usage.UsageStatsUsageRepository
 import com.rrrrz.tinyvow.domain.limit.GroupExceededResult
 import com.rrrrz.tinyvow.domain.limit.GroupLimitEnforcer
+import com.rrrrz.tinyvow.ui.theme.DefaultThemeSeed
+import com.rrrrz.tinyvow.ui.theme.resolveThemeSeed
+import com.rrrrz.tinyvow.ui.theme.themeTokensFromSeed
+import androidx.compose.ui.graphics.toArgb
 import java.time.ZoneId
 import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
@@ -40,7 +44,7 @@ class AppLimitAccessibilityService : AccessibilityService() {
     private val usageAccessStateChecker by lazy { UsageAccessStateChecker(applicationContext) }
     private val usageRepository by lazy { UsageStatsUsageRepository(applicationContext) }
     private val preferences by lazy { ManagedAppPreferences(applicationContext) }
-    @Volatile private var overlayPalette: OverlayPalette = overlayPaletteForTheme(0, null)
+    @Volatile private var overlayPalette: OverlayPalette = overlayPaletteForSeed(DefaultThemeSeed)
 
     // 积分积累状态
     private var lastPackageForPoints: String? = null
@@ -76,11 +80,10 @@ class AppLimitAccessibilityService : AccessibilityService() {
     private fun startThemeWatcher() {
         serviceScope.launch(Dispatchers.Default) {
             combine(
-                preferences.selectedTheme,
-                preferences.customSeedColor,
-                preferences.customSeedColorEnabled,
-            ) { themeIndex, customSeedColor, customEnabled ->
-                overlayPaletteForTheme(themeIndex, customSeedColor.takeIf { customEnabled })
+                preferences.selectedThemeId,
+                preferences.customThemes,
+            ) { selectedThemeId, customThemes ->
+                overlayPaletteForSeed(resolveThemeSeed(selectedThemeId, customThemes))
             }.collect { palette ->
                 overlayPalette = palette
             }
@@ -383,36 +386,20 @@ class AppLimitAccessibilityService : AccessibilityService() {
         val outline: Int,
     )
 
-    private fun overlayPaletteForTheme(themeIndex: Int, customSeedColor: Int?): OverlayPalette {
-        if (customSeedColor != null) {
-            val hsv = FloatArray(3)
-            android.graphics.Color.colorToHSV(customSeedColor, hsv)
-            val secondary = android.graphics.Color.HSVToColor(
-                floatArrayOf(hsv[0], (hsv[1] * 0.7f).coerceIn(0f, 1f), (hsv[2] * 0.9f).coerceIn(0f, 1f))
-            )
-            val tertiary = android.graphics.Color.HSVToColor(floatArrayOf((hsv[0] + 30f) % 360f, hsv[1], hsv[2]))
-            return OverlayPalette(
-                primary = customSeedColor,
-                secondary = secondary,
-                tertiary = tertiary,
-                background = 0xFFF9FAFB.toInt(),
-                surface = android.graphics.Color.WHITE,
-                surfaceContainer = 0xFFF1F3F6.toInt(),
-                onSurface = 0xFF303133.toInt(),
-                onSurfaceVariant = 0xFF626366.toInt(),
-                outline = withAlpha(customSeedColor, 0.22f),
-            )
-        }
-
-        return when (themeIndex) {
-            1 -> OverlayPalette(0xFF94B49F.toInt(), 0xFFB1C4B8.toInt(), 0xFFFB7185.toInt(), 0xFFF8FAF8.toInt(), android.graphics.Color.WHITE, 0xFFEFF3F0.toInt(), 0xFF2F3330.toInt(), 0xFF5F6662.toInt(), 0xFFE1E9E3.toInt())
-            2 -> OverlayPalette(0xFFA8B1C2.toInt(), 0xFFC2C9D6.toInt(), 0xFFFACC15.toInt(), 0xFFF9FAFB.toInt(), android.graphics.Color.WHITE, 0xFFF1F3F6.toInt(), 0xFF303133.toInt(), 0xFF626366.toInt(), 0xFFE3E6EC.toInt())
-            3 -> OverlayPalette(0xFF8E7B6D.toInt(), 0xFFBFAE9F.toInt(), 0xFFA3E635.toInt(), 0xFFFAF9F6.toInt(), android.graphics.Color.WHITE, 0xFFF2EFEC.toInt(), 0xFF33302F.toInt(), 0xFF66625F.toInt(), 0xFFE8E0DA.toInt())
-            4 -> OverlayPalette(0xFFFF7E9D.toInt(), 0xFFFFB2C1.toInt(), 0xFF22D3EE.toInt(), 0xFFFFF5F7.toInt(), android.graphics.Color.WHITE, 0xFFFFEBF0.toInt(), 0xFF332F31.toInt(), 0xFF665F61.toInt(), 0xFFFFD7E0.toInt())
-            5 -> OverlayPalette(0xFF2ECD71.toInt(), 0xFF82E0AA.toInt(), 0xFFC084FC.toInt(), 0xFFF0FDF4.toInt(), android.graphics.Color.WHITE, 0xFFDCFCE7.toInt(), 0xFF2F3330.toInt(), 0xFF5F6662.toInt(), 0xFFC8F3D6.toInt())
-            6 -> OverlayPalette(0xFFFB923C.toInt(), 0xFFFFB37B.toInt(), 0xFF38BDF8.toInt(), 0xFFFFF7ED.toInt(), android.graphics.Color.WHITE, 0xFFFFEDD5.toInt(), 0xFF33312F.toInt(), 0xFF66625F.toInt(), 0xFFFFDFC1.toInt())
-            else -> OverlayPalette(0xFF8FB9C5.toInt(), 0xFFA6C4CD.toInt(), 0xFFFDE047.toInt(), 0xFFF2F6F8.toInt(), android.graphics.Color.WHITE, 0xFFEAF1F3.toInt(), 0xFF2F3133.toInt(), 0xFF5F6266.toInt(), 0xFFDCE9ED.toInt())
-        }
+    private fun overlayPaletteForSeed(seed: com.rrrrz.tinyvow.ui.theme.ThemeSeed): OverlayPalette {
+        val tokens = themeTokensFromSeed(seed)
+        val scheme = tokens.colorScheme
+        return OverlayPalette(
+            primary = tokens.base.toArgb(),
+            secondary = tokens.control.toArgb(),
+            tertiary = tokens.encourage.toArgb(),
+            background = scheme.background.toArgb(),
+            surface = scheme.surface.toArgb(),
+            surfaceContainer = scheme.surfaceContainerHigh.toArgb(),
+            onSurface = scheme.onSurface.toArgb(),
+            onSurfaceVariant = scheme.onSurfaceVariant.toArgb(),
+            outline = scheme.outlineVariant.toArgb(),
+        )
     }
 
     private fun withAlpha(color: Int, alpha: Float): Int =

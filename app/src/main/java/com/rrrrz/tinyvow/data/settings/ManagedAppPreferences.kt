@@ -8,9 +8,15 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.rrrrz.tinyvow.ui.theme.DefaultThemeSeed
+import com.rrrrz.tinyvow.ui.theme.ThemeSeed
+import com.rrrrz.tinyvow.ui.theme.legacyCustomTheme
+import com.rrrrz.tinyvow.ui.theme.legacyThemeId
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import org.json.JSONArray
+import org.json.JSONObject
 
 private val Context.managedAppDataStore by preferencesDataStore(name = "managed_app_preferences")
 
@@ -24,6 +30,8 @@ class ManagedAppPreferences(
         val selectedTheme = intPreferencesKey("selected_theme")
         val customSeedColor = intPreferencesKey("custom_seed_color")
         val customSeedColorEnabled = booleanPreferencesKey("custom_seed_color_enabled")
+        val selectedThemeId = stringPreferencesKey("selected_theme_id")
+        val customThemesJson = stringPreferencesKey("custom_themes_json")
         val todayPoints = doublePreferencesKey("today_points")
         val lastPointsResetDate = stringPreferencesKey("last_points_reset_date")
         val dismissedPermissionPrompts = stringSetPreferencesKey("dismissed_permission_prompts")
@@ -51,6 +59,27 @@ class ManagedAppPreferences(
 
     val customSeedColorEnabled: Flow<Boolean> = context.managedAppDataStore.data.map { preferences ->
         preferences[Keys.customSeedColorEnabled] ?: false
+    }
+
+    val selectedThemeId: Flow<String> = context.managedAppDataStore.data.map { preferences ->
+        preferences[Keys.selectedThemeId]
+            ?: if ((preferences[Keys.customSeedColorEnabled] ?: false) && preferences[Keys.customSeedColor] != null) {
+                "custom_legacy_seed"
+            } else {
+                legacyThemeId(preferences[Keys.selectedTheme] ?: 0)
+            }
+    }
+
+    val customThemes: Flow<List<ThemeSeed>> = context.managedAppDataStore.data.map { preferences ->
+        val customThemes = parseCustomThemes(preferences[Keys.customThemesJson])
+        val legacyCustom = preferences[Keys.customSeedColor]
+            ?.takeIf { preferences[Keys.customSeedColorEnabled] ?: false }
+            ?.let(::legacyCustomTheme)
+        if (legacyCustom == null || customThemes.any { it.id == legacyCustom.id }) {
+            customThemes
+        } else {
+            listOf(legacyCustom) + customThemes
+        }
     }
 
     val todayPoints: Flow<Double> = context.managedAppDataStore.data.map { preferences ->
@@ -105,6 +134,38 @@ class ManagedAppPreferences(
     suspend fun setCustomSeedColorEnabled(enabled: Boolean) {
         context.managedAppDataStore.edit { preferences ->
             preferences[Keys.customSeedColorEnabled] = enabled
+        }
+    }
+
+    suspend fun setSelectedThemeId(themeId: String) {
+        context.managedAppDataStore.edit { preferences ->
+            preferences[Keys.selectedThemeId] = themeId
+            preferences[Keys.customSeedColorEnabled] = false
+        }
+    }
+
+    suspend fun upsertCustomTheme(theme: ThemeSeed) {
+        context.managedAppDataStore.edit { preferences ->
+            val current = parseCustomThemes(preferences[Keys.customThemesJson])
+            val normalized = theme.copy(isCustom = true)
+            val next = if (current.any { it.id == normalized.id }) {
+                current.map { if (it.id == normalized.id) normalized else it }
+            } else {
+                current + normalized
+            }
+            preferences[Keys.customThemesJson] = encodeCustomThemes(next)
+            preferences[Keys.selectedThemeId] = normalized.id
+            preferences[Keys.customSeedColorEnabled] = false
+        }
+    }
+
+    suspend fun deleteCustomTheme(themeId: String) {
+        context.managedAppDataStore.edit { preferences ->
+            val next = parseCustomThemes(preferences[Keys.customThemesJson]).filterNot { it.id == themeId }
+            preferences[Keys.customThemesJson] = encodeCustomThemes(next)
+            if (preferences[Keys.selectedThemeId] == themeId) {
+                preferences[Keys.selectedThemeId] = DefaultThemeSeed.id
+            }
         }
     }
 
@@ -175,5 +236,44 @@ class ManagedAppPreferences(
         context.managedAppDataStore.edit { preferences ->
             preferences.remove(stringPreferencesKey("last_reminder_date_$packageName"))
         }
+    }
+
+    private fun parseCustomThemes(json: String?): List<ThemeSeed> {
+        if (json.isNullOrBlank()) return emptyList()
+        return runCatching {
+            val array = JSONArray(json)
+            buildList {
+                for (index in 0 until array.length()) {
+                    val item = array.optJSONObject(index) ?: continue
+                    val id = item.optString("id").takeIf { it.isNotBlank() } ?: continue
+                    val name = item.optString("name").takeIf { it.isNotBlank() } ?: "自定义主题"
+                    add(
+                        ThemeSeed(
+                            id = id,
+                            name = name,
+                            controlColor = item.getLong("controlColor").toInt(),
+                            encourageColor = item.getLong("encourageColor").toInt(),
+                            baseColor = item.getLong("baseColor").toInt(),
+                            isCustom = true,
+                        )
+                    )
+                }
+            }
+        }.getOrDefault(emptyList())
+    }
+
+    private fun encodeCustomThemes(themes: List<ThemeSeed>): String {
+        val array = JSONArray()
+        themes.filter { it.isCustom }.forEach { theme ->
+            array.put(
+                JSONObject()
+                    .put("id", theme.id)
+                    .put("name", theme.name)
+                    .put("controlColor", theme.controlColor.toLong())
+                    .put("encourageColor", theme.encourageColor.toLong())
+                    .put("baseColor", theme.baseColor.toLong())
+            )
+        }
+        return array.toString()
     }
 }

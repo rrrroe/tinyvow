@@ -112,6 +112,7 @@ import com.rrrrz.tinyvow.data.db.LimitPeriod
 import com.rrrrz.tinyvow.data.repository.AppGroupWithApps
 import com.rrrrz.tinyvow.data.repository.DailyArchiveRepository
 import com.rrrrz.tinyvow.data.usage.UsageStatsUsageRepository
+import com.rrrrz.tinyvow.ui.theme.LocalThemeColors
 import java.io.File
 import java.io.FileOutputStream
 import java.time.DayOfWeek
@@ -143,6 +144,7 @@ fun GroupDashboard(
     archiveRepository: DailyArchiveRepository?,
     modifier: Modifier = Modifier
 ) {
+    val themeColors = LocalThemeColors.current
     var showDialog by remember { mutableStateOf(false) }
     var editingGroup by remember { mutableStateOf<AppGroupWithApps?>(null) }
     var detailGroup by remember { mutableStateOf<AppGroupWithApps?>(null) }
@@ -170,7 +172,7 @@ fun GroupDashboard(
                 subtitle = "限制类",
                 groups = controlGroups,
                 usageMap = usageMap,
-                accent = MaterialTheme.colorScheme.secondary,
+                accent = themeColors.control,
                 onAdd = {
                     editingGroup = null
                     forcedType = GroupType.CONTROL
@@ -191,7 +193,7 @@ fun GroupDashboard(
                 subtitle = "积分目标",
                 groups = encourageGroups,
                 usageMap = usageMap,
-                accent = MaterialTheme.colorScheme.tertiary,
+                accent = themeColors.encourage,
                 onAdd = {
                     editingGroup = null
                     forcedType = GroupType.ENCOURAGE
@@ -367,6 +369,7 @@ private fun GroupCard(
     onLongClick: () -> Unit,
 ) {
     val context = LocalContext.current
+    val themeColors = LocalThemeColors.current
     val periodLabel = when (groupData.group.limitPeriod) {
         LimitPeriod.DAILY -> "每日"
         LimitPeriod.WEEKLY -> "每周"
@@ -385,12 +388,14 @@ private fun GroupCard(
     val progress = rawProgress.coerceIn(0f, 1f)
     val progressColor =
         when {
-            groupData.group.type == GroupType.CONTROL && rawProgress >= 1f -> Color(0xFFD32F2F)
-            groupData.group.type == GroupType.ENCOURAGE && rawProgress >= 1f -> MaterialTheme.colorScheme.tertiary
-            groupData.group.type == GroupType.ENCOURAGE -> MaterialTheme.colorScheme.outline.copy(alpha = 0.58f)
+            groupData.group.type == GroupType.CONTROL && rawProgress >= 1f -> themeColors.control
+            groupData.group.type == GroupType.ENCOURAGE -> themeColors.encourage
             else -> accent
         }
-    val trackColor = MaterialTheme.colorScheme.secondary.copy(alpha = 0.12f)
+    val trackColor = when (groupData.group.type) {
+        GroupType.ENCOURAGE -> themeColors.encourage.copy(alpha = 0.14f)
+        else -> themeColors.control.copy(alpha = 0.14f)
+    }
     val iconPackages = groupData.packageNames.take(3)
     val iconSize = 26
     val iconOffset = 12
@@ -604,6 +609,7 @@ private fun GroupDetailDialog(
     onDismiss: () -> Unit,
 ) {
     val context = LocalContext.current
+    val themeColors = LocalThemeColors.current
     val zoneId = remember { ZoneId.systemDefault() }
     val today = remember { LocalDate.now(zoneId) }
     val weekStart = remember(today) { today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)) }
@@ -620,6 +626,15 @@ private fun GroupDetailDialog(
     }
     var selectedTab by remember { mutableIntStateOf(0) }
     var weekUsageByDay by remember(groupData.group.id) { mutableStateOf<List<Pair<LocalDate, Long>>>(emptyList()) }
+    val shareBackground = MaterialTheme.colorScheme.background.toArgb()
+    val shareSurface = MaterialTheme.colorScheme.surface.toArgb()
+    val shareTextColor = MaterialTheme.colorScheme.onSurface.toArgb()
+    val shareMutedColor = MaterialTheme.colorScheme.onSurfaceVariant.toArgb()
+    val shareAccent = if (groupData.group.type == GroupType.CONTROL) {
+        themeColors.control.toArgb()
+    } else {
+        themeColors.encourage.toArgb()
+    }
 
     LaunchedEffect(groupData.group.id, groupData.packageNames) {
         val usageRepository = UsageStatsUsageRepository(context)
@@ -661,6 +676,11 @@ private fun GroupDetailDialog(
                             todayUsageMillis = todayUsageMillis,
                             weekUsageMillis = weekUsageByDay.sumOf { it.second },
                             historyItems = groupHistory,
+                            background = shareBackground,
+                            surface = shareSurface,
+                            accent = shareAccent,
+                            textColor = shareTextColor,
+                            mutedColor = shareMutedColor,
                         )
                     },
                     modifier = Modifier.size(36.dp),
@@ -1440,6 +1460,11 @@ private fun shareGroupDetailBitmap(
     todayUsageMillis: Long,
     weekUsageMillis: Long,
     historyItems: List<DailyGroupArchiveEntity>,
+    background: Int,
+    surface: Int,
+    accent: Int,
+    textColor: Int,
+    mutedColor: Int,
 ) {
     val bitmap = renderGroupDetailBitmap(
         groupName = groupData.group.name,
@@ -1450,6 +1475,11 @@ private fun shareGroupDetailBitmap(
         historyDays = historyItems.size,
         completedDays = historyItems.count { it.completed },
         packageCount = groupData.packageNames.size,
+        background = background,
+        surface = surface,
+        accent = accent,
+        textColor = textColor,
+        mutedColor = mutedColor,
         limitText = "${groupData.group.limitMinutes} 分钟",
     )
     val shareDir = File(context.cacheDir, "share").apply { mkdirs() }
@@ -1477,18 +1507,23 @@ private fun renderGroupDetailBitmap(
     historyDays: Int,
     completedDays: Int,
     packageCount: Int,
+    background: Int,
+    surface: Int,
+    accent: Int,
+    textColor: Int,
+    mutedColor: Int,
     limitText: String,
 ): Bitmap {
     val width = 1080
     val height = 1440
     val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
     val canvas = android.graphics.Canvas(bitmap)
-    val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = android.graphics.Color.rgb(246, 250, 252) }
-    val cardPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = android.graphics.Color.WHITE }
-    val primary = android.graphics.Color.rgb(91, 139, 153)
-    val muted = android.graphics.Color.rgb(101, 111, 120)
+    val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = background }
+    val cardPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = surface }
+    val primary = accent
+    val muted = mutedColor
     val titlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = android.graphics.Color.rgb(38, 44, 50)
+        color = textColor
         textSize = 58f
         typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.BOLD)
     }
@@ -1534,7 +1569,14 @@ private fun renderGroupDetailBitmap(
             RectF(left, top, left + 380f, top + 162f),
             34f,
             34f,
-            Paint(Paint.ANTI_ALIAS_FLAG).apply { color = android.graphics.Color.rgb(240, 246, 248) },
+        Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = android.graphics.Color.argb(
+                32,
+                android.graphics.Color.red(primary),
+                android.graphics.Color.green(primary),
+                android.graphics.Color.blue(primary),
+            )
+        },
         )
         canvas.drawText(metric.first, left + 32f, top + 52f, labelPaint)
         drawBitmapEllipsizedText(canvas, metric.second, left + 32f, top + 120f, 316f, valuePaint)
