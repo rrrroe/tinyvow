@@ -10,6 +10,9 @@ interface PointLedgerDao {
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insert(entry: PointLedgerEntity)
 
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertIgnore(entry: PointLedgerEntity): Long
+
     @Query("DELETE FROM point_ledger WHERE id = :entryId")
     suspend fun deleteById(entryId: String)
 

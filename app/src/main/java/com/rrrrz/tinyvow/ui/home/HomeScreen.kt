@@ -1241,7 +1241,7 @@ private fun AccessibilityStatusCard(
                     stringResource(R.string.accessibility_card_disabled)
                 },
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = if (accessibilityServiceEnabled) statusColor else MaterialTheme.colorScheme.onSurfaceVariant,
             )
             if (isMenuMode || !accessibilityServiceEnabled) {
                 Button(
@@ -1296,7 +1296,7 @@ private fun ReminderStatusCard(
                     stringResource(R.string.reminder_card_disabled)
                 },
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = if (notificationPermissionGranted) statusColor else MaterialTheme.colorScheme.onSurfaceVariant,
             )
             if (isMenuMode || !notificationPermissionGranted) {
                 Button(
@@ -1346,7 +1346,7 @@ private fun PermissionCard(
                     stringResource(R.string.permission_status_denied_desc)
                 },
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = if (usageAccessGranted) statusColor else MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
             Button(
@@ -1402,7 +1402,7 @@ private fun AutoStartCard(
             Text(
                 text = stringResource(R.string.autostart_card_desc),
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = if (isAutoStartDismissed) statusColor else MaterialTheme.colorScheme.onSurfaceVariant,
             )
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -1489,7 +1489,7 @@ private fun BatteryOptimizationCard(
                     stringResource(R.string.battery_card_disabled)
                 },
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = if (isIgnoringBattery) statusColor else MaterialTheme.colorScheme.onSurfaceVariant,
             )
             if (isMenuMode || !isIgnoringBattery) {
                 Button(

@@ -390,12 +390,7 @@ private fun GroupCard(
             groupData.group.type == GroupType.ENCOURAGE -> MaterialTheme.colorScheme.outline.copy(alpha = 0.58f)
             else -> accent
         }
-    val trackColor =
-        if (groupData.group.type == GroupType.ENCOURAGE) {
-            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.34f)
-        } else {
-            accent.copy(alpha = 0.12f)
-        }
+    val trackColor = MaterialTheme.colorScheme.secondary.copy(alpha = 0.12f)
     val iconPackages = groupData.packageNames.take(3)
     val iconSize = 26
     val iconOffset = 12

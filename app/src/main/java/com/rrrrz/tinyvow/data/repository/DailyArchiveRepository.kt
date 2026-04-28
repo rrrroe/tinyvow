@@ -10,7 +10,10 @@ import com.rrrrz.tinyvow.data.db.DailyArchiveStateEntity
 import com.rrrrz.tinyvow.data.db.DailyGroupArchiveEntity
 import com.rrrrz.tinyvow.data.db.GroupType
 import com.rrrrz.tinyvow.data.db.LimitPeriod
+import com.rrrrz.tinyvow.data.db.PointLedgerEntity
+import com.rrrrz.tinyvow.data.db.PointLedgerEntryType
 import com.rrrrz.tinyvow.data.db.TopAppArchiveSummary
+import com.rrrrz.tinyvow.data.settings.ManagedAppPreferences
 import com.rrrrz.tinyvow.data.usage.UsageRepository
 import com.rrrrz.tinyvow.data.usage.UsageStatsUsageRepository
 import com.rrrrz.tinyvow.domain.limit.isControlTimeout
@@ -44,6 +47,7 @@ class DailyArchiveRepository(
     private val pointLedgerDao = database.pointLedgerDao()
     private val stateDao = database.dailyArchiveStateDao()
     private val blockEventDao = database.blockEventDao()
+    private val preferences = ManagedAppPreferences(context)
 
     fun getRecentArchives(limit: Int = 90): Flow<List<DailyArchiveEntity>> = dailyArchiveDao.getRecent(limit)
 
@@ -324,6 +328,29 @@ class DailyArchiveRepository(
                 )
             }
         val appArchives = groupedAppArchives + ungroupedAppArchives
+        val archiveEarnEntries =
+            groupSnapshots
+                .filter { it.groupType == GroupType.ENCOURAGE && it.earnedPoints > 0.0 }
+                .mapNotNull { snapshot ->
+                    val alreadyEarned = pointLedgerDao.sumEarnedByDateAndGroup(archiveDate, snapshot.groupId)
+                    val missingPoints = snapshot.earnedPoints - alreadyEarned
+                    if (missingPoints > 0.0001) {
+                        PointLedgerEntity(
+                            id = UUID.randomUUID().toString(),
+                            occurredAt = dayEnd,
+                            ledgerDate = archiveDate,
+                            entryType = PointLedgerEntryType.USAGE_EARN,
+                            deltaPoints = missingPoints,
+                            groupId = snapshot.groupId,
+                            groupNameSnapshot = snapshot.groupName,
+                            sourceRefId = "archive-earn:$archiveDate:${snapshot.groupId}:${UUID.randomUUID()}",
+                            note = "Daily archive earned points reconciliation",
+                            createdAt = archiveTime,
+                        )
+                    } else {
+                        null
+                    }
+                }
 
         val pointsEarned =
             groupSnapshots.sumOf { it.earnedPoints } +
@@ -366,11 +393,20 @@ class DailyArchiveRepository(
                 updatedAt = archiveTime,
             )
 
+        var appliedArchiveEarnPoints = 0.0
         database.withTransaction {
+            archiveEarnEntries.forEach { entry ->
+                if (pointLedgerDao.insertIgnore(entry) > 0) {
+                    appliedArchiveEarnPoints += entry.deltaPoints
+                }
+            }
             dailyAppArchiveDao.replaceForDate(archiveDate, appArchives)
             dailyGroupArchiveDao.deleteByDate(archiveDate)
             dailyGroupArchiveDao.insertAll(groupSnapshots)
             dailyArchiveDao.upsert(dailyArchive)
+        }
+        if (appliedArchiveEarnPoints > 0.0) {
+            preferences.addUserPoints(appliedArchiveEarnPoints)
         }
     }
 
