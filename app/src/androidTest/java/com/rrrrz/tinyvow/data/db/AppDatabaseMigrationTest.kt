@@ -20,7 +20,7 @@ class AppDatabaseMigrationTest {
     }
 
     @Test
-    fun migrate9To13_createsArchiveLedgerAndBlockEventTables() {
+    fun migrate9To14_createsArchiveLedgerBlockEventAndGroupSortFields() {
         context.deleteDatabase(databaseName)
         createVersion9Database()
 
@@ -40,6 +40,9 @@ class AppDatabaseMigrationTest {
         assertTrue(indexExists("index_point_ledger_source_ref_id"))
         assertTrue(indexExists("index_block_events_group_id_event_date"))
         assertTrue(tableRowCount("daily_app_archives") == 0)
+        assertEquals(0, intValue("SELECT sort_order FROM app_groups WHERE id = 'control-new'"))
+        assertEquals(1, intValue("SELECT sort_order FROM app_groups WHERE id = 'control-old'"))
+        assertEquals(0, intValue("SELECT sort_order FROM app_groups WHERE id = 'encourage-new'"))
 
         database.close()
     }
@@ -113,6 +116,25 @@ class AppDatabaseMigrationTest {
         )
         sqliteDatabase.execSQL(
             "CREATE INDEX IF NOT EXISTS `index_group_app_cross_ref_group_id` ON `group_app_cross_ref` (`group_id`)"
+        )
+        sqliteDatabase.execSQL(
+            """
+            INSERT INTO app_groups (
+                id,
+                name,
+                type,
+                limit_period,
+                limit_minutes,
+                points_per_minute,
+                created_at,
+                updated_at,
+                is_deleted,
+                last_bonus_at
+            ) VALUES
+                ('control-old', 'Control Old', 'CONTROL', 'DAILY', 30, 0.0, 100, 100, 0, 0),
+                ('control-new', 'Control New', 'CONTROL', 'DAILY', 30, 0.0, 200, 200, 0, 0),
+                ('encourage-new', 'Encourage New', 'ENCOURAGE', 'DAILY', 30, 1.0, 150, 150, 0, 0)
+            """.trimIndent()
         )
         sqliteDatabase.execSQL(
             """

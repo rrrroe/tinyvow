@@ -22,7 +22,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         DailyArchiveStateEntity::class,
         BlockEventEntity::class,
     ],
-    version = 13,
+    version = 14,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -428,6 +428,34 @@ abstract class AppDatabase : RoomDatabase() {
                 }
             }
 
+        val MIGRATION_13_14 =
+            object : Migration(13, 14) {
+                override fun migrate(db: SupportSQLiteDatabase) {
+                    db.execSQL(
+                        "ALTER TABLE `app_groups` ADD COLUMN `sort_order` INTEGER NOT NULL DEFAULT 0"
+                    )
+                    db.execSQL(
+                        """
+                        UPDATE `app_groups`
+                        SET `sort_order` = (
+                            SELECT COUNT(*)
+                            FROM `app_groups` AS newer
+                            WHERE newer.`type` = `app_groups`.`type`
+                                AND newer.`is_deleted` = 0
+                                AND (
+                                    newer.`created_at` > `app_groups`.`created_at`
+                                    OR (
+                                        newer.`created_at` = `app_groups`.`created_at`
+                                        AND newer.`id` < `app_groups`.`id`
+                                    )
+                                )
+                        )
+                        WHERE `is_deleted` = 0
+                        """.trimIndent()
+                    )
+                }
+            }
+
         @Volatile
         private var INSTANCE: AppDatabase? = null
         @Volatile
@@ -448,7 +476,13 @@ abstract class AppDatabase : RoomDatabase() {
                         AppDatabase::class.java,
                         databaseName,
                     )
-                        .addMigrations(MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13)
+                        .addMigrations(
+                            MIGRATION_9_10,
+                            MIGRATION_10_11,
+                            MIGRATION_11_12,
+                            MIGRATION_12_13,
+                            MIGRATION_13_14,
+                        )
                         .build()
                 INSTANCE = instance
                 instanceDatabaseName = databaseName

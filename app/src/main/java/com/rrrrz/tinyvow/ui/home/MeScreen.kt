@@ -29,13 +29,21 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Science
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.ShoppingCart
+import androidx.compose.material3.Button
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -53,12 +61,27 @@ import com.rrrrz.tinyvow.R
 fun MeScreen(
     userPoints: Double,
     currentTheme: Int,
+    usageAccessGranted: Boolean,
+    accessibilityServiceEnabled: Boolean,
+    isAutoStartDismissed: Boolean,
+    isIgnoringBattery: Boolean,
+    notificationPermissionGranted: Boolean,
+    dismissedPermissionPrompts: Set<String>,
     onSetTheme: (Int) -> Unit,
+    onOpenUsageAccessSettings: () -> Unit,
+    onOpenAccessibilitySettings: () -> Unit,
+    onOpenAutoStartSettings: () -> Unit,
+    onSetAutoStartDismissed: () -> Unit,
+    onRequestBatteryOptimization: () -> Unit,
+    onRequestNotificationPermission: () -> Unit,
+    onClearDismissedPermissionPrompts: () -> Unit,
     onNavigateToLaboratory: () -> Unit,
     onNavigateToHistory: () -> Unit,
     onNavigateToAchievements: () -> Unit,
     onNavigateToRedeem: () -> Unit,
 ) {
+    var showPermissionSettings by remember { mutableStateOf(false) }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -151,6 +174,7 @@ fun MeScreen(
             MeMenuSection("核心入口") {
                 MeMenuItem(icon = Icons.Default.EmojiEvents, title = "成果与成就", onClick = onNavigateToAchievements)
                 MeMenuItem(icon = Icons.Default.ShoppingCart, title = "商城兑换", onClick = onNavigateToRedeem)
+                MeMenuItem(icon = Icons.Default.Settings, title = "权限设置", onClick = { showPermissionSettings = true })
             }
 
             MeMenuSection("外观主题") {
@@ -167,6 +191,117 @@ fun MeScreen(
                 MeMenuItem(icon = Icons.Default.History, title = "使用历史", onClick = onNavigateToHistory)
                 MeMenuItem(icon = Icons.AutoMirrored.Filled.HelpOutline, title = "帮助与反馈", onClick = {})
             }
+        }
+    }
+
+    if (showPermissionSettings) {
+        PermissionSettingsSheet(
+            usageAccessGranted = usageAccessGranted,
+            accessibilityServiceEnabled = accessibilityServiceEnabled,
+            isAutoStartDismissed = isAutoStartDismissed,
+            isIgnoringBattery = isIgnoringBattery,
+            notificationPermissionGranted = notificationPermissionGranted,
+            dismissedPermissionPrompts = dismissedPermissionPrompts,
+            onDismiss = { showPermissionSettings = false },
+            onOpenUsageAccessSettings = onOpenUsageAccessSettings,
+            onOpenAccessibilitySettings = onOpenAccessibilitySettings,
+            onOpenAutoStartSettings = onOpenAutoStartSettings,
+            onSetAutoStartDismissed = onSetAutoStartDismissed,
+            onRequestBatteryOptimization = onRequestBatteryOptimization,
+            onRequestNotificationPermission = onRequestNotificationPermission,
+            onClearDismissedPermissionPrompts = onClearDismissedPermissionPrompts,
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PermissionSettingsSheet(
+    usageAccessGranted: Boolean,
+    accessibilityServiceEnabled: Boolean,
+    isAutoStartDismissed: Boolean,
+    isIgnoringBattery: Boolean,
+    notificationPermissionGranted: Boolean,
+    dismissedPermissionPrompts: Set<String>,
+    onDismiss: () -> Unit,
+    onOpenUsageAccessSettings: () -> Unit,
+    onOpenAccessibilitySettings: () -> Unit,
+    onOpenAutoStartSettings: () -> Unit,
+    onSetAutoStartDismissed: () -> Unit,
+    onRequestBatteryOptimization: () -> Unit,
+    onRequestNotificationPermission: () -> Unit,
+    onClearDismissedPermissionPrompts: () -> Unit,
+) {
+    val statusColor = if (usageAccessGranted) {
+        MaterialTheme.colorScheme.primary
+    } else {
+        MaterialTheme.colorScheme.error
+    }
+
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 16.dp)
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        text = "权限设置",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Text(
+                        text = "检查权限状态，或恢复首页已忽略的权限提示。",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                if (dismissedPermissionPrompts.isNotEmpty()) {
+                    Button(onClick = onClearDismissedPermissionPrompts) {
+                        Text("取消忽略")
+                    }
+                }
+            }
+
+            if (dismissedPermissionPrompts.isNotEmpty()) {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                ) {
+                    Text(
+                        text = "已忽略 ${dismissedPermissionPrompts.size} 项：首页暂不显示这些提示，点击“取消忽略”后会重新显示。",
+                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+
+            PermissionProcessList(
+                isMenuMode = true,
+                usageAccessGranted = usageAccessGranted,
+                accessibilityServiceEnabled = accessibilityServiceEnabled,
+                isAutoStartDismissed = isAutoStartDismissed,
+                isIgnoringBattery = isIgnoringBattery,
+                notificationPermissionGranted = notificationPermissionGranted,
+                statusColor = statusColor,
+                onOpenUsageAccessSettings = onOpenUsageAccessSettings,
+                onOpenAccessibilitySettings = onOpenAccessibilitySettings,
+                onOpenAutoStartSettings = onOpenAutoStartSettings,
+                onSetAutoStartDismissed = onSetAutoStartDismissed,
+                onRequestBatteryOptimization = onRequestBatteryOptimization,
+                onRequestNotificationPermission = onRequestNotificationPermission,
+            )
+
+            Spacer(modifier = Modifier.height(48.dp))
         }
     }
 }

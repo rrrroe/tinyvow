@@ -2,6 +2,8 @@ package com.rrrrz.tinyvow.ui.home
 
 import android.Manifest
 import android.content.Intent
+import android.net.Uri
+import android.os.Build
 import android.provider.Settings
 import android.os.PowerManager
 import androidx.activity.compose.BackHandler
@@ -93,6 +95,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.first
 import androidx.compose.animation.*
+import androidx.compose.foundation.BorderStroke
 import java.time.LocalDate
 import com.rrrrz.tinyvow.data.usage.UsageStatsUsageRepository
 import com.rrrrz.tinyvow.data.usage.UsageRepository
@@ -107,6 +110,14 @@ import com.rrrrz.tinyvow.ui.rewards.RedeemScreen
 import com.rrrrz.tinyvow.ui.rewards.AchievementScreen
 
 enum class Screen { HOME, REWARDS, STATS, ME, LABORATORY, HISTORY }
+
+private object PermissionPromptIds {
+    const val USAGE_ACCESS = "usage_access"
+    const val ACCESSIBILITY = "accessibility"
+    const val AUTO_START = "auto_start"
+    const val BATTERY = "battery"
+    const val NOTIFICATION = "notification"
+}
 
 @Composable
 fun RewardsHome(
@@ -195,6 +206,7 @@ fun HomeRoute(
     val rewards by appLimitRepository.getAllRewards().collectAsState(initial = emptyList())
     val achievements by appLimitRepository.getAllAchievements().collectAsState(initial = emptyList())
     val redemptionHistory by appLimitRepository.getRedemptionHistory().collectAsState(initial = emptyList())
+    val dismissedPermissionPrompts by preferences.dismissedPermissionPrompts.collectAsState(initial = emptySet())
 
     var currentScreen by remember { mutableStateOf(Screen.HOME) }
     val snackbarHostState = remember { SnackbarHostState() }
@@ -376,8 +388,19 @@ fun HomeRoute(
                             context.startActivity(intent)
                         },
                         isAutoStartDismissed = isAutoStartDismissed,
+                        dismissedPermissionPrompts = dismissedPermissionPrompts,
                         onSetAutoStartDismissed = {
                             coroutineScope.launch { preferences.setAutoStartDismissed(true) }
+                        },
+                        onDismissPermissionPrompts = { ids ->
+                            coroutineScope.launch {
+                                ids.forEach { id ->
+                                    preferences.setPermissionPromptDismissed(id, true)
+                                    if (id == PermissionPromptIds.AUTO_START) {
+                                        preferences.setAutoStartDismissed(true)
+                                    }
+                                }
+                            }
                         },
                         onSaveGroup = { id, name, limit, type, period, pts, pkgs ->
                             coroutineScope.launch {
@@ -389,6 +412,7 @@ fun HomeRoute(
                             coroutineScope.launch { appLimitRepository.deleteGroup(id) }
                         },
                         appLimitRepository = appLimitRepository,
+                        archiveRepository = dailyArchiveRepository,
                         modifier = modifier,
                     )
                 }
@@ -427,7 +451,69 @@ fun HomeRoute(
                     MeScreen(
                         userPoints = userPoints,
                         currentTheme = selectedTheme,
+                        usageAccessGranted = usageAccessStatus == UsageAccessStatus.GRANTED,
+                        accessibilityServiceEnabled = accessibilityServiceEnabled,
+                        isAutoStartDismissed = isAutoStartDismissed,
+                        isIgnoringBattery = isIgnoringBattery,
+                        notificationPermissionGranted = notificationPermissionGranted,
+                        dismissedPermissionPrompts = dismissedPermissionPrompts,
                         onSetTheme = { i -> coroutineScope.launch { preferences.setSelectedTheme(i) } },
+                        onOpenUsageAccessSettings = {
+                            val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            context.startActivity(intent)
+                        },
+                        onOpenAccessibilitySettings = {
+                            val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            context.startActivity(intent)
+                        },
+                        onRequestNotificationPermission = {
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                            }
+                        },
+                        onOpenAutoStartSettings = {
+                            runCatching {
+                                val intent = Intent().apply {
+                                    component = android.content.ComponentName(
+                                        "com.miui.securitycenter",
+                                        "com.miui.permcenter.autostart.AutoStartManagementActivity"
+                                    )
+                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                }
+                                context.startActivity(intent)
+                            }.onFailure {
+                                val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                    data = Uri.parse("package:${context.packageName}")
+                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                }
+                                context.startActivity(intent)
+                            }
+                        },
+                        onSetAutoStartDismissed = {
+                            coroutineScope.launch { preferences.setAutoStartDismissed(true) }
+                        },
+                        onRequestBatteryOptimization = {
+                            runCatching {
+                                val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                                    data = Uri.parse("package:${context.packageName}")
+                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                }
+                                context.startActivity(intent)
+                            }.onFailure {
+                                val intent = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                context.startActivity(intent)
+                            }
+                        },
+                        onClearDismissedPermissionPrompts = {
+                            coroutineScope.launch {
+                                dismissedPermissionPrompts.forEach { id ->
+                                    preferences.setPermissionPromptDismissed(id, false)
+                                }
+                                if (PermissionPromptIds.AUTO_START in dismissedPermissionPrompts) {
+                                    preferences.setAutoStartDismissed(false)
+                                }
+                            }
+                        },
                         onNavigateToLaboratory = { currentScreen = Screen.LABORATORY },
                         onNavigateToHistory = { currentScreen = Screen.HISTORY },
                         onNavigateToAchievements = { currentScreen = Screen.REWARDS },
@@ -681,10 +767,13 @@ fun HomeScreen(
     onOpenAutoStartSettings: () -> Unit,
     onRequestBatteryOptimization: () -> Unit,
     isAutoStartDismissed: Boolean,
+    dismissedPermissionPrompts: Set<String>,
     onSetAutoStartDismissed: () -> Unit,
+    onDismissPermissionPrompts: (List<String>) -> Unit,
     onSaveGroup: (id: String?, name: String, limit: Int, type: GroupType, period: LimitPeriod, pts: Double, pkgs: List<String>) -> Unit,
     onDeleteGroup: (id: String) -> Unit,
     appLimitRepository: AppLimitRepository? = null,
+    archiveRepository: DailyArchiveRepository? = null,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -719,13 +808,40 @@ fun HomeScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            val showCardsOnHome = !usageAccessGranted || !accessibilityServiceEnabled || !isAutoStartDismissed || !isIgnoringBattery || !notificationPermissionGranted
+            val pendingPermissionPrompts =
+                listOfNotNull(
+                    if (!usageAccessGranted && PermissionPromptIds.USAGE_ACCESS !in dismissedPermissionPrompts) {
+                        PermissionPromptIds.USAGE_ACCESS to "使用情况访问"
+                    } else {
+                        null
+                    },
+                    if (!accessibilityServiceEnabled && PermissionPromptIds.ACCESSIBILITY !in dismissedPermissionPrompts) {
+                        PermissionPromptIds.ACCESSIBILITY to "无障碍拦截"
+                    } else {
+                        null
+                    },
+                    if (!isAutoStartDismissed && PermissionPromptIds.AUTO_START !in dismissedPermissionPrompts) {
+                        PermissionPromptIds.AUTO_START to "后台自启动"
+                    } else {
+                        null
+                    },
+                    if (!isIgnoringBattery && PermissionPromptIds.BATTERY !in dismissedPermissionPrompts) {
+                        PermissionPromptIds.BATTERY to "电池白名单"
+                    } else {
+                        null
+                    },
+                    if (!notificationPermissionGranted && PermissionPromptIds.NOTIFICATION !in dismissedPermissionPrompts) {
+                        PermissionPromptIds.NOTIFICATION to "通知权限"
+                    } else {
+                        null
+                    },
+                )
 
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 20.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                    .padding(horizontal = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 // 计算今日进度
                 val controlGroups = groupsWithApps.filter { it.group.type == GroupType.CONTROL }
@@ -739,19 +855,33 @@ fun HomeScreen(
                     val usage = (usageMap[g.group.id] ?: 0L) / 60_000L
                     usage >= g.group.limitMinutes
                 }
-                val totalUsageMinutes = groupsWithApps.sumOf { (usageMap[it.group.id] ?: 0L) / 60_000L }
+                val controlUsageMinutes = controlGroups.sumOf { (usageMap[it.group.id] ?: 0L) / 60_000L }
+                val liveTodayPoints = encourageGroups.sumOf { group ->
+                    val usageMillis = usageMap[group.group.id] ?: 0L
+                    val usagePoints = usageMillis / 60_000.0 * group.group.pointsPerMinute
+                    val targetBonus = if (usageMillis >= group.group.limitMinutes * 60_000L) {
+                        group.group.limitMinutes * group.group.pointsPerMinute
+                    } else {
+                        0.0
+                    }
+                    usagePoints + targetBonus
+                }
+                val displayTodayPoints = liveTodayPoints
 
                 // 积分与今日概览
                 if (usageAccessGranted) {
                     ElevatedCard(
-                        modifier = Modifier.fillMaxWidth().padding(top = 16.dp),
-                        shape = RoundedCornerShape(24.dp),
+                        modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
+                        shape = RoundedCornerShape(22.dp),
                         colors = CardDefaults.elevatedCardColors(
                             containerColor = MaterialTheme.colorScheme.surface
                         ),
-                        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 2.dp)
+                        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 1.dp)
                     ) {
-                        Column(modifier = Modifier.padding(20.dp)) {
+                        Column(
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
                             val currentDate = remember {
                                 val date = java.time.LocalDate.now()
                                 val formatter = java.time.format.DateTimeFormatter.ofPattern("M月d日 EEEE", java.util.Locale.CHINESE)
@@ -761,19 +891,21 @@ fun HomeScreen(
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.Bottom
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                     Text(
                                         text = currentDate,
                                         style = MaterialTheme.typography.titleMedium,
                                         fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.onSurface
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        maxLines = 1,
                                     )
                                     Text(
                                         text = "自律即自由",
-                                        style = MaterialTheme.typography.labelMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        style = MaterialTheme.typography.labelLarge,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1,
                                     )
                                 }
                                 
@@ -781,19 +913,19 @@ fun HomeScreen(
                                     Text(
                                         text = "当前累计",
                                         style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
                                     Row(verticalAlignment = Alignment.Bottom) {
                                         Text(
                                             text = "%.1f".format(userPoints),
-                                            style = MaterialTheme.typography.headlineMedium,
+                                            style = MaterialTheme.typography.headlineSmall,
                                             fontWeight = FontWeight.ExtraBold,
                                             color = MaterialTheme.colorScheme.primary,
                                             modifier = Modifier.alignByBaseline()
                                         )
                                         Text(
-                                            text = " 积分",
-                                            style = MaterialTheme.typography.titleMedium,
+                                            text = " 分",
+                                            style = MaterialTheme.typography.labelLarge,
                                             fontWeight = FontWeight.Bold,
                                             color = MaterialTheme.colorScheme.primary,
                                             modifier = Modifier.alignByBaseline()
@@ -801,94 +933,54 @@ fun HomeScreen(
                                     }
                                 }
                             }
-                            
-                            Spacer(modifier = Modifier.height(20.dp))
-                            
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(12.dp)
-                            ) {
-                                Surface(
-                                    modifier = Modifier.weight(1f),
-                                    shape = RoundedCornerShape(16.dp),
-                                    color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f)
-                                ) {
-                                    Column(
-                                        modifier = Modifier.padding(12.dp),
-                                        verticalArrangement = Arrangement.spacedBy(4.dp)
-                                    ) {
-                                        Text("小约定", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSecondaryContainer.copy(alpha = 0.8f))
-                                        Text(
-                                            text = "$safeVows / ${controlGroups.size}",
-                                            style = MaterialTheme.typography.titleMedium,
-                                            fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.onSecondaryContainer
-                                        )
-                                    }
-                                }
-                                
-                                Surface(
-                                    modifier = Modifier.weight(1f),
-                                    shape = RoundedCornerShape(16.dp),
-                                    color = MaterialTheme.colorScheme.tertiaryContainer.copy(alpha = 0.5f)
-                                ) {
-                                    Column(
-                                        modifier = Modifier.padding(12.dp),
-                                        verticalArrangement = Arrangement.spacedBy(4.dp)
-                                    ) {
-                                        Text("小鼓励", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onTertiaryContainer.copy(alpha = 0.8f))
-                                        Text(
-                                            text = "$doneEncs / ${encourageGroups.size}",
-                                            style = MaterialTheme.typography.titleMedium,
-                                            fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.onTertiaryContainer
-                                        )
-                                    }
-                                }
 
-                                Surface(
-                                    modifier = Modifier.weight(1f),
-                                    shape = RoundedCornerShape(16.dp),
-                                    color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 ) {
-                                    Column(
-                                        modifier = Modifier.padding(12.dp),
-                                        verticalArrangement = Arrangement.spacedBy(4.dp)
-                                    ) {
-                                        Text("今日收益", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f))
-                                        Text(
-                                            text = "+%.1f".format(todayPoints),
-                                            style = MaterialTheme.typography.titleMedium,
-                                            fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.onPrimaryContainer
-                                        )
-                                    }
+                                    OverviewStatTile(
+                                        label = "小约定",
+                                        value = "$safeVows/${controlGroups.size}",
+                                        color = MaterialTheme.colorScheme.secondary,
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                    OverviewStatTile(
+                                        label = "小鼓励",
+                                        value = "$doneEncs/${encourageGroups.size}",
+                                        color = MaterialTheme.colorScheme.tertiary,
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                }
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    OverviewStatTile(
+                                        label = "今日用时",
+                                        value = "${controlUsageMinutes}分钟",
+                                        color = MaterialTheme.colorScheme.secondary,
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                    OverviewStatTile(
+                                        label = "今日可得",
+                                        value = "+%.1f分".format(displayTodayPoints),
+                                        color = MaterialTheme.colorScheme.tertiary,
+                                        modifier = Modifier.weight(1f),
+                                    )
                                 }
                             }
                         }
                     }
                 }
                 
-                if (showCardsOnHome) {
-                    Text(
-                        text = stringResource(R.string.home_subtitle),
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    PermissionProcessList(
-                        isMenuMode = false,
-                        usageAccessGranted = usageAccessGranted,
-                        accessibilityServiceEnabled = accessibilityServiceEnabled,
-                        isAutoStartDismissed = isAutoStartDismissed,
-                        isIgnoringBattery = isIgnoringBattery,
-                        notificationPermissionGranted = notificationPermissionGranted,
-                        statusColor = statusColor,
-                        onOpenUsageAccessSettings = onOpenUsageAccessSettings,
-                        onOpenAccessibilitySettings = onOpenAccessibilitySettings,
-                        onOpenAutoStartSettings = onOpenAutoStartSettings,
-                        onSetAutoStartDismissed = onSetAutoStartDismissed,
-                        onRequestBatteryOptimization = onRequestBatteryOptimization,
-                        onRequestNotificationPermission = onRequestNotificationPermission,
+                if (pendingPermissionPrompts.isNotEmpty()) {
+                    CompactPermissionBanner(
+                        prompts = pendingPermissionPrompts,
+                        onOpen = { showDiagnosticMenu = true },
+                        onDismiss = {
+                            onDismissPermissionPrompts(pendingPermissionPrompts.map { it.first })
+                        },
                     )
                 }
             }
@@ -901,25 +993,27 @@ fun HomeScreen(
                     isLoadingApps = isLoadingApps,
                     onSaveGroup = onSaveGroup,
                     onDeleteGroup = onDeleteGroup,
+                    onReorderGroups = { type, ids ->
+                        coroutineScope.launch { appLimitRepository?.reorderGroups(type, ids) }
+                    },
+                    archiveRepository = archiveRepository,
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f)
-                        .padding(start = 20.dp, end = 20.dp, top = 16.dp)
+                        .padding(start = 16.dp, end = 16.dp, top = 8.dp)
                 )
             } else {
                 Column(
                     modifier = Modifier
-                        .padding(start = 20.dp, end = 20.dp, top = 16.dp)
+                        .padding(start = 16.dp, end = 16.dp, top = 8.dp)
                         .verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    GuidanceCard(
-                        title = stringResource(R.string.permission_steps_title),
-                        body = stringResource(R.string.permission_steps_body),
-                    )
-                    GuidanceCard(
-                        title = stringResource(R.string.mvp_scope_title),
-                        body = stringResource(R.string.mvp_scope_body),
+                    Text(
+                        text = "开启使用情况访问后显示分组和实时统计",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp),
                     )
                 }
             }
@@ -971,7 +1065,84 @@ fun HomeScreen(
 }
 
 @Composable
-private fun PermissionProcessList(
+private fun CompactPermissionBanner(
+    prompts: List<Pair<String, String>>,
+    onOpen: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        tonalElevation = 1.dp,
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(8.dp)
+                    .background(MaterialTheme.colorScheme.error, CircleShape),
+            )
+            Text(
+                text = "还有 ${prompts.size} 项权限建议配置",
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            )
+            TextButton(onClick = onOpen, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)) {
+                Text("处理", maxLines = 1)
+            }
+            TextButton(onClick = onDismiss, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)) {
+                Text("忽略", maxLines = 1)
+            }
+        }
+    }
+}
+
+@Composable
+private fun OverviewStatTile(
+    label: String,
+    value: String,
+    color: Color,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier.height(58.dp),
+        shape = RoundedCornerShape(16.dp),
+        color = color.copy(alpha = 0.15f),
+        border = BorderStroke(1.dp, color.copy(alpha = 0.24f)),
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 9.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.9f),
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            )
+            Text(
+                text = value,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.ExtraBold,
+                color = color,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
+fun PermissionProcessList(
     isMenuMode: Boolean,
     usageAccessGranted: Boolean,
     accessibilityServiceEnabled: Boolean,
@@ -1005,6 +1176,7 @@ private fun PermissionProcessList(
 
         if (isMenuMode || !isAutoStartDismissed) {
             AutoStartCard(
+                isAutoStartDismissed = isAutoStartDismissed,
                 onOpenAutoStartSettings = onOpenAutoStartSettings,
                 onSetAutoStartDismissed = onSetAutoStartDismissed,
             )
@@ -1056,6 +1228,11 @@ private fun AccessibilityStatusCard(
                 text = stringResource(R.string.accessibility_card_title),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            PermissionStatusLine(
+                text = if (accessibilityServiceEnabled) "服务已运行" else "尚未开启",
+                color = statusColor,
             )
             Text(
                 text = if (accessibilityServiceEnabled) {
@@ -1064,8 +1241,7 @@ private fun AccessibilityStatusCard(
                     stringResource(R.string.accessibility_card_disabled)
                 },
                 style = MaterialTheme.typography.bodyMedium,
-                color = statusColor,
-                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             if (isMenuMode || !accessibilityServiceEnabled) {
                 Button(
@@ -1107,6 +1283,11 @@ private fun ReminderStatusCard(
                 text = stringResource(R.string.reminder_card_title),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            PermissionStatusLine(
+                text = if (notificationPermissionGranted) "通知已开启" else "尚未开启",
+                color = statusColor,
             )
             Text(
                 text = if (notificationPermissionGranted) {
@@ -1115,8 +1296,7 @@ private fun ReminderStatusCard(
                     stringResource(R.string.reminder_card_disabled)
                 },
                 style = MaterialTheme.typography.bodyMedium,
-                color = statusColor,
-                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             if (isMenuMode || !notificationPermissionGranted) {
                 Button(
@@ -1148,26 +1328,16 @@ private fun PermissionCard(
                 .padding(20.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(12.dp)
-                        .background(statusColor, CircleShape),
-                )
-                Text(
-                    text = if (usageAccessGranted) {
-                        stringResource(R.string.permission_status_granted)
-                    } else {
-                        stringResource(R.string.permission_status_denied)
-                    },
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    color = statusColor,
-                )
-            }
+            Text(
+                text = "[步骤 1] 使用情况访问",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            PermissionStatusLine(
+                text = if (usageAccessGranted) "已开启" else "尚未开启",
+                color = statusColor,
+            )
 
             Text(
                 text = if (usageAccessGranted) {
@@ -1176,6 +1346,7 @@ private fun PermissionCard(
                     stringResource(R.string.permission_status_denied_desc)
                 },
                 style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
             Button(
@@ -1196,9 +1367,16 @@ private fun PermissionCard(
 
 @Composable
 private fun AutoStartCard(
+    isAutoStartDismissed: Boolean,
     onOpenAutoStartSettings: () -> Unit,
     onSetAutoStartDismissed: () -> Unit,
 ) {
+    val statusColor = if (isAutoStartDismissed) {
+        MaterialTheme.colorScheme.primary
+    } else {
+        MaterialTheme.colorScheme.error
+    }
+
     ElevatedCard(
         shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.elevatedCardColors(
@@ -1215,6 +1393,11 @@ private fun AutoStartCard(
                 text = stringResource(R.string.autostart_card_title),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            PermissionStatusLine(
+                text = if (isAutoStartDismissed) "已确认开启" else "建议手动配置",
+                color = statusColor,
             )
             Text(
                 text = stringResource(R.string.autostart_card_desc),
@@ -1239,6 +1422,29 @@ private fun AutoStartCard(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun PermissionStatusLine(
+    text: String,
+    color: Color,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Box(
+            modifier = Modifier
+                .size(9.dp)
+                .background(color, CircleShape),
+        )
+        Text(
+            text = text,
+            style = MaterialTheme.typography.bodyMedium,
+            color = color,
+            fontWeight = FontWeight.SemiBold,
+        )
     }
 }
 
@@ -1270,6 +1476,11 @@ private fun BatteryOptimizationCard(
                 text = stringResource(R.string.battery_card_title),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            PermissionStatusLine(
+                text = if (isIgnoringBattery) "白名单已开启" else "尚未开启",
+                color = statusColor,
             )
             Text(
                 text = if (isIgnoringBattery) {
@@ -1278,8 +1489,7 @@ private fun BatteryOptimizationCard(
                     stringResource(R.string.battery_card_disabled)
                 },
                 style = MaterialTheme.typography.bodyMedium,
-                color = statusColor,
-                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             if (isMenuMode || !isIgnoringBattery) {
                 Button(
@@ -1364,6 +1574,7 @@ private fun HomeScreenPreviewDenied() {
             notificationPermissionGranted = false,
             isIgnoringBattery = false,
             isAutoStartDismissed = false,
+            dismissedPermissionPrompts = emptySet(),
             onNavigateToRedeem = {},
             onNavigateToAchievements = {},
             onOpenUsageAccessSettings = {},
@@ -1372,6 +1583,7 @@ private fun HomeScreenPreviewDenied() {
             onOpenAutoStartSettings = {},
             onRequestBatteryOptimization = {},
             onSetAutoStartDismissed = {},
+            onDismissPermissionPrompts = {},
             onSaveGroup = { _, _, _, _, _, _, _ -> },
             onDeleteGroup = {}
         )
@@ -1398,6 +1610,7 @@ private fun HomeScreenPreviewGranted() {
             notificationPermissionGranted = true,
             isIgnoringBattery = true,
             isAutoStartDismissed = false,
+            dismissedPermissionPrompts = emptySet(),
             onNavigateToRedeem = {},
             onNavigateToAchievements = {},
             onOpenUsageAccessSettings = {},
@@ -1406,6 +1619,7 @@ private fun HomeScreenPreviewGranted() {
             onOpenAutoStartSettings = {},
             onRequestBatteryOptimization = {},
             onSetAutoStartDismissed = {},
+            onDismissPermissionPrompts = {},
             onSaveGroup = { _, _, _, _, _, _, _ -> },
             onDeleteGroup = {}
         )

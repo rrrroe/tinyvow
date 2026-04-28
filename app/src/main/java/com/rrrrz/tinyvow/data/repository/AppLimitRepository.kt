@@ -209,6 +209,7 @@ class AppLimitRepository(
         return withContext(Dispatchers.IO) {
             val groupId = id ?: UUID.randomUUID().toString()
             val existing = if (id != null) groupDao.getGroupByIdSync(id) else null
+            val sortOrder = existing?.sortOrder ?: (groupDao.getMaxSortOrder(type) + 1)
             
             val entity = AppGroupEntity(
                 id = groupId,
@@ -218,10 +219,24 @@ class AppLimitRepository(
                 limitMinutes = limitMinutes,
                 pointsPerMinute = pointsPerMinute,
                 createdAt = existing?.createdAt ?: System.currentTimeMillis(),
-                updatedAt = System.currentTimeMillis()
+                updatedAt = System.currentTimeMillis(),
+                isDeleted = existing?.isDeleted ?: false,
+                lastBonusAt = existing?.lastBonusAt ?: 0L,
+                sortOrder = sortOrder,
             )
             groupDao.insertGroup(entity)
             groupId
+        }
+    }
+
+    suspend fun reorderGroups(type: GroupType, orderedIds: List<String>) {
+        withContext(Dispatchers.IO) {
+            val now = System.currentTimeMillis()
+            database.withTransaction {
+                orderedIds.distinct().forEachIndexed { index, groupId ->
+                    groupDao.updateSortOrder(groupId, type, index, now)
+                }
+            }
         }
     }
 

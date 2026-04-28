@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.doublePreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -23,6 +24,7 @@ class ManagedAppPreferences(
         val selectedTheme = intPreferencesKey("selected_theme")
         val todayPoints = doublePreferencesKey("today_points")
         val lastPointsResetDate = stringPreferencesKey("last_points_reset_date")
+        val dismissedPermissionPrompts = stringSetPreferencesKey("dismissed_permission_prompts")
     }
 
     val selectedPackageName: Flow<String?> = context.managedAppDataStore.data.map { preferences ->
@@ -49,6 +51,10 @@ class ManagedAppPreferences(
         } else {
             0.0
         }
+    }
+
+    val dismissedPermissionPrompts: Flow<Set<String>> = context.managedAppDataStore.data.map { preferences ->
+        preferences[Keys.dismissedPermissionPrompts].orEmpty()
     }
 
     suspend fun addUserPoints(points: Double) {
@@ -97,6 +103,17 @@ class ManagedAppPreferences(
     suspend fun setAutoStartDismissed(dismissed: Boolean) {
         context.managedAppDataStore.edit { preferences ->
             preferences[booleanPreferencesKey("is_autostart_dismissed")] = dismissed
+        }
+    }
+
+    suspend fun setPermissionPromptDismissed(promptId: String, dismissed: Boolean) {
+        context.managedAppDataStore.edit { preferences ->
+            val current = preferences[Keys.dismissedPermissionPrompts].orEmpty()
+            preferences[Keys.dismissedPermissionPrompts] = if (dismissed) {
+                current + promptId
+            } else {
+                current - promptId
+            }
         }
     }
 
