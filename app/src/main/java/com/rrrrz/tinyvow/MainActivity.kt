@@ -21,8 +21,13 @@ class MainActivity : ComponentActivity() {
         setContent {
             val prefs = remember { ManagedAppPreferences(this@MainActivity) }
             val themeIndex by prefs.selectedTheme.collectAsState(initial = 0)
+            val customSeedColor by prefs.customSeedColor.collectAsState(initial = null)
+            val customSeedColorEnabled by prefs.customSeedColorEnabled.collectAsState(initial = false)
             
-            TinyVowTheme(themeIndex = themeIndex) {
+            TinyVowTheme(
+                themeIndex = themeIndex,
+                customSeedColor = if (customSeedColorEnabled) customSeedColor else null
+            ) {
                 HomeRoute()
             }
         }

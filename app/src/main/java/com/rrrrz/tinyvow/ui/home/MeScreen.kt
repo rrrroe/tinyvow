@@ -39,6 +39,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.Slider
+import androidx.compose.material3.AlertDialog
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -61,6 +67,8 @@ import com.rrrrz.tinyvow.R
 fun MeScreen(
     userPoints: Double,
     currentTheme: Int,
+    customSeedColorEnabled: Boolean,
+    customSeedColor: Int?,
     usageAccessGranted: Boolean,
     accessibilityServiceEnabled: Boolean,
     isAutoStartDismissed: Boolean,
@@ -68,6 +76,7 @@ fun MeScreen(
     notificationPermissionGranted: Boolean,
     dismissedPermissionPrompts: Set<String>,
     onSetTheme: (Int) -> Unit,
+    onSetCustomTheme: (Boolean, Int?) -> Unit,
     onOpenUsageAccessSettings: () -> Unit,
     onOpenAccessibilitySettings: () -> Unit,
     onOpenAutoStartSettings: () -> Unit,
@@ -178,7 +187,13 @@ fun MeScreen(
             }
 
             MeMenuSection("外观主题") {
-                ThemeSelectorRow(currentTheme = currentTheme, onThemeSelected = onSetTheme)
+                ThemeSelectorRow(
+                    currentTheme = currentTheme,
+                    customSeedColorEnabled = customSeedColorEnabled,
+                    customSeedColor = customSeedColor,
+                    onThemeSelected = onSetTheme,
+                    onCustomThemeSelected = onSetCustomTheme
+                )
             }
 
             MeMenuSection("高级中心") {
@@ -307,7 +322,13 @@ private fun PermissionSettingsSheet(
 }
 
 @Composable
-fun ThemeSelectorRow(currentTheme: Int, onThemeSelected: (Int) -> Unit) {
+fun ThemeSelectorRow(
+    currentTheme: Int,
+    customSeedColorEnabled: Boolean,
+    customSeedColor: Int?,
+    onThemeSelected: (Int) -> Unit,
+    onCustomThemeSelected: (Boolean, Int?) -> Unit
+) {
     val themes = listOf(
         ThemeOption(0, "云水谣", Color(0xFF8FB9C5), Color(0xFFA6C4CD), Color(0xFFC7D3D9)),
         ThemeOption(1, "竹影摇", Color(0xFF94B49F), Color(0xFFB1C4B8), Color(0xFFC9D6CE)),
@@ -318,6 +339,8 @@ fun ThemeSelectorRow(currentTheme: Int, onThemeSelected: (Int) -> Unit) {
         ThemeOption(6, "柑橘晚霞", Color(0xFFFB923C), Color(0xFFFFB37B), Color(0xFFFFD8A8)),
     )
 
+    var showColorPicker by remember { mutableStateOf(false) }
+
     Column(modifier = Modifier.padding(vertical = 16.dp)) {
         Row(
             modifier = Modifier
@@ -327,7 +350,7 @@ fun ThemeSelectorRow(currentTheme: Int, onThemeSelected: (Int) -> Unit) {
             horizontalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             themes.forEach { theme ->
-                val isSelected = currentTheme == theme.id
+                val isSelected = currentTheme == theme.id && !customSeedColorEnabled
                 Column(
                     modifier = Modifier
                         .clickable { onThemeSelected(theme.id) }
@@ -364,7 +387,53 @@ fun ThemeSelectorRow(currentTheme: Int, onThemeSelected: (Int) -> Unit) {
                     )
                 }
             }
+            
+            Column(
+                modifier = Modifier
+                    .clickable { showColorPicker = true }
+                    .padding(4.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(56.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(if (customSeedColorEnabled) MaterialTheme.colorScheme.primary.copy(alpha = 0.1f) else Color.Transparent)
+                        .padding(4.dp)
+                        .let {
+                            if (customSeedColorEnabled) {
+                                it.then(Modifier.background(MaterialTheme.colorScheme.surface, RoundedCornerShape(12.dp)))
+                            } else {
+                                it
+                            }
+                        },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    val targetColor = customSeedColor?.let { Color(it) } ?: MaterialTheme.colorScheme.primary
+                    Row(modifier = Modifier.size(32.dp)) {
+                        ThemeStrip(targetColor, RoundedCornerShape(4.dp))
+                    }
+                }
+                Text(
+                    "自定义",
+                    style = TextStyle(fontSize = 11.sp),
+                    color = if (customSeedColorEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontWeight = if (customSeedColorEnabled) FontWeight.Bold else FontWeight.Normal,
+                )
+            }
         }
+    }
+
+    if (showColorPicker) {
+        SimpleColorPicker(
+            initialColor = customSeedColor?.let { Color(it) } ?: Color(0xFF8FB9C5),
+            onColorSelected = { c ->
+                onCustomThemeSelected(true, c.toArgb())
+                showColorPicker = false
+            },
+            onDismiss = { showColorPicker = false }
+        )
     }
 }
 
@@ -379,6 +448,48 @@ private fun RowScope.ThemeStrip(color: Color, shape: RoundedCornerShape = Rounde
 }
 
 private data class ThemeOption(val id: Int, val name: String, val p: Color, val s: Color, val t: Color)
+
+@Composable
+fun SimpleColorPicker(initialColor: Color, onColorSelected: (Color) -> Unit, onDismiss: () -> Unit) {
+    var hue by remember { mutableFloatStateOf(0f) }
+    var saturation by remember { mutableFloatStateOf(1f) }
+    var value by remember { mutableFloatStateOf(1f) }
+
+    LaunchedEffect(initialColor) {
+        val hsv = FloatArray(3)
+        android.graphics.Color.colorToHSV(initialColor.toArgb(), hsv)
+        hue = hsv[0]
+        saturation = hsv[1]
+        value = hsv[2]
+    }
+
+    val currentColor = Color(android.graphics.Color.HSVToColor(floatArrayOf(hue, saturation, value)))
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("选取主题色", fontWeight = FontWeight.Bold) },
+        text = {
+            Column {
+                Box(modifier = Modifier.fillMaxWidth().height(80.dp).background(currentColor, RoundedCornerShape(12.dp)))
+                Spacer(Modifier.height(16.dp))
+                Text("色调 (Hue): ${hue.toInt()}", style = MaterialTheme.typography.bodySmall)
+                Slider(value = hue, onValueChange = { hue = it }, valueRange = 0f..360f)
+                
+                Text("饱和度 (Saturation)", style = MaterialTheme.typography.bodySmall)
+                Slider(value = saturation, onValueChange = { saturation = it })
+                
+                Text("亮度 (Value)", style = MaterialTheme.typography.bodySmall)
+                Slider(value = value, onValueChange = { value = it }, valueRange = 0.3f..1f)
+            }
+        },
+        confirmButton = {
+            Button(onClick = { onColorSelected(currentColor) }) { Text("应用颜色") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("取消") }
+        }
+    )
+}
 
 @Composable
 fun MeStatItem(value: String, label: String, color: Color) {

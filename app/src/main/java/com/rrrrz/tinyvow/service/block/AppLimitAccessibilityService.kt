@@ -45,11 +45,14 @@ class AppLimitAccessibilityService : AccessibilityService() {
     private var lastCheckElapsedRealtime: Long = 0L
     private var lastBlockedPackage: String? = null
     private var lastBlockElapsedRealtime: Long = 0L
+    private val fastBlockCache = java.util.concurrent.ConcurrentHashMap<String, Pair<com.rrrrz.tinyvow.domain.limit.GroupExceededResult, Long>>()
+    private var encourageAppsCache: List<String> = emptyList()
 
     override fun onServiceConnected() {
         super.onServiceConnected()
         enforcer = GroupLimitEnforcer(applicationContext)
         pointsRepository = PointsRepository(applicationContext, database)
+
 
         // 启动定时结算协程
         startPeriodicPointsTicker()
@@ -63,33 +66,49 @@ class AppLimitAccessibilityService : AccessibilityService() {
                 kotlinx.coroutines.delay(POINTS_TICK_INTERVAL_MS)
                 val currentPackage = currentPackageForPoints()
                 if (currentPackage != null) {
-                    handlePointsAccumulation(currentPackage, SystemClock.elapsedRealtime())
+                    try {
+                        handlePointsAccumulation(currentPackage, SystemClock.elapsedRealtime())
+                    } catch (e: Exception) {
+                        Log.e(TAG, "Error in periodic points ticker", e)
+                    }
                 }
             }
         }
     }
 
-    // CONFLATED Channel：只保留最新的包名，高频窗口切换事件自动合并，防止协程爆炸
-    private val eventChannel = kotlinx.coroutines.channels.Channel<String>(
+    // CONFLATED Channel：只保留最新的事件对象
+    private data class EventPayload(val packageName: String, val eventType: Int)
+    
+    private val eventChannel = kotlinx.coroutines.channels.Channel<EventPayload>(
         kotlinx.coroutines.channels.Channel.CONFLATED
     )
 
     private fun startEventConsumer() {
         serviceScope.launch(Dispatchers.IO) {
-            for (packageName in eventChannel) {
-                evaluateAndBlock(packageName)
+            for (payload in eventChannel) {
+                try {
+                    evaluateAndBlock(payload.packageName, payload.eventType)
+                } catch (e: Exception) {
+                    Log.e(TAG, "Error evaluating package limit: ${payload.packageName}", e)
+                }
             }
         }
     }
 
-    private suspend fun evaluateAndBlock(packageName: String) {
+    private suspend fun evaluateAndBlock(packageName: String, eventType: Int) {
         val usagePermission = usageAccessStateChecker.getStatus()
-        if (usagePermission != UsageAccessStatus.GRANTED) return
 
         val result = enforcer.evaluate(packageName)
         if (result == null || result.groupType == GroupType.ENCOURAGE) {
-            withContext(Dispatchers.Main) {
-                removeBlockOverlay()
+            fastBlockCache.remove(packageName)
+            // 仅仅在真正的窗口状态改变时才解除阻断，防止后台应用的边界更新导致误删除前台阻断页
+            if (eventType == android.view.accessibility.AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+                withContext(Dispatchers.Main) {
+                    // 如果在异步评估期间，用户已经切去了另一个应用(比如切回了黑名单应用)，则忽略这次瞬态移除
+                    if (lastCheckedPackage == packageName) {
+                        removeBlockOverlay()
+                    }
+                }
             }
             return
         }
@@ -101,10 +120,25 @@ class AppLimitAccessibilityService : AccessibilityService() {
         }
         lastBlockedPackage = packageName
         lastBlockElapsedRealtime = blockNow
+        fastBlockCache[packageName] = Pair(result, blockNow)
         recordBlockEvent(packageName, result)
+        
+        try {
+            val encouragePackages = mutableListOf<String>()
+            val encourageGroups = database.appGroupDao().getAllGroupsSync().filter { it.type == GroupType.ENCOURAGE }
+            for (g in encourageGroups) {
+                encouragePackages.addAll(database.crossRefDao().getPackageNamesForGroupSync(g.id))
+            }
+            encourageAppsCache = encouragePackages.distinct()
+        } catch (e: Exception) {
+            Log.e(TAG, "Failed to list ENCOURAGE apps", e)
+        }
 
         withContext(Dispatchers.Main) {
-            showBlockOverlay(packageName, result.groupName, result.exceededMillis)
+            // 防止瞬态切换导致错误弹窗
+            if (lastCheckedPackage == packageName) {
+                showBlockOverlay(packageName, result.groupName, result.exceededMillis, encourageAppsCache)
+            }
         }
     }
 
@@ -142,6 +176,12 @@ class AppLimitAccessibilityService : AccessibilityService() {
 
         val now = SystemClock.elapsedRealtime()
 
+        // 0. 零延迟（Fast-Path）阻断拦截，消除后台热启动时的白屏/闪透
+        val fastBlock = fastBlockCache[packageName]
+        if (fastBlock != null && now - fastBlock.second < 15_000L) {
+            showBlockOverlay(packageName, fastBlock.first.groupName, fastBlock.first.exceededMillis, encourageAppsCache)
+        }
+
         // 1. 积分累加逻辑：当包切换时，结算上个包的积分
         handlePointsAccumulation(
             packageName = packageName.takeUnless { isOwnPackage },
@@ -150,7 +190,6 @@ class AppLimitAccessibilityService : AccessibilityService() {
 
         // 只跳过 Tiny Vow 的限额检查；上一个应用已在上面结算
         if (isOwnPackage) {
-            removeBlockOverlay()
             return
         }
 
@@ -162,8 +201,8 @@ class AppLimitAccessibilityService : AccessibilityService() {
         lastCheckedPackage = packageName
         lastCheckElapsedRealtime = now
 
-        // 发送到 CONFLATED Channel（非阻塞，自动丢弃旧值，只保留最新包名）
-        eventChannel.trySend(packageName)
+        // 发送到 CONFLATED Channel
+        eventChannel.trySend(EventPayload(packageName, event.eventType))
     }
 
     @Synchronized
@@ -228,6 +267,7 @@ class AppLimitAccessibilityService : AccessibilityService() {
 
         // 获取该分组今日总用量
         val packages = database.crossRefDao().getPackageNamesForGroupSync(group.id)
+
         var totalTodayUsageMs = 0L
         for (pkg in packages) {
             totalTodayUsageMs += usageRepository.getTodayUsageMillis(pkg)
@@ -261,7 +301,7 @@ class AppLimitAccessibilityService : AccessibilityService() {
     private var blockView: android.view.View? = null
 
     @SuppressLint("SetTextI18n")
-    private fun showBlockOverlay(packageName: String, groupName: String, exceededMillis: Long) {
+    private fun showBlockOverlay(packageName: String, groupName: String, exceededMillis: Long, encouragePackages: List<String>) {
         if (blockView != null) return
 
         val windowManager = getSystemService(WINDOW_SERVICE) as android.view.WindowManager
@@ -269,13 +309,13 @@ class AppLimitAccessibilityService : AccessibilityService() {
             android.view.WindowManager.LayoutParams.MATCH_PARENT,
             android.view.WindowManager.LayoutParams.MATCH_PARENT,
             android.view.WindowManager.LayoutParams.TYPE_ACCESSIBILITY_OVERLAY,
-            android.view.WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or android.view.WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED,
+            android.view.WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             android.graphics.PixelFormat.TRANSLUCENT
         )
 
         val layout = android.widget.LinearLayout(this).apply {
             orientation = android.widget.LinearLayout.VERTICAL
-            setBackgroundColor("#F8FAFB".toColorInt()) // 清新的亮色背景，更积极
+            setBackgroundColor("#F8FAFB".toColorInt())
             gravity = android.view.Gravity.CENTER
             setPadding(100, 100, 100, 100)
         }
@@ -310,7 +350,6 @@ class AppLimitAccessibilityService : AccessibilityService() {
             setPadding(0, 0, 0, 80)
         }
 
-        // 主按钮 (回到首页)
         val btnPrimaryBg = android.graphics.drawable.GradientDrawable().apply {
             setColor("#8FB9C5".toColorInt()) 
             cornerRadius = 50f
@@ -338,6 +377,87 @@ class AppLimitAccessibilityService : AccessibilityService() {
         layout.addView(title)
         layout.addView(body)
         layout.addView(btnGoHome)
+
+        if (encouragePackages.isNotEmpty()) {
+            val encourageContainer = android.widget.HorizontalScrollView(this).apply {
+                layoutParams = android.widget.LinearLayout.LayoutParams(
+                    android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+                    android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+                ).apply {
+                    topMargin = 60
+                }
+                isHorizontalScrollBarEnabled = false
+                isFillViewport = true
+            }
+            
+            val encourageList = android.widget.LinearLayout(this).apply {
+                orientation = android.widget.LinearLayout.HORIZONTAL
+                gravity = android.view.Gravity.CENTER
+                layoutParams = android.widget.FrameLayout.LayoutParams(
+                    android.widget.FrameLayout.LayoutParams.WRAP_CONTENT,
+                    android.widget.FrameLayout.LayoutParams.MATCH_PARENT
+                ).apply {
+                    gravity = android.view.Gravity.CENTER_HORIZONTAL
+                }
+            }
+
+            val pm = packageManager
+            for (pkg in encouragePackages) {
+                try {
+                    val icon = pm.getApplicationIcon(pkg)
+                    val label = pm.getApplicationLabel(pm.getApplicationInfo(pkg, 0))
+                    
+                    val appItem = android.widget.LinearLayout(this@AppLimitAccessibilityService).apply {
+                        orientation = android.widget.LinearLayout.VERTICAL
+                        gravity = android.view.Gravity.CENTER
+                        layoutParams = android.widget.LinearLayout.LayoutParams(
+                            180, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+                        ).apply {
+                            marginEnd = 16
+                            marginStart = 16
+                        }
+                        
+                        val iv = android.widget.ImageView(this@AppLimitAccessibilityService).apply {
+                            setImageDrawable(icon)
+                            layoutParams = android.widget.LinearLayout.LayoutParams(110, 110).apply {
+                                bottomMargin = 16
+                            }
+                        }
+                        
+                        val tv = android.widget.TextView(this@AppLimitAccessibilityService).apply {
+                            text = label
+                            textSize = 12f
+                            setTextColor("#5F6266".toColorInt())
+                            gravity = android.view.Gravity.CENTER
+                            maxLines = 1
+                            ellipsize = android.text.TextUtils.TruncateAt.END
+                        }
+                        
+                        addView(iv)
+                        addView(tv)
+                        
+                        setOnClickListener {
+                            removeBlockOverlay()
+                            val intent = pm.getLaunchIntentForPackage(pkg)?.apply {
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            }
+                            if (intent != null) {
+                                try {
+                                    startActivity(intent)
+                                } catch (e: Exception) {
+                                    Log.e(TAG, "Failed to launch encourage app: $pkg", e)
+                                }
+                            }
+                        }
+                    }
+                    encourageList.addView(appItem)
+                } catch (e: Exception) {
+                    // App might be uninstalled, ignore safely
+                }
+            }
+            encourageContainer.addView(encourageList)
+            layout.addView(encourageContainer)
+        }
 
         try {
             windowManager.addView(layout, params)

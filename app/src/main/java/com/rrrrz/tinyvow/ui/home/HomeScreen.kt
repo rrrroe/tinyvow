@@ -203,6 +203,8 @@ fun HomeRoute(
     val userPoints by preferences.userPoints.collectAsState(initial = 0.0)
     val todayPoints by preferences.todayPoints.collectAsState(initial = 0.0)
     val selectedTheme by preferences.selectedTheme.collectAsState(initial = 0)
+    val customSeedColor by preferences.customSeedColor.collectAsState(initial = null)
+    val customSeedColorEnabled by preferences.customSeedColorEnabled.collectAsState(initial = false)
     val rewards by appLimitRepository.getAllRewards().collectAsState(initial = emptyList())
     val achievements by appLimitRepository.getAllAchievements().collectAsState(initial = emptyList())
     val redemptionHistory by appLimitRepository.getRedemptionHistory().collectAsState(initial = emptyList())
@@ -451,13 +453,26 @@ fun HomeRoute(
                     MeScreen(
                         userPoints = userPoints,
                         currentTheme = selectedTheme,
+                        customSeedColorEnabled = customSeedColorEnabled,
+                        customSeedColor = customSeedColor,
                         usageAccessGranted = usageAccessStatus == UsageAccessStatus.GRANTED,
                         accessibilityServiceEnabled = accessibilityServiceEnabled,
                         isAutoStartDismissed = isAutoStartDismissed,
                         isIgnoringBattery = isIgnoringBattery,
                         notificationPermissionGranted = notificationPermissionGranted,
                         dismissedPermissionPrompts = dismissedPermissionPrompts,
-                        onSetTheme = { i -> coroutineScope.launch { preferences.setSelectedTheme(i) } },
+                        onSetTheme = { i ->
+                            coroutineScope.launch {
+                                preferences.setCustomSeedColorEnabled(false)
+                                preferences.setSelectedTheme(i)
+                            }
+                        },
+                        onSetCustomTheme = { enabled, color ->
+                            coroutineScope.launch {
+                                preferences.setCustomSeedColorEnabled(enabled)
+                                color?.let { preferences.setCustomSeedColor(it) }
+                            }
+                        },
                         onOpenUsageAccessSettings = {
                             val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                             context.startActivity(intent)

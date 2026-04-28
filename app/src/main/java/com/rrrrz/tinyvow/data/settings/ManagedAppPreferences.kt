@@ -22,6 +22,8 @@ class ManagedAppPreferences(
         val userPoints = doublePreferencesKey("user_points")
         val lastSummaryShownDate = stringPreferencesKey("last_summary_shown_date")
         val selectedTheme = intPreferencesKey("selected_theme")
+        val customSeedColor = intPreferencesKey("custom_seed_color")
+        val customSeedColorEnabled = booleanPreferencesKey("custom_seed_color_enabled")
         val todayPoints = doublePreferencesKey("today_points")
         val lastPointsResetDate = stringPreferencesKey("last_points_reset_date")
         val dismissedPermissionPrompts = stringSetPreferencesKey("dismissed_permission_prompts")
@@ -41,6 +43,14 @@ class ManagedAppPreferences(
 
     val selectedTheme: Flow<Int> = context.managedAppDataStore.data.map { preferences ->
         preferences[Keys.selectedTheme] ?: 0
+    }
+
+    val customSeedColor: Flow<Int?> = context.managedAppDataStore.data.map { preferences ->
+        preferences[Keys.customSeedColor]
+    }
+
+    val customSeedColorEnabled: Flow<Boolean> = context.managedAppDataStore.data.map { preferences ->
+        preferences[Keys.customSeedColorEnabled] ?: false
     }
 
     val todayPoints: Flow<Double> = context.managedAppDataStore.data.map { preferences ->
@@ -83,6 +93,18 @@ class ManagedAppPreferences(
     suspend fun setSelectedTheme(theme: Int) {
         context.managedAppDataStore.edit { preferences ->
             preferences[Keys.selectedTheme] = theme
+        }
+    }
+
+    suspend fun setCustomSeedColor(color: Int) {
+        context.managedAppDataStore.edit { preferences ->
+            preferences[Keys.customSeedColor] = color
+        }
+    }
+
+    suspend fun setCustomSeedColorEnabled(enabled: Boolean) {
+        context.managedAppDataStore.edit { preferences ->
+            preferences[Keys.customSeedColorEnabled] = enabled
         }
     }
 

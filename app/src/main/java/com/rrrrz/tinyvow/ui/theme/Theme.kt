@@ -10,8 +10,10 @@ import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.material3.ColorScheme
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.toArgb
 
 private val DarkColorScheme = darkColorScheme(
     primary = Purple80,
@@ -38,11 +40,15 @@ private val LightColorScheme = lightColorScheme(
 @Composable
 fun TinyVowTheme(
     themeIndex: Int = 0,
+    customSeedColor: Int? = null,
     darkTheme: Boolean = isSystemInDarkTheme(),
     dynamicColor: Boolean = false, // Disabled by default for custom branding
     content: @Composable () -> Unit
 ) {
-    val colorScheme = when (themeIndex) {
+    val colorScheme = if (customSeedColor != null) {
+        generateDynamicColorScheme(Color(customSeedColor))
+    } else {
+        when (themeIndex) {
         0 -> lightColorScheme(
             primary = CloudPrimary,
             onPrimary = Color.White,
@@ -220,6 +226,7 @@ fun TinyVowTheme(
             else -> LightColorScheme
         }
     }
+    }
     val reportColors = reportColorsFromScheme(colorScheme)
 
     CompositionLocalProvider(LocalReportColors provides reportColors) {
@@ -229,4 +236,49 @@ fun TinyVowTheme(
             content = content
         )
     }
+}
+
+fun generateDynamicColorScheme(seedColor: Color): androidx.compose.material3.ColorScheme {
+    val hsv = FloatArray(3)
+    android.graphics.Color.colorToHSV(seedColor.toArgb(), hsv)
+    
+    val sHsv = floatArrayOf(hsv[0], (hsv[1] * 0.7f).coerceIn(0f, 1f), (hsv[2] * 0.9f).coerceIn(0f, 1f))
+    val secondary = Color(android.graphics.Color.HSVToColor(sHsv))
+
+    val tHsv = floatArrayOf((hsv[0] + 30f) % 360f, hsv[1], hsv[2])
+    val tertiary = Color(android.graphics.Color.HSVToColor(tHsv))
+
+    val bg = Color(0xFFF9FAFB)
+    val surface = Color.White
+    
+    val pcHsv = floatArrayOf(hsv[0], (hsv[1] * 0.2f).coerceIn(0f, 1f), (hsv[2] * 1.5f).coerceIn(0f, 1f).coerceAtLeast(0.95f))
+    val primaryContainer = Color(android.graphics.Color.HSVToColor(pcHsv))
+
+    val scHsv = floatArrayOf(sHsv[0], (sHsv[1] * 0.15f).coerceIn(0f, 1f), (sHsv[2] * 1.5f).coerceIn(0f, 1f).coerceAtLeast(0.97f))
+    val secondaryContainer = Color(android.graphics.Color.HSVToColor(scHsv))
+
+    return androidx.compose.material3.lightColorScheme(
+        primary = seedColor,
+        onPrimary = Color.White,
+        primaryContainer = primaryContainer,
+        onPrimaryContainer = seedColor,
+        secondary = secondary,
+        onSecondary = Color.White,
+        secondaryContainer = secondaryContainer,
+        onSecondaryContainer = seedColor,
+        tertiary = tertiary,
+        background = bg,
+        surface = surface,
+        onSurface = Color(0xFF303133),
+        surfaceVariant = bg,
+        onSurfaceVariant = Color(0xFF626366),
+        outline = seedColor.copy(alpha = 0.5f),
+        outlineVariant = seedColor.copy(alpha = 0.1f),
+        surfaceContainer = bg,
+        surfaceContainerLow = bg,
+        surfaceContainerHigh = bg,
+        surfaceContainerHighest = bg,
+        surfaceDim = Color(0xFFEBECED),
+        surfaceBright = Color.White
+    )
 }
