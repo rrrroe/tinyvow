@@ -15,6 +15,7 @@ import com.rrrrz.tinyvow.data.repository.ArchiveDateUtils
 import com.rrrrz.tinyvow.data.repository.PointsRepository
 import com.rrrrz.tinyvow.data.repository.calculateTargetBonusPoints
 import com.rrrrz.tinyvow.data.repository.calculateUsageEarnedPoints
+import com.rrrrz.tinyvow.data.settings.ManagedAppPreferences
 import com.rrrrz.tinyvow.data.usage.UsageAccessStateChecker
 import com.rrrrz.tinyvow.data.usage.UsageAccessStatus
 import com.rrrrz.tinyvow.data.usage.UsageStatsUsageRepository
@@ -26,6 +27,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -37,6 +39,8 @@ class AppLimitAccessibilityService : AccessibilityService() {
     private val database by lazy { AppDatabase.getDatabase(applicationContext) }
     private val usageAccessStateChecker by lazy { UsageAccessStateChecker(applicationContext) }
     private val usageRepository by lazy { UsageStatsUsageRepository(applicationContext) }
+    private val preferences by lazy { ManagedAppPreferences(applicationContext) }
+    @Volatile private var overlayPalette: OverlayPalette = overlayPaletteForTheme(0, null)
 
     // 积分积累状态
     private var lastPackageForPoints: String? = null
@@ -66,6 +70,21 @@ class AppLimitAccessibilityService : AccessibilityService() {
         startPeriodicPointsTicker()
         // 启动事件消费协程
         startEventConsumer()
+        startThemeWatcher()
+    }
+
+    private fun startThemeWatcher() {
+        serviceScope.launch(Dispatchers.Default) {
+            combine(
+                preferences.selectedTheme,
+                preferences.customSeedColor,
+                preferences.customSeedColorEnabled,
+            ) { themeIndex, customSeedColor, customEnabled ->
+                overlayPaletteForTheme(themeIndex, customSeedColor.takeIf { customEnabled })
+            }.collect { palette ->
+                overlayPalette = palette
+            }
+        }
     }
 
     private fun startPeriodicPointsTicker() {
@@ -321,10 +340,105 @@ class AppLimitAccessibilityService : AccessibilityService() {
 
     private var blockView: android.view.View? = null
 
+    private fun dp(value: Int): Int =
+        (value * resources.displayMetrics.density + 0.5f).toInt()
+
+    private fun roundedBackground(
+        color: String,
+        radiusDp: Int,
+        strokeColor: String? = null,
+        strokeDp: Int = 0,
+    ): android.graphics.drawable.GradientDrawable =
+        android.graphics.drawable.GradientDrawable().apply {
+            setColor(color.toColorInt())
+            cornerRadius = dp(radiusDp).toFloat()
+            if (strokeColor != null && strokeDp > 0) {
+                setStroke(dp(strokeDp), strokeColor.toColorInt())
+            }
+        }
+
+    private fun roundedBackground(
+        color: Int,
+        radiusDp: Int,
+        strokeColor: Int? = null,
+        strokeDp: Int = 0,
+    ): android.graphics.drawable.GradientDrawable =
+        android.graphics.drawable.GradientDrawable().apply {
+            setColor(color)
+            cornerRadius = dp(radiusDp).toFloat()
+            if (strokeColor != null && strokeDp > 0) {
+                setStroke(dp(strokeDp), strokeColor)
+            }
+        }
+
+    private data class OverlayPalette(
+        val primary: Int,
+        val secondary: Int,
+        val tertiary: Int,
+        val background: Int,
+        val surface: Int,
+        val surfaceContainer: Int,
+        val onSurface: Int,
+        val onSurfaceVariant: Int,
+        val outline: Int,
+    )
+
+    private fun overlayPaletteForTheme(themeIndex: Int, customSeedColor: Int?): OverlayPalette {
+        if (customSeedColor != null) {
+            val hsv = FloatArray(3)
+            android.graphics.Color.colorToHSV(customSeedColor, hsv)
+            val secondary = android.graphics.Color.HSVToColor(
+                floatArrayOf(hsv[0], (hsv[1] * 0.7f).coerceIn(0f, 1f), (hsv[2] * 0.9f).coerceIn(0f, 1f))
+            )
+            val tertiary = android.graphics.Color.HSVToColor(floatArrayOf((hsv[0] + 30f) % 360f, hsv[1], hsv[2]))
+            return OverlayPalette(
+                primary = customSeedColor,
+                secondary = secondary,
+                tertiary = tertiary,
+                background = 0xFFF9FAFB.toInt(),
+                surface = android.graphics.Color.WHITE,
+                surfaceContainer = 0xFFF1F3F6.toInt(),
+                onSurface = 0xFF303133.toInt(),
+                onSurfaceVariant = 0xFF626366.toInt(),
+                outline = withAlpha(customSeedColor, 0.22f),
+            )
+        }
+
+        return when (themeIndex) {
+            1 -> OverlayPalette(0xFF94B49F.toInt(), 0xFFB1C4B8.toInt(), 0xFFFB7185.toInt(), 0xFFF8FAF8.toInt(), android.graphics.Color.WHITE, 0xFFEFF3F0.toInt(), 0xFF2F3330.toInt(), 0xFF5F6662.toInt(), 0xFFE1E9E3.toInt())
+            2 -> OverlayPalette(0xFFA8B1C2.toInt(), 0xFFC2C9D6.toInt(), 0xFFFACC15.toInt(), 0xFFF9FAFB.toInt(), android.graphics.Color.WHITE, 0xFFF1F3F6.toInt(), 0xFF303133.toInt(), 0xFF626366.toInt(), 0xFFE3E6EC.toInt())
+            3 -> OverlayPalette(0xFF8E7B6D.toInt(), 0xFFBFAE9F.toInt(), 0xFFA3E635.toInt(), 0xFFFAF9F6.toInt(), android.graphics.Color.WHITE, 0xFFF2EFEC.toInt(), 0xFF33302F.toInt(), 0xFF66625F.toInt(), 0xFFE8E0DA.toInt())
+            4 -> OverlayPalette(0xFFFF7E9D.toInt(), 0xFFFFB2C1.toInt(), 0xFF22D3EE.toInt(), 0xFFFFF5F7.toInt(), android.graphics.Color.WHITE, 0xFFFFEBF0.toInt(), 0xFF332F31.toInt(), 0xFF665F61.toInt(), 0xFFFFD7E0.toInt())
+            5 -> OverlayPalette(0xFF2ECD71.toInt(), 0xFF82E0AA.toInt(), 0xFFC084FC.toInt(), 0xFFF0FDF4.toInt(), android.graphics.Color.WHITE, 0xFFDCFCE7.toInt(), 0xFF2F3330.toInt(), 0xFF5F6662.toInt(), 0xFFC8F3D6.toInt())
+            6 -> OverlayPalette(0xFFFB923C.toInt(), 0xFFFFB37B.toInt(), 0xFF38BDF8.toInt(), 0xFFFFF7ED.toInt(), android.graphics.Color.WHITE, 0xFFFFEDD5.toInt(), 0xFF33312F.toInt(), 0xFF66625F.toInt(), 0xFFFFDFC1.toInt())
+            else -> OverlayPalette(0xFF8FB9C5.toInt(), 0xFFA6C4CD.toInt(), 0xFFFDE047.toInt(), 0xFFF2F6F8.toInt(), android.graphics.Color.WHITE, 0xFFEAF1F3.toInt(), 0xFF2F3133.toInt(), 0xFF5F6266.toInt(), 0xFFDCE9ED.toInt())
+        }
+    }
+
+    private fun withAlpha(color: Int, alpha: Float): Int =
+        (color and 0x00FFFFFF) or ((alpha.coerceIn(0f, 1f) * 255).toInt() shl 24)
+
+    private fun blendColor(foreground: Int, background: Int, ratio: Float): Int {
+        val inverse = 1f - ratio.coerceIn(0f, 1f)
+        return android.graphics.Color.rgb(
+            (android.graphics.Color.red(foreground) * ratio + android.graphics.Color.red(background) * inverse).toInt(),
+            (android.graphics.Color.green(foreground) * ratio + android.graphics.Color.green(background) * inverse).toInt(),
+            (android.graphics.Color.blue(foreground) * ratio + android.graphics.Color.blue(background) * inverse).toInt(),
+        )
+    }
+
+    private fun readableAccent(color: Int): Int {
+        val luminance = (0.299 * android.graphics.Color.red(color) +
+            0.587 * android.graphics.Color.green(color) +
+            0.114 * android.graphics.Color.blue(color)) / 255.0
+        return if (luminance > 0.72) blendColor(color, android.graphics.Color.BLACK, 0.62f) else color
+    }
+
     @SuppressLint("SetTextI18n")
     private fun showBlockOverlay(packageName: String, groupName: String, exceededMillis: Long, encourageGroups: List<EncourageGroupCache>) {
         if (blockView != null) return
 
+        val palette = overlayPalette
         val windowManager = getSystemService(WINDOW_SERVICE) as android.view.WindowManager
         val params = android.view.WindowManager.LayoutParams(
             android.view.WindowManager.LayoutParams.MATCH_PARENT,
@@ -334,19 +448,49 @@ class AppLimitAccessibilityService : AccessibilityService() {
             android.graphics.PixelFormat.TRANSLUCENT
         )
 
-        val layout = android.widget.LinearLayout(this).apply {
+        val layout = android.widget.FrameLayout(this).apply {
+            setBackgroundColor(palette.background)
+            isClickable = true
+            isFocusable = true
+        }
+
+        val scrollView = android.widget.ScrollView(this).apply {
+            isFillViewport = true
+            isVerticalScrollBarEnabled = false
+            overScrollMode = android.view.View.OVER_SCROLL_NEVER
+            setPadding(dp(20), dp(18), dp(20), dp(92))
+            clipToPadding = false
+            layoutParams = android.widget.FrameLayout.LayoutParams(
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT
+            )
+        }
+
+        val content = android.widget.LinearLayout(this).apply {
             orientation = android.widget.LinearLayout.VERTICAL
-            setBackgroundColor("#F8FAFB".toColorInt())
-            gravity = android.view.Gravity.CENTER
-            setPadding(100, 100, 100, 100)
+            gravity = android.view.Gravity.CENTER_HORIZONTAL
+            setPadding(0, 0, 0, dp(12))
+            minimumHeight = resources.displayMetrics.heightPixels - dp(102)
+            layoutParams = android.widget.FrameLayout.LayoutParams(
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+                android.widget.FrameLayout.LayoutParams.WRAP_CONTENT
+            )
+        }
+
+        val iconShell = android.widget.FrameLayout(this).apply {
+            background = roundedBackground(palette.surface, 26, palette.outline, 1)
+            elevation = 0f
+            layoutParams = android.widget.LinearLayout.LayoutParams(dp(84), dp(84)).apply {
+                bottomMargin = dp(14)
+            }
         }
 
         val iconView = android.widget.ImageView(this).apply {
             setImageResource(com.rrrrz.tinyvow.R.mipmap.ic_launcher)
-            layoutParams = android.widget.LinearLayout.LayoutParams(180, 180).apply {
-                bottomMargin = 60
-            }
+            scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
+            layoutParams = android.widget.FrameLayout.LayoutParams(dp(54), dp(54), android.view.Gravity.CENTER)
         }
+        iconShell.addView(iconView)
 
         val totalMinutes = exceededMillis / 60_000
         val hours = totalMinutes / 60
@@ -355,35 +499,43 @@ class AppLimitAccessibilityService : AccessibilityService() {
 
         val title = android.widget.TextView(this).apply {
             text = "此刻，给自己一个深呼吸"
-            textSize = 26f
+            textSize = 22f
             setTypeface(null, android.graphics.Typeface.BOLD)
-            setTextColor("#2F3133".toColorInt())
+            setTextColor(palette.onSurface)
             gravity = android.view.Gravity.CENTER
-            setPadding(0, 0, 0, 20)
+            includeFontPadding = false
+            setPadding(0, 0, 0, dp(8))
         }
 
         val body = android.widget.TextView(this).apply {
             text = "你今日已使用 $groupName 超过 $exceededText。\n自律不是限制，而是为了遇见更好的自己。"
             textSize = 15f
-            setLineSpacing(2f, 1.2f)
-            setTextColor("#5F6266".toColorInt())
+            setLineSpacing(dp(3).toFloat(), 1.15f)
+            setTextColor(palette.onSurfaceVariant)
             gravity = android.view.Gravity.CENTER
-            setPadding(0, 0, 0, 80)
+            includeFontPadding = true
+            setPadding(dp(8), 0, dp(8), dp(18))
         }
 
-        val btnPrimaryBg = android.graphics.drawable.GradientDrawable().apply {
-            setColor("#8FB9C5".toColorInt()) 
-            cornerRadius = 50f
-        }
+        val btnPrimaryBg = roundedBackground(palette.secondary, 18)
         val btnGoHome = android.widget.Button(this).apply {
             text = getString(com.rrrrz.tinyvow.R.string.block_overlay_go_home)
             background = btnPrimaryBg
             setTextColor(android.graphics.Color.WHITE)
             isAllCaps = false
-            layoutParams = android.widget.LinearLayout.LayoutParams(
-                android.widget.LinearLayout.LayoutParams.MATCH_PARENT, 
-                140
-            )
+            textSize = 16f
+            minHeight = 0
+            minWidth = 0
+            elevation = dp(3).toFloat()
+            layoutParams = android.widget.FrameLayout.LayoutParams(
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+                dp(52)
+            ).apply {
+                gravity = android.view.Gravity.BOTTOM
+                leftMargin = dp(20)
+                rightMargin = dp(20)
+                bottomMargin = dp(24)
+            }
             setOnClickListener {
                 removeBlockOverlay()
                 val intent = Intent(Intent.ACTION_MAIN).apply {
@@ -394,10 +546,9 @@ class AppLimitAccessibilityService : AccessibilityService() {
             }
         }
 
-        layout.addView(iconView)
-        layout.addView(title)
-        layout.addView(body)
-        layout.addView(btnGoHome)
+        content.addView(iconShell)
+        content.addView(title)
+        content.addView(body)
 
         if (encourageGroups.isNotEmpty()) {
             val groupsContainer = android.widget.LinearLayout(this).apply {
@@ -406,16 +557,55 @@ class AppLimitAccessibilityService : AccessibilityService() {
                     android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
                     android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
                 ).apply {
-                    topMargin = 60
+                    topMargin = dp(16)
                 }
             }
             
-            for (group in encourageGroups) {
-                val card = createGroupCardView(group)
-                groupsContainer.addView(card)
+            encourageGroups.chunked(2).forEach { rowGroups ->
+                val row = android.widget.LinearLayout(this).apply {
+                    orientation = android.widget.LinearLayout.HORIZONTAL
+                    layoutParams = android.widget.LinearLayout.LayoutParams(
+                        android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
+                        android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+                    ).apply {
+                        bottomMargin = dp(10)
+                    }
+                }
+
+                rowGroups.forEachIndexed { index, group ->
+                    val card = createGroupCardView(group).apply {
+                        layoutParams = android.widget.LinearLayout.LayoutParams(
+                            0,
+                            android.widget.LinearLayout.LayoutParams.WRAP_CONTENT,
+                            1f
+                        ).apply {
+                            marginEnd = if (index == 0) dp(8) else 0
+                            marginStart = if (index == 1) dp(8) else 0
+                        }
+                    }
+                    row.addView(card)
+                }
+
+                if (rowGroups.size == 1) {
+                    row.addView(android.widget.Space(this).apply {
+                        layoutParams = android.widget.LinearLayout.LayoutParams(
+                            0,
+                            android.widget.LinearLayout.LayoutParams.WRAP_CONTENT,
+                            1f
+                        ).apply {
+                            marginStart = dp(8)
+                        }
+                    })
+                }
+
+                groupsContainer.addView(row)
             }
-            layout.addView(groupsContainer)
+            content.addView(groupsContainer)
         }
+
+        scrollView.addView(content)
+        layout.addView(scrollView)
+        layout.addView(btnGoHome)
 
         try {
             windowManager.addView(layout, params)
@@ -428,20 +618,19 @@ class AppLimitAccessibilityService : AccessibilityService() {
 
     @SuppressLint("SetTextI18n")
     private fun createGroupCardView(group: EncourageGroupCache): android.view.View {
+        val palette = overlayPalette
+        val encourageAccent = readableAccent(palette.tertiary)
+        val encourageContainer = blendColor(palette.tertiary, palette.surface, 0.16f)
+        val iconContainer = blendColor(palette.tertiary, palette.surface, 0.10f)
         val card = android.widget.LinearLayout(this).apply {
             orientation = android.widget.LinearLayout.VERTICAL
-            background = android.graphics.drawable.GradientDrawable().apply {
-                setColor(android.graphics.Color.WHITE)
-                cornerRadius = 32f
-            }
+            background = roundedBackground(palette.surface, 18, palette.outline, 1)
             layoutParams = android.widget.LinearLayout.LayoutParams(
                 android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
                 android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
-            ).apply {
-                bottomMargin = 40
-            }
-            setPadding(40, 40, 40, 40)
-            elevation = 12f
+            )
+            setPadding(dp(10), dp(10), dp(10), dp(10))
+            elevation = 0f
         }
 
         // --- Header (Name + Rate) ---
@@ -451,14 +640,16 @@ class AppLimitAccessibilityService : AccessibilityService() {
                 android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
                 android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
             ).apply {
-                bottomMargin = 10
+                bottomMargin = dp(8)
             }
             
             val titleText = android.widget.TextView(this@AppLimitAccessibilityService).apply {
                 text = group.groupName
-                textSize = 16f
+                textSize = 14f
                 setTypeface(null, android.graphics.Typeface.BOLD)
-                setTextColor("#2F3133".toColorInt())
+                setTextColor(palette.onSurface)
+                maxLines = 1
+                ellipsize = android.text.TextUtils.TruncateAt.END
                 layoutParams = android.widget.LinearLayout.LayoutParams(
                     0, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT, 1f
                 )
@@ -467,10 +658,12 @@ class AppLimitAccessibilityService : AccessibilityService() {
             val formattedRate = if (group.pointsPerMinute % 1.0 == 0.0) group.pointsPerMinute.toInt().toString() else group.pointsPerMinute.toString()
             val rateText = android.widget.TextView(this@AppLimitAccessibilityService).apply {
                 text = "+$formattedRate 分/分钟"
-                textSize = 12f
-                setTextColor("#8FB9C5".toColorInt()) // CloudPrimary
+                textSize = 10f
+                setTextColor(encourageAccent)
                 setTypeface(null, android.graphics.Typeface.BOLD)
                 gravity = android.view.Gravity.CENTER_VERTICAL or android.view.Gravity.END
+                background = roundedBackground(encourageContainer, 10)
+                setPadding(dp(6), dp(3), dp(6), dp(3))
                 layoutParams = android.widget.LinearLayout.LayoutParams(
                     android.widget.LinearLayout.LayoutParams.WRAP_CONTENT,
                     android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
@@ -486,13 +679,15 @@ class AppLimitAccessibilityService : AccessibilityService() {
         val targetMins = group.limitMinutes
         val progressText = android.widget.TextView(this).apply {
             text = "已进行 $usedMins 分钟 / 目标 $targetMins 分钟"
-            textSize = 12f
-            setTextColor("#5F6266".toColorInt()) // TextSecondary
+            textSize = 10f
+            setTextColor(palette.onSurfaceVariant)
+            maxLines = 1
+            ellipsize = android.text.TextUtils.TruncateAt.END
             layoutParams = android.widget.LinearLayout.LayoutParams(
                 android.widget.LinearLayout.LayoutParams.MATCH_PARENT,
                 android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
             ).apply {
-                bottomMargin = 20
+                bottomMargin = dp(8)
             }
         }
         
@@ -500,12 +695,12 @@ class AppLimitAccessibilityService : AccessibilityService() {
             max = if (targetMins > 0) targetMins else 100
             progress = usedMins.toInt()
             layoutParams = android.widget.LinearLayout.LayoutParams(
-                android.widget.LinearLayout.LayoutParams.MATCH_PARENT, 12
+                android.widget.LinearLayout.LayoutParams.MATCH_PARENT, dp(5)
             ).apply {
-                bottomMargin = 30
+                bottomMargin = dp(10)
             }
-            progressTintList = android.content.res.ColorStateList.valueOf("#8FB9C5".toColorInt())
-            progressBackgroundTintList = android.content.res.ColorStateList.valueOf("#EEF3F5".toColorInt())
+            progressTintList = android.content.res.ColorStateList.valueOf(encourageAccent)
+            progressBackgroundTintList = android.content.res.ColorStateList.valueOf(encourageContainer)
         }
 
         // --- App Row ---
@@ -515,6 +710,8 @@ class AppLimitAccessibilityService : AccessibilityService() {
                 android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
             )
             isHorizontalScrollBarEnabled = false
+            overScrollMode = android.view.View.OVER_SCROLL_NEVER
+            clipToPadding = false
         }
         
         val appsLayout = android.widget.LinearLayout(this).apply {
@@ -534,30 +731,22 @@ class AppLimitAccessibilityService : AccessibilityService() {
                 val appItem = android.widget.LinearLayout(this).apply {
                     orientation = android.widget.LinearLayout.VERTICAL
                     gravity = android.view.Gravity.CENTER
+                    background = roundedBackground(iconContainer, 14, palette.surface, 1)
+                    setPadding(dp(6), dp(6), dp(6), dp(6))
                     layoutParams = android.widget.LinearLayout.LayoutParams(
-                        140, android.widget.LinearLayout.LayoutParams.WRAP_CONTENT
+                        dp(46), dp(46)
                     ).apply {
-                        marginEnd = 30
+                        marginEnd = dp(8)
                     }
                     
                     val iv = android.widget.ImageView(this@AppLimitAccessibilityService).apply {
                         setImageDrawable(icon)
-                        layoutParams = android.widget.LinearLayout.LayoutParams(90, 90).apply {
-                            bottomMargin = 10
-                        }
-                    }
-                    
-                    val tv = android.widget.TextView(this@AppLimitAccessibilityService).apply {
-                        text = label
-                        textSize = 10f
-                        setTextColor("#5F6266".toColorInt())
-                        gravity = android.view.Gravity.CENTER
-                        maxLines = 1
-                        ellipsize = android.text.TextUtils.TruncateAt.END
+                        contentDescription = label
+                        scaleType = android.widget.ImageView.ScaleType.FIT_CENTER
+                        layoutParams = android.widget.LinearLayout.LayoutParams(dp(34), dp(34))
                     }
                     
                     addView(iv)
-                    addView(tv)
                     
                     setOnClickListener {
                         removeBlockOverlay()

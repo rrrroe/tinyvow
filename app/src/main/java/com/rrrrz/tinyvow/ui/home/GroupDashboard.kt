@@ -886,7 +886,7 @@ private fun GroupEditDialog(
             if (group?.group?.type == GroupType.ENCOURAGE && group.group.pointsPerMinute > 0) {
                 trimTrailingZero(group.group.pointsPerMinute)
             } else {
-                "1"
+                "0.1"
             }
         )
     }
