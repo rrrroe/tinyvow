@@ -1,7 +1,7 @@
 <resources>
     <string name="app_name">Tiny Vow</string>
     <string name="home_title">核心权限配置</string>
-    <string name="home_subtitle">为了能够统计应用使用时长并在超额时实现软阻断，请依次完成以下五个基础授权步骤。</string>
+    <string name="home_subtitle">为了统计应用使用时长并在超额时实现软阻断，请先完成核心权限；通知、电池和自启动属于增强可靠性的可选建议。</string>
     <string name="permission_status_granted">[步骤 1] 使用情况访问已开启</string>
     <string name="permission_status_denied">[步骤 1] 尚未开启使用情况访问</string>
     <string name="permission_status_granted_desc">【为什么要开】统计每个 App 每天的使用时长必须有此权限支撑。\n\n【当前状态】核心权限已就绪！可以正常记录时长了。</string>
@@ -18,21 +18,21 @@
     <string name="accessibility_card_disabled">【为什么要开】它能在目标 App 超时并运行在前台时，直接弹出一个全屏悬浮界面来阻止你继续沉迷。这是最核心的拦截手段。\n\n【如何操作】点击下方按钮 -> 在系统的「已下载的应用」或服务列表中找到「Tiny Vow 软阻断服务」 -> 开启服务。</string>
     <string name="accessibility_card_action">打开无障碍设置</string>
 
-    <string name="autostart_card_title">[步骤 3] 后台自启动机制</string>
-    <string name="autostart_card_desc">【为什么要开】国内深度定制系统（小米/华为/OV等）杀后台极为严格。如果不确保应用长存后台，就会导致失去计时和拦截能力。\n\n【如何操作】点击下方按钮进入「应用详情」 -> 找到「自启动」或「允许完全后台行为」的相关选项并手动开启。(开启后可通过此卡片右侧划掉跳过)</string>
-    <string name="autostart_card_action">开启自启动配置</string>
-    <string name="autostart_card_action_done">我已按指引开启</string>
+    <string name="autostart_card_title">[可选] 后台自启动建议</string>
+    <string name="autostart_card_desc">【用途】部分手机厂商会限制后台运行，可能影响提醒和阻断服务的及时性。\n\n【说明】这是增强可靠性的可选配置，不开启也可以继续使用核心功能。点击下方按钮后，可在系统应用详情中查找「自启动」或「允许后台行为」等选项。</string>
+    <string name="autostart_card_action">查看自启动设置</string>
+    <string name="autostart_card_action_done">暂时跳过</string>
 
     <!-- Settings menu -->
     <string name="action_diagnostic_settings">权限与防杀后台诊断</string>
     <string name="settings_menu_subtitle">若遇到不拦截、没弹窗等问题，请进入各项系统设置确认权限未被撤销。</string>
 
-    <string name="battery_card_title">[步骤 4] 电池无限制白名单</string>
-    <string name="battery_card_enabled">【为什么要开】防止手机息屏后系统挂起此应用的休眠策略。\n\n【当前状态】已获电池豁免白名单配置。</string>
-    <string name="battery_card_disabled">【为什么要开】为了保证在你息屏或不打开应用时，后台时长统计和服务能始终维持心跳。\n\n【如何操作】点击下方按钮 -> 在系统弹出的界面中点击「允许」；或在详情页将其切换为「无限制」。</string>
-    <string name="battery_card_action">申请电池白名单</string>
+    <string name="battery_card_title">[可选] 电池白名单建议</string>
+    <string name="battery_card_enabled">【当前状态】已获电池优化豁免，后台提醒和统计会更稳定。</string>
+    <string name="battery_card_disabled">【用途】降低息屏或系统省电策略导致提醒延迟的概率。\n\n【说明】这是增强可靠性的可选配置，不开启也可以继续使用核心功能。点击下方按钮后，由系统决定是否允许加入电池白名单。</string>
+    <string name="battery_card_action">查看电池白名单说明</string>
 
-    <string name="reminder_card_title">[步骤 5] 超额提醒通知</string>
+    <string name="reminder_card_title">[可选] 超额提醒通知</string>
     <string name="reminder_card_enabled">【为什么要开】在阻断时，同时在下拉通知栏发一条通知详细汇报使用剩余。\n\n【当前状态】已开启，能正常收到本地通知。</string>
     <string name="reminder_card_disabled">【为什么要开】除了直接弹窗拦截外，开启此权限可以在你的下拉通知栏实时显示每日超额的报告提醒。\n\n【如何操作】点击下方按钮 -> 授予系统通知权限即可。</string>
     <string name="reminder_card_action">开启通知权限</string>

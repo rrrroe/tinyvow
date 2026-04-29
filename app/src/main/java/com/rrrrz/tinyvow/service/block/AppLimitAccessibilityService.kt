@@ -45,6 +45,7 @@ class AppLimitAccessibilityService : AccessibilityService() {
     private val usageRepository by lazy { UsageStatsUsageRepository(applicationContext) }
     private val preferences by lazy { ManagedAppPreferences(applicationContext) }
     @Volatile private var overlayPalette: OverlayPalette = overlayPaletteForSeed(DefaultThemeSeed)
+    @Volatile private var accessibilityDisclosureAccepted: Boolean = false
 
     // 积分积累状态
     private var lastPackageForPoints: String? = null
@@ -75,6 +76,20 @@ class AppLimitAccessibilityService : AccessibilityService() {
         // 启动事件消费协程
         startEventConsumer()
         startThemeWatcher()
+        startDisclosureWatcher()
+    }
+
+    private fun startDisclosureWatcher() {
+        serviceScope.launch(Dispatchers.Default) {
+            preferences.accessibilityDisclosureAccepted.collect { accepted ->
+                accessibilityDisclosureAccepted = accepted
+                if (!accepted) {
+                    withContext(Dispatchers.Main) {
+                        removeBlockOverlay()
+                    }
+                }
+            }
+        }
     }
 
     private fun startThemeWatcher() {
@@ -216,6 +231,11 @@ class AppLimitAccessibilityService : AccessibilityService() {
             event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
             event.eventType != AccessibilityEvent.TYPE_WINDOWS_CHANGED
         ) return
+
+        if (!accessibilityDisclosureAccepted) {
+            removeBlockOverlay()
+            return
+        }
 
         val now = SystemClock.elapsedRealtime()
 

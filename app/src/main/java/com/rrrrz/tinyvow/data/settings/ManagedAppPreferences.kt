@@ -35,6 +35,8 @@ class ManagedAppPreferences(
         val todayPoints = doublePreferencesKey("today_points")
         val lastPointsResetDate = stringPreferencesKey("last_points_reset_date")
         val dismissedPermissionPrompts = stringSetPreferencesKey("dismissed_permission_prompts")
+        val usageAccessDisclosureAccepted = booleanPreferencesKey("usage_access_disclosure_accepted")
+        val accessibilityDisclosureAccepted = booleanPreferencesKey("accessibility_disclosure_accepted")
     }
 
     val selectedPackageName: Flow<String?> = context.managedAppDataStore.data.map { preferences ->
@@ -94,6 +96,14 @@ class ManagedAppPreferences(
 
     val dismissedPermissionPrompts: Flow<Set<String>> = context.managedAppDataStore.data.map { preferences ->
         preferences[Keys.dismissedPermissionPrompts].orEmpty()
+    }
+
+    val usageAccessDisclosureAccepted: Flow<Boolean> = context.managedAppDataStore.data.map { preferences ->
+        preferences[Keys.usageAccessDisclosureAccepted] ?: false
+    }
+
+    val accessibilityDisclosureAccepted: Flow<Boolean> = context.managedAppDataStore.data.map { preferences ->
+        preferences[Keys.accessibilityDisclosureAccepted] ?: false
     }
 
     suspend fun addUserPoints(points: Double) {
@@ -200,6 +210,18 @@ class ManagedAppPreferences(
         }
     }
 
+    suspend fun setUsageAccessDisclosureAccepted(accepted: Boolean) {
+        context.managedAppDataStore.edit { preferences ->
+            preferences[Keys.usageAccessDisclosureAccepted] = accepted
+        }
+    }
+
+    suspend fun setAccessibilityDisclosureAccepted(accepted: Boolean) {
+        context.managedAppDataStore.edit { preferences ->
+            preferences[Keys.accessibilityDisclosureAccepted] = accepted
+        }
+    }
+
     suspend fun setDailyLimitMinutes(packageName: String, minutes: Int) {
         context.managedAppDataStore.edit { preferences ->
             preferences[intPreferencesKey("daily_limit_minutes_$packageName")] = minutes
@@ -235,6 +257,12 @@ class ManagedAppPreferences(
     suspend fun clearLastReminderDate(packageName: String) {
         context.managedAppDataStore.edit { preferences ->
             preferences.remove(stringPreferencesKey("last_reminder_date_$packageName"))
+        }
+    }
+
+    suspend fun clearAll() {
+        context.managedAppDataStore.edit { preferences ->
+            preferences.clear()
         }
     }
 

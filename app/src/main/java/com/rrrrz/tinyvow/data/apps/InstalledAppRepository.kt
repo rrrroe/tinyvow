@@ -73,24 +73,16 @@ class InstalledAppRepository(
             valueTransform = { it.loadLabel(packageManager).toString() }
         )
 
-        // Step 3: 拉取系统内所有 Package
-        val allPackages = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-            packageManager.getInstalledPackages(PackageManager.PackageInfoFlags.of(0))
-        } else {
-            @Suppress("DEPRECATION")
-            packageManager.getInstalledPackages(0)
-        }
+        // Step 3: 只合并可启动应用和 UsageStats 已出现过的应用，避免使用 QUERY_ALL_PACKAGES。
+        val scopedPackageNames = (launchablePackageNames + usageStats.keys)
 
-        allPackages
-            .mapNotNull { packageInfo ->
-                val packageName = packageInfo.packageName ?: return@mapNotNull null
+        scopedPackageNames
+            .mapNotNull { packageName ->
                 if (packageName == context.packageName) return@mapNotNull null
 
-                val appInfo = packageInfo.applicationInfo ?: return@mapNotNull null
-                
                 // 优先使用 Launcher 里的名字，如果没有则用 AppInfo 的 label
                 val appName = launchableNames[packageName] 
-                    ?: appInfo.loadLabel(packageManager).toString().takeIf { it.isNotBlank() }
+                    ?: loadAppLabel(packageManager, packageName)
                     ?: packageName
 
                 val totalTime = usageStats[packageName]?.totalTimeInForeground ?: 0L
@@ -109,5 +101,23 @@ class InstalledAppRepository(
                     .thenByDescending { it.isLaunchable }
                     .thenBy { it.appName.lowercase() }
             )
+    }
+
+    private fun loadAppLabel(
+        packageManager: PackageManager,
+        packageName: String,
+    ): String? {
+        return runCatching {
+            val appInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                packageManager.getApplicationInfo(
+                    packageName,
+                    PackageManager.ApplicationInfoFlags.of(0),
+                )
+            } else {
+                @Suppress("DEPRECATION")
+                packageManager.getApplicationInfo(packageName, 0)
+            }
+            appInfo.loadLabel(packageManager).toString().takeIf { it.isNotBlank() }
+        }.getOrNull()
     }
 }

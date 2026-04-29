@@ -4,6 +4,8 @@ plugins {
     alias(libs.plugins.ksp)
 }
 
+val googleWebClientId = providers.gradleProperty("TINYVOW_GOOGLE_WEB_CLIENT_ID").orElse("").get()
+
 android {
     namespace = "com.rrrrz.tinyvow"
     compileSdk {
@@ -20,11 +22,17 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        buildConfigField(
+            "String",
+            "GOOGLE_WEB_CLIENT_ID",
+            "\"${googleWebClientId.replace("\\", "\\\\").replace("\"", "\\\"")}\"",
+        )
     }
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
@@ -37,11 +45,16 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 
 ksp {
     arg("room.schemaLocation", "$projectDir/schemas")
+}
+
+configurations.configureEach {
+    resolutionStrategy.force("androidx.activity:activity:1.8.0")
 }
 
 dependencies {
@@ -68,5 +81,9 @@ dependencies {
     implementation("io.coil-kt:coil-compose:2.5.0")
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.room.ktx)
+    implementation(libs.androidx.credentials)
+    implementation(libs.androidx.credentials.play.services.auth)
+    implementation(libs.googleid)
+    implementation(libs.google.play.billing.ktx)
     ksp(libs.androidx.room.compiler)
 }

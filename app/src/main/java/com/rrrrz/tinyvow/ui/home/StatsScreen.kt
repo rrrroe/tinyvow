@@ -392,6 +392,7 @@ fun StatsRoute(
     userPoints: Double,
     todayPoints: Double,
     archiveRepository: DailyArchiveRepository,
+    onRequestUsageAccess: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val zoneId = remember { ZoneId.systemDefault() }
@@ -482,6 +483,7 @@ fun StatsRoute(
         onSelectArchiveDate = { date ->
             selectedArchiveDate = date
         },
+        onRequestUsageAccess = onRequestUsageAccess,
         modifier = modifier,
     )
 }
@@ -2282,6 +2284,7 @@ private fun StatsScreenLayout(
     onPreviousArchiveDate: () -> Unit,
     onNextArchiveDate: () -> Unit,
     onSelectArchiveDate: (String) -> Unit,
+    onRequestUsageAccess: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val reportColors = LocalReportColors.current
@@ -2295,7 +2298,9 @@ private fun StatsScreenLayout(
             .background(background),
     ) {
         when {
-            !state.isPermissionGranted -> PermissionRequiredState()
+            !state.isPermissionGranted -> PermissionRequiredState(
+                onRequestUsageAccess = onRequestUsageAccess,
+            )
             state.placeholderTitle != null -> PlaceholderReportScreen(
                 state = state,
                 onTabSelected = onTabSelected,
@@ -3169,7 +3174,9 @@ private fun PlaceholderReportScreen(
 }
 
 @Composable
-private fun PermissionRequiredState() {
+private fun PermissionRequiredState(
+    onRequestUsageAccess: () -> Unit,
+) {
     val context = LocalContext.current
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         ReportCard(
@@ -3199,14 +3206,10 @@ private fun PermissionRequiredState() {
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     Button(
-                        onClick = {
-                            context.startActivity(
-                                Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
-                            )
-                        },
+                        onClick = onRequestUsageAccess,
                         modifier = Modifier.weight(1f),
                     ) {
-                        Text("去开启权限")
+                        Text("查看说明并开启")
                     }
                     OutlinedButton(
                         onClick = {

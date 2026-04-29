@@ -30,12 +30,11 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material.icons.filled.EmojiEvents
+import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Science
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.ShoppingCart
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -69,6 +68,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rrrrz.tinyvow.R
+import com.rrrrz.tinyvow.data.auth.UserSession
+import com.rrrrz.tinyvow.data.billing.ProEntitlementState
+import com.rrrrz.tinyvow.data.billing.ProEntitlementStatus
+import com.rrrrz.tinyvow.data.billing.SubscriptionOffer
 import com.rrrrz.tinyvow.ui.theme.LocalThemeColors
 import com.rrrrz.tinyvow.ui.theme.ThemePresets
 import com.rrrrz.tinyvow.ui.theme.ThemeSeed
@@ -77,6 +80,10 @@ import com.rrrrz.tinyvow.ui.theme.createCustomTheme
 
 @Composable
 fun MeScreen(
+    userSession: UserSession?,
+    isGoogleSignInConfigured: Boolean,
+    proEntitlement: ProEntitlementState,
+    subscriptionOffers: List<SubscriptionOffer>,
     userPoints: Double,
     selectedThemeId: String,
     customThemes: List<ThemeSeed>,
@@ -98,12 +105,23 @@ fun MeScreen(
     onClearDismissedPermissionPrompts: () -> Unit,
     onNavigateToLaboratory: () -> Unit,
     onNavigateToHistory: () -> Unit,
-    onNavigateToAchievements: () -> Unit,
-    onNavigateToRedeem: () -> Unit,
     onNavigateToThemeSettings: () -> Unit,
+    onNavigateToHelpFeedback: () -> Unit,
+    onNavigateToContactUs: () -> Unit,
+    onExportLocalData: () -> Unit,
+    onClearLocalData: () -> Unit,
+    onOpenPrivacyPolicy: () -> Unit,
+    onSignInWithGoogle: () -> Unit,
+    onSignOut: () -> Unit,
+    onDeleteAccount: (clearLocalData: Boolean) -> Unit,
+    onPurchasePro: (SubscriptionOffer) -> Unit,
+    onRestorePurchases: () -> Unit,
+    onManageSubscription: () -> Unit,
 ) {
     val themeColors = LocalThemeColors.current
     var showPermissionSettings by remember { mutableStateOf(false) }
+    var showDataPrivacy by remember { mutableStateOf(false) }
+    var showDeleteAccountConfirm by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -145,13 +163,13 @@ fun MeScreen(
                 Spacer(Modifier.width(16.dp))
                 Column {
                     Text(
-                        "自律达人",
+                        userSession?.displayName ?: "未登录",
                         style = MaterialTheme.typography.titleLarge,
                         color = themeColors.onBase,
                         fontWeight = FontWeight.Bold,
                     )
                     Text(
-                        "ID: 20260322",
+                        userSession?.email ?: "登录后可恢复订阅并预留多端同步",
                         style = MaterialTheme.typography.bodySmall,
                         color = themeColors.onBase.copy(alpha = 0.78f),
                     )
@@ -194,14 +212,55 @@ fun MeScreen(
                 }
             }
 
-            MeMenuSection("核心入口") {
-                MeMenuItem(icon = Icons.Default.EmojiEvents, title = "成果与成就", onClick = onNavigateToAchievements)
-                MeMenuItem(icon = Icons.Default.ShoppingCart, title = "商城兑换", onClick = onNavigateToRedeem)
+            MeMenuSection("账户") {
+                if (userSession == null) {
+                    MeMenuItem(
+                        icon = Icons.Default.Settings,
+                        title = if (isGoogleSignInConfigured) "使用 Google 登录" else "Google 登录未配置",
+                        onClick = onSignInWithGoogle,
+                        color = if (isGoogleSignInConfigured) themeColors.base else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                } else {
+                    MeMenuItem(icon = Icons.Default.Settings, title = "退出登录", onClick = onSignOut)
+                    MeMenuItem(
+                        icon = Icons.Default.Delete,
+                        title = "删除账户",
+                        onClick = { showDeleteAccountConfirm = true },
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+            }
+
+            MeMenuSection("订阅") {
+                SubscriptionStatusPanel(
+                    entitlement = proEntitlement,
+                    offers = subscriptionOffers,
+                    onPurchasePro = onPurchasePro,
+                    onRestorePurchases = onRestorePurchases,
+                    onManageSubscription = onManageSubscription,
+                )
+            }
+
+            MeMenuSection("数据与隐私") {
+                MeMenuItem(icon = Icons.Default.Settings, title = "本地数据管理", onClick = { showDataPrivacy = true })
+                MeMenuItem(icon = Icons.AutoMirrored.Filled.HelpOutline, title = "隐私政策", onClick = onOpenPrivacyPolicy)
+            }
+
+            MeMenuSection("权限设置") {
                 MeMenuItem(icon = Icons.Default.Settings, title = "权限设置", onClick = { showPermissionSettings = true })
             }
 
             MeMenuSection("外观主题") {
                 MeMenuItem(icon = Icons.Default.Palette, title = "主题管理", onClick = onNavigateToThemeSettings)
+            }
+
+            MeMenuSection("使用记录") {
+                MeMenuItem(icon = Icons.Default.History, title = "使用历史", onClick = onNavigateToHistory)
+            }
+
+            MeMenuSection("帮助与联系") {
+                MeMenuItem(icon = Icons.AutoMirrored.Filled.HelpOutline, title = "帮助与反馈", onClick = onNavigateToHelpFeedback)
+                MeMenuItem(icon = Icons.Default.Email, title = "联系我们", onClick = onNavigateToContactUs)
             }
 
             MeMenuSection("高级中心") {
@@ -211,8 +270,6 @@ fun MeScreen(
                     onClick = onNavigateToLaboratory,
                     color = themeColors.base,
                 )
-                MeMenuItem(icon = Icons.Default.History, title = "使用历史", onClick = onNavigateToHistory)
-                MeMenuItem(icon = Icons.AutoMirrored.Filled.HelpOutline, title = "帮助与反馈", onClick = {})
             }
         }
     }
@@ -233,6 +290,137 @@ fun MeScreen(
             onRequestBatteryOptimization = onRequestBatteryOptimization,
             onRequestNotificationPermission = onRequestNotificationPermission,
             onClearDismissedPermissionPrompts = onClearDismissedPermissionPrompts,
+        )
+    }
+
+    if (showDataPrivacy) {
+        DataPrivacySheet(
+            onDismiss = { showDataPrivacy = false },
+            onExportLocalData = onExportLocalData,
+            onClearLocalData = onClearLocalData,
+            onOpenPrivacyPolicy = onOpenPrivacyPolicy,
+        )
+    }
+
+    if (showDeleteAccountConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDeleteAccountConfirm = false },
+            title = { Text("删除账户") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("第一版会删除本机保存的登录会话。若选择同时清除本地数据，也会删除当前设备上的分组、历史、积分、奖励和主题。")
+                    TextButton(
+                        onClick = {
+                            showDeleteAccountConfirm = false
+                            onDeleteAccount(true)
+                        },
+                    ) {
+                        Text("删除账户并清除本地数据", color = MaterialTheme.colorScheme.error)
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showDeleteAccountConfirm = false
+                        onDeleteAccount(false)
+                    },
+                ) {
+                    Text("仅删除账户")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDeleteAccountConfirm = false }) {
+                    Text("取消")
+                }
+            },
+        )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DataPrivacySheet(
+    onDismiss: () -> Unit,
+    onExportLocalData: () -> Unit,
+    onClearLocalData: () -> Unit,
+    onOpenPrivacyPolicy: () -> Unit,
+) {
+    var showClearConfirm by remember { mutableStateOf(false) }
+
+    ModalBottomSheet(onDismissRequest = onDismiss) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp, vertical = 16.dp)
+                .verticalScroll(rememberScrollState()),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Text(
+                text = "本地数据管理",
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+            )
+            Text(
+                text = "Tiny Vow 会在本机保存你选择管理的 App、使用时长统计、打开次数、夜间使用、积分、兑换、成就、主题和阻断记录。第一版不会自动上传这些数据。",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            ) {
+                Text(
+                    text = "导出文件只会生成到本机缓存，并通过系统分享面板由你主动发送。清除本地数据会删除当前设备上的分组、历史、积分、奖励、主题和权限提示状态。",
+                    modifier = Modifier.padding(14.dp),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Button(
+                onClick = onExportLocalData,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("导出本地数据")
+            }
+            TextButton(
+                onClick = onOpenPrivacyPolicy,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("查看隐私政策")
+            }
+            TextButton(
+                onClick = { showClearConfirm = true },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("清除本地数据", color = MaterialTheme.colorScheme.error)
+            }
+            Spacer(modifier = Modifier.height(48.dp))
+        }
+    }
+
+    if (showClearConfirm) {
+        AlertDialog(
+            onDismissRequest = { showClearConfirm = false },
+            title = { Text("清除本地数据") },
+            text = { Text("此操作会删除当前设备上的 Tiny Vow 本地记录，无法从应用内恢复。") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showClearConfirm = false
+                        onClearLocalData()
+                        onDismiss()
+                    },
+                ) {
+                    Text("清除", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showClearConfirm = false }) {
+                    Text("取消")
+                }
+            },
         )
     }
 }
@@ -585,6 +773,88 @@ private fun ThemeLegendDot(label: String, color: Color) {
         Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
+
+@Composable
+private fun SubscriptionStatusPanel(
+    entitlement: ProEntitlementState,
+    offers: List<SubscriptionOffer>,
+    onPurchasePro: (SubscriptionOffer) -> Unit,
+    onRestorePurchases: () -> Unit,
+    onManageSubscription: () -> Unit,
+) {
+    val firstOffer = offers.firstOrNull()
+    val isActive = entitlement.status == ProEntitlementStatus.ACTIVE
+    val isPending = entitlement.status == ProEntitlementStatus.PENDING
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    text = "Tiny Vow Pro",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                )
+                Text(
+                    text = entitlementStatusText(entitlement),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Text(
+                text = firstOffer?.price ?: if (isActive) "已解锁" else "待加载",
+                style = MaterialTheme.typography.labelLarge,
+                color = if (isActive) LocalThemeColors.current.encourage else MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.Bold,
+            )
+        }
+
+        Text(
+            text = "免费核心功能保持可用；Pro 只用于后续高级能力入口。订阅、取消和续费由 Google Play 管理。",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+
+        Button(
+            onClick = {
+                val offer = firstOffer
+                if (offer == null) {
+                    onRestorePurchases()
+                } else {
+                    onPurchasePro(offer)
+                }
+            },
+            enabled = !isActive && !isPending,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(if (firstOffer == null) "加载订阅信息" else "购买 Pro")
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+            TextButton(onClick = onRestorePurchases) {
+                Text("恢复购买")
+            }
+            TextButton(onClick = onManageSubscription) {
+                Text("管理订阅")
+            }
+        }
+    }
+}
+
+private fun entitlementStatusText(entitlement: ProEntitlementState): String =
+    when (entitlement.status) {
+        ProEntitlementStatus.ACTIVE -> "Pro 已生效"
+        ProEntitlementStatus.PENDING -> entitlement.message ?: "付款待完成"
+        ProEntitlementStatus.UNAVAILABLE -> entitlement.message ?: "Play Billing 暂不可用"
+        ProEntitlementStatus.FREE -> "当前为免费版"
+    }
 
 @Composable
 fun MeStatItem(value: String, label: String, color: Color) {

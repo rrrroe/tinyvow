@@ -1,6 +1,7 @@
 package com.rrrrz.tinyvow.ui.home
 
 import android.Manifest
+import android.content.ClipData
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -76,12 +77,16 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.core.content.FileProvider
 import com.rrrrz.tinyvow.R
+import com.rrrrz.tinyvow.data.auth.LocalAuthRepository
+import com.rrrrz.tinyvow.data.billing.PlayBillingSubscriptionRepository
 import com.rrrrz.tinyvow.data.accessibility.AccessibilityServiceStateChecker
 import com.rrrrz.tinyvow.data.apps.InstalledAppRepository
 import com.rrrrz.tinyvow.data.apps.ManagedApp
 import com.rrrrz.tinyvow.data.db.AppDatabase
 import com.rrrrz.tinyvow.data.notification.NotificationPermissionChecker
+import com.rrrrz.tinyvow.data.privacy.LocalDataManager
 import com.rrrrz.tinyvow.data.repository.AppGroupWithApps
 import com.rrrrz.tinyvow.data.repository.AppLimitRepository
 import com.rrrrz.tinyvow.data.repository.DailyArchiveRepository
@@ -111,7 +116,9 @@ import com.rrrrz.tinyvow.ui.rewards.AchievementScreen
 import com.rrrrz.tinyvow.ui.theme.DefaultThemeSeed
 import com.rrrrz.tinyvow.ui.theme.LocalThemeColors
 
-enum class Screen { HOME, REWARDS, STATS, ME, LABORATORY, HISTORY, THEME }
+enum class Screen { HOME, REWARDS, STATS, ME, LABORATORY, HISTORY, THEME, HELP_FEEDBACK, CONTACT_US }
+
+private const val CONTACT_EMAIL = "rrrr.zhao@gmail.com"
 
 private object PermissionPromptIds {
     const val USAGE_ACCESS = "usage_access"
@@ -119,6 +126,14 @@ private object PermissionPromptIds {
     const val AUTO_START = "auto_start"
     const val BATTERY = "battery"
     const val NOTIFICATION = "notification"
+}
+
+private enum class SensitivePermissionDisclosure {
+    USAGE_ACCESS,
+    ACCESSIBILITY,
+    NOTIFICATION,
+    BATTERY_OPTIMIZATION,
+    AUTO_START,
 }
 
 @Composable
@@ -194,12 +209,17 @@ fun HomeRoute(
     val notificationPermissionChecker = remember(context) { NotificationPermissionChecker(context) }
     val powerManager = remember(context) { context.getSystemService(android.content.Context.POWER_SERVICE) as PowerManager }
     var isIgnoringBattery by remember { mutableStateOf(powerManager.isIgnoringBatteryOptimizations(context.packageName)) }
+    val authRepository = remember(context) { LocalAuthRepository(context) }
+    val subscriptionRepository = remember(context) { PlayBillingSubscriptionRepository(context) }
     
     val database = remember(context) { AppDatabase.getDatabase(context) }
     val appLimitRepository = remember(database, context) { AppLimitRepository(context, database) }
     val usageRepository = remember(context) { UsageStatsUsageRepository(context) }
     val pointsRepository = remember(database, context) { PointsRepository(context, database) }
     val dailyArchiveRepository = remember(database, context) { DailyArchiveRepository(context, database) }
+    val localDataManager = remember(database, context, preferences) {
+        LocalDataManager(context, database, preferences)
+    }
     
     val groupsWithApps by appLimitRepository.getAllGroupsWithApps().collectAsState(initial = emptyList())
     val userPoints by preferences.userPoints.collectAsState(initial = 0.0)
@@ -210,9 +230,15 @@ fun HomeRoute(
     val achievements by appLimitRepository.getAllAchievements().collectAsState(initial = emptyList())
     val redemptionHistory by appLimitRepository.getRedemptionHistory().collectAsState(initial = emptyList())
     val dismissedPermissionPrompts by preferences.dismissedPermissionPrompts.collectAsState(initial = emptySet())
+    val usageAccessDisclosureAccepted by preferences.usageAccessDisclosureAccepted.collectAsState(initial = false)
+    val accessibilityDisclosureAccepted by preferences.accessibilityDisclosureAccepted.collectAsState(initial = false)
+    val userSession by authRepository.session.collectAsState(initial = null)
+    val proEntitlement by subscriptionRepository.entitlement.collectAsState()
+    val subscriptionOffers by subscriptionRepository.offers.collectAsState()
 
     var currentScreen by remember { mutableStateOf(Screen.HOME) }
     val snackbarHostState = remember { SnackbarHostState() }
+    var pendingSensitiveDisclosure by remember { mutableStateOf<SensitivePermissionDisclosure?>(null) }
     var usageAccessStatus by remember { mutableStateOf(checker.getStatus()) }
     var accessibilityServiceEnabled by remember {
         mutableStateOf(accessibilityServiceStateChecker.isEnabled(AppLimitAccessibilityService::class.java))
@@ -280,8 +306,17 @@ fun HomeRoute(
         }
     }
 
-    LaunchedEffect(usageAccessStatus) {
-        if (usageAccessStatus == UsageAccessStatus.GRANTED) {
+    val effectiveUsageAccessStatus =
+        if (usageAccessStatus == UsageAccessStatus.GRANTED && usageAccessDisclosureAccepted) {
+            UsageAccessStatus.GRANTED
+        } else {
+            UsageAccessStatus.DENIED
+        }
+    val effectiveAccessibilityServiceEnabled =
+        accessibilityServiceEnabled && accessibilityDisclosureAccepted
+
+    LaunchedEffect(usageAccessStatus, usageAccessDisclosureAccepted) {
+        if (effectiveUsageAccessStatus == UsageAccessStatus.GRANTED) {
             isLoadingApps = true
             installedApps = appRepository.getAllInstalledApps()
             isLoadingApps = false
@@ -320,10 +355,14 @@ fun HomeRoute(
     if (currentScreen != Screen.HOME) {
         BackHandler {
             currentScreen = when (currentScreen) {
-                Screen.LABORATORY, Screen.HISTORY, Screen.THEME -> Screen.ME
+                Screen.LABORATORY, Screen.HISTORY, Screen.THEME, Screen.HELP_FEEDBACK, Screen.CONTACT_US -> Screen.ME
                 else -> Screen.HOME
             }
         }
+    }
+
+    LaunchedEffect(Unit) {
+        subscriptionRepository.refresh()
     }
 
     Scaffold(
@@ -338,8 +377,8 @@ fun HomeRoute(
                 ) {
                     val screens = listOf(
                         Triple(Screen.HOME, "首页", Icons.Default.Home),
-                        Triple(Screen.REWARDS, "奖励", Icons.Default.CardGiftcard),
                         Triple(Screen.STATS, "战报", Icons.Default.BarChart),
+                        Triple(Screen.REWARDS, "奖励", Icons.Default.CardGiftcard),
                         Triple(Screen.ME, "我的", Icons.Default.Person)
                     )
                     screens.forEach { (screen, label, icon) ->
@@ -358,8 +397,8 @@ fun HomeRoute(
             when (currentScreen) {
                 Screen.HOME -> {
                     HomeScreen(
-                        usageAccessStatus = usageAccessStatus,
-                        accessibilityServiceEnabled = accessibilityServiceEnabled,
+                        usageAccessStatus = effectiveUsageAccessStatus,
+                        accessibilityServiceEnabled = effectiveAccessibilityServiceEnabled,
                         notificationPermissionGranted = notificationPermissionGranted,
                         isIgnoringBattery = isIgnoringBattery,
                         installedApps = installedApps,
@@ -370,30 +409,30 @@ fun HomeRoute(
                         onNavigateToRedeem = { currentScreen = Screen.REWARDS }, // Placeholder
                         onNavigateToAchievements = { currentScreen = Screen.REWARDS },
                         onOpenUsageAccessSettings = {
-                            val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                            context.startActivity(intent)
+                            if (usageAccessDisclosureAccepted) {
+                                val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                context.startActivity(intent)
+                            } else {
+                                pendingSensitiveDisclosure = SensitivePermissionDisclosure.USAGE_ACCESS
+                            }
                         },
                         onOpenAccessibilitySettings = {
-                            context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                            if (accessibilityDisclosureAccepted) {
+                                context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                            } else {
+                                pendingSensitiveDisclosure = SensitivePermissionDisclosure.ACCESSIBILITY
+                            }
                         },
                         onRequestNotificationPermission = {
                             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
-                                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                pendingSensitiveDisclosure = SensitivePermissionDisclosure.NOTIFICATION
                             }
                         },
                         onOpenAutoStartSettings = {
-                            val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                                data = android.net.Uri.fromParts("package", context.packageName, null)
-                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                            }
-                            context.startActivity(intent)
+                            pendingSensitiveDisclosure = SensitivePermissionDisclosure.AUTO_START
                         },
                         onRequestBatteryOptimization = {
-                            val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
-                                data = android.net.Uri.parse("package:${context.packageName}")
-                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                            }
-                            context.startActivity(intent)
+                            pendingSensitiveDisclosure = SensitivePermissionDisclosure.BATTERY_OPTIMIZATION
                         },
                         isAutoStartDismissed = isAutoStartDismissed,
                         dismissedPermissionPrompts = dismissedPermissionPrompts,
@@ -452,16 +491,28 @@ fun HomeRoute(
                         userPoints = userPoints,
                         todayPoints = todayPoints,
                         archiveRepository = dailyArchiveRepository,
+                        onRequestUsageAccess = {
+                            if (usageAccessDisclosureAccepted) {
+                                val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                context.startActivity(intent)
+                            } else {
+                                pendingSensitiveDisclosure = SensitivePermissionDisclosure.USAGE_ACCESS
+                            }
+                        },
                         modifier = Modifier.fillMaxSize(),
                     )
                 }
                 Screen.ME -> {
                     MeScreen(
+                        userSession = userSession,
+                        isGoogleSignInConfigured = authRepository.isGoogleSignInConfigured,
+                        proEntitlement = proEntitlement,
+                        subscriptionOffers = subscriptionOffers,
                         userPoints = userPoints,
                         selectedThemeId = selectedThemeId,
                         customThemes = customThemes,
-                        usageAccessGranted = usageAccessStatus == UsageAccessStatus.GRANTED,
-                        accessibilityServiceEnabled = accessibilityServiceEnabled,
+                        usageAccessGranted = effectiveUsageAccessStatus == UsageAccessStatus.GRANTED,
+                        accessibilityServiceEnabled = effectiveAccessibilityServiceEnabled,
                         isAutoStartDismissed = isAutoStartDismissed,
                         isIgnoringBattery = isIgnoringBattery,
                         notificationPermissionGranted = notificationPermissionGranted,
@@ -482,50 +533,34 @@ fun HomeRoute(
                             }
                         },
                         onOpenUsageAccessSettings = {
-                            val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                            context.startActivity(intent)
+                            if (usageAccessDisclosureAccepted) {
+                                val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                context.startActivity(intent)
+                            } else {
+                                pendingSensitiveDisclosure = SensitivePermissionDisclosure.USAGE_ACCESS
+                            }
                         },
                         onOpenAccessibilitySettings = {
-                            val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                            context.startActivity(intent)
+                            if (accessibilityDisclosureAccepted) {
+                                val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                context.startActivity(intent)
+                            } else {
+                                pendingSensitiveDisclosure = SensitivePermissionDisclosure.ACCESSIBILITY
+                            }
                         },
                         onRequestNotificationPermission = {
                             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                                pendingSensitiveDisclosure = SensitivePermissionDisclosure.NOTIFICATION
                             }
                         },
                         onOpenAutoStartSettings = {
-                            runCatching {
-                                val intent = Intent().apply {
-                                    component = android.content.ComponentName(
-                                        "com.miui.securitycenter",
-                                        "com.miui.permcenter.autostart.AutoStartManagementActivity"
-                                    )
-                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                }
-                                context.startActivity(intent)
-                            }.onFailure {
-                                val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                                    data = Uri.parse("package:${context.packageName}")
-                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                }
-                                context.startActivity(intent)
-                            }
+                            pendingSensitiveDisclosure = SensitivePermissionDisclosure.AUTO_START
                         },
                         onSetAutoStartDismissed = {
                             coroutineScope.launch { preferences.setAutoStartDismissed(true) }
                         },
                         onRequestBatteryOptimization = {
-                            runCatching {
-                                val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
-                                    data = Uri.parse("package:${context.packageName}")
-                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                }
-                                context.startActivity(intent)
-                            }.onFailure {
-                                val intent = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                context.startActivity(intent)
-                            }
+                            pendingSensitiveDisclosure = SensitivePermissionDisclosure.BATTERY_OPTIMIZATION
                         },
                         onClearDismissedPermissionPrompts = {
                             coroutineScope.launch {
@@ -539,9 +574,119 @@ fun HomeRoute(
                         },
                         onNavigateToLaboratory = { currentScreen = Screen.LABORATORY },
                         onNavigateToHistory = { currentScreen = Screen.HISTORY },
-                        onNavigateToAchievements = { currentScreen = Screen.REWARDS },
-                        onNavigateToRedeem = { currentScreen = Screen.REWARDS },
                         onNavigateToThemeSettings = { currentScreen = Screen.THEME },
+                        onNavigateToHelpFeedback = { currentScreen = Screen.HELP_FEEDBACK },
+                        onNavigateToContactUs = { currentScreen = Screen.CONTACT_US },
+                        onExportLocalData = {
+                            coroutineScope.launch {
+                                runCatching {
+                                    localDataManager.exportPrivacyReport()
+                                }.onSuccess { file ->
+                                    val uri = FileProvider.getUriForFile(
+                                        context,
+                                        "${context.packageName}.fileprovider",
+                                        file,
+                                    )
+                                    val intent = Intent(Intent.ACTION_SEND).apply {
+                                        type = "application/json"
+                                        putExtra(Intent.EXTRA_STREAM, uri)
+                                        putExtra(Intent.EXTRA_TITLE, "Tiny Vow 本地数据导出")
+                                        clipData = ClipData.newUri(
+                                            context.contentResolver,
+                                            "Tiny Vow 本地数据导出",
+                                            uri,
+                                        )
+                                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                    }
+                                    context.startActivity(Intent.createChooser(intent, "导出本地数据"))
+                                }.onFailure {
+                                    snackbarHostState.showSnackbar("导出本地数据失败")
+                                }
+                            }
+                        },
+                        onClearLocalData = {
+                            coroutineScope.launch {
+                                runCatching {
+                                    localDataManager.clearLocalData()
+                                }.onSuccess {
+                                    snackbarHostState.showSnackbar("本地数据已清除")
+                                }.onFailure {
+                                    snackbarHostState.showSnackbar("清除本地数据失败")
+                                }
+                            }
+                        },
+                        onOpenPrivacyPolicy = {
+                            context.startActivity(
+                                Intent(
+                                    Intent.ACTION_VIEW,
+                                    Uri.parse(PRIVACY_POLICY_URL),
+                                )
+                            )
+                        },
+                        onSignInWithGoogle = {
+                            val activity = context as? androidx.activity.ComponentActivity
+                            if (activity == null) {
+                                coroutineScope.launch {
+                                    snackbarHostState.showSnackbar("当前界面无法启动 Google 登录")
+                                }
+                            } else {
+                                coroutineScope.launch {
+                                    authRepository.signInWithGoogle(activity)
+                                        .onSuccess {
+                                            snackbarHostState.showSnackbar("已登录 Google 账户")
+                                        }
+                                        .onFailure {
+                                            snackbarHostState.showSnackbar(it.message ?: "Google 登录失败")
+                                        }
+                                }
+                            }
+                        },
+                        onSignOut = {
+                            coroutineScope.launch {
+                                authRepository.signOut()
+                                snackbarHostState.showSnackbar("已退出登录")
+                            }
+                        },
+                        onDeleteAccount = { clearLocalData ->
+                            coroutineScope.launch {
+                                authRepository.deleteAccount()
+                                if (clearLocalData) {
+                                    localDataManager.clearLocalData()
+                                }
+                                snackbarHostState.showSnackbar(
+                                    if (clearLocalData) "账户与本地数据已删除" else "账户已删除"
+                                )
+                            }
+                        },
+                        onPurchasePro = { offer ->
+                            val activity = context as? android.app.Activity
+                            if (activity == null) {
+                                coroutineScope.launch {
+                                    snackbarHostState.showSnackbar("当前界面无法启动 Google Play 购买")
+                                }
+                            } else {
+                                coroutineScope.launch {
+                                    subscriptionRepository.purchase(activity, offer)
+                                        .onFailure {
+                                            snackbarHostState.showSnackbar(it.message ?: "启动 Pro 订阅失败")
+                                        }
+                                }
+                            }
+                        },
+                        onRestorePurchases = {
+                            coroutineScope.launch {
+                                subscriptionRepository.refresh()
+                                    .onSuccess {
+                                        snackbarHostState.showSnackbar("订阅状态已刷新")
+                                    }
+                                    .onFailure {
+                                        snackbarHostState.showSnackbar(it.message ?: "恢复购买失败")
+                                    }
+                            }
+                        },
+                        onManageSubscription = {
+                            subscriptionRepository.openManageSubscription(context)
+                        },
                     )
                 }
                 Screen.THEME -> {
@@ -564,6 +709,38 @@ fun HomeRoute(
                             }
                         },
                         onBack = { currentScreen = Screen.ME },
+                    )
+                }
+                Screen.HELP_FEEDBACK -> {
+                    HelpFeedbackScreen(
+                        onBack = { currentScreen = Screen.ME },
+                        onSendFeedback = {
+                            if (!context.openSupportEmail("Tiny Vow 反馈")) {
+                                coroutineScope.launch {
+                                    snackbarHostState.showSnackbar("未找到可用的邮件应用，已复制邮箱")
+                                }
+                                context.copyContactEmail()
+                            }
+                        },
+                    )
+                }
+                Screen.CONTACT_US -> {
+                    ContactUsScreen(
+                        onBack = { currentScreen = Screen.ME },
+                        onSendEmail = {
+                            if (!context.openSupportEmail("Tiny Vow 联系我们")) {
+                                coroutineScope.launch {
+                                    snackbarHostState.showSnackbar("未找到可用的邮件应用，已复制邮箱")
+                                }
+                                context.copyContactEmail()
+                            }
+                        },
+                        onCopyEmail = {
+                            context.copyContactEmail()
+                            coroutineScope.launch {
+                                snackbarHostState.showSnackbar("邮箱已复制")
+                            }
+                        },
                     )
                 }
                 Screen.HISTORY -> {
@@ -650,6 +827,91 @@ fun HomeRoute(
             AchievementNotificationBanner(achievement)
         }
     }
+
+    pendingSensitiveDisclosure?.let { disclosure ->
+        SensitivePermissionDisclosureDialog(
+            disclosure = disclosure,
+            onDismiss = { pendingSensitiveDisclosure = null },
+            onAccept = {
+                coroutineScope.launch {
+                    when (disclosure) {
+                        SensitivePermissionDisclosure.USAGE_ACCESS -> {
+                            preferences.setUsageAccessDisclosureAccepted(true)
+                            pendingSensitiveDisclosure = null
+                            val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            context.startActivity(intent)
+                        }
+                        SensitivePermissionDisclosure.ACCESSIBILITY -> {
+                            preferences.setAccessibilityDisclosureAccepted(true)
+                            pendingSensitiveDisclosure = null
+                            context.startActivity(
+                                Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                            )
+                        }
+                        SensitivePermissionDisclosure.NOTIFICATION -> {
+                            pendingSensitiveDisclosure = null
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+                            }
+                        }
+                        SensitivePermissionDisclosure.BATTERY_OPTIMIZATION -> {
+                            pendingSensitiveDisclosure = null
+                            runCatching {
+                                val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
+                                    data = Uri.parse("package:${context.packageName}")
+                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                }
+                                context.startActivity(intent)
+                            }.onFailure {
+                                val intent = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                context.startActivity(intent)
+                            }
+                        }
+                        SensitivePermissionDisclosure.AUTO_START -> {
+                            pendingSensitiveDisclosure = null
+                            runCatching {
+                                val intent = Intent().apply {
+                                    component = android.content.ComponentName(
+                                        "com.miui.securitycenter",
+                                        "com.miui.permcenter.autostart.AutoStartManagementActivity"
+                                    )
+                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                }
+                                context.startActivity(intent)
+                            }.onFailure {
+                                val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                    data = Uri.parse("package:${context.packageName}")
+                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                }
+                                context.startActivity(intent)
+                            }
+                        }
+                    }
+                }
+            },
+        )
+    }
+}
+
+private const val PRIVACY_POLICY_URL = "https://www.tinyvow.app/privacy"
+
+private fun android.content.Context.openSupportEmail(subject: String): Boolean {
+    val intent = Intent(Intent.ACTION_SENDTO).apply {
+        data = Uri.parse("mailto:$CONTACT_EMAIL")
+        putExtra(Intent.EXTRA_EMAIL, arrayOf(CONTACT_EMAIL))
+        putExtra(Intent.EXTRA_SUBJECT, subject)
+        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    }
+    return runCatching {
+        startActivity(intent)
+        true
+    }.getOrDefault(false)
+}
+
+private fun android.content.Context.copyContactEmail() {
+    val clipboard = getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+    clipboard.setPrimaryClip(ClipData.newPlainText("Tiny Vow 联系邮箱", CONTACT_EMAIL))
 }
 
 @Composable
@@ -793,6 +1055,53 @@ fun AchievementNotificationBanner(achievement: AchievementEntity) {
             }
         }
     }
+
+}
+
+@Composable
+private fun SensitivePermissionDisclosureDialog(
+    disclosure: SensitivePermissionDisclosure,
+    onDismiss: () -> Unit,
+    onAccept: () -> Unit,
+) {
+    val (title, body) = when (disclosure) {
+        SensitivePermissionDisclosure.USAGE_ACCESS -> {
+            "使用情况访问说明" to
+                "Tiny Vow 会读取本机 App 使用情况数据，包括应用包名、应用名称、前台使用时长、打开次数、会话和夜间使用统计，用于计算每日限额、战报、积分和提醒。数据默认只保存在本机，不会自动上传。"
+        }
+        SensitivePermissionDisclosure.ACCESSIBILITY -> {
+            "无障碍服务说明" to
+                "Tiny Vow 的无障碍服务只监听窗口切换事件，用于判断你是否进入已设置限额的 App，并在超额时显示本应用的阻断页面。服务不会读取屏幕文字，不会代替你点击，也不会更改系统设置。"
+        }
+        SensitivePermissionDisclosure.NOTIFICATION -> {
+            "通知权限说明" to
+                "Tiny Vow 使用通知权限发送本地限额提醒和超额提示，帮助你及时知道当天预算状态。拒绝通知权限不会影响分组、统计和阻断等核心功能。"
+        }
+        SensitivePermissionDisclosure.BATTERY_OPTIMIZATION -> {
+            "电池白名单说明" to
+                "电池白名单是可选的可靠性建议，用于降低系统休眠后提醒和后台统计被延迟的概率。拒绝或跳过后，Tiny Vow 仍可继续使用，但部分提醒可能不够及时。"
+        }
+        SensitivePermissionDisclosure.AUTO_START -> {
+            "自启动设置说明" to
+                "部分手机厂商会限制后台运行。自启动是可选的可靠性建议，用于减少计时、提醒或阻断服务被系统清理的情况。你可以跳过，核心功能仍会保留。"
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(title) },
+        text = { Text(body) },
+        confirmButton = {
+            TextButton(onClick = onAccept) {
+                Text("同意并打开设置")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("取消")
+            }
+        },
+    )
 }
 
 @Composable
@@ -828,7 +1137,11 @@ fun HomeScreen(
     var usageMap by remember { mutableStateOf<Map<String, Long>>(emptyMap()) }
     
     // 定时刷新各分组用量：批量查询一次 UsageStats，过滤分组汇总。这样可将 N 次 IPC 降为 1 次
-    LaunchedEffect(groupsWithApps) {
+    LaunchedEffect(groupsWithApps, usageAccessStatus) {
+        if (usageAccessStatus != UsageAccessStatus.GRANTED) {
+            usageMap = emptyMap()
+            return@LaunchedEffect
+        }
         val usageRepo = UsageStatsUsageRepository(context)
         while (true) {
             val todayStart = java.time.LocalDate.now(java.time.ZoneId.systemDefault())
@@ -1204,6 +1517,22 @@ fun PermissionProcessList(
     onRequestBatteryOptimization: () -> Unit,
     onRequestNotificationPermission: () -> Unit,
 ) {
+    val showUsageAccess = isMenuMode || !usageAccessGranted
+    val showAccessibility = usageAccessGranted || isMenuMode
+    val showAutoStart = showAccessibility && (isMenuMode || !isAutoStartDismissed)
+    val showBattery = showAccessibility && (isMenuMode || !isIgnoringBattery)
+    val showNotification = showAccessibility && (isMenuMode || !notificationPermissionGranted)
+
+    if (showUsageAccess || showAccessibility) {
+        Text(
+            text = "核心权限",
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(start = 4.dp),
+        )
+    }
+
     if (isMenuMode || !usageAccessGranted) {
         PermissionCard(
             usageAccessGranted = usageAccessGranted,
@@ -1218,6 +1547,16 @@ fun PermissionProcessList(
                 accessibilityServiceEnabled = accessibilityServiceEnabled,
                 isMenuMode = isMenuMode,
                 onOpenAccessibilitySettings = onOpenAccessibilitySettings,
+            )
+        }
+
+        if (showAutoStart || showBattery || showNotification) {
+            Text(
+                text = "增强可靠性（可选）",
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(start = 4.dp),
             )
         }
 
