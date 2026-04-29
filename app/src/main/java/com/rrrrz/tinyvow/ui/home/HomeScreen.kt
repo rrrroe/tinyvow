@@ -894,7 +894,7 @@ fun HomeRoute(
     }
 }
 
-private const val PRIVACY_POLICY_URL = "https://www.tinyvow.app/privacy"
+private const val PRIVACY_POLICY_URL = "https://rrrroe.github.io/tinyvow/privacy.html"
 
 private fun android.content.Context.openSupportEmail(subject: String): Boolean {
     val intent = Intent(Intent.ACTION_SENDTO).apply {
