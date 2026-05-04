@@ -45,7 +45,7 @@ class GroupLimitEnforcer(context: Context) {
             val totalUsedMillis = getCachedGroupUsage(group.id, group.limitPeriod, now)
 
             val exceededMillis = totalUsedMillis - totalLimitMillis
-            if (isControlTimeout(exceededMillis)) {
+            if (isControlOverLimit(exceededMillis)) {
                 return GroupExceededResult(
                     groupName = group.name,
                     groupId = group.id,

@@ -54,6 +54,16 @@ interface DailyAppArchiveDao {
         """
         SELECT *
         FROM daily_app_archives
+        WHERE archive_date = :date AND is_grouped = 1
+        ORDER BY group_name ASC, daily_usage_millis DESC, app_label ASC
+        """
+    )
+    suspend fun getGroupedByDateSync(date: String): List<DailyAppArchiveEntity>
+
+    @Query(
+        """
+        SELECT *
+        FROM daily_app_archives
         WHERE archive_date = :date AND is_grouped = 0
         ORDER BY daily_usage_millis DESC, app_label ASC
         """

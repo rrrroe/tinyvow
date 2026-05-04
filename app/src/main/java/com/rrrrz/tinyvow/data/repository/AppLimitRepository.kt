@@ -13,8 +13,10 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
-import java.util.UUID
+import org.json.JSONObject
 import java.util.Calendar
+import java.util.TimeZone
+import java.util.UUID
 
 data class AppGroupWithApps(
     val group: AppGroupEntity,
@@ -25,6 +27,25 @@ data class RedemptionResult(
     val pointCost: Int,
     val message: String,
 )
+
+internal fun calculateBonusExpiryTime(
+    createdAt: Long,
+    period: LimitPeriod,
+    timeZone: TimeZone = TimeZone.getDefault(),
+): Long {
+    return Calendar.getInstance(timeZone).apply {
+        timeInMillis = createdAt
+        when (period) {
+            LimitPeriod.DAILY -> Unit
+            LimitPeriod.WEEKLY -> add(Calendar.DAY_OF_YEAR, 6)
+            LimitPeriod.MONTHLY -> set(Calendar.DAY_OF_MONTH, getActualMaximum(Calendar.DAY_OF_MONTH))
+        }
+        set(Calendar.HOUR_OF_DAY, 23)
+        set(Calendar.MINUTE, 59)
+        set(Calendar.SECOND, 59)
+        set(Calendar.MILLISECOND, 999)
+    }.timeInMillis
+}
 
 class AppLimitRepository(
     private val context: Context,
@@ -148,8 +169,18 @@ class AppLimitRepository(
                             RewardType.CUSTOM -> "ledger_redeemed_custom_reward"
                         },
                         messageArgsJson = when (latestReward.rewardType) {
-                            RewardType.TIME_PACK -> """{"rewardTitle":"${latestReward.title}","pointCost":${latestReward.pointCost},"groupName":"${targetGroupName.orEmpty()}","bonusMinutes":${latestReward.bonusMinutes}}"""
-                            RewardType.CUSTOM -> """{"rewardTitle":"${latestReward.title}","pointCost":${latestReward.pointCost}}"""
+                            RewardType.TIME_PACK ->
+                                JSONObject()
+                                    .put("rewardTitle", latestReward.title)
+                                    .put("pointCost", latestReward.pointCost)
+                                    .put("groupName", targetGroupName.orEmpty())
+                                    .put("bonusMinutes", latestReward.bonusMinutes)
+                                    .toString()
+                            RewardType.CUSTOM ->
+                                JSONObject()
+                                    .put("rewardTitle", latestReward.title)
+                                    .put("pointCost", latestReward.pointCost)
+                                    .toString()
                         },
                         createdAt = redeemedAt,
                     )
@@ -329,18 +360,13 @@ class AppLimitRepository(
         extraMinutes: Int,
         createdAt: Long,
     ) {
-        val calendar = Calendar.getInstance().apply {
-            timeInMillis = createdAt
-            set(Calendar.HOUR_OF_DAY, 23)
-            set(Calendar.MINUTE, 59)
-            set(Calendar.SECOND, 59)
-        }
+        val groupPeriod = groupDao.getGroupByIdSync(groupId)?.limitPeriod ?: LimitPeriod.DAILY
         val bonus =
             BonusTimeEntity(
                 id = bonusId,
                 targetGroupId = groupId,
                 extraMinutes = extraMinutes,
-                expiryTime = calendar.timeInMillis,
+                expiryTime = calculateBonusExpiryTime(createdAt, groupPeriod),
                 createdAt = createdAt,
             )
         bonusTimeDao.insertBonusTime(bonus)

@@ -8,6 +8,7 @@ import com.rrrrz.tinyvow.data.db.AppGroupEntity
 import com.rrrrz.tinyvow.data.db.DailyArchiveEntity
 import com.rrrrz.tinyvow.data.db.DailyArchiveStateEntity
 import com.rrrrz.tinyvow.data.db.DailyGroupArchiveEntity
+import com.rrrrz.tinyvow.data.db.GroupAppCrossRef
 import com.rrrrz.tinyvow.data.db.GroupType
 import com.rrrrz.tinyvow.data.db.LimitPeriod
 import com.rrrrz.tinyvow.data.db.PointLedgerEntity
@@ -16,7 +17,7 @@ import com.rrrrz.tinyvow.data.db.TopAppArchiveSummary
 import com.rrrrz.tinyvow.data.settings.ManagedAppPreferences
 import com.rrrrz.tinyvow.data.usage.UsageRepository
 import com.rrrrz.tinyvow.data.usage.UsageStatsUsageRepository
-import com.rrrrz.tinyvow.domain.limit.isControlTimeout
+import com.rrrrz.tinyvow.domain.limit.isControlTimeoutForStats
 import java.time.LocalDate
 import java.time.ZoneId
 import java.util.UUID
@@ -203,13 +204,17 @@ class DailyArchiveRepository(
         val nextDayStart = ArchiveDateUtils.nextDayStartMillis(date, zoneId)
         val groups = groupDao.getAllGroupsSync()
         val crossRefs = crossRefDao.getAllValidCrossRefsSync()
+        val existingGroupSnapshots = dailyGroupArchiveDao.getByDateSync(archiveDate)
+        val existingGroupedAppsByGroup =
+            dailyAppArchiveDao
+                .getGroupedByDateSync(archiveDate)
+                .groupBy { it.groupId.orEmpty() }
         val archiveTime = System.currentTimeMillis()
         val dailyUsageByPackage = usageRepository.getUsageStats(dayStart, nextDayStart)
         val dailyOpenCountByPackage = usageRepository.getAppOpenCount(dayStart, nextDayStart)
         val groupedPackageNames =
-            crossRefs
-                .asSequence()
-                .map { it.packageName }
+            (crossRefs.asSequence().map { it.packageName } +
+                existingGroupedAppsByGroup.values.asSequence().flatten().map { it.packageName })
                 .distinct()
                 .toSet()
         val activePackageNames =
@@ -225,8 +230,17 @@ class DailyArchiveRepository(
             packagesToArchive
                 .asSequence()
                 .associateWith(::resolveAppLabel)
+        val groupConfigs =
+            buildArchiveGroupConfigs(
+                currentGroups = groups,
+                currentCrossRefs = crossRefs,
+                existingGroupSnapshots = existingGroupSnapshots,
+                existingGroupedAppsByGroup = existingGroupedAppsByGroup,
+                dayStart = dayStart,
+                dayEnd = dayEnd,
+            )
         val periodUsageByStart =
-            groups
+            groupConfigs
                 .map { ArchiveDateUtils.periodStart(date, it.limitPeriod) }
                 .distinct()
                 .associateWith { periodStart ->
@@ -236,7 +250,7 @@ class DailyArchiveRepository(
                     )
                 }
         val periodUsageBeforeDayByStart =
-            groups
+            groupConfigs
                 .map { ArchiveDateUtils.periodStart(date, it.limitPeriod) }
                 .distinct()
                 .associateWith { periodStart ->
@@ -249,20 +263,11 @@ class DailyArchiveRepository(
                 }
 
         val groupBuildResults =
-            groups.mapIndexed { index, group ->
-                val packageNames =
-                    crossRefs
-                        .asSequence()
-                        .filter { it.groupId == group.id }
-                        .map { it.packageName }
-                        .distinct()
-                        .toList()
-
+            groupConfigs.mapIndexed { index, group ->
                 buildGroupArchive(
                     date = date,
                     archiveDate = archiveDate,
                     group = group,
-                    packageNames = packageNames,
                     dayEnd = dayEnd,
                     archiveTime = archiveTime,
                     sortOrder = index,
@@ -356,15 +361,25 @@ class DailyArchiveRepository(
             groupSnapshots.sumOf { it.earnedPoints } +
                 pointLedgerDao.sumUngroupedEarnedByDate(archiveDate)
         val pointsSpent = pointLedgerDao.sumSpentByDate(archiveDate)
+        val controlPackageNames =
+            groupConfigs
+                .filter { it.type == GroupType.CONTROL }
+                .flatMap { it.packageNames }
+                .distinct()
+        val encouragePackageNames =
+            groupConfigs
+                .filter { it.type == GroupType.ENCOURAGE }
+                .flatMap { it.packageNames }
+                .distinct()
         val dailyArchive =
             DailyArchiveEntity(
                 id = UUID.randomUUID().toString(),
                 archiveDate = archiveDate,
                 dayStartAt = dayStart,
                 dayEndAt = dayEnd,
-                controlUsageMillis = groupSnapshots.filter { it.groupType == GroupType.CONTROL }.sumOf { it.dailyUsageMillis },
-                encourageUsageMillis = groupSnapshots.filter { it.groupType == GroupType.ENCOURAGE }.sumOf { it.dailyUsageMillis },
-                totalUsageMillis = groupSnapshots.sumOf { it.dailyUsageMillis },
+                controlUsageMillis = controlPackageNames.sumOf { packageName -> dailyUsageByPackage[packageName] ?: 0L },
+                encourageUsageMillis = encouragePackageNames.sumOf { packageName -> dailyUsageByPackage[packageName] ?: 0L },
+                totalUsageMillis = packagesToArchive.sumOf { packageName -> dailyUsageByPackage[packageName] ?: 0L },
                 savedMillis =
                     groupSnapshots
                         .filter { it.groupType == GroupType.CONTROL && it.limitPeriod == LimitPeriod.DAILY }
@@ -372,13 +387,12 @@ class DailyArchiveRepository(
                 controlExceededGroupCount =
                     groupSnapshots.count {
                         it.groupType == GroupType.CONTROL &&
-                            isControlTimeout(it.exceededMillisAtClose)
+                            isControlTimeoutForStats(it.exceededMillisAtClose)
                     },
                 controlBlockEventCount = blockEventDao.countByDate(archiveDate),
                 controlCompletedGroupCount =
                     groupSnapshots.count {
                         it.groupType == GroupType.CONTROL &&
-                            it.limitPeriod == LimitPeriod.DAILY &&
                             it.completed
                     },
                 encourageCompletedGroupCount =
@@ -410,11 +424,62 @@ class DailyArchiveRepository(
         }
     }
 
+    private suspend fun buildArchiveGroupConfigs(
+        currentGroups: List<AppGroupEntity>,
+        currentCrossRefs: List<GroupAppCrossRef>,
+        existingGroupSnapshots: List<DailyGroupArchiveEntity>,
+        existingGroupedAppsByGroup: Map<String, List<DailyAppArchiveEntity>>,
+        dayStart: Long,
+        dayEnd: Long,
+    ): List<ArchiveGroupConfig> {
+        val currentGroupsById = currentGroups.associateBy { it.id }
+        val existingSnapshotsById = existingGroupSnapshots.associateBy { it.groupId }
+        val groupIds = (currentGroups.map { it.id } + existingGroupSnapshots.map { it.groupId }).distinct()
+
+        return groupIds.mapNotNull { groupId ->
+            val current = currentGroupsById[groupId]
+            val snapshot = existingSnapshotsById[groupId]
+            if (current == null && snapshot == null) return@mapNotNull null
+
+            val existingPackageNames =
+                existingGroupedAppsByGroup[groupId]
+                    ?.map { it.packageName }
+                    ?.distinct()
+                    .orEmpty()
+            val currentPackageNames =
+                currentCrossRefs
+                    .asSequence()
+                    .filter { it.groupId == groupId }
+                    .map { it.packageName }
+                    .distinct()
+                    .toList()
+            val packageNames = existingPackageNames.ifEmpty { currentPackageNames }
+            val bonusMinutes =
+                snapshot?.bonusMinutes
+                    ?: bonusTimeDao.sumBonusMinutesAffectingDay(groupId, dayStart, dayEnd)
+
+            ArchiveGroupConfig(
+                id = groupId,
+                name = snapshot?.groupName ?: current!!.name,
+                type = snapshot?.groupType ?: current!!.type,
+                limitPeriod = snapshot?.limitPeriod ?: current!!.limitPeriod,
+                limitMinutes = snapshot?.limitMinutes ?: current!!.limitMinutes,
+                bonusMinutes = bonusMinutes,
+                pointsPerMinute = snapshot?.pointsPerMinute ?: current!!.pointsPerMinute,
+                packageNames = packageNames,
+                sortOrder = snapshot?.sortOrder ?: current?.sortOrder ?: 0,
+            )
+        }.sortedWith(
+            compareBy<ArchiveGroupConfig> { it.type }
+                .thenBy { it.sortOrder }
+                .thenBy { it.name },
+        )
+    }
+
     private suspend fun buildGroupArchive(
         date: LocalDate,
         archiveDate: String,
-        group: AppGroupEntity,
-        packageNames: List<String>,
+        group: ArchiveGroupConfig,
         dayEnd: Long,
         archiveTime: Long,
         sortOrder: Int,
@@ -424,16 +489,17 @@ class DailyArchiveRepository(
         blockEventCount: Int,
     ): GroupArchiveBuildResult {
         val dayStart = ArchiveDateUtils.startOfDayMillis(date, zoneId)
+        val packageNames = group.packageNames
         val dailyUsageMillis = packageNames.sumOf { packageName -> dailyUsageByPackage[packageName] ?: 0L }
         val periodUsageMillisAtClose = packageNames.sumOf { packageName -> periodUsageByPackage[packageName] ?: 0L }
         val periodUsageMillisBeforeDay = packageNames.sumOf { packageName -> periodUsageBeforeDayByPackage[packageName] ?: 0L }
-        val bonusMinutes = bonusTimeDao.sumBonusMinutesAffectingDay(group.id, dayStart, dayEnd)
+        val bonusMinutes = group.bonusMinutes
         val effectiveLimitMillisAtClose = (group.limitMinutes + bonusMinutes) * 60_000L
         val remainingMillisAtClose = max(effectiveLimitMillisAtClose - periodUsageMillisAtClose, 0L)
         val exceededMillisAtClose = max(periodUsageMillisAtClose - effectiveLimitMillisAtClose, 0L)
         val completed =
             when (group.type) {
-                GroupType.CONTROL -> !isControlTimeout(exceededMillisAtClose)
+                GroupType.CONTROL -> !isControlTimeoutForStats(exceededMillisAtClose)
                 GroupType.ENCOURAGE -> periodUsageMillisAtClose >= effectiveLimitMillisAtClose
             }
         val targetMillis = group.limitMinutes * 60_000L
@@ -556,5 +622,17 @@ class DailyArchiveRepository(
     private data class GroupArchiveBuildResult(
         val archive: DailyGroupArchiveEntity,
         val packageNames: List<String>,
+    )
+
+    private data class ArchiveGroupConfig(
+        val id: String,
+        val name: String,
+        val type: GroupType,
+        val limitPeriod: LimitPeriod,
+        val limitMinutes: Int,
+        val bonusMinutes: Int,
+        val pointsPerMinute: Double,
+        val packageNames: List<String>,
+        val sortOrder: Int,
     )
 }

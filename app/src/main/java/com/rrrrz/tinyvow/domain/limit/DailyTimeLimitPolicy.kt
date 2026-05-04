@@ -10,7 +10,7 @@ class DailyTimeLimitPolicy : LimitPolicy {
             limitMillis = limitMillis,
             remainingMillis = remainingMillis,
             exceededMillis = exceededMillis,
-            isExceeded = isControlTimeout(exceededMillis),
+            isExceeded = isControlOverLimit(exceededMillis),
         )
     }
 }

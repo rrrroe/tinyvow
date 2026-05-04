@@ -17,6 +17,9 @@ interface DailyGroupArchiveDao {
     @Query("SELECT * FROM daily_group_archives WHERE archive_date = :date ORDER BY sort_order ASC, created_at ASC")
     fun getByDate(date: String): Flow<List<DailyGroupArchiveEntity>>
 
+    @Query("SELECT * FROM daily_group_archives WHERE archive_date = :date ORDER BY sort_order ASC, created_at ASC")
+    suspend fun getByDateSync(date: String): List<DailyGroupArchiveEntity>
+
     @Query(
         """
         SELECT *

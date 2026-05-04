@@ -1,6 +1,9 @@
 package com.rrrrz.tinyvow.domain.limit
 
-const val CONTROL_TIMEOUT_GRACE_MILLIS: Long = 10L * 60L * 1000L
+const val CONTROL_STATS_GRACE_MILLIS: Long = 5L * 60L * 1000L
 
-fun isControlTimeout(exceededMillis: Long): Boolean =
-    exceededMillis > CONTROL_TIMEOUT_GRACE_MILLIS
+fun isControlOverLimit(exceededMillis: Long): Boolean =
+    exceededMillis > 0L
+
+fun isControlTimeoutForStats(exceededMillis: Long): Boolean =
+    exceededMillis > CONTROL_STATS_GRACE_MILLIS

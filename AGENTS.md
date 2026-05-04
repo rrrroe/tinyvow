@@ -89,6 +89,9 @@
 - 软删除语义已经用于分组和分组-App 关系，不要改成物理删除，除非明确处理所有历史引用。
 - `PointLedgerEntity` 用于解释积分变化，新增积分来源时同步考虑 ledger entry type、message key、参数 JSON 和本地化文案。
 - 每日归档是统计页稳定数据源；改归档字段时同步更新 DAO、聚合逻辑、统计 UI 和测试。
+- 实时阻断和统计达标是两套语义：阻断页应在 `CONTROL` 分组一超过有效限额就弹出；统计/归档里允许 5 分钟裕度，超过 5 分钟才记为超额或未完成。
+- 加时包要并入有效限额；按日分组到当天结束，按周分组覆盖兑换日起 7 天窗口，按月分组到当月结束。
+- 统计和归档展示设备总用量时要按 package 去重；分组明细可以保留“同一个 App 属于多个分组”的分组视角。历史归档中的分组名、周期、限额、加时和成员 App 是当时快照，刷新旧归档时优先保留已有快照，避免被后续分组修改覆盖。
 
 ## 权限、服务和阻断约束
 
@@ -164,6 +167,7 @@
 
 处理相关任务前优先看这些文件：
 
+- `logic.md`
 - `app/src/main/java/com/rrrrz/tinyvow/service/block/AppLimitAccessibilityService.kt`
 - `app/src/main/java/com/rrrrz/tinyvow/domain/limit/GroupLimitEnforcer.kt`
 - `app/src/main/java/com/rrrrz/tinyvow/data/repository/AppLimitRepository.kt`
