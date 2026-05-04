@@ -90,6 +90,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -397,6 +398,8 @@ fun StatsRoute(
     userPoints: Double,
     todayPoints: Double,
     archiveRepository: DailyArchiveRepository,
+    isProActive: Boolean,
+    onShowProUpsell: (ProUpsellSource) -> Unit,
     onRequestUsageAccess: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -488,6 +491,8 @@ fun StatsRoute(
         onSelectArchiveDate = { date ->
             selectedArchiveDate = date
         },
+        isProActive = isProActive,
+        onShowProUpsell = onShowProUpsell,
         onRequestUsageAccess = onRequestUsageAccess,
         modifier = modifier,
     )
@@ -2299,6 +2304,8 @@ private fun StatsScreenLayout(
     onPreviousArchiveDate: () -> Unit,
     onNextArchiveDate: () -> Unit,
     onSelectArchiveDate: (String) -> Unit,
+    isProActive: Boolean,
+    onShowProUpsell: (ProUpsellSource) -> Unit,
     onRequestUsageAccess: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -2326,6 +2333,8 @@ private fun StatsScreenLayout(
                 onPreviousArchiveDate = onPreviousArchiveDate,
                 onNextArchiveDate = onNextArchiveDate,
                 onSelectArchiveDate = onSelectArchiveDate,
+                isProActive = isProActive,
+                onShowProUpsell = onShowProUpsell,
             )
         }
     }
@@ -2338,6 +2347,8 @@ private fun DailyReportScreen(
     onPreviousArchiveDate: () -> Unit,
     onNextArchiveDate: () -> Unit,
     onSelectArchiveDate: (String) -> Unit,
+    isProActive: Boolean,
+    onShowProUpsell: (ProUpsellSource) -> Unit,
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -2365,6 +2376,11 @@ private fun DailyReportScreen(
                 if (state.isRefreshing) {
                     LoadingHintChip(selectedTab = state.selectedTab)
                 }
+                if (!isProActive && state.selectedTab != ReportTab.DAY) {
+                    LockedAdvancedReportCard(onClick = { onShowProUpsell(ProUpsellSource.ADVANCED_REPORT) })
+                    Spacer(modifier = Modifier.height(24.dp))
+                    return@Column
+                }
                 DeviceHeroCard(
                     selectedTab = state.selectedTab,
                     heroState = state.heroState,
@@ -2388,19 +2404,60 @@ private fun DailyReportScreen(
                     selectedTab = state.selectedTab,
                     topAppsState = state.topAppsState,
                 )
-                BehaviorCard(
-                    selectedTab = state.selectedTab,
-                    behaviorState = state.behaviorState,
-                )
-                ComparisonCard(
-                    selectedTab = state.selectedTab,
-                    comparisonState = state.comparisonState,
-                )
-                ShareReportCard(
-                    selectedTab = state.selectedTab,
-                    shareState = state.shareState,
-                )
+                if (isProActive) {
+                    BehaviorCard(
+                        selectedTab = state.selectedTab,
+                        behaviorState = state.behaviorState,
+                    )
+                    ComparisonCard(
+                        selectedTab = state.selectedTab,
+                        comparisonState = state.comparisonState,
+                    )
+                    ShareReportCard(
+                        selectedTab = state.selectedTab,
+                        shareState = state.shareState,
+                    )
+                } else {
+                    LockedAdvancedReportCard(onClick = { onShowProUpsell(ProUpsellSource.ADVANCED_REPORT) })
+                }
                 Spacer(modifier = Modifier.height(24.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun LockedAdvancedReportCard(onClick: () -> Unit) {
+    ReportCard {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            SectionHeader(
+                icon = Icons.Default.Insights,
+                title = AppText.t("pro_report_locked_title"),
+                subtitle = AppText.t("pro_report_locked_subtitle"),
+            )
+            AdaptiveRowGrid(
+                itemCount = 4,
+                compactColumns = 2,
+                expandedColumns = 2,
+            ) { modifier, index ->
+                MiniInsightCard(
+                    icon = when (index) {
+                        0 -> Icons.Default.Timeline
+                        1 -> Icons.Default.CalendarMonth
+                        2 -> Icons.Default.BarChart
+                        else -> Icons.AutoMirrored.Filled.CompareArrows
+                    },
+                    label = AppText.t("pro_report_preview_label_${index + 1}"),
+                    value = AppText.t("pro_report_preview_value"),
+                    visualRatio = 0.42f + index * 0.12f,
+                    modifier = modifier.graphicsLayer { alpha = 0.45f },
+                )
+            }
+            Button(
+                onClick = onClick,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(AppText.t("pro_view_benefits"))
             }
         }
     }

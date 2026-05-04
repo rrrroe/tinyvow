@@ -93,6 +93,7 @@ import com.rrrrz.tinyvow.data.apps.ManagedApp
 import com.rrrrz.tinyvow.data.db.AppDatabase
 import com.rrrrz.tinyvow.data.notification.NotificationPermissionChecker
 import com.rrrrz.tinyvow.data.privacy.LocalDataManager
+import com.rrrrz.tinyvow.data.pro.ProFeatureGate
 import com.rrrrz.tinyvow.data.repository.AppGroupWithApps
 import com.rrrrz.tinyvow.data.repository.AppLimitRepository
 import com.rrrrz.tinyvow.data.repository.DailyArchiveRepository
@@ -152,6 +153,8 @@ fun RewardsHome(
     onRedeem: (RedemptionEntity, String?) -> Unit,
     onAddReward: (String, Int, Int, String) -> Unit,
     onUpdateReward: (RedemptionEntity) -> Unit,
+    isProActive: Boolean,
+    onShowProUpsell: (ProUpsellSource) -> Unit,
     onBack: () -> Unit
 ) {
     var selectedTab by remember { mutableIntStateOf(0) }
@@ -193,6 +196,8 @@ fun RewardsHome(
                     onRedeem = onRedeem,
                     onAddReward = onAddReward,
                     onUpdateReward = onUpdateReward,
+                    isProActive = isProActive,
+                    onShowProUpsell = onShowProUpsell,
                     onBack = onBack
                 )
             }
@@ -258,6 +263,7 @@ fun HomeRoute(
 
     var currentScreen by remember { mutableStateOf(Screen.HOME) }
     val snackbarHostState = remember { SnackbarHostState() }
+    var proUpsellSource by remember { mutableStateOf<ProUpsellSource?>(null) }
     var pendingSensitiveDisclosure by remember { mutableStateOf<SensitivePermissionDisclosure?>(null) }
     var usageAccessStatus by remember { mutableStateOf(checker.getStatus()) }
     var accessibilityServiceEnabled by remember {
@@ -397,6 +403,18 @@ fun HomeRoute(
         }
     }
 
+    LaunchedEffect(proEntitlement.isProActive, selectedThemeId, customThemes) {
+        if (!proEntitlement.isProActive) {
+            val customIndex = customThemes.indexOfFirst { it.id == selectedThemeId }
+            val selectedThemeLocked =
+                ProFeatureGate.isMemberTheme(selectedThemeId) ||
+                    (customIndex >= ProFeatureGate.limits(false).customThemeLimit)
+            if (selectedThemeLocked) {
+                preferences.setSelectedThemeId(DefaultThemeSeed.id)
+            }
+        }
+    }
+
     Scaffold(
         snackbarHost = {
             SnackbarHost(hostState = snackbarHostState)
@@ -492,6 +510,8 @@ fun HomeRoute(
                         },
                         appLimitRepository = appLimitRepository,
                         archiveRepository = dailyArchiveRepository,
+                        isProActive = proEntitlement.isProActive,
+                        onShowProUpsell = { proUpsellSource = it },
                         modifier = modifier,
                     )
                 }
@@ -513,6 +533,8 @@ fun HomeRoute(
                         onUpdateReward = { reward ->
                             coroutineScope.launch { appLimitRepository.updateReward(reward) }
                         },
+                        isProActive = proEntitlement.isProActive,
+                        onShowProUpsell = { proUpsellSource = it },
                         onBack = { currentScreen = Screen.HOME }
                     )
                 }
@@ -523,6 +545,8 @@ fun HomeRoute(
                         userPoints = userPoints,
                         todayPoints = todayPoints,
                         archiveRepository = dailyArchiveRepository,
+                        isProActive = proEntitlement.isProActive,
+                        onShowProUpsell = { proUpsellSource = it },
                         onRequestUsageAccess = {
                             if (usageAccessDisclosureAccepted) {
                                 val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -546,6 +570,7 @@ fun HomeRoute(
                         userPoints = userPoints,
                         selectedThemeId = selectedThemeId,
                         customThemes = customThemes,
+                        isProActive = proEntitlement.isProActive,
                         selectedAppLanguage = selectedAppLanguage,
                         usageAccessGranted = effectiveUsageAccessStatus == UsageAccessStatus.GRANTED,
                         accessibilityServiceEnabled = effectiveAccessibilityServiceEnabled,
@@ -573,6 +598,7 @@ fun HomeRoute(
                                 preferences.deleteCustomTheme(themeId)
                             }
                         },
+                        onShowProUpsell = { proUpsellSource = it },
                         onOpenUsageAccessSettings = {
                             if (usageAccessDisclosureAccepted) {
                                 val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -754,6 +780,8 @@ fun HomeRoute(
                     ThemeSettingsScreen(
                         selectedThemeId = selectedThemeId,
                         customThemes = customThemes,
+                        isProActive = proEntitlement.isProActive,
+                        isLocalActivationEnabled = BuildConfig.ENABLE_LOCAL_ACTIVATION,
                         onSelectTheme = { themeId ->
                             coroutineScope.launch {
                                 preferences.setSelectedThemeId(themeId)
@@ -769,6 +797,7 @@ fun HomeRoute(
                                 preferences.deleteCustomTheme(themeId)
                             }
                         },
+                        onShowProUpsell = { proUpsellSource = it },
                         onBack = { currentScreen = Screen.ME },
                     )
                 }
@@ -826,6 +855,14 @@ fun HomeRoute(
                 }
             }
         }
+    }
+
+    proUpsellSource?.let { source ->
+        ProUpsellDialog(
+            source = source,
+            isLocalActivationEnabled = BuildConfig.ENABLE_LOCAL_ACTIVATION,
+            onDismiss = { proUpsellSource = null },
+        )
     }
 
     if (showYesterdaySummary) {
@@ -1191,6 +1228,8 @@ fun HomeScreen(
     onDeleteGroup: (id: String) -> Unit,
     appLimitRepository: AppLimitRepository? = null,
     archiveRepository: DailyArchiveRepository? = null,
+    isProActive: Boolean,
+    onShowProUpsell: (ProUpsellSource) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -1418,6 +1457,8 @@ fun HomeScreen(
                         coroutineScope.launch { appLimitRepository?.reorderGroups(type, ids) }
                     },
                     archiveRepository = archiveRepository,
+                    isProActive = isProActive,
+                    onShowProUpsell = onShowProUpsell,
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f)
@@ -2032,7 +2073,9 @@ private fun HomeScreenPreviewDenied() {
             onSetAutoStartDismissed = {},
             onDismissPermissionPrompts = {},
             onSaveGroup = { _, _, _, _, _, _, _ -> },
-            onDeleteGroup = {}
+            onDeleteGroup = {},
+            isProActive = false,
+            onShowProUpsell = {},
         )
     }
 }
@@ -2068,7 +2111,9 @@ private fun HomeScreenPreviewGranted() {
             onSetAutoStartDismissed = {},
             onDismissPermissionPrompts = {},
             onSaveGroup = { _, _, _, _, _, _, _ -> },
-            onDeleteGroup = {}
+            onDeleteGroup = {},
+            isProActive = true,
+            onShowProUpsell = {},
         )
     }
 }

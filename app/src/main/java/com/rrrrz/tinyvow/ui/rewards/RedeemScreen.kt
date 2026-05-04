@@ -34,7 +34,9 @@ import com.rrrrz.tinyvow.data.db.RedemptionHistoryType
 import com.rrrrz.tinyvow.data.db.GroupType
 import com.rrrrz.tinyvow.data.db.LimitPeriod
 import com.rrrrz.tinyvow.data.db.RewardType
+import com.rrrrz.tinyvow.data.pro.ProFeatureGate
 import com.rrrrz.tinyvow.data.repository.AppGroupWithApps
+import com.rrrrz.tinyvow.ui.home.ProUpsellSource
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -49,10 +51,13 @@ fun RedeemScreen(
     onRedeem: (RedemptionEntity, String?) -> Unit,
     onAddReward: (String, Int, Int, String) -> Unit,
     onUpdateReward: (RedemptionEntity) -> Unit,
+    isProActive: Boolean,
+    onShowProUpsell: (ProUpsellSource) -> Unit,
     onBack: () -> Unit
 ) {
     var showAddDialog by remember { mutableStateOf(false) }
     var editingReward by remember { mutableStateOf<RedemptionEntity?>(null) }
+    val customRewards = remember(rewards) { rewards.filter { it.builtinKey == null } }
 
     Scaffold(
         topBar = {
@@ -110,19 +115,36 @@ fun RedeemScreen(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             items(rewards) { reward ->
+                val customIndex = if (reward.builtinKey == null) {
+                    customRewards.indexOfFirst { it.id == reward.id }
+                } else {
+                    -1
+                }
                 RewardItem(
                     reward = reward,
                     canAfford = userPoints >= reward.pointCost && (reward.stock == -1 || reward.stock > 0),
                     groups = groups,
                     onRedeem = { groupId -> onRedeem(reward, groupId) },
-                    onLongClick = { editingReward = reward }
+                    onLongClick = {
+                        if (reward.builtinKey == null && !ProFeatureGate.canEditCustomReward(isProActive, customIndex)) {
+                            onShowProUpsell(ProUpsellSource.CUSTOM_REWARD)
+                        } else {
+                            editingReward = reward
+                        }
+                    }
                 )
             }
 
             // 新增自定义项按钮 (加号放在可兑选项中)
             item {
                 OutlinedButton(
-                    onClick = { showAddDialog = true },
+                    onClick = {
+                        if (ProFeatureGate.canAddCustomReward(isProActive, customRewards.size)) {
+                            showAddDialog = true
+                        } else {
+                            onShowProUpsell(ProUpsellSource.CUSTOM_REWARD)
+                        }
+                    },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(20.dp),
                     colors = ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.primary),

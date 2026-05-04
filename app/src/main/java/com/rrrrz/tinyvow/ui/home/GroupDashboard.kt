@@ -113,6 +113,7 @@ import com.rrrrz.tinyvow.data.db.GroupType
 import com.rrrrz.tinyvow.data.db.LimitPeriod
 import com.rrrrz.tinyvow.data.repository.AppGroupWithApps
 import com.rrrrz.tinyvow.data.repository.DailyArchiveRepository
+import com.rrrrz.tinyvow.data.pro.ProFeatureGate
 import com.rrrrz.tinyvow.data.usage.UsageStatsUsageRepository
 import com.rrrrz.tinyvow.ui.theme.LocalThemeColors
 import java.io.File
@@ -144,6 +145,8 @@ fun GroupDashboard(
     onDeleteGroup: (id: String) -> Unit,
     onReorderGroups: (GroupType, List<String>) -> Unit,
     archiveRepository: DailyArchiveRepository?,
+    isProActive: Boolean,
+    onShowProUpsell: (ProUpsellSource) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val themeColors = LocalThemeColors.current
@@ -176,16 +179,25 @@ fun GroupDashboard(
                 usageMap = usageMap,
                 accent = themeColors.control,
                 onAdd = {
-                    editingGroup = null
-                    forcedType = GroupType.CONTROL
-                    showDialog = true
+                    if (ProFeatureGate.canAddGroup(isProActive, GroupType.CONTROL, controlGroups.size)) {
+                        editingGroup = null
+                        forcedType = GroupType.CONTROL
+                        showDialog = true
+                    } else {
+                        onShowProUpsell(ProUpsellSource.GROUP_LIMIT)
+                    }
                 },
                 onSort = { sortingType = GroupType.CONTROL },
                 onOpen = { detailGroup = it },
                 onEdit = {
-                    editingGroup = it
-                    forcedType = it.group.type
-                    showDialog = true
+                    val index = controlGroups.indexOfFirst { group -> group.group.id == it.group.id }
+                    if (ProFeatureGate.canEditGroup(isProActive, index)) {
+                        editingGroup = it
+                        forcedType = it.group.type
+                        showDialog = true
+                    } else {
+                        onShowProUpsell(ProUpsellSource.GROUP_LIMIT)
+                    }
                 },
                 modifier = Modifier.weight(1f),
             )
@@ -197,16 +209,25 @@ fun GroupDashboard(
                 usageMap = usageMap,
                 accent = themeColors.encourage,
                 onAdd = {
-                    editingGroup = null
-                    forcedType = GroupType.ENCOURAGE
-                    showDialog = true
+                    if (ProFeatureGate.canAddGroup(isProActive, GroupType.ENCOURAGE, encourageGroups.size)) {
+                        editingGroup = null
+                        forcedType = GroupType.ENCOURAGE
+                        showDialog = true
+                    } else {
+                        onShowProUpsell(ProUpsellSource.GROUP_LIMIT)
+                    }
                 },
                 onSort = { sortingType = GroupType.ENCOURAGE },
                 onOpen = { detailGroup = it },
                 onEdit = {
-                    editingGroup = it
-                    forcedType = it.group.type
-                    showDialog = true
+                    val index = encourageGroups.indexOfFirst { group -> group.group.id == it.group.id }
+                    if (ProFeatureGate.canEditGroup(isProActive, index)) {
+                        editingGroup = it
+                        forcedType = it.group.type
+                        showDialog = true
+                    } else {
+                        onShowProUpsell(ProUpsellSource.GROUP_LIMIT)
+                    }
                 },
                 modifier = Modifier.weight(1f),
             )
@@ -229,6 +250,8 @@ fun GroupDashboard(
             group = editingGroup,
             forcedType = forcedType,
             installedApps = installedApps,
+            isProActive = isProActive,
+            onShowProUpsell = onShowProUpsell,
             onDismiss = { showDialog = false },
             onSave = { name, limit, type, period, points, packages ->
                 onSaveGroup(editingGroup?.group?.id, name, limit, type, period, points, packages)
@@ -880,6 +903,8 @@ private fun GroupEditDialog(
     group: AppGroupWithApps?,
     forcedType: GroupType,
     installedApps: List<ManagedApp>,
+    isProActive: Boolean,
+    onShowProUpsell: (ProUpsellSource) -> Unit,
     onDismiss: () -> Unit,
     onSave: (String, Int, GroupType, LimitPeriod, Double, List<String>) -> Unit,
     onDelete: () -> Unit
@@ -921,10 +946,13 @@ private fun GroupEditDialog(
         mutableStateOf(group?.packageNames?.toSet().orEmpty())
     }
     var showDeleteConfirm by remember { mutableStateOf(false) }
+    val appLimit = ProFeatureGate.limits(isProActive).appsPerGroupLimit
 
-    val canSave = groupName.trim().isNotBlank() &&
+    val canSaveBase = groupName.trim().isNotBlank() &&
         (limitText.toIntOrNull()?.coerceIn(1, 1440) != null) &&
         (forcedType != GroupType.ENCOURAGE || pointRateText.toDoubleOrNull() != null)
+    val appCountAllowed = ProFeatureGate.canSaveGroupApps(isProActive, selectedPackages.size)
+    val canSave = canSaveBase && appCountAllowed
 
     val visibleApps = remember(installedApps, excludedPackages, showOnlyUsedInSevenDays, selectedPackages, searchQuery) {
         installedApps
@@ -993,6 +1021,10 @@ private fun GroupEditDialog(
                     }
                     IconButton(
                         onClick = {
+                            if (!appCountAllowed) {
+                                onShowProUpsell(ProUpsellSource.GROUP_APPS)
+                                return@IconButton
+                            }
                             val name = groupName.trim()
                             val limit = limitText.toIntOrNull()?.coerceIn(1, 1440) ?: return@IconButton
                             val points = if (forcedType == GroupType.ENCOURAGE) {
@@ -1002,12 +1034,12 @@ private fun GroupEditDialog(
                             }
                             onSave(name, limit, forcedType, selectedPeriod, points, selectedPackages.toList())
                         },
-                        enabled = canSave
+                        enabled = canSaveBase
                     ) {
                         Icon(
                             imageVector = Icons.Default.Check,
                             contentDescription = AppText.t("group_save"),
-                            tint = if (canSave) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
+                            tint = if (canSaveBase) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
                         )
                     }
                 }
@@ -1083,6 +1115,15 @@ private fun GroupEditDialog(
                 }
 
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f))
+                Text(
+                    text = AppText.t("pro_group_app_limit_status", selectedPackages.size, appLimit),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (selectedPackages.size > appLimit) {
+                        MaterialTheme.colorScheme.error
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                )
 
                 LazyColumn(
                     modifier = Modifier.weight(1f),
@@ -1098,7 +1139,12 @@ private fun GroupEditDialog(
                             checked = app.packageName in selectedPackages,
                             onCheckedChange = { checked ->
                                 selectedPackages = if (checked) {
-                                    selectedPackages + app.packageName
+                                    if (selectedPackages.size >= appLimit) {
+                                        onShowProUpsell(ProUpsellSource.GROUP_APPS)
+                                        selectedPackages
+                                    } else {
+                                        selectedPackages + app.packageName
+                                    }
                                 } else {
                                     selectedPackages - app.packageName
                                 }

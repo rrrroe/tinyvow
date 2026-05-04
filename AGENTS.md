@@ -259,3 +259,17 @@ Get-Content -Raw -Encoding UTF8 AGENTS.md
 - `:app:assembleDebug` 会构建多个 debug flavor，速度更慢，不作为日常默认命令。
 - 国内版本地 Pro 激活使用 `tools/activation/ActivationCodeTool.java` 生成激活码；私钥文件 `tools/activation/private_key.pkcs8` 只留在本机，不能提交。
 - 激活码绑定国内版本地 `userId`，支持自定义天数；无后端时只能防普通伪造和简单时间回拨，不能替代服务器时间。
+
+## PRO 权益规则
+
+- 所有渠道统一通过 `ProEntitlementState.isProActive` 判断会员状态，不要在 UI 里直接分散判断 Play Billing 或国内激活码细节。
+- PRO 额度统一写在 `data/pro/ProFeatureGate.kt` 和 `ProLimits`，不要把数字散落在 Compose 页面里。
+- 免费额度：`CONTROL` 分组最多 2 个，`ENCOURAGE` 分组最多 2 个；每组 App 最多 3 个；自定义兑换最多 3 个；自定义主题最多 1 个。
+- PRO 额度：分组数量不限，自定义兑换不限；每组 App 最多 10 个；自定义主题最多 10 个。
+- “不限”只用于 UI 和判断，可用 `Int.MAX_VALUE` 表达，不写入数据库。
+- 免费用户已有超额数据不删除、不迁移、不裁剪；但超出免费额度的分组、兑换、主题只可展示，不允许继续编辑。保存时也要校验 App 数量不能超过当前权益上限。
+- 触达限制时显示统一 `ProUpsellDialog`，不要直接跳转购买页或激活页。Google Play 版按钮文案指向订阅，国内版按钮文案指向激活码解锁。
+- 自定义兑换额度只统计 `builtinKey == null` 的用户自定义兑换；内置兑换不占额度。
+- 会员主题 ID 使用 `member_` 前缀。非 PRO 用户可以预览会员主题，但不能选择；如果当前选择的会员主题在权益失效后仍被保存，应自动回退到默认主题。
+- 战报免费用户只保留今日和基础日报；趋势、热力图、周/月/年统计、行为分析、对比分析和完整历史窗口属于 PRO 高级战报，免费状态显示锁定遮罩和权益说明入口。
+- 后续新增高级能力时，优先扩展 `ProFeatureGate` 和单元测试，再接入具体 UI 或仓库逻辑。

@@ -53,24 +53,29 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.rrrrz.tinyvow.ui.theme.LocalThemeColors
+import com.rrrrz.tinyvow.ui.theme.MemberThemePresets
 import com.rrrrz.tinyvow.ui.theme.ThemePresets
 import com.rrrrz.tinyvow.ui.theme.ThemeSeed
 import com.rrrrz.tinyvow.ui.theme.argbToHex
 import com.rrrrz.tinyvow.ui.theme.createCustomTheme
 import com.rrrrz.tinyvow.ui.theme.localizedName
 import com.rrrrz.tinyvow.ui.theme.parseHexColorOrNull
+import com.rrrrz.tinyvow.data.pro.ProFeatureGate
 
 @Composable
 fun ThemeSettingsScreen(
     selectedThemeId: String,
     customThemes: List<ThemeSeed>,
+    isProActive: Boolean,
+    isLocalActivationEnabled: Boolean,
     onSelectTheme: (String) -> Unit,
     onSaveCustomTheme: (ThemeSeed) -> Unit,
     onDeleteCustomTheme: (String) -> Unit,
+    onShowProUpsell: (ProUpsellSource) -> Unit,
     onBack: () -> Unit,
 ) {
     var editingTheme by remember { mutableStateOf<ThemeSeed?>(null) }
-    val allThemes = ThemePresets + customThemes
+    val allThemes = ThemePresets + MemberThemePresets + customThemes
 
     Column(
         modifier = Modifier
@@ -99,12 +104,16 @@ fun ThemeSettingsScreen(
             }
             Button(
                 onClick = {
-                    editingTheme = createCustomTheme(
-                        name = AppText.t("settings_custom_theme"),
-                        controlColor = ThemePresets.first().controlColor,
-                        encourageColor = ThemePresets.first().encourageColor,
-                        baseColor = ThemePresets.first().baseColor,
-                    )
+                    if (ProFeatureGate.canAddCustomTheme(isProActive, customThemes.size)) {
+                        editingTheme = createCustomTheme(
+                            name = AppText.t("settings_custom_theme"),
+                            controlColor = ThemePresets.first().controlColor,
+                            encourageColor = ThemePresets.first().encourageColor,
+                            baseColor = ThemePresets.first().baseColor,
+                        )
+                    } else {
+                        onShowProUpsell(ProUpsellSource.CUSTOM_THEME)
+                    }
                 }
             ) {
                 Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
@@ -118,29 +127,60 @@ fun ThemeSettingsScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             items(allThemes, key = { it.id }) { theme ->
+                val customIndex = customThemes.indexOfFirst { it.id == theme.id }
+                val themeLocked =
+                    !ProFeatureGate.canSelectTheme(isProActive, theme.id) ||
+                        (theme.isCustom && !ProFeatureGate.canEditCustomTheme(isProActive, customIndex))
+                val lockedSource =
+                    if (ProFeatureGate.isMemberTheme(theme.id)) ProUpsellSource.MEMBER_THEME else ProUpsellSource.CUSTOM_THEME
                 ThemeListItem(
                     theme = theme,
                     selected = selectedThemeId == theme.id,
-                    onSelect = { onSelectTheme(theme.id) },
-                    onEdit = {
-                        editingTheme = if (theme.isCustom) {
-                            theme
+                    isLocked = themeLocked,
+                    onSelect = {
+                        if (themeLocked) {
+                            onShowProUpsell(lockedSource)
                         } else {
-                            createCustomTheme(
-                                name = AppText.t("me_value_custom", theme.localizedName()),
+                            onSelectTheme(theme.id)
+                        }
+                    },
+                    onEdit = {
+                        when {
+                            ProFeatureGate.isMemberTheme(theme.id) && !isProActive -> {
+                                onShowProUpsell(ProUpsellSource.MEMBER_THEME)
+                            }
+                            theme.isCustom && !ProFeatureGate.canEditCustomTheme(isProActive, customIndex) -> {
+                                onShowProUpsell(ProUpsellSource.CUSTOM_THEME)
+                            }
+                            theme.isCustom -> {
+                                editingTheme = theme
+                            }
+                            ProFeatureGate.canAddCustomTheme(isProActive, customThemes.size) -> {
+                                editingTheme = createCustomTheme(
+                                    name = AppText.t("me_value_custom", theme.localizedName()),
+                                    controlColor = theme.controlColor,
+                                    encourageColor = theme.encourageColor,
+                                    baseColor = theme.baseColor,
+                                )
+                            }
+                            else -> {
+                                onShowProUpsell(ProUpsellSource.CUSTOM_THEME)
+                            }
+                        }
+                    },
+                    onCopy = {
+                        if (ProFeatureGate.isMemberTheme(theme.id) && !isProActive) {
+                            onShowProUpsell(ProUpsellSource.MEMBER_THEME)
+                        } else if (ProFeatureGate.canAddCustomTheme(isProActive, customThemes.size)) {
+                            editingTheme = createCustomTheme(
+                                name = AppText.t("me_value_copy", theme.localizedName()),
                                 controlColor = theme.controlColor,
                                 encourageColor = theme.encourageColor,
                                 baseColor = theme.baseColor,
                             )
+                        } else {
+                            onShowProUpsell(ProUpsellSource.CUSTOM_THEME)
                         }
-                    },
-                    onCopy = {
-                        editingTheme = createCustomTheme(
-                            name = AppText.t("me_value_copy", theme.localizedName()),
-                            controlColor = theme.controlColor,
-                            encourageColor = theme.encourageColor,
-                            baseColor = theme.baseColor,
-                        )
                     },
                     onDelete = if (theme.isCustom) {
                         { onDeleteCustomTheme(theme.id) }
@@ -169,6 +209,7 @@ fun ThemeSettingsScreen(
 private fun ThemeListItem(
     theme: ThemeSeed,
     selected: Boolean,
+    isLocked: Boolean,
     onSelect: () -> Unit,
     onEdit: () -> Unit,
     onCopy: () -> Unit,
@@ -201,16 +242,24 @@ private fun ThemeListItem(
                     ThemeStrip(Color(theme.baseColor))
                 }
                 Text(
-                    if (theme.isCustom) AppText.t("theme_custom") else AppText.t("theme_presets"),
+                    when {
+                        ProFeatureGate.isMemberTheme(theme.id) -> AppText.t("theme_member")
+                        theme.isCustom -> AppText.t("theme_custom")
+                        else -> AppText.t("theme_presets")
+                    },
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = if (isLocked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
 
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(theme.localizedName(), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 Text(
-                    AppText.t("theme_limit_value_encourage_value_base_value", argbToHex(theme.controlColor), argbToHex(theme.encourageColor), argbToHex(theme.baseColor)),
+                    if (isLocked) {
+                        AppText.t("theme_member_unlock_hint")
+                    } else {
+                        AppText.t("theme_limit_value_encourage_value_base_value", argbToHex(theme.controlColor), argbToHex(theme.encourageColor), argbToHex(theme.baseColor))
+                    },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )

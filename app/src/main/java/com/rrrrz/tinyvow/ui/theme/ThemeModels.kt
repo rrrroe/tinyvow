@@ -52,6 +52,14 @@ val ThemePresets = listOf(
     ThemeSeed("preset_seasalt_linen", "Sea Salt Linen", 0xFFD6A18E.toInt(), 0xFF9FCBBE.toInt(), 0xFFA6C1D4.toInt()),
 )
 
+val MemberThemePresets = listOf(
+    ThemeSeed("member_aurora_pro", "Aurora Pro", 0xFF7F6DE0.toInt(), 0xFF62C6A7.toInt(), 0xFF5F98D8.toInt()),
+    ThemeSeed("member_sunrise_focus", "Sunrise Focus", 0xFFE27D75.toInt(), 0xFFE2B965.toInt(), 0xFF6DA6D8.toInt()),
+    ThemeSeed("member_forest_deep", "Forest Deep", 0xFF7E9B6D.toInt(), 0xFF4AA184.toInt(), 0xFF5D88A8.toInt()),
+    ThemeSeed("member_lotus_night", "Lotus Night", 0xFFB46CA2.toInt(), 0xFF7AA7C7.toInt(), 0xFF8B82D4.toInt()),
+    ThemeSeed("member_coral_tide", "Coral Tide", 0xFFD76E78.toInt(), 0xFF69B7A8.toInt(), 0xFF6F9FDA.toInt()),
+)
+
 val DefaultThemeSeed = ThemePresets.first()
 
 val LocalThemeColors = staticCompositionLocalOf {
@@ -62,7 +70,7 @@ fun resolveThemeSeed(
     selectedThemeId: String?,
     customThemes: List<ThemeSeed>,
 ): ThemeSeed {
-    val themes = ThemePresets + customThemes
+    val themes = ThemePresets + MemberThemePresets + customThemes
     return themes.firstOrNull { it.id == selectedThemeId } ?: DefaultThemeSeed
 }
 
