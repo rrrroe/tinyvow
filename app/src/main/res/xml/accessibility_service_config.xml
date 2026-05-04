@@ -5,4 +5,4 @@
     android:canRetrieveWindowContent="false"
     android:description="@string/accessibility_service_desc"
     android:notificationTimeout="100"
-    android:settingsActivity="com.rrrrz.tinyvow.MainActivity" />
+    android:settingsActivity="@string/accessibility_settings_activity" />

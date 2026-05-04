@@ -46,6 +46,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -59,12 +60,14 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -80,11 +83,16 @@ import com.rrrrz.tinyvow.ui.theme.ThemePresets
 import com.rrrrz.tinyvow.ui.theme.ThemeSeed
 import com.rrrrz.tinyvow.ui.theme.argbToHex
 import com.rrrrz.tinyvow.ui.theme.createCustomTheme
+import java.text.DateFormat
+import java.util.Date
 
 @Composable
 fun MeScreen(
     userSession: UserSession?,
+    isGoogleSignInEnabled: Boolean,
     isGoogleSignInConfigured: Boolean,
+    isPlayBillingEnabled: Boolean,
+    isLocalActivationEnabled: Boolean,
     proEntitlement: ProEntitlementState,
     subscriptionOffers: List<SubscriptionOffer>,
     userPoints: Double,
@@ -122,6 +130,7 @@ fun MeScreen(
     onPurchasePro: (SubscriptionOffer) -> Unit,
     onRestorePurchases: () -> Unit,
     onManageSubscription: () -> Unit,
+    onActivateProCode: (String) -> Unit,
 ) {
     val themeColors = LocalThemeColors.current
     var showPermissionSettings by remember { mutableStateOf(false) }
@@ -175,7 +184,11 @@ fun MeScreen(
                         fontWeight = FontWeight.Bold,
                     )
                     Text(
-                        userSession?.email ?: AppText.t("me_sign_in_to_restore_subscriptions_and_prepare_for"),
+                        userSession?.email ?: if (isGoogleSignInEnabled) {
+                            AppText.t("me_sign_in_to_restore_subscriptions_and_prepare_for")
+                        } else {
+                            AppText.t("me_china_local_mode_subtitle")
+                        },
                         style = MaterialTheme.typography.bodySmall,
                         color = themeColors.onBase.copy(alpha = 0.78f),
                     )
@@ -219,7 +232,9 @@ fun MeScreen(
             }
 
             MeMenuSection(AppText.t("me_account")) {
-                if (userSession == null) {
+                if (!isGoogleSignInEnabled) {
+                    LocalModeInfoPanel(userId = userSession?.userId)
+                } else if (userSession == null) {
                     MeMenuItem(
                         icon = Icons.Default.Settings,
                         title = if (isGoogleSignInConfigured) AppText.t("me_usage_google_sign_in") else AppText.t("me_google_sign_in_is_not_configured"),
@@ -241,9 +256,13 @@ fun MeScreen(
                 SubscriptionStatusPanel(
                     entitlement = proEntitlement,
                     offers = subscriptionOffers,
+                    isPlayBillingEnabled = isPlayBillingEnabled,
+                    isLocalActivationEnabled = isLocalActivationEnabled,
+                    localUserId = userSession?.userId,
                     onPurchasePro = onPurchasePro,
                     onRestorePurchases = onRestorePurchases,
                     onManageSubscription = onManageSubscription,
+                    onActivateProCode = onActivateProCode,
                 )
             }
 
@@ -840,16 +859,59 @@ private fun ThemeLegendDot(label: String, color: Color) {
 }
 
 @Composable
+private fun LocalModeInfoPanel(userId: String?) {
+    val clipboard = LocalClipboardManager.current
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Text(
+            text = AppText.t("me_china_local_mode_title"),
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.Bold,
+        )
+        Text(
+            text = AppText.t("me_china_local_mode_body"),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        if (!userId.isNullOrBlank()) {
+            Text(
+                text = AppText.t("activation_user_id_label", userId),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            TextButton(
+                onClick = {
+                    clipboard.setText(AnnotatedString(userId))
+                },
+            ) {
+                Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
+                Spacer(Modifier.width(6.dp))
+                Text(AppText.t("activation_copy_user_id"))
+            }
+        }
+    }
+}
+
+@Composable
 private fun SubscriptionStatusPanel(
     entitlement: ProEntitlementState,
     offers: List<SubscriptionOffer>,
+    isPlayBillingEnabled: Boolean,
+    isLocalActivationEnabled: Boolean,
+    localUserId: String?,
     onPurchasePro: (SubscriptionOffer) -> Unit,
     onRestorePurchases: () -> Unit,
     onManageSubscription: () -> Unit,
+    onActivateProCode: (String) -> Unit,
 ) {
     val firstOffer = offers.firstOrNull()
     val isActive = entitlement.status == ProEntitlementStatus.ACTIVE
     val isPending = entitlement.status == ProEntitlementStatus.PENDING
+    var showActivationDialog by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -883,10 +945,35 @@ private fun SubscriptionStatusPanel(
         }
 
         Text(
-            text = AppText.t("me_core_features_remain_free_pro_is_reserved_for"),
+            text = if (isPlayBillingEnabled) {
+                AppText.t("me_core_features_remain_free_pro_is_reserved_for")
+            } else {
+                AppText.t("me_china_pro_activation_description")
+            },
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+
+        if (isLocalActivationEnabled) {
+            OutlinedButton(
+                onClick = { showActivationDialog = true },
+                enabled = !localUserId.isNullOrBlank(),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(AppText.t("activation_enter_code"))
+            }
+            if (showActivationDialog) {
+                ActivationCodeDialog(
+                    userId = localUserId.orEmpty(),
+                    onDismiss = { showActivationDialog = false },
+                    onActivate = {
+                        showActivationDialog = false
+                        onActivateProCode(it)
+                    },
+                )
+            }
+            return@Column
+        }
 
         Button(
             onClick = {
@@ -915,11 +1002,77 @@ private fun SubscriptionStatusPanel(
 
 private fun entitlementStatusText(entitlement: ProEntitlementState): String =
     when (entitlement.status) {
-        ProEntitlementStatus.ACTIVE -> AppText.t("me_pro_active")
+        ProEntitlementStatus.ACTIVE -> entitlement.expiresAtMillis?.let {
+            AppText.t("activation_pro_active_until", DateFormat.getDateInstance().format(Date(it)))
+        } ?: AppText.t("me_pro_active")
         ProEntitlementStatus.PENDING -> entitlement.message ?: AppText.t("me_payment_pending")
         ProEntitlementStatus.UNAVAILABLE -> entitlement.message ?: AppText.t("billing_play_billing_is_temporarily_unavailable")
         ProEntitlementStatus.FREE -> AppText.t("me_free_version")
     }
+
+@Composable
+private fun ActivationCodeDialog(
+    userId: String,
+    onDismiss: () -> Unit,
+    onActivate: (String) -> Unit,
+) {
+    val clipboard = LocalClipboardManager.current
+    var code by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(AppText.t("activation_title")) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    text = AppText.t("activation_send_user_id_to_developer"),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(12.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                ) {
+                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(
+                            text = userId,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        TextButton(
+                            onClick = { clipboard.setText(AnnotatedString(userId)) },
+                        ) {
+                            Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(Modifier.width(6.dp))
+                            Text(AppText.t("activation_copy_user_id"))
+                        }
+                    }
+                }
+                OutlinedTextField(
+                    value = code,
+                    onValueChange = { code = it.trim() },
+                    label = { Text(AppText.t("activation_code_label")) },
+                    minLines = 3,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { onActivate(code) },
+                enabled = code.isNotBlank(),
+            ) {
+                Text(AppText.t("activation_activate"))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(AppText.t("group_cancel"))
+            }
+        },
+    )
+}
 
 @Composable
 fun MeStatItem(value: String, label: String, color: Color) {

@@ -18,6 +18,8 @@ object AppText {
         appContext = context.applicationContext
     }
 
+    fun currentLanguage(): AppLanguage = currentLanguage
+
     fun setLanguage(language: AppLanguage, context: Context? = appContext) {
         currentLanguage = language
         context?.let { applyFrameworkLocale(it.applicationContext, language) }
@@ -28,7 +30,11 @@ object AppText {
         val id = context.resources.getIdentifier(key, "string", context.packageName)
         val template = if (id != 0) context.getString(id) else key
         if (args.isEmpty()) return template
-        return String.format(localeFor(context), template, *args)
+        return runCatching {
+            String.format(localeFor(context), template, *args)
+        }.getOrElse {
+            template
+        }
     }
 
     fun localizedContext(context: Context, language: AppLanguage = currentLanguage): Context =
@@ -45,10 +51,17 @@ object AppText {
 
     private fun applyFrameworkLocale(context: Context, language: AppLanguage) {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
-        val locales = language.languageTag
-            ?.let(LocaleList::forLanguageTags)
-            ?: LocaleList.getEmptyLocaleList()
-        context.getSystemService(LocaleManager::class.java).applicationLocales = locales
+        runCatching {
+            val targetTags = language.languageTag.orEmpty()
+            val localeManager = context.getSystemService(LocaleManager::class.java) ?: return@runCatching
+            if (localeManager.applicationLocales.toLanguageTags() == targetTags) return@runCatching
+            localeManager.applicationLocales =
+                if (targetTags.isBlank()) {
+                    LocaleList.getEmptyLocaleList()
+                } else {
+                    LocaleList.forLanguageTags(targetTags)
+                }
+        }
     }
 
     private fun localeFor(context: Context): Locale =

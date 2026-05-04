@@ -93,7 +93,7 @@ class AppLanguageTest {
     }
 
     private fun placeholders(value: String): List<String> =
-        Regex("""%(\d+\$)?[sd]""")
+        Regex("""%(?!%)(\d+\$)?(\.\d+)?[sdf]""")
             .findAll(value)
             .map { it.value }
             .toList()

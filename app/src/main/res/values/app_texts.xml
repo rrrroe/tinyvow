@@ -37,6 +37,17 @@
     <string name="notification_limit_body">Currently over by %1$s. Return to Tiny Vow to review the strategy.</string>
     <string name="accessibility_service_label">Tiny Vow Soft Blocking Service</string>
     <string name="accessibility_service_desc">Detects whether target apps exceed their daily budget and shows a blocking page when they enter the foreground.</string>
+    <string name="activation_activate">Activate</string>
+    <string name="activation_code_invalid">Invalid activation code</string>
+    <string name="activation_code_label">Activation code</string>
+    <string name="activation_copy_user_id">Copy user ID</string>
+    <string name="activation_enter_code">Enter activation code</string>
+    <string name="activation_pro_activated">Pro activated</string>
+    <string name="activation_pro_active_until">Pro active until %1$s</string>
+    <string name="activation_send_user_id_to_developer">Send this user ID to the developer, then enter the activation code you receive.</string>
+    <string name="activation_system_time_is_abnormal_restore_time">System time looks abnormal. Restore the correct time to continue using local Pro.</string>
+    <string name="activation_title">Activate Pro</string>
+    <string name="activation_user_id_label">User ID: %1$s</string>
     <string name="block_title">The daily budget is used up</string>
     <string name="block_overlay_open_app">Back to Tiny Vow</string>
     <string name="block_overlay_go_home">Go home</string>
@@ -286,7 +297,7 @@
     <string name="home_value_h_value_min">%1$s h %2$s min</string>
     <string name="home_value_min">%1$s min</string>
     <string name="home_value_minutes">%1$s minutes</string>
-    <string name="home_value_pts">+%%.1f pts</string>
+    <string name="home_value_pts">+%1$.1f pts</string>
     <string name="home_well_done_yesterday_your_strong_will_saved_this">Well done. Yesterday, your strong will saved this much time in controlled apps:</string>
     <string name="home_yesterday_s_report">Yesterday\'s report</string>
     <string name="lab_laboratory_debug_tools">Laboratory (debug tools)</string>
@@ -360,9 +371,13 @@
     <string name="redeem_choose_target_group">Choose target group</string>
     <string name="redeem_current_points">Current points</string>
     <string name="redeem_custom_reward">Custom reward</string>
+    <string name="redeem_daily_time_pack_groups">Daily groups</string>
     <string name="redeem_description_optional">Description (optional)</string>
     <string name="redeem_edit_reward">Edit reward</string>
+    <string name="redeem_group_period_limit_apps">%1$s limit: %2$s min · %3$s apps</string>
     <string name="redeem_item_name">Item name</string>
+    <string name="redeem_monthly_time_pack_groups">Monthly groups</string>
+    <string name="redeem_no_control_group_for_time_pack">Create a control group before redeeming a time pack.</string>
     <string name="redeem_offline_reward">🎁 Offline reward</string>
     <string name="redeem_recent_redemptions">Recent redemptions</string>
     <string name="redeem_required_points">Required points</string>
@@ -371,8 +386,13 @@
     <string name="redeem_stock_unlimited">Stock: unlimited</string>
     <string name="redeem_target_group">Target group</string>
     <string name="redeem_time_capsule_value_minutes">✨ Time capsule: +%1$s minutes</string>
+    <string name="redeem_time_pack_expiry_daily">Valid until the end of today.</string>
+    <string name="redeem_time_pack_expiry_monthly">Valid until the end of this month.</string>
+    <string name="redeem_time_pack_expiry_weekly">Valid through the 7-day window starting today.</string>
+    <string name="redeem_time_pack_period_hint">Time packs follow the selected control group period and extend the effective limit for that group.</string>
     <string name="redeem_unlimited_stock">Unlimited stock</string>
     <string name="redeem_value_value_minutes">%1$s +%2$s minutes</string>
+    <string name="redeem_weekly_time_pack_groups">Weekly groups</string>
     <string name="settings_custom_theme">Custom theme</string>
     <string name="stats_24_hour_distribution">24-hour distribution</string>
     <string name="stats_active">Active</string>
@@ -478,7 +498,7 @@
     <string name="stats_preview_the_poster_then_share_it_with_friends">Preview the poster, then share it with friends or keep it as a record.</string>
     <string name="stats_previous">Previous</string>
     <string name="stats_reading_archived_daily_reports">Reading archived daily reports</string>
-    <string name="stats_redemption">Redemption</string>
+    <string name="stats_redemption">Redeem</string>
     <string name="stats_reference_value">Reference %1$s</string>
     <string name="stats_regenerate">Regenerate</string>
     <string name="stats_remaining_value">Remaining %1$s</string>
@@ -491,6 +511,10 @@
     <string name="stats_shows_only_the_10_most_used_apps_in">Shows only the 10 most-used apps in the current archive window.</string>
     <string name="stats_spring">Spring</string>
     <string name="stats_summer">Summer</string>
+    <string name="stats_tab_daily">Daily</string>
+    <string name="stats_tab_weekly">Weekly</string>
+    <string name="stats_tab_monthly">Monthly</string>
+    <string name="stats_tab_yearly">Yearly</string>
     <string name="stats_sun">Sun</string>
     <string name="stats_target_complete">Target complete</string>
     <string name="stats_target_value">Target %1$s</string>
@@ -529,6 +553,7 @@
     <string name="stats_value_groups_4">%1$s groups</string>
     <string name="stats_value_groups_5">%1$s groups</string>
     <string name="stats_value_groups_6">%1$s groups</string>
+    <string name="stats_value_groups_short">%1$s grp</string>
     <string name="stats_value_had_value_group_over_limit_events">%1$s had %2$s group over-limit events.</string>
     <string name="stats_value_mainly_concentrated_in_value">%1$s, mainly concentrated in %2$s.</string>
     <string name="stats_value_mainly_concentrated_in_value_value">%1$s, mainly concentrated in %2$s, %3$s.</string>
@@ -551,6 +576,7 @@
     <string name="stats_value_times_7">%1$s times</string>
     <string name="stats_value_times_8">%1$s times</string>
     <string name="stats_value_times_9">%1$s times</string>
+    <string name="stats_value_times_short">%1$sx</string>
     <string name="stats_value_value_left">%1$s · %2$s left</string>
     <string name="stats_value_value_left_2">%1$s · %2$s left</string>
     <string name="stats_value_value_times">%1$s · %2$s times</string>
@@ -656,7 +682,7 @@
     <string name="stats_hour_range_format">%1$s-%2$s h</string>
     <string name="stats_last_7_archived_day_average">Last 7 archived days average %1$s</string>
     <string name="stats_launch_rhythm_normal">Launch rhythm is normal</string>
-    <string name="stats_launches_per_active_hour_format">%%.1f launches/active hour</string>
+    <string name="stats_launches_per_active_hour_format">%.1f launches/active hour</string>
     <string name="stats_midweek">Midweek</string>
     <string name="stats_month_calendar_heatmap">Monthly calendar heatmap</string>
     <string name="stats_most_launches">Most launches</string>
@@ -695,4 +721,9 @@
     <string name="stats_year_month_heatmap">Yearly month heatmap</string>
     <string name="stats_year_view_description">Yearly views show growth trajectory, peaks and dips, and long-term discipline.</string>
     <string name="stats_yearly_report_label">Yearly report</string>
+    <string name="me_china_local_mode_body">This build is for domestic testing. Account sync, Google sign-in, and Google Play subscription flows are hidden.</string>
+    <string name="me_china_local_mode_subtitle">Domestic test build: local mode is enabled</string>
+    <string name="me_china_local_mode_title">Local mode</string>
+    <string name="me_china_pro_activation_description">This domestic test build does not use Google Play Billing. A local activation-code entry is reserved for Pro testing.</string>
+    <string name="me_local_activation_coming_soon">Activation code entry coming soon</string>
 </resources>

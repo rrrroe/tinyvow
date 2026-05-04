@@ -8,6 +8,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
@@ -29,6 +31,8 @@ import androidx.compose.ui.draw.clip
 import com.rrrrz.tinyvow.data.db.RedemptionEntity
 import com.rrrrz.tinyvow.data.db.RedemptionHistoryEntity
 import com.rrrrz.tinyvow.data.db.RedemptionHistoryType
+import com.rrrrz.tinyvow.data.db.GroupType
+import com.rrrrz.tinyvow.data.db.LimitPeriod
 import com.rrrrz.tinyvow.data.db.RewardType
 import com.rrrrz.tinyvow.data.repository.AppGroupWithApps
 import java.text.SimpleDateFormat
@@ -191,7 +195,7 @@ fun RewardItem(
         modifier = Modifier.fillMaxWidth()
             .combinedClickable(
                 onClick = { /* Handle normal click on individual components or just do nothing if we want separate button */ },
-                onLongClick = onLongClick
+                onLongClick = onLongClick.takeIf { reward.builtinKey == null }
             )
     ) {
         Row(
@@ -276,28 +280,137 @@ fun RewardItem(
     }
 
     if (showGroupPicker) {
+        val controlGroups =
+            remember(groups) {
+                groups
+                    .filter { it.group.type == GroupType.CONTROL }
+                    .sortedWith(
+                        compareBy<AppGroupWithApps> { it.group.limitPeriod.ordinal }
+                            .thenBy { it.group.sortOrder }
+                            .thenBy { it.group.name },
+                    )
+            }
         AlertDialog(
             onDismissRequest = { showGroupPicker = false },
             title = { Text(AppText.t("redeem_choose_target_group")) },
             text = {
-                Column {
-                    groups.filter { it.group.type == com.rrrrz.tinyvow.data.db.GroupType.CONTROL }.forEach { group ->
-                        TextButton(
-                            onClick = {
-                                onRedeem(group.group.id)
-                                showGroupPicker = false
-                            },
-                            modifier = Modifier.fillMaxWidth()
-                        ) {
-                            Text(group.group.name)
+                Column(
+                    modifier = Modifier.verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Text(
+                        text = AppText.t("redeem_time_pack_period_hint"),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    if (controlGroups.isEmpty()) {
+                        Text(
+                            text = AppText.t("redeem_no_control_group_for_time_pack"),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    } else {
+                        controlGroups
+                            .groupBy { it.group.limitPeriod }
+                            .forEach { (period, periodGroups) ->
+                                Text(
+                                    text = timePackPeriodSectionTitle(period),
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.primary,
+                                )
+                                periodGroups.forEach { group ->
+                                    TimePackTargetGroupRow(
+                                        group = group,
+                                        period = period,
+                                        onClick = {
+                                            onRedeem(group.group.id)
+                                            showGroupPicker = false
+                                        },
+                                    )
+                                }
+                            }
                         }
-                    }
                 }
             },
-            confirmButton = {}
+            confirmButton = {
+                TextButton(onClick = { showGroupPicker = false }) {
+                    Text(AppText.t("group_cancel"))
+                }
+            }
         )
     }
 }
+
+@Composable
+private fun TimePackTargetGroupRow(
+    group: AppGroupWithApps,
+    period: LimitPeriod,
+    onClick: () -> Unit,
+) {
+    Surface(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(16.dp))
+                .clickable(onClick = onClick),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f),
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(
+                text = group.group.name,
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                text = AppText.t(
+                    "redeem_group_period_limit_apps",
+                    timePackPeriodLabel(period),
+                    group.group.limitMinutes,
+                    group.packageNames.size,
+                ),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                text = timePackExpiryDescription(period),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.primary,
+            )
+        }
+    }
+}
+
+private fun timePackPeriodSectionTitle(period: LimitPeriod): String =
+    AppText.t(
+        when (period) {
+            LimitPeriod.DAILY -> "redeem_daily_time_pack_groups"
+            LimitPeriod.WEEKLY -> "redeem_weekly_time_pack_groups"
+            LimitPeriod.MONTHLY -> "redeem_monthly_time_pack_groups"
+        }
+    )
+
+private fun timePackPeriodLabel(period: LimitPeriod): String =
+    AppText.t(
+        when (period) {
+            LimitPeriod.DAILY -> "group_daily"
+            LimitPeriod.WEEKLY -> "group_weekly"
+            LimitPeriod.MONTHLY -> "group_monthly"
+        }
+    )
+
+private fun timePackExpiryDescription(period: LimitPeriod): String =
+    AppText.t(
+        when (period) {
+            LimitPeriod.DAILY -> "redeem_time_pack_expiry_daily"
+            LimitPeriod.WEEKLY -> "redeem_time_pack_expiry_weekly"
+            LimitPeriod.MONTHLY -> "redeem_time_pack_expiry_monthly"
+        }
+    )
 
 @Composable
 fun RewardEditDialog(

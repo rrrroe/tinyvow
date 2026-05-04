@@ -37,6 +37,17 @@
     <string name="notification_limit_body">当前已经超出 %1$s，回到 Tiny Vow 查看剩余策略。</string>
     <string name="accessibility_service_label">Tiny Vow 软阻断服务</string>
     <string name="accessibility_service_desc">检测目标 App 是否超出每日预算，并在进入前台时显示阻断页。</string>
+    <string name="activation_activate">激活</string>
+    <string name="activation_code_invalid">激活码无效</string>
+    <string name="activation_code_label">激活码</string>
+    <string name="activation_copy_user_id">复制用户 ID</string>
+    <string name="activation_enter_code">输入激活码</string>
+    <string name="activation_pro_activated">Pro 已激活</string>
+    <string name="activation_pro_active_until">Pro 有效期至 %1$s</string>
+    <string name="activation_send_user_id_to_developer">把这个用户 ID 发给开发者，再输入收到的激活码。</string>
+    <string name="activation_system_time_is_abnormal_restore_time">系统时间异常，请恢复正确时间后继续使用本地 Pro。</string>
+    <string name="activation_title">激活 Pro</string>
+    <string name="activation_user_id_label">用户 ID：%1$s</string>
     <string name="block_title">今天的预算已经用完</string>
     <string name="block_overlay_open_app">回到 Tiny Vow</string>
     <string name="block_overlay_go_home">返回桌面</string>
@@ -286,7 +297,7 @@
     <string name="home_value_h_value_min">%1$s 小时 %2$s 分钟</string>
     <string name="home_value_min">%1$s分钟</string>
     <string name="home_value_minutes">%1$s 分钟</string>
-    <string name="home_value_pts">+%%.1f分</string>
+    <string name="home_value_pts">+%1$.1f分</string>
     <string name="home_well_done_yesterday_your_strong_will_saved_this">太棒了！昨天你凭借强大的意志力，在受控应用中省下了：</string>
     <string name="home_yesterday_s_report">昨日战报</string>
     <string name="lab_laboratory_debug_tools">实验室（调试工具）</string>
@@ -360,9 +371,13 @@
     <string name="redeem_choose_target_group">选择目标分组</string>
     <string name="redeem_current_points">当前持有积分</string>
     <string name="redeem_custom_reward">自定义奖励</string>
+    <string name="redeem_daily_time_pack_groups">每日分组</string>
     <string name="redeem_description_optional">描述 (可选)</string>
     <string name="redeem_edit_reward">编辑奖励</string>
+    <string name="redeem_group_period_limit_apps">%1$s限额：%2$s 分钟 · %3$s 个 App</string>
     <string name="redeem_item_name">项目名称</string>
+    <string name="redeem_monthly_time_pack_groups">每月分组</string>
+    <string name="redeem_no_control_group_for_time_pack">请先创建一个限制分组，再兑换加时包。</string>
     <string name="redeem_offline_reward">🎁 线下奖励</string>
     <string name="redeem_recent_redemptions">最近兑换记录</string>
     <string name="redeem_required_points">所需积分</string>
@@ -371,8 +386,13 @@
     <string name="redeem_stock_unlimited">库存: 无穷大</string>
     <string name="redeem_target_group">目标分组</string>
     <string name="redeem_time_capsule_value_minutes">✨ 时光胶囊: 延时 %1$s 分钟</string>
+    <string name="redeem_time_pack_expiry_daily">有效到今天结束。</string>
+    <string name="redeem_time_pack_expiry_monthly">有效到本月结束。</string>
+    <string name="redeem_time_pack_expiry_weekly">有效到从今天开始的 7 天窗口结束。</string>
+    <string name="redeem_time_pack_period_hint">加时包跟随所选限制分组的周期，并增加该分组的有效限额。</string>
     <string name="redeem_unlimited_stock">无穷大库存</string>
     <string name="redeem_value_value_minutes">%1$s +%2$s 分钟</string>
+    <string name="redeem_weekly_time_pack_groups">每周分组</string>
     <string name="settings_custom_theme">自定义主题</string>
     <string name="stats_24_hour_distribution">24 小时分布</string>
     <string name="stats_active">活跃</string>
@@ -491,6 +511,10 @@
     <string name="stats_shows_only_the_10_most_used_apps_in">只看当前归档窗口内使用时长最高的 10 个应用。</string>
     <string name="stats_spring">春</string>
     <string name="stats_summer">夏</string>
+    <string name="stats_tab_daily">每日</string>
+    <string name="stats_tab_weekly">每周</string>
+    <string name="stats_tab_monthly">每月</string>
+    <string name="stats_tab_yearly">每年</string>
     <string name="stats_sun">日</string>
     <string name="stats_target_complete">目标完成</string>
     <string name="stats_target_value">目标 %1$s</string>
@@ -529,6 +553,7 @@
     <string name="stats_value_groups_4">%1$s 组</string>
     <string name="stats_value_groups_5">%1$s 组</string>
     <string name="stats_value_groups_6">%1$s 组</string>
+    <string name="stats_value_groups_short">%1$s 组</string>
     <string name="stats_value_had_value_group_over_limit_events">%1$s 有 %2$s 次分组超限。</string>
     <string name="stats_value_mainly_concentrated_in_value">%1$s，主要集中在 %2$s。</string>
     <string name="stats_value_mainly_concentrated_in_value_value">%1$s，主要集中在%2$s，%3$s。</string>
@@ -551,6 +576,7 @@
     <string name="stats_value_times_7">%1$s 次</string>
     <string name="stats_value_times_8">%1$s 次</string>
     <string name="stats_value_times_9">%1$s 次</string>
+    <string name="stats_value_times_short">%1$s 次</string>
     <string name="stats_value_value_left">%1$s · 剩余 %2$s</string>
     <string name="stats_value_value_left_2">%1$s · 剩余 %2$s</string>
     <string name="stats_value_value_times">%1$s · %2$s 次</string>
@@ -656,7 +682,7 @@
     <string name="stats_hour_range_format">%1$s-%2$s时</string>
     <string name="stats_last_7_archived_day_average">近 7 个归档日日均 %1$s</string>
     <string name="stats_launch_rhythm_normal">打开节奏正常</string>
-    <string name="stats_launches_per_active_hour_format">%%.1f 次/活跃小时</string>
+    <string name="stats_launches_per_active_hour_format">%.1f 次/活跃小时</string>
     <string name="stats_midweek">周中</string>
     <string name="stats_month_calendar_heatmap">月历热力</string>
     <string name="stats_most_launches">打开次数最多</string>
@@ -695,4 +721,9 @@
     <string name="stats_year_month_heatmap">年度月份热力</string>
     <string name="stats_year_view_description">年维度会沉淀成长轨迹、波峰波谷与长期自律表现。</string>
     <string name="stats_yearly_report_label">正在准备年报</string>
+    <string name="me_china_local_mode_body">这是国内测试包。账号同步、Google 登录和 Google Play 订阅流程已隐藏。</string>
+    <string name="me_china_local_mode_subtitle">国内测试版：已启用本地模式</string>
+    <string name="me_china_local_mode_title">本地模式</string>
+    <string name="me_china_pro_activation_description">国内测试包不使用 Google Play Billing。这里预留激活码入口，用于后续 Pro 测试。</string>
+    <string name="me_local_activation_coming_soon">激活码入口即将开放</string>
 </resources>

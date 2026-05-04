@@ -18,6 +18,8 @@ data class ProEntitlementState(
     val productId: String = TINYVOW_PRO_PRODUCT_ID,
     val purchaseToken: String? = null,
     val message: String? = null,
+    val expiresAtMillis: Long? = null,
+    val source: String? = null,
 ) {
     val isProActive: Boolean
         get() = status == ProEntitlementStatus.ACTIVE
@@ -25,9 +27,15 @@ data class ProEntitlementState(
     companion object {
         val Free = ProEntitlementState(status = ProEntitlementStatus.FREE)
 
-        fun active(purchaseToken: String) = ProEntitlementState(
+        fun active(
+            purchaseToken: String,
+            expiresAtMillis: Long? = null,
+            source: String = "google_play",
+        ) = ProEntitlementState(
             status = ProEntitlementStatus.ACTIVE,
             purchaseToken = purchaseToken,
+            expiresAtMillis = expiresAtMillis,
+            source = source,
         )
 
         fun pending() = ProEntitlementState(

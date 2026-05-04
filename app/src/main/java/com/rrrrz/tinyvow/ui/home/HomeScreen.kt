@@ -80,9 +80,13 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.core.content.FileProvider
+import com.rrrrz.tinyvow.BuildConfig
 import com.rrrrz.tinyvow.R
+import com.rrrrz.tinyvow.data.activation.LocalActivationSubscriptionRepository
 import com.rrrrz.tinyvow.data.auth.LocalAuthRepository
+import com.rrrrz.tinyvow.data.billing.NoopSubscriptionRepository
 import com.rrrrz.tinyvow.data.billing.PlayBillingSubscriptionRepository
+import com.rrrrz.tinyvow.data.billing.SubscriptionRepository
 import com.rrrrz.tinyvow.data.accessibility.AccessibilityServiceStateChecker
 import com.rrrrz.tinyvow.data.apps.InstalledAppRepository
 import com.rrrrz.tinyvow.data.apps.ManagedApp
@@ -212,7 +216,20 @@ fun HomeRoute(
     val powerManager = remember(context) { context.getSystemService(android.content.Context.POWER_SERVICE) as PowerManager }
     var isIgnoringBattery by remember { mutableStateOf(powerManager.isIgnoringBatteryOptimizations(context.packageName)) }
     val authRepository = remember(context) { LocalAuthRepository(context) }
-    val subscriptionRepository = remember(context) { PlayBillingSubscriptionRepository(context) }
+    val localActivationRepository = remember(context) {
+        if (BuildConfig.ENABLE_LOCAL_ACTIVATION) {
+            LocalActivationSubscriptionRepository(context, BuildConfig.ACTIVATION_PUBLIC_KEY_BASE64)
+        } else {
+            null
+        }
+    }
+    val subscriptionRepository: SubscriptionRepository = remember(context) {
+        if (BuildConfig.ENABLE_PLAY_BILLING) {
+            PlayBillingSubscriptionRepository(context)
+        } else {
+            localActivationRepository ?: NoopSubscriptionRepository()
+        }
+    }
     
     val database = remember(context) { AppDatabase.getDatabase(context) }
     val appLimitRepository = remember(database, context) { AppLimitRepository(context, database) }
@@ -368,6 +385,18 @@ fun HomeRoute(
         subscriptionRepository.refresh()
     }
 
+    LaunchedEffect(BuildConfig.ENABLE_LOCAL_ACTIVATION) {
+        if (BuildConfig.ENABLE_LOCAL_ACTIVATION) {
+            authRepository.ensureLocalSession()
+        }
+    }
+
+    LaunchedEffect(BuildConfig.ENABLE_LOCAL_ACTIVATION, userSession?.userId) {
+        if (BuildConfig.ENABLE_LOCAL_ACTIVATION) {
+            localActivationRepository?.bindUser(userSession?.userId)
+        }
+    }
+
     Scaffold(
         snackbarHost = {
             SnackbarHost(hostState = snackbarHostState)
@@ -508,7 +537,10 @@ fun HomeRoute(
                 Screen.ME -> {
                     MeScreen(
                         userSession = userSession,
+                        isGoogleSignInEnabled = BuildConfig.ENABLE_GOOGLE_LOGIN,
                         isGoogleSignInConfigured = authRepository.isGoogleSignInConfigured,
+                        isPlayBillingEnabled = BuildConfig.ENABLE_PLAY_BILLING,
+                        isLocalActivationEnabled = BuildConfig.ENABLE_LOCAL_ACTIVATION,
                         proEntitlement = proEntitlement,
                         subscriptionOffers = subscriptionOffers,
                         userPoints = userPoints,
@@ -524,7 +556,6 @@ fun HomeRoute(
                         onSelectAppLanguage = { language ->
                             coroutineScope.launch {
                                 preferences.setSelectedAppLanguage(language)
-                                AppText.setLanguage(language, context)
                             }
                         },
                         onSelectTheme = { themeId ->
@@ -618,6 +649,10 @@ fun HomeRoute(
                             coroutineScope.launch {
                                 runCatching {
                                     localDataManager.clearLocalData()
+                                    if (BuildConfig.ENABLE_LOCAL_ACTIVATION) {
+                                        authRepository.deleteAccount()
+                                        localActivationRepository?.clearActivationData()
+                                    }
                                 }.onSuccess {
                                     snackbarHostState.showSnackbar(AppText.t("home_local_data_cleared"))
                                 }.onFailure {
@@ -660,6 +695,9 @@ fun HomeRoute(
                         onDeleteAccount = { clearLocalData ->
                             coroutineScope.launch {
                                 authRepository.deleteAccount()
+                                if (BuildConfig.ENABLE_LOCAL_ACTIVATION) {
+                                    localActivationRepository?.clearActivationData()
+                                }
                                 if (clearLocalData) {
                                     localDataManager.clearLocalData()
                                 }
@@ -696,6 +734,19 @@ fun HomeRoute(
                         },
                         onManageSubscription = {
                             subscriptionRepository.openManageSubscription(context)
+                        },
+                        onActivateProCode = { code ->
+                            coroutineScope.launch {
+                                val localUserId = userSession?.userId ?: authRepository.ensureLocalSession().userId
+                                localActivationRepository
+                                    ?.activate(localUserId, code)
+                                    ?.onSuccess {
+                                        snackbarHostState.showSnackbar(AppText.t("activation_pro_activated"))
+                                    }
+                                    ?.onFailure {
+                                        snackbarHostState.showSnackbar(AppText.t("activation_code_invalid"))
+                                    }
+                            }
                         },
                     )
                 }
@@ -1334,7 +1385,7 @@ fun HomeScreen(
                                     )
                                     OverviewStatTile(
                                         label = AppText.t("home_available_today"),
-                                        value = AppText.t("home_value_pts").format(displayTodayPoints),
+                                        value = AppText.t("home_value_pts", displayTodayPoints),
                                         color = MaterialTheme.colorScheme.tertiary,
                                         modifier = Modifier.weight(1f),
                                     )

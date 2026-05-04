@@ -13,3 +13,6 @@
 .externalNativeBuild
 .cxx
 local.properties
+tools/activation/private_key.pkcs8
+tools/activation/*.private
+tools/activation/*.class

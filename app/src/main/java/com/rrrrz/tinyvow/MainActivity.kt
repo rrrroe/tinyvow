@@ -2,6 +2,7 @@ package com.rrrrz.tinyvow
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.LocalActivityResultRegistryOwner
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import com.rrrrz.tinyvow.data.notification.TinyVowNotifier
@@ -19,6 +20,7 @@ import com.rrrrz.tinyvow.i18n.AppLanguage
 import com.rrrrz.tinyvow.i18n.AppText
 import com.rrrrz.tinyvow.ui.theme.DefaultThemeSeed
 import com.rrrrz.tinyvow.ui.theme.resolveThemeSeed
+import kotlinx.coroutines.flow.map
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -29,7 +31,11 @@ class MainActivity : ComponentActivity() {
             val prefs = remember { ManagedAppPreferences(this@MainActivity) }
             val selectedThemeId by prefs.selectedThemeId.collectAsState(initial = DefaultThemeSeed.id)
             val customThemes by prefs.customThemes.collectAsState(initial = emptyList())
-            val selectedAppLanguage by prefs.selectedAppLanguage.collectAsState(initial = AppLanguage.SYSTEM)
+            val selectedAppLanguageFlow = remember(prefs) {
+                prefs.selectedAppLanguage.map<AppLanguage, AppLanguage?> { it }
+            }
+            val loadedAppLanguage by selectedAppLanguageFlow.collectAsState(initial = null)
+            val selectedAppLanguage = loadedAppLanguage ?: AppText.currentLanguage()
             val localizedContext = remember(selectedAppLanguage) {
                 AppText.localizedContext(this@MainActivity, selectedAppLanguage)
             }
@@ -37,12 +43,16 @@ class MainActivity : ComponentActivity() {
                 resolveThemeSeed(selectedThemeId, customThemes)
             }
 
-            LaunchedEffect(selectedAppLanguage) {
-                AppText.setLanguage(selectedAppLanguage, this@MainActivity)
+            LaunchedEffect(loadedAppLanguage) {
+                val language = loadedAppLanguage ?: return@LaunchedEffect
+                AppText.setLanguage(language, this@MainActivity)
                 TinyVowNotifier(this@MainActivity).ensureChannel()
             }
             
-            CompositionLocalProvider(LocalContext provides localizedContext) {
+            CompositionLocalProvider(
+                LocalContext provides localizedContext,
+                LocalActivityResultRegistryOwner provides this@MainActivity,
+            ) {
                 TinyVowTheme(
                     themeSeed = themeSeed
                 ) {

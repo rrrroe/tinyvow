@@ -32,12 +32,32 @@ class LocalAuthRepository(
     }
 
     override val isGoogleSignInConfigured: Boolean =
-        BuildConfig.GOOGLE_WEB_CLIENT_ID.isNotBlank()
+        BuildConfig.ENABLE_GOOGLE_LOGIN && BuildConfig.GOOGLE_WEB_CLIENT_ID.isNotBlank()
 
     override val session: Flow<UserSession?> =
         context.authDataStore.data.map { preferences ->
             decodeSession(preferences[Keys.sessionJson])
         }
+
+    override suspend fun ensureLocalSession(): UserSession {
+        val existing = session.first()
+        if (existing != null) return existing
+
+        val now = System.currentTimeMillis()
+        val userId = UUID.randomUUID().toString()
+        val nextSession = UserSession(
+            userId = userId,
+            provider = "local_china",
+            providerSubject = userId,
+            email = null,
+            displayName = null,
+            avatarUrl = null,
+            createdAt = now,
+            lastSignedInAt = now,
+        )
+        saveSession(nextSession)
+        return nextSession
+    }
 
     override suspend fun signInWithGoogle(activity: ComponentActivity): Result<UserSession> {
         if (!isGoogleSignInConfigured) {

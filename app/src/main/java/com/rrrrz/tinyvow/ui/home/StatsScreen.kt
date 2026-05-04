@@ -96,6 +96,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.graphics.drawable.toBitmap
@@ -132,11 +133,13 @@ import kotlin.math.max
 import kotlin.math.roundToInt
 import kotlin.math.roundToLong
 
-private enum class ReportTab(val label: String) {
-    DAY(AppText.t("stats_daily_report")),
-    WEEK(AppText.t("stats_weekly_report")),
-    MONTH(AppText.t("stats_monthly_report")),
-    YEAR(AppText.t("stats_yearly_report")),
+private enum class ReportTab(private val labelKey: String) {
+    DAY("stats_tab_daily"),
+    WEEK("stats_tab_weekly"),
+    MONTH("stats_tab_monthly"),
+    YEAR("stats_tab_yearly");
+
+    fun label(): String = AppText.t(labelKey)
 }
 
 private data class InstalledAppsState(
@@ -821,9 +824,9 @@ private fun buildDailyFocusSectionData(
                 primaryValue = formatDuration(archive.savedMillis),
                 metrics =
                     listOf(
-                        DailyFocusMetric(AppText.t("stats_met"), AppText.t("stats_value_groups_5", archive.controlCompletedGroupCount)),
-                        DailyFocusMetric(AppText.t("stats_over_limit"), AppText.t("stats_value_groups_2", archive.controlExceededGroupCount)),
-                        DailyFocusMetric(AppText.t("group_blocks"), AppText.t("stats_value_times_5", archive.controlBlockEventCount)),
+                        DailyFocusMetric(AppText.t("stats_met"), AppText.t("stats_value_groups_short", archive.controlCompletedGroupCount)),
+                        DailyFocusMetric(AppText.t("stats_over_limit"), AppText.t("stats_value_groups_short", archive.controlExceededGroupCount)),
+                        DailyFocusMetric(AppText.t("group_blocks"), AppText.t("stats_value_times_short", archive.controlBlockEventCount)),
                     ),
                 progress = controlProgress,
                 spotlightLabel =
@@ -852,8 +855,8 @@ private fun buildDailyFocusSectionData(
                 metrics =
                     listOf(
                         DailyFocusMetric(AppText.t("stats_duration"), formatDuration(archive.encourageUsageMillis)),
-                        DailyFocusMetric(AppText.t("stats_met"), AppText.t("stats_value_groups_4", archive.encourageCompletedGroupCount)),
-                        DailyFocusMetric(AppText.t("stats_redemption"), AppText.t("stats_value_times_3", archive.redemptionCount)),
+                        DailyFocusMetric(AppText.t("stats_met"), AppText.t("stats_value_groups_short", archive.encourageCompletedGroupCount)),
+                        DailyFocusMetric(AppText.t("stats_redemption"), AppText.t("stats_value_times_short", archive.redemptionCount)),
                     ),
                 progress = encourageProgress,
                 spotlightLabel = if (bestEncourageGroup != null) AppText.t("stats_best_encourage_group") else AppText.t("stats_encourage_group"),
@@ -952,9 +955,9 @@ private fun buildWindowFocusSectionData(
                 primaryValue = formatDuration(totalSaved),
                 metrics =
                     listOf(
-                        DailyFocusMetric(AppText.t("stats_met"), AppText.t("stats_value_times_9", totalControlCompleted)),
-                        DailyFocusMetric(AppText.t("stats_over_limit"), AppText.t("stats_value_times_7", totalExceededGroups)),
-                        DailyFocusMetric(AppText.t("group_blocks"), AppText.t("stats_value_times_8", totalBlockEvents)),
+                        DailyFocusMetric(AppText.t("stats_met"), AppText.t("stats_value_times_short", totalControlCompleted)),
+                        DailyFocusMetric(AppText.t("stats_over_limit"), AppText.t("stats_value_times_short", totalExceededGroups)),
+                        DailyFocusMetric(AppText.t("group_blocks"), AppText.t("stats_value_times_short", totalBlockEvents)),
                     ),
                 progress = controlProgress,
                 spotlightLabel = if (severeControl != null) AppText.t("stats_label_7") else AppText.t("stats_label"),
@@ -975,9 +978,9 @@ private fun buildWindowFocusSectionData(
                 primaryValue = formatSignedPointsLocal(pointsNet),
                 metrics =
                     listOf(
-                        DailyFocusMetric(AppText.t("stats_encourage_time"), formatDuration(totalEncourageUsage)),
-                        DailyFocusMetric(AppText.t("stats_met"), AppText.t("stats_value_times", totalEncourageCompleted)),
-                        DailyFocusMetric(AppText.t("stats_redemption"), AppText.t("stats_value_times_2", totalRedemptions)),
+                        DailyFocusMetric(AppText.t("stats_duration"), formatDuration(totalEncourageUsage)),
+                        DailyFocusMetric(AppText.t("stats_met"), AppText.t("stats_value_times_short", totalEncourageCompleted)),
+                        DailyFocusMetric(AppText.t("stats_redemption"), AppText.t("stats_value_times_short", totalRedemptions)),
                     ),
                 progress = encourageProgress,
                 spotlightLabel = if (bestEncourage != null) AppText.t("stats_best_encourage_group") else AppText.t("stats_encourage_group"),
@@ -3269,9 +3272,13 @@ private fun ReportTabRow(
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
-                        text = tab.label,
+                        text = tab.label(),
+                        modifier = Modifier.fillMaxWidth(),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                         color = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
@@ -4091,7 +4098,6 @@ private fun ShareReportCard(
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun DailyModeSummaryCard(
     summary: DailyModeSummary,
@@ -4121,107 +4127,127 @@ private fun DailyModeSummaryCard(
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 14.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            Surface(
-                modifier = Modifier.size(36.dp),
-                shape = RoundedCornerShape(12.dp),
-                color = accent.copy(alpha = 0.16f),
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                Box(contentAlignment = Alignment.Center) {
-                    Icon(
-                        imageVector = icon,
-                        contentDescription = null,
-                        tint = accent,
-                        modifier = Modifier.size(19.dp),
+                Surface(
+                    modifier = Modifier.size(36.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    color = accent.copy(alpha = 0.16f),
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = icon,
+                            contentDescription = null,
+                            tint = accent,
+                            modifier = Modifier.size(19.dp),
+                        )
+                    }
+                }
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(
+                        text = summary.title,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        text = summary.description,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
             }
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(
-                    text = summary.title,
-                    style = MaterialTheme.typography.titleMedium,
+                    text = summary.primaryLabel,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    text = animatedPrimaryValue,
+                    style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.Bold,
+                    color = accent,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                Text(
-                    text = summary.description,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
             }
-        }
-        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Text(
-                text = summary.primaryLabel,
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Text(
-                text = animatedPrimaryValue,
-                style = MaterialTheme.typography.headlineSmall,
-                fontWeight = FontWeight.Bold,
-                color = accent,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
-        }
-        Box(
-            modifier = Modifier.fillMaxWidth(),
-            contentAlignment = Alignment.Center,
-        ) {
-            FocusProgressRing(
-                progress = summary.progress,
-                color = accent,
-                label = "${(summary.progress * 100f).roundToInt()}%",
-                modifier = Modifier.size(76.dp),
-            )
-        }
-        AdaptiveRowGrid(
-            itemCount = summary.metrics.size,
-            compactColumns = 3,
-            expandedColumns = 3,
-            horizontalSpacing = 8.dp,
-            verticalSpacing = 8.dp,
-        ) { metricModifier, index ->
-            summary.metrics.getOrNull(index)?.let { metric ->
-                FocusMetricPill(
-                    metric = metric,
-                    accent = accent,
-                    delayMillis = 180 + index * 40,
-                    modifier = metricModifier,
-                )
+            BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                val metricSize = ((maxWidth - 10.dp) / 2).coerceIn(64.dp, 82.dp)
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        FocusProgressRing(
+                            progress = summary.progress,
+                            color = accent,
+                            label = "${(summary.progress * 100f).roundToInt()}%",
+                            modifier = Modifier.size(metricSize),
+                        )
+                        summary.metrics.getOrNull(0)?.let { metric ->
+                            FocusMetricPill(
+                                metric = metric,
+                                accent = accent,
+                                delayMillis = 180,
+                                modifier = Modifier.size(metricSize),
+                                emphasizeValue = true,
+                                valueColor = accent,
+                            )
+                        } ?: Spacer(modifier = Modifier.size(metricSize))
+                    }
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        summary.metrics.drop(1).take(2).forEachIndexed { index, metric ->
+                            FocusMetricPill(
+                                metric = metric,
+                                accent = accent,
+                                delayMillis = 220 + index * 40,
+                                modifier = Modifier.size(metricSize),
+                                emphasizeValue = true,
+                                valueColor = accent,
+                            )
+                        }
+                        repeat((2 - summary.metrics.drop(1).take(2).size).coerceAtLeast(0)) {
+                            Spacer(modifier = Modifier.size(metricSize))
+                        }
+                    }
+                }
             }
-        }
-        Surface(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(18.dp),
-            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.52f),
-        ) {
-            Column(
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                verticalArrangement = Arrangement.spacedBy(3.dp),
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(18.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.52f),
             ) {
-                Text(
-                    text = summary.spotlightLabel,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                Text(
-                    text = summary.spotlightValue,
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                Column(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalArrangement = Arrangement.spacedBy(3.dp),
+                ) {
+                    Text(
+                        text = summary.spotlightLabel,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        text = summary.spotlightValue,
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
-        }
         }
     }
 }
@@ -4278,6 +4304,8 @@ private fun FocusMetricPill(
     accent: Color,
     delayMillis: Int,
     modifier: Modifier = Modifier,
+    emphasizeValue: Boolean = false,
+    valueColor: Color = MaterialTheme.colorScheme.onSurface,
 ) {
     val animatedValue = animateMetricDisplayText(
         rawText = metric.value,
@@ -4289,24 +4317,83 @@ private fun FocusMetricPill(
         shape = RoundedCornerShape(14.dp),
         color = accent.copy(alpha = 0.1f),
     ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
-        ) {
-            Text(
-                text = metric.label,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Text(
-                text = animatedValue,
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-            )
+        if (emphasizeValue) {
+            val valueParts = splitMetricValue(animatedValue)
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 10.dp, vertical = 9.dp),
+                verticalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Text(
+                    text = metric.label,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Row(verticalAlignment = Alignment.Bottom) {
+                    Text(
+                        text = valueParts.number,
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = valueColor,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    if (valueParts.unit.isNotBlank()) {
+                        Text(
+                            text = valueParts.unit,
+                            modifier = Modifier.padding(start = 2.dp, bottom = 2.dp),
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+            }
+        } else {
+            Column(
+                modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                Text(
+                    text = metric.label,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = animatedValue,
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
+    }
+}
+
+private data class MetricValueParts(
+    val number: String,
+    val unit: String,
+)
+
+private fun splitMetricValue(value: String): MetricValueParts {
+    val trimmed = value.trim()
+    val match = Regex("""^([+\-]?\d+(?:[.,]\d+)?)(.*)$""").find(trimmed)
+    return if (match != null) {
+        MetricValueParts(
+            number = match.groupValues[1],
+            unit = match.groupValues[2].trim(),
+        )
+    } else {
+        MetricValueParts(number = trimmed, unit = "")
     }
 }
 
