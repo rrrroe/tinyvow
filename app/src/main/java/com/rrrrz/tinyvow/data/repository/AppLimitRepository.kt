@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.room.withTransaction
 import com.rrrrz.tinyvow.data.db.*
 import com.rrrrz.tinyvow.data.settings.ManagedAppPreferences
+import com.rrrrz.tinyvow.i18n.AppText
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -26,7 +27,7 @@ data class RedemptionResult(
 )
 
 class AppLimitRepository(
-    context: Context,
+    private val context: Context,
     private val database: AppDatabase,
 ) {
     private val groupDao = database.appGroupDao()
@@ -120,6 +121,7 @@ class AppLimitRepository(
                     RedemptionHistoryEntity(
                         id = redemptionHistoryId,
                         rewardTitle = latestReward.title,
+                        rewardBuiltinKey = latestReward.builtinKey,
                         pointCost = latestReward.pointCost,
                         historyType = when (latestReward.rewardType) {
                             RewardType.TIME_PACK -> RedemptionHistoryType.TIME_PACK
@@ -141,6 +143,14 @@ class AppLimitRepository(
                         rewardId = latestReward.id,
                         rewardTitleSnapshot = latestReward.title,
                         sourceRefId = redemptionHistoryId,
+                        messageKey = when (latestReward.rewardType) {
+                            RewardType.TIME_PACK -> "ledger_redeemed_time_pack"
+                            RewardType.CUSTOM -> "ledger_redeemed_custom_reward"
+                        },
+                        messageArgsJson = when (latestReward.rewardType) {
+                            RewardType.TIME_PACK -> """{"rewardTitle":"${latestReward.title}","pointCost":${latestReward.pointCost},"groupName":"${targetGroupName.orEmpty()}","bonusMinutes":${latestReward.bonusMinutes}}"""
+                            RewardType.CUSTOM -> """{"rewardTitle":"${latestReward.title}","pointCost":${latestReward.pointCost}}"""
+                        },
                         createdAt = redeemedAt,
                     )
                 )
@@ -162,11 +172,21 @@ class AppLimitRepository(
 
             val message = when (latestReward.rewardType) {
                 RewardType.TIME_PACK -> {
-                    val groupName = targetGroupName ?: "目标分组"
-                    "已兑换 ${latestReward.title}，-${latestReward.pointCost} PT，$groupName +${latestReward.bonusMinutes} 分钟"
+                    val groupName = targetGroupName ?: AppText.t("generic_target_group")
+                    AppText.t(
+                        "redeem_success_time_pack",
+                        localizedRewardTitle(latestReward),
+                        latestReward.pointCost,
+                        groupName,
+                        latestReward.bonusMinutes,
+                    )
                 }
                 RewardType.CUSTOM -> {
-                    "已兑换 ${latestReward.title}，-${latestReward.pointCost} PT"
+                    AppText.t(
+                        "redeem_success_custom_reward",
+                        localizedRewardTitle(latestReward),
+                        latestReward.pointCost,
+                    )
                 }
             }
 
@@ -326,13 +346,22 @@ class AppLimitRepository(
         bonusTimeDao.insertBonusTime(bonus)
     }
 
-    suspend fun addReward(title: String, cost: Int, type: RewardType, stock: Int = -1, description: String = "", bonusMinutes: Int = 0) {
+    suspend fun addReward(
+        title: String,
+        cost: Int,
+        type: RewardType,
+        stock: Int = -1,
+        description: String = "",
+        bonusMinutes: Int = 0,
+        builtinKey: String? = null,
+    ) {
         withContext(Dispatchers.IO) {
             redemptionDao.insertRedemption(
                 RedemptionEntity(
                     id = UUID.randomUUID().toString(),
                     title = title,
                     description = description,
+                    builtinKey = builtinKey,
                     pointCost = cost,
                     rewardType = type,
                     bonusMinutes = bonusMinutes,
@@ -354,9 +383,9 @@ class AppLimitRepository(
     suspend fun seedInitialData() {
         withContext(Dispatchers.IO) {
             // 只保留三个基础可兑选项，默认库存无穷大
-            addReward("30分钟 临时续命卡", 50, RewardType.TIME_PACK, -1, "立即获得30分钟额外时长", 30)
-            addReward("1小时 自由冲浪卡", 100, RewardType.TIME_PACK, -1, "立即获得1小时额外时长", 60)
-            addReward("大快朵颐 (线下奖励)", 500, RewardType.CUSTOM, 5, "给自己加个鸡腿！")
+            addReward("30-minute Time Pass", 50, RewardType.TIME_PACK, -1, "Get 30 extra minutes immediately.", 30, "reward_time_pack_30")
+            addReward("1-hour Free Browsing Pass", 100, RewardType.TIME_PACK, -1, "Get 1 extra hour immediately.", 60, "reward_time_pack_60")
+            addReward("Offline Treat", 500, RewardType.CUSTOM, 5, "Treat yourself offline.", 0, "reward_offline_treat")
 
             // 使用 seedAchievement (IGNORE) 避免覆盖已解锁状态
             suspend fun seed(id: String, title: String, desc: String, req: String, tier: Int, emoji: String) {
@@ -364,76 +393,79 @@ class AppLimitRepository(
             }
 
             // ══════════ 🥉 Bronze 铜阶 ══════════
-            seed("BRONZE_POINTS", "初入江湖", "累计赚取 100 积分",
+            seed("BRONZE_POINTS", "First Steps", "Earn 100 points",
                 """{"type":"points","value":100}""", AchievementTier.BRONZE, "🌱")
-            seed("BRONZE_REDEEM", "初次消费", "累计消费 100 积分",
+            seed("BRONZE_REDEEM", "First Spend", "Spend 100 points",
                 """{"type":"redeem_points","value":100}""", AchievementTier.BRONZE, "🍬")
-            seed("BRONZE_CTRL_DAYS", "点滴积累", "累计 10 天约定未超标",
+            seed("BRONZE_CTRL_DAYS", "Small Wins", "Stay within commitment limits for 10 total days",
                 """{"type":"control_days","value":10}""", AchievementTier.BRONZE, "🤝")
-            seed("BRONZE_CTRL_STREAK", "三日磐石", "连续 3 天约定未超标",
+            seed("BRONZE_CTRL_STREAK", "Three-Day Rock", "Stay within commitment limits for 3 days in a row",
                 """{"type":"control_streak","value":3}""", AchievementTier.BRONZE, "🪨")
-            seed("BRONZE_ENC_DAYS", "向阳而生", "累计 10 天鼓励达标",
+            seed("BRONZE_ENC_DAYS", "Toward the Sun", "Meet encouragement goals for 10 total days",
                 """{"type":"encourage_days","value":10}""", AchievementTier.BRONZE, "🌻")
-            seed("BRONZE_ENC_STREAK", "初心不改", "连续 3 天鼓励达标",
+            seed("BRONZE_ENC_STREAK", "Original Intention", "Meet encouragement goals for 3 days in a row",
                 """{"type":"encourage_streak","value":3}""", AchievementTier.BRONZE, "🕯️")
 
             // ══════════ 🥈 Silver 银阶 ══════════
-            seed("SILVER_POINTS", "踏浪前行", "累计赚取 300 积分",
+            seed("SILVER_POINTS", "Ride the Waves", "Earn 300 points",
                 """{"type":"points","value":300}""", AchievementTier.SILVER, "🌊")
-            seed("SILVER_REDEEM", "购物达人", "累计消费 300 积分",
+            seed("SILVER_REDEEM", "Smart Shopper", "Spend 300 points",
                 """{"type":"redeem_points","value":300}""", AchievementTier.SILVER, "🛒")
-            seed("SILVER_CTRL_DAYS", "守约如山", "累计 30 天约定未超标",
+            seed("SILVER_CTRL_DAYS", "Steady as a Mountain", "Stay within commitment limits for 30 total days",
                 """{"type":"control_days","value":30}""", AchievementTier.SILVER, "⛰️")
-            seed("SILVER_CTRL_STREAK", "十日坚守", "连续 10 天约定未超标",
+            seed("SILVER_CTRL_STREAK", "Ten-Day Stand", "Stay within commitment limits for 10 days in a row",
                 """{"type":"control_streak","value":10}""", AchievementTier.SILVER, "🌓")
-            seed("SILVER_ENC_DAYS", "习惯养成", "累计 30 天鼓励达标",
+            seed("SILVER_ENC_DAYS", "Habit Builder", "Meet encouragement goals for 30 total days",
                 """{"type":"encourage_days","value":30}""", AchievementTier.SILVER, "📖")
-            seed("SILVER_ENC_STREAK", "十全十美", "连续 10 天鼓励达标",
+            seed("SILVER_ENC_STREAK", "Ten Out of Ten", "Meet encouragement goals for 10 days in a row",
                 """{"type":"encourage_streak","value":10}""", AchievementTier.SILVER, "🌿")
 
             // ══════════ 🥇 Gold 金阶 ══════════
-            seed("GOLD_POINTS", "千分大师", "累计赚取 1000 积分",
+            seed("GOLD_POINTS", "Thousand-Point Master", "Earn 1000 points",
                 """{"type":"points","value":1000}""", AchievementTier.GOLD, "👑")
-            seed("GOLD_REDEEM", "赏金猎人", "累计消费 1000 积分",
+            seed("GOLD_REDEEM", "Bounty Hunter", "Spend 1000 points",
                 """{"type":"redeem_points","value":1000}""", AchievementTier.GOLD, "🎯")
-            seed("GOLD_CTRL_DAYS", "百日守护", "累计 100 天约定未超标",
+            seed("GOLD_CTRL_DAYS", "Hundred-Day Guardian", "Stay within commitment limits for 100 total days",
                 """{"type":"control_days","value":100}""", AchievementTier.GOLD, "🛡️")
-            seed("GOLD_CTRL_STREAK", "月之战神", "连续 30 天约定未超标",
+            seed("GOLD_CTRL_STREAK", "Moon Warrior", "Stay within commitment limits for 30 days in a row",
                 """{"type":"control_streak","value":30}""", AchievementTier.GOLD, "🌙")
-            seed("GOLD_ENC_DAYS", "百炼成钢", "累计 100 天鼓励达标",
+            seed("GOLD_ENC_DAYS", "Forged by Practice", "Meet encouragement goals for 100 total days",
                 """{"type":"encourage_days","value":100}""", AchievementTier.GOLD, "🔥")
-            seed("GOLD_ENC_STREAK", "势如破竹", "连续 30 天鼓励达标",
+            seed("GOLD_ENC_STREAK", "Bamboo Momentum", "Meet encouragement goals for 30 days in a row",
                 """{"type":"encourage_streak","value":30}""", AchievementTier.GOLD, "🎍")
 
             // ══════════ 💎 Diamond 钻石阶 ══════════
-            seed("DIAMOND_POINTS", "名满天下", "累计赚取 3000 积分",
+            seed("DIAMOND_POINTS", "Known Far and Wide", "Earn 3000 points",
                 """{"type":"points","value":3000}""", AchievementTier.DIAMOND, "💫")
-            seed("DIAMOND_REDEEM", "挥金如土", "累计消费 3000 积分",
+            seed("DIAMOND_REDEEM", "Big Spender", "Spend 3000 points",
                 """{"type":"redeem_points","value":3000}""", AchievementTier.DIAMOND, "🏛️")
-            seed("DIAMOND_CTRL_DAYS", "岁月如歌", "累计 365 天约定未超标",
+            seed("DIAMOND_CTRL_DAYS", "A Year in Tune", "Stay within commitment limits for 365 total days",
                 """{"type":"control_days","value":365}""", AchievementTier.DIAMOND, "🏰")
-            seed("DIAMOND_CTRL_STREAK", "百日无懈", "连续 100 天约定未超标",
+            seed("DIAMOND_CTRL_STREAK", "Hundred-Day Flawless", "Stay within commitment limits for 100 days in a row",
                 """{"type":"control_streak","value":100}""", AchievementTier.DIAMOND, "⚡")
-            seed("DIAMOND_ENC_DAYS", "年年有余", "累计 365 天鼓励达标",
+            seed("DIAMOND_ENC_DAYS", "A Full Year Ahead", "Meet encouragement goals for 365 total days",
                 """{"type":"encourage_days","value":365}""", AchievementTier.DIAMOND, "⚔️")
-            seed("DIAMOND_ENC_STREAK", "百战百胜", "连续 100 天鼓励达标",
+            seed("DIAMOND_ENC_STREAK", "Hundred Battles Won", "Meet encouragement goals for 100 days in a row",
                 """{"type":"encourage_streak","value":100}""", AchievementTier.DIAMOND, "🗡️")
 
             // ══════════ 🌟 Legendary 传奇阶 ══════════
-            seed("LEGEND_POINTS", "不朽传说", "累计赚取 10000 积分",
+            seed("LEGEND_POINTS", "Immortal Legend", "Earn 10000 points",
                 """{"type":"points","value":10000}""", AchievementTier.LEGENDARY, "🐉")
-            seed("LEGEND_REDEEM", "万金散尽", "累计消费 10000 积分",
+            seed("LEGEND_REDEEM", "Ten Thousand Spent", "Spend 10000 points",
                 """{"type":"redeem_points","value":10000}""", AchievementTier.LEGENDARY, "💰")
-            seed("LEGEND_CTRL_DAYS", "万世千秋", "累计 10000 天约定未超标",
+            seed("LEGEND_CTRL_DAYS", "Eternal Commitment", "Stay within commitment limits for 10000 total days",
                 """{"type":"control_days","value":10000}""", AchievementTier.LEGENDARY, "⭐")
-            seed("LEGEND_CTRL_STREAK", "誓约永恒", "连续 365 天约定未超标",
+            seed("LEGEND_CTRL_STREAK", "Vow Eternal", "Stay within commitment limits for 365 days in a row",
                 """{"type":"control_streak","value":365}""", AchievementTier.LEGENDARY, "🔱")
-            seed("LEGEND_ENC_DAYS", "与日同辉", "累计 10000 天鼓励达标",
+            seed("LEGEND_ENC_DAYS", "Bright as the Sun", "Meet encouragement goals for 10000 total days",
                 """{"type":"encourage_days","value":10000}""", AchievementTier.LEGENDARY, "🌈")
-            seed("LEGEND_ENC_STREAK", "时间领主", "连续 365 天鼓励达标",
+            seed("LEGEND_ENC_STREAK", "Time Keeper", "Meet encouragement goals for 365 days in a row",
                 """{"type":"encourage_streak","value":365}""", AchievementTier.LEGENDARY, "⏳")
         }
     }
+
+    private fun localizedRewardTitle(reward: RedemptionEntity): String =
+        reward.builtinKey?.let { AppText.t("${it}_title") } ?: reward.title
 
     /**
      * 检查并解锁达成条件的成就

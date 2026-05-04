@@ -24,6 +24,9 @@ data class RedemptionHistoryEntity(
     @ColumnInfo(name = "target_group_name")
     val targetGroupName: String? = null,
 
+    @ColumnInfo(name = "reward_builtin_key")
+    val rewardBuiltinKey: String? = null,
+
     @ColumnInfo(name = "redeemed_at")
     val redeemedAt: Long
 )

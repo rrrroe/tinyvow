@@ -1,5 +1,7 @@
 package com.rrrrz.tinyvow.ui.home
 
+import com.rrrrz.tinyvow.i18n.AppText
+
 import android.app.Activity
 import android.content.ClipData
 import android.content.Context
@@ -168,8 +170,8 @@ fun GroupDashboard(
             verticalAlignment = Alignment.Top,
         ) {
             SectionCard(
-                title = "小约定",
-                subtitle = "限制类",
+                title = AppText.t("group_commitment"),
+                subtitle = AppText.t("group_limit_type"),
                 groups = controlGroups,
                 usageMap = usageMap,
                 accent = themeColors.control,
@@ -189,8 +191,8 @@ fun GroupDashboard(
             )
 
             SectionCard(
-                title = "小鼓励",
-                subtitle = "积分目标",
+                title = AppText.t("group_small_encouragement"),
+                subtitle = AppText.t("group_points_target"),
                 groups = encourageGroups,
                 usageMap = usageMap,
                 accent = themeColors.encourage,
@@ -212,7 +214,7 @@ fun GroupDashboard(
 
         if (isLoadingApps) {
             Text(
-                text = "正在加载应用列表…",
+                text = AppText.t("group_loading_app_list"),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(horizontal = 4.dp)
@@ -241,7 +243,7 @@ fun GroupDashboard(
 
     sortingType?.let { type ->
         GroupSortDialog(
-            title = if (type == GroupType.CONTROL) "小约定排序" else "小鼓励排序",
+            title = if (type == GroupType.CONTROL) AppText.t("group_commitmentsort") else AppText.t("group_encourage_sort_title"),
             groups = if (type == GroupType.CONTROL) controlGroups else encourageGroups,
             onDismiss = { sortingType = null },
             onSave = { orderedIds ->
@@ -316,7 +318,7 @@ private fun SectionCard(
                 ) {
                     Icon(
                         imageVector = Icons.Default.Sort,
-                        contentDescription = "排序",
+                        contentDescription = AppText.t("group_sort"),
                         tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(18.dp),
                     )
@@ -327,7 +329,7 @@ private fun SectionCard(
                 ) {
                     Icon(
                         imageVector = Icons.Default.Add,
-                        contentDescription = "新增分组",
+                        contentDescription = AppText.t("group_add_group"),
                         tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(18.dp),
                     )
@@ -336,7 +338,7 @@ private fun SectionCard(
 
             if (groups.isEmpty()) {
                 Text(
-                    text = "暂无分组",
+                    text = AppText.t("group_no_groups_yet"),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 2.dp, bottom = 4.dp)
@@ -371,14 +373,14 @@ private fun GroupCard(
     val context = LocalContext.current
     val themeColors = LocalThemeColors.current
     val periodLabel = when (groupData.group.limitPeriod) {
-        LimitPeriod.DAILY -> "每日"
-        LimitPeriod.WEEKLY -> "每周"
-        LimitPeriod.MONTHLY -> "每月"
+        LimitPeriod.DAILY -> AppText.t("group_daily")
+        LimitPeriod.WEEKLY -> AppText.t("group_weekly")
+        LimitPeriod.MONTHLY -> AppText.t("group_monthly")
     }
     val detailText = if (groupData.group.type == GroupType.ENCOURAGE) {
-        "$periodLabel ${usedMinutes}/${groupData.group.limitMinutes}分钟 · ${trimTrailingZero(groupData.group.pointsPerMinute)}分/分钟"
+        AppText.t("group_value_value_value_min_value_pts_min", periodLabel, usedMinutes, groupData.group.limitMinutes, trimTrailingZero(groupData.group.pointsPerMinute))
     } else {
-        "$periodLabel ${usedMinutes}/${groupData.group.limitMinutes}分钟"
+        AppText.t("group_value_value_value_min", periodLabel, usedMinutes, groupData.group.limitMinutes)
     }
     val rawProgress = if (groupData.group.limitMinutes > 0) {
         usedMinutes.toFloat() / groupData.group.limitMinutes.toFloat()
@@ -530,7 +532,7 @@ private fun GroupSortDialog(
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 if (orderedGroups.isEmpty()) {
-                    Text("暂无分组", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    Text(AppText.t("group_no_groups_yet"), color = MaterialTheme.colorScheme.onSurfaceVariant)
                 } else {
                     orderedGroups.forEachIndexed { index, item ->
                         Surface(
@@ -565,7 +567,7 @@ private fun GroupSortDialog(
                                     enabled = index > 0,
                                     modifier = Modifier.size(32.dp),
                                 ) {
-                                    Icon(Icons.Default.KeyboardArrowUp, contentDescription = "上移")
+                                    Icon(Icons.Default.KeyboardArrowUp, contentDescription = AppText.t("group_move_up"))
                                 }
                                 IconButton(
                                     onClick = {
@@ -580,7 +582,7 @@ private fun GroupSortDialog(
                                     enabled = index < orderedGroups.lastIndex,
                                     modifier = Modifier.size(32.dp),
                                 ) {
-                                    Icon(Icons.Default.KeyboardArrowDown, contentDescription = "下移")
+                                    Icon(Icons.Default.KeyboardArrowDown, contentDescription = AppText.t("group_move_down"))
                                 }
                             }
                         }
@@ -590,12 +592,12 @@ private fun GroupSortDialog(
         },
         confirmButton = {
             TextButton(onClick = { onSave(orderedGroups.map { it.group.id }) }) {
-                Text("保存")
+                Text(AppText.t("group_save"))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("取消")
+                Text(AppText.t("group_cancel"))
             }
         },
     )
@@ -672,7 +674,7 @@ private fun GroupDetailDialog(
                         shareGroupDetailBitmap(
                             context = context,
                             groupData = groupData,
-                            tabLabel = listOf("今日", "本周", "历史")[selectedTab],
+                            tabLabel = listOf(AppText.t("group_today"), AppText.t("group_this_week"), AppText.t("group_history"))[selectedTab],
                             todayUsageMillis = todayUsageMillis,
                             weekUsageMillis = weekUsageByDay.sumOf { it.second },
                             historyItems = groupHistory,
@@ -685,17 +687,17 @@ private fun GroupDetailDialog(
                     },
                     modifier = Modifier.size(36.dp),
                 ) {
-                    Icon(Icons.Default.Share, contentDescription = "分享")
+                    Icon(Icons.Default.Share, contentDescription = AppText.t("group_share"))
                 }
                 IconButton(onClick = onDismiss, modifier = Modifier.size(36.dp)) {
-                    Icon(Icons.Default.Close, contentDescription = "关闭")
+                    Icon(Icons.Default.Close, contentDescription = AppText.t("group_close"))
                 }
             }
         },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("今日", "本周", "历史").forEachIndexed { index, label ->
+                    listOf(AppText.t("group_today"), AppText.t("group_this_week"), AppText.t("group_history")).forEachIndexed { index, label ->
                         Surface(
                             onClick = { selectedTab = index },
                             shape = RoundedCornerShape(999.dp),
@@ -742,14 +744,14 @@ private fun GroupTodayPanel(
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         DetailMetricGrid(
             items = listOf(
-                "今日使用" to formatUsageDuration(usageMillis),
-                "目标/限额" to "${groupData.group.limitMinutes}分钟",
-                "应用数量" to "${groupData.packageNames.size} 个",
-                "状态" to if (completed) "已达成" else if (groupData.group.type == GroupType.CONTROL) "已超出" else "进行中",
+                AppText.t("group_today_usage") to formatUsageDuration(usageMillis),
+                AppText.t("group_target_limit_label") to AppText.t("group_value_min", groupData.group.limitMinutes),
+                AppText.t("group_app_count_label") to AppText.t("group_app_count_value", groupData.packageNames.size),
+                AppText.t("group_status") to if (completed) AppText.t("group_completed") else if (groupData.group.type == GroupType.CONTROL) AppText.t("group_over_by") else AppText.t("group_label_2"),
             ),
         )
         Text(
-            text = if (delta >= 0L) "剩余 ${formatUsageDuration(delta)}" else "超出 ${formatUsageDuration(-delta)}",
+            text = if (delta >= 0L) AppText.t("group_remaining_value", formatUsageDuration(delta)) else AppText.t("group_over_by_value", formatUsageDuration(-delta)),
             style = MaterialTheme.typography.bodyMedium,
             color = if (delta >= 0L) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
             fontWeight = FontWeight.SemiBold,
@@ -767,10 +769,10 @@ private fun GroupWeekPanel(
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         DetailMetricGrid(
             items = listOf(
-                "本周累计" to formatUsageDuration(totalUsage),
-                "配置目标" to "${groupData.group.limitMinutes}分钟",
-                "记录天数" to "${usageByDay.size} 天",
-                "进度" to "${((totalUsage.toFloat() / targetMillis.coerceAtLeast(1).toFloat()) * 100).toInt()}%",
+                AppText.t("group_week_total_label") to formatUsageDuration(totalUsage),
+                AppText.t("group_configured_target") to AppText.t("group_value_min", groupData.group.limitMinutes),
+                AppText.t("group_record_days_label") to AppText.t("group_value_days_5", usageByDay.size),
+                AppText.t("group_label_3") to "${((totalUsage.toFloat() / targetMillis.coerceAtLeast(1).toFloat()) * 100).toInt()}%",
             ),
         )
         usageByDay.forEach { (date, usage) ->
@@ -793,14 +795,14 @@ private fun GroupHistoryPanel(
     Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
         DetailMetricGrid(
             items = listOf(
-                "近 30 天" to "${items.size} 天",
-                "完成" to "$completedCount 天",
-                "总使用" to formatUsageDuration(totalUsage),
-                if (groupData.group.type == GroupType.ENCOURAGE) "积分" to "${trimTrailingZero(items.sumOf { it.earnedPoints })}分" else "拦截" to "${items.sumOf { it.blockEventCount }} 次",
+                AppText.t("group_last_30_days") to AppText.t("group_value_days", items.size),
+                AppText.t("group_complete") to AppText.t("group_value_days_4", completedCount),
+                AppText.t("group_total_usage") to formatUsageDuration(totalUsage),
+                if (groupData.group.type == GroupType.ENCOURAGE) AppText.t("group_points") to AppText.t("group_points_value", trimTrailingZero(items.sumOf { it.earnedPoints })) else AppText.t("group_blocks") to AppText.t("group_value_times", items.sumOf { it.blockEventCount }),
             ),
         )
         if (items.isEmpty()) {
-            Text("暂无历史归档", color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(AppText.t("group_no_archived_history_yet"), color = MaterialTheme.colorScheme.onSurfaceVariant)
         } else {
             items.take(8).forEach { item ->
                 DetailProgressRow(
@@ -975,7 +977,7 @@ private fun GroupEditDialog(
                     IconButton(onClick = onDismiss) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "返回",
+                            contentDescription = AppText.t("group_back"),
                             tint = MaterialTheme.colorScheme.primary
                         )
                     }
@@ -984,7 +986,7 @@ private fun GroupEditDialog(
                         IconButton(onClick = { showDeleteConfirm = true }) {
                             Icon(
                                 imageVector = Icons.Default.Delete,
-                                contentDescription = "删除",
+                                contentDescription = AppText.t("group_delete"),
                                 tint = MaterialTheme.colorScheme.primary
                             )
                         }
@@ -1004,7 +1006,7 @@ private fun GroupEditDialog(
                     ) {
                         Icon(
                             imageVector = Icons.Default.Check,
-                            contentDescription = "保存",
+                            contentDescription = AppText.t("group_save"),
                             tint = if (canSave) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
                         )
                     }
@@ -1013,7 +1015,7 @@ private fun GroupEditDialog(
                 UnifiedInputField(
                     value = groupName,
                     onValueChange = { groupName = it },
-                    placeholder = "分组名称（如：游戏、视频）",
+                    placeholder = AppText.t("group_name_placeholder"),
                     modifier = Modifier.fillMaxWidth(),
                     keyboardType = KeyboardType.Text,
                     textAlign = TextAlign.Start
@@ -1034,7 +1036,7 @@ private fun GroupEditDialog(
                         value = limitText,
                         onValueChange = { limitText = it.filter(Char::isDigit).take(4) },
                         placeholder = "0",
-                        suffix = "分钟",
+                        suffix = AppText.t("group_minutes"),
                         modifier = Modifier.weight(1f),
                         keyboardType = KeyboardType.Number,
                         textAlign = TextAlign.End
@@ -1044,8 +1046,8 @@ private fun GroupEditDialog(
                             value = pointRateText,
                             onValueChange = { pointRateText = sanitizeDecimalInput(it) },
                             placeholder = "0",
-                            prefix = "每分钟",
-                            suffix = "分",
+                            prefix = AppText.t("group_minutes_2"),
+                            suffix = AppText.t("group_pts"),
                             modifier = Modifier.weight(1f),
                             keyboardType = KeyboardType.Decimal,
                             textAlign = TextAlign.End
@@ -1066,7 +1068,7 @@ private fun GroupEditDialog(
                         border = if (showOnlyUsedInSevenDays) null else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
                     ) {
                         Text(
-                            text = if (showOnlyUsedInSevenDays) "近7天活跃" else "全部应用",
+                            text = if (showOnlyUsedInSevenDays) AppText.t("group_active_last_7_days") else AppText.t("group_all_apps"),
                             style = MaterialTheme.typography.labelLarge,
                             fontWeight = FontWeight.Bold,
                             color = if (showOnlyUsedInSevenDays) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
@@ -1111,8 +1113,8 @@ private fun GroupEditDialog(
     if (showDeleteConfirm) {
         AlertDialog(
             onDismissRequest = { showDeleteConfirm = false },
-            title = { Text("删除分组") },
-            text = { Text("删除后该分组配置会被移除，是否继续？") },
+            title = { Text(AppText.t("group_delete_group")) },
+            text = { Text(AppText.t("group_delete_confirmation")) },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -1120,12 +1122,12 @@ private fun GroupEditDialog(
                         onDelete()
                     }
                 ) {
-                    Text("删除")
+                    Text(AppText.t("group_delete"))
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showDeleteConfirm = false }) {
-                    Text("取消")
+                    Text(AppText.t("group_cancel"))
                 }
             }
         )
@@ -1215,7 +1217,7 @@ private fun SearchField(
                 Box(modifier = Modifier.fillMaxWidth()) {
                     if (value.isBlank()) {
                         Text(
-                            text = "搜索应用",
+                            text = AppText.t("group_search_apps"),
                             style = MaterialTheme.typography.titleSmall,
                             color = MaterialTheme.colorScheme.outline
                         )
@@ -1323,9 +1325,9 @@ private fun CompactPeriodSelector(
 ) {
     var expanded by remember { mutableStateOf(false) }
     val label = when (period) {
-        LimitPeriod.DAILY -> if (groupType == GroupType.ENCOURAGE) "每日目标" else "每日限额"
-        LimitPeriod.WEEKLY -> if (groupType == GroupType.ENCOURAGE) "每周目标" else "每周限额"
-        LimitPeriod.MONTHLY -> if (groupType == GroupType.ENCOURAGE) "每月目标" else "每月限额"
+        LimitPeriod.DAILY -> if (groupType == GroupType.ENCOURAGE) AppText.t("group_daily_target") else AppText.t("group_daily_limit_label")
+        LimitPeriod.WEEKLY -> if (groupType == GroupType.ENCOURAGE) AppText.t("group_weekly_target") else AppText.t("group_weekly_limit_label")
+        LimitPeriod.MONTHLY -> if (groupType == GroupType.ENCOURAGE) AppText.t("group_monthly_target") else AppText.t("group_monthly_limit_label")
     }
 
     Box(modifier = modifier) {
@@ -1356,9 +1358,9 @@ private fun CompactPeriodSelector(
         ) {
             listOf(LimitPeriod.DAILY, LimitPeriod.WEEKLY, LimitPeriod.MONTHLY).forEach { option ->
                 val optionLabel = when (option) {
-                    LimitPeriod.DAILY -> if (groupType == GroupType.ENCOURAGE) "每日目标" else "每日限额"
-                    LimitPeriod.WEEKLY -> if (groupType == GroupType.ENCOURAGE) "每周目标" else "每周限额"
-                    LimitPeriod.MONTHLY -> if (groupType == GroupType.ENCOURAGE) "每月目标" else "每月限额"
+                    LimitPeriod.DAILY -> if (groupType == GroupType.ENCOURAGE) AppText.t("group_daily_target") else AppText.t("group_daily_limit_label")
+                    LimitPeriod.WEEKLY -> if (groupType == GroupType.ENCOURAGE) AppText.t("group_weekly_target") else AppText.t("group_weekly_limit_label")
+                    LimitPeriod.MONTHLY -> if (groupType == GroupType.ENCOURAGE) AppText.t("group_monthly_target") else AppText.t("group_monthly_limit_label")
                 }
                 DropdownMenuItem(
                     text = { Text(optionLabel) },
@@ -1441,15 +1443,15 @@ private tailrec fun Context.findActivity(): Activity? = when (this) {
 }
 
 private fun formatUsageDuration(durationMillis: Long): String {
-    if (durationMillis <= 0L) return "<1分钟"
+    if (durationMillis <= 0L) return AppText.t("group_duration_less_than_one_minute")
     val totalMinutes = durationMillis / 60_000L
-    if (totalMinutes <= 0L) return "<1分钟"
+    if (totalMinutes <= 0L) return AppText.t("group_duration_less_than_one_minute")
     val hours = totalMinutes / 60
     val minutes = totalMinutes % 60
     return when {
-        hours > 0 && minutes > 0 -> "${hours}小时${minutes}分钟"
-        hours > 0 -> "${hours}小时"
-        else -> "${minutes}分钟"
+        hours > 0 && minutes > 0 -> AppText.t("group_duration_hours_minutes_compact", hours, minutes)
+        hours > 0 -> AppText.t("duration_value_h", hours)
+        else -> AppText.t("duration_value_min", minutes)
     }
 }
 
@@ -1468,7 +1470,7 @@ private fun shareGroupDetailBitmap(
 ) {
     val bitmap = renderGroupDetailBitmap(
         groupName = groupData.group.name,
-        typeLabel = if (groupData.group.type == GroupType.CONTROL) "小约定" else "小鼓励",
+        typeLabel = if (groupData.group.type == GroupType.CONTROL) AppText.t("group_commitment") else AppText.t("group_small_encouragement"),
         tabLabel = tabLabel,
         todayUsage = formatUsageDuration(todayUsageMillis),
         weekUsage = formatUsageDuration(weekUsageMillis),
@@ -1480,7 +1482,7 @@ private fun shareGroupDetailBitmap(
         accent = accent,
         textColor = textColor,
         mutedColor = mutedColor,
-        limitText = "${groupData.group.limitMinutes} 分钟",
+        limitText = AppText.t("group_value_minutes", groupData.group.limitMinutes),
     )
     val shareDir = File(context.cacheDir, "share").apply { mkdirs() }
     val file = File(shareDir, "tinyvow-group-${System.currentTimeMillis()}.png")
@@ -1491,11 +1493,11 @@ private fun shareGroupDetailBitmap(
     val intent = Intent(Intent.ACTION_SEND).apply {
         type = "image/png"
         putExtra(Intent.EXTRA_STREAM, uri)
-        putExtra(Intent.EXTRA_TITLE, "Tiny Vow 分组数据")
-        clipData = ClipData.newUri(context.contentResolver, "Tiny Vow 分组数据", uri)
+        putExtra(Intent.EXTRA_TITLE, AppText.t("group_tiny_vow_group_data"))
+        clipData = ClipData.newUri(context.contentResolver, AppText.t("group_tiny_vow_group_data"), uri)
         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
     }
-    context.startActivity(Intent.createChooser(intent, "分享分组数据"))
+    context.startActivity(Intent.createChooser(intent, AppText.t("group_share_group_data")))
 }
 
 private fun renderGroupDetailBitmap(
@@ -1553,12 +1555,12 @@ private fun renderGroupDetailBitmap(
     })
 
     val metrics = listOf(
-        "今日使用" to todayUsage,
-        "本周累计" to weekUsage,
-        "目标/限额" to limitText,
-        "应用数量" to "${packageCount} 个",
-        "历史天数" to "${historyDays} 天",
-        "完成天数" to "${completedDays} 天",
+        AppText.t("group_today_usage") to todayUsage,
+        AppText.t("group_week_total_label") to weekUsage,
+        AppText.t("group_target_limit_label") to limitText,
+        AppText.t("group_app_count_label") to AppText.t("group_app_count_value", packageCount),
+        AppText.t("group_history_days_label") to AppText.t("group_value_days_2", historyDays),
+        AppText.t("group_completed_days_label") to AppText.t("group_value_days_3", completedDays),
     )
     metrics.forEachIndexed { index, metric ->
         val row = index / 2
@@ -1581,7 +1583,7 @@ private fun renderGroupDetailBitmap(
         canvas.drawText(metric.first, left + 32f, top + 52f, labelPaint)
         drawBitmapEllipsizedText(canvas, metric.second, left + 32f, top + 120f, 316f, valuePaint)
     }
-    canvas.drawText("把注意力还给生活", 110f, height - 142f, Paint(labelPaint).apply { textSize = 34f })
+    canvas.drawText(AppText.t("group_label"), 110f, height - 142f, Paint(labelPaint).apply { textSize = 34f })
     return bitmap
 }
 

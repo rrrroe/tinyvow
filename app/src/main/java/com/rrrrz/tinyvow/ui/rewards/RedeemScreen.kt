@@ -1,5 +1,7 @@
 package com.rrrrz.tinyvow.ui.rewards
 
+import com.rrrrz.tinyvow.i18n.AppText
+
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.background
@@ -51,10 +53,10 @@ fun RedeemScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("积分商城", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) },
+                title = { Text(AppText.t("home_rewards_store"), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = AppText.t("group_back"))
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -72,7 +74,7 @@ fun RedeemScreen(
             shadowElevation = 8.dp
         ) {
             Column(modifier = Modifier.padding(24.dp)) {
-                Text("当前持有积分", style = MaterialTheme.typography.labelLarge, color = Color.White.copy(alpha = 0.8f))
+                Text(AppText.t("redeem_current_points"), style = MaterialTheme.typography.labelLarge, color = Color.White.copy(alpha = 0.8f))
                 Spacer(Modifier.height(8.dp))
                 Row(verticalAlignment = Alignment.Bottom) {
                     Text(
@@ -92,7 +94,7 @@ fun RedeemScreen(
         }
 
         Text(
-            "可兑换项",
+            AppText.t("redeem_available_rewards"),
             style = MaterialTheme.typography.titleMedium,
             fontWeight = FontWeight.Bold,
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
@@ -124,7 +126,7 @@ fun RedeemScreen(
                 ) {
                     Icon(Icons.Default.Add, contentDescription = null)
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("添加自定义奖励")
+                    Text(AppText.t("redeem_add_custom_reward"))
                 }
             }
             
@@ -134,7 +136,7 @@ fun RedeemScreen(
             if (redemptionHistory.isNotEmpty()) {
                 item {
                     Text(
-                        "最近兑换记录",
+                        AppText.t("redeem_recent_redemptions"),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.padding(vertical = 8.dp)
@@ -197,17 +199,18 @@ fun RewardItem(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                Text(reward.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                if (reward.description.isNotBlank()) {
-                    Text(reward.description, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(reward.localizedTitle(), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                val description = reward.localizedDescription()
+                if (description.isNotBlank()) {
+                    Text(description, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 Text(
-                    if (reward.rewardType == RewardType.TIME_PACK) "✨ 时光胶囊: 延时 ${reward.bonusMinutes} 分钟" else "🎁 线下奖励",
+                    if (reward.rewardType == RewardType.TIME_PACK) AppText.t("redeem_time_capsule_value_minutes", reward.bonusMinutes) else AppText.t("redeem_offline_reward"),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.primary
                 )
                 Text(
-                    text = if (reward.stock == -1) "库存: 无穷大" else "剩余库存: ${reward.stock}",
+                    text = if (reward.stock == -1) AppText.t("redeem_stock_unlimited") else AppText.t("redeem_stock_left_value", reward.stock),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.outline
                 )
@@ -275,7 +278,7 @@ fun RewardItem(
     if (showGroupPicker) {
         AlertDialog(
             onDismissRequest = { showGroupPicker = false },
-            title = { Text("选择目标分组") },
+            title = { Text(AppText.t("redeem_choose_target_group")) },
             text = {
                 Column {
                     groups.filter { it.group.type == com.rrrrz.tinyvow.data.db.GroupType.CONTROL }.forEach { group ->
@@ -310,20 +313,20 @@ fun RewardEditDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(if (reward == null) "添加自定义奖励" else "编辑奖励") },
+        title = { Text(if (reward == null) AppText.t("redeem_add_custom_reward") else AppText.t("redeem_edit_reward")) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedTextField(
                     value = title,
                     onValueChange = { title = it },
-                    label = { Text("项目名称") },
+                    label = { Text(AppText.t("redeem_item_name")) },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp)
                 )
                 OutlinedTextField(
                     value = cost,
                     onValueChange = { cost = it },
-                    label = { Text("所需积分") },
+                    label = { Text(AppText.t("redeem_required_points")) },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp),
                     keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number)
@@ -331,14 +334,14 @@ fun RewardEditDialog(
                 
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Checkbox(checked = isInfinite, onCheckedChange = { isInfinite = it })
-                    Text("无穷大库存", style = MaterialTheme.typography.bodyMedium)
+                    Text(AppText.t("redeem_unlimited_stock"), style = MaterialTheme.typography.bodyMedium)
                 }
 
                 if (!isInfinite) {
                     OutlinedTextField(
                         value = stock,
                         onValueChange = { stock = it },
-                        label = { Text("库存数量") },
+                        label = { Text(AppText.t("redeem_stock_quantity")) },
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(12.dp),
                         keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = androidx.compose.ui.text.input.KeyboardType.Number)
@@ -348,7 +351,7 @@ fun RewardEditDialog(
                 OutlinedTextField(
                     value = description,
                     onValueChange = { description = it },
-                    label = { Text("描述 (可选)") },
+                    label = { Text(AppText.t("redeem_description_optional")) },
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp),
                     minLines = 2
@@ -363,11 +366,11 @@ fun RewardEditDialog(
                 },
                 enabled = title.isNotBlank()
             ) {
-                Text(if (reward == null) "添加" else "保存")
+                Text(if (reward == null) AppText.t("redeem_add") else AppText.t("group_save"))
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("取消") }
+            TextButton(onClick = onDismiss) { Text(AppText.t("group_cancel")) }
         }
     )
 }
@@ -379,10 +382,10 @@ private fun RedemptionHistoryItem(record: RedemptionHistoryEntity) {
     }
     val subtitle = when (record.historyType) {
         RedemptionHistoryType.TIME_PACK -> {
-            val groupName = record.targetGroupName ?: "目标分组"
-            "$groupName +${record.bonusMinutes} 分钟"
+            val groupName = record.targetGroupName ?: AppText.t("redeem_target_group")
+            AppText.t("redeem_value_value_minutes", groupName, record.bonusMinutes)
         }
-        RedemptionHistoryType.CUSTOM -> "自定义奖励"
+        RedemptionHistoryType.CUSTOM -> AppText.t("redeem_custom_reward")
     }
 
     Surface(
@@ -396,7 +399,7 @@ private fun RedemptionHistoryItem(record: RedemptionHistoryEntity) {
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    record.rewardTitle,
+                    record.localizedRewardTitle(),
                     style = MaterialTheme.typography.bodyLarge,
                     fontWeight = FontWeight.Medium
                 )
@@ -420,3 +423,12 @@ private fun RedemptionHistoryItem(record: RedemptionHistoryEntity) {
         }
     }
 }
+
+private fun RedemptionEntity.localizedTitle(): String =
+    builtinKey?.let { AppText.t("${it}_title") } ?: title
+
+private fun RedemptionEntity.localizedDescription(): String =
+    builtinKey?.let { AppText.t("${it}_description") } ?: description
+
+private fun RedemptionHistoryEntity.localizedRewardTitle(): String =
+    rewardBuiltinKey?.let { AppText.t("${it}_title") } ?: rewardTitle

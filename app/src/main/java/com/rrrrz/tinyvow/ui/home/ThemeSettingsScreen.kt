@@ -1,5 +1,7 @@
 package com.rrrrz.tinyvow.ui.home
 
+import com.rrrrz.tinyvow.i18n.AppText
+
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -55,6 +57,7 @@ import com.rrrrz.tinyvow.ui.theme.ThemePresets
 import com.rrrrz.tinyvow.ui.theme.ThemeSeed
 import com.rrrrz.tinyvow.ui.theme.argbToHex
 import com.rrrrz.tinyvow.ui.theme.createCustomTheme
+import com.rrrrz.tinyvow.ui.theme.localizedName
 import com.rrrrz.tinyvow.ui.theme.parseHexColorOrNull
 
 @Composable
@@ -84,12 +87,12 @@ fun ThemeSettingsScreen(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = AppText.t("group_back"))
             }
             Column(modifier = Modifier.weight(1f)) {
-                Text("外观主题", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Text(AppText.t("me_appearance_theme"), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
                 Text(
-                    "管理预设和自定义三色主题",
+                    AppText.t("theme_manage_preset_and_custom_three_color_themes"),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -97,7 +100,7 @@ fun ThemeSettingsScreen(
             Button(
                 onClick = {
                     editingTheme = createCustomTheme(
-                        name = "自定义主题",
+                        name = AppText.t("settings_custom_theme"),
                         controlColor = ThemePresets.first().controlColor,
                         encourageColor = ThemePresets.first().encourageColor,
                         baseColor = ThemePresets.first().baseColor,
@@ -106,7 +109,7 @@ fun ThemeSettingsScreen(
             ) {
                 Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(6.dp))
-                Text("新建")
+                Text(AppText.t("me_new"))
             }
         }
 
@@ -124,7 +127,7 @@ fun ThemeSettingsScreen(
                             theme
                         } else {
                             createCustomTheme(
-                                name = "${theme.name} 自定义",
+                                name = AppText.t("me_value_custom", theme.localizedName()),
                                 controlColor = theme.controlColor,
                                 encourageColor = theme.encourageColor,
                                 baseColor = theme.baseColor,
@@ -133,7 +136,7 @@ fun ThemeSettingsScreen(
                     },
                     onCopy = {
                         editingTheme = createCustomTheme(
-                            name = "${theme.name} 副本",
+                            name = AppText.t("me_value_copy", theme.localizedName()),
                             controlColor = theme.controlColor,
                             encourageColor = theme.encourageColor,
                             baseColor = theme.baseColor,
@@ -198,30 +201,30 @@ private fun ThemeListItem(
                     ThemeStrip(Color(theme.baseColor))
                 }
                 Text(
-                    if (theme.isCustom) "自定义" else "预设",
+                    if (theme.isCustom) AppText.t("theme_custom") else AppText.t("theme_presets"),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
 
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(theme.name, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(theme.localizedName(), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
                 Text(
-                    "限制 ${argbToHex(theme.controlColor)} · 鼓励 ${argbToHex(theme.encourageColor)} · 基础 ${argbToHex(theme.baseColor)}",
+                    AppText.t("theme_limit_value_encourage_value_base_value", argbToHex(theme.controlColor), argbToHex(theme.encourageColor), argbToHex(theme.baseColor)),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
 
             IconButton(onClick = onCopy) {
-                Icon(Icons.Default.ContentCopy, contentDescription = "复制")
+                Icon(Icons.Default.ContentCopy, contentDescription = AppText.t("me_copy"))
             }
             IconButton(onClick = onEdit) {
-                Icon(Icons.Default.Edit, contentDescription = "编辑")
+                Icon(Icons.Default.Edit, contentDescription = AppText.t("me_edit"))
             }
             if (onDelete != null) {
                 IconButton(onClick = onDelete) {
-                    Icon(Icons.Default.Delete, contentDescription = "删除", tint = LocalThemeColors.current.control)
+                    Icon(Icons.Default.Delete, contentDescription = AppText.t("group_delete"), tint = LocalThemeColors.current.control)
                 }
             }
         }
@@ -241,18 +244,18 @@ private fun ThemeEditorDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("编辑主题", fontWeight = FontWeight.Bold) },
+        title = { Text(AppText.t("me_edit_theme"), fontWeight = FontWeight.Bold) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
-                    label = { Text("主题名称") },
+                    label = { Text(AppText.t("me_theme_name")) },
                     singleLine = true,
                 )
-                ColorControl("限制色", "限制组、阻断、超额和风险状态", control, onColorChange = { control = it })
-                ColorControl("鼓励色", "鼓励组、积分、奖励和达成状态", encourage, onColorChange = { encourage = it })
-                ColorControl("基础色", "导航、按钮、卡片和普通组件", base, onColorChange = { base = it })
+                ColorControl(AppText.t("me_limit_color"), AppText.t("theme_limit_groups_blocking_over_limit_and_risk_states"), control, onColorChange = { control = it })
+                ColorControl(AppText.t("me_encourage_color"), AppText.t("theme_encourage_groups_points_rewards_and_completion_states"), encourage, onColorChange = { encourage = it })
+                ColorControl(AppText.t("me_base_color"), AppText.t("theme_navigation_buttons_cards_and_common_components"), base, onColorChange = { base = it })
             }
         },
         confirmButton = {
@@ -260,7 +263,7 @@ private fun ThemeEditorDialog(
                 onClick = {
                     onSave(
                         initialTheme.copy(
-                            name = name.ifBlank { "自定义主题" },
+                            name = name.ifBlank { AppText.t("settings_custom_theme") },
                             controlColor = control,
                             encourageColor = encourage,
                             baseColor = base,
@@ -269,11 +272,11 @@ private fun ThemeEditorDialog(
                     )
                 }
             ) {
-                Text("保存")
+                Text(AppText.t("group_save"))
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("取消") }
+            TextButton(onClick = onDismiss) { Text(AppText.t("group_cancel")) }
         },
     )
 }
@@ -317,15 +320,15 @@ private fun ColorControl(
                 hexInput = value
                 parseHexColorOrNull(value)?.let(onColorChange)
             },
-            label = { Text("颜色代码") },
+            label = { Text(AppText.t("theme_color_code")) },
             placeholder = { Text("#AABBCC") },
             singleLine = true,
         )
-        Text("色相 Hue：${hue.toInt()}°", style = MaterialTheme.typography.labelSmall)
+        Text(AppText.t("theme_hue_value", hue.toInt()), style = MaterialTheme.typography.labelSmall)
         Slider(value = hue, onValueChange = { hue = it; emit() }, valueRange = 0f..360f)
-        Text("饱和度 Saturation：${(saturation * 100).toInt()}%", style = MaterialTheme.typography.labelSmall)
+        Text(AppText.t("theme_saturation_value", (saturation * 100).toInt()), style = MaterialTheme.typography.labelSmall)
         Slider(value = saturation, onValueChange = { saturation = it; emit() }, valueRange = 0.05f..0.80f)
-        Text("明暗 Brightness：${(brightness * 100).toInt()}%", style = MaterialTheme.typography.labelSmall)
+        Text(AppText.t("theme_brightness_value", (brightness * 100).toInt()), style = MaterialTheme.typography.labelSmall)
         Slider(value = brightness, onValueChange = { brightness = it; emit() }, valueRange = 0.55f..0.98f)
     }
 }

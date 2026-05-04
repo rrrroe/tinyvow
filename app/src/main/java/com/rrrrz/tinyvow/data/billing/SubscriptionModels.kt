@@ -1,5 +1,7 @@
 package com.rrrrz.tinyvow.data.billing
 
+import com.rrrrz.tinyvow.i18n.AppText
+
 import com.android.billingclient.api.Purchase
 
 const val TINYVOW_PRO_PRODUCT_ID = "tinyvow_pro"
@@ -30,7 +32,7 @@ data class ProEntitlementState(
 
         fun pending() = ProEntitlementState(
             status = ProEntitlementStatus.PENDING,
-            message = "订阅付款待完成，完成后会自动解锁 Pro",
+            message = AppText.t("billing_subscription_payment_is_pending_pro_unlocks_automaticall"),
         )
 
         fun unavailable(message: String) = ProEntitlementState(

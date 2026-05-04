@@ -13,6 +13,7 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import com.rrrrz.tinyvow.MainActivity
 import com.rrrrz.tinyvow.R
+import com.rrrrz.tinyvow.i18n.AppText
 
 class TinyVowNotifier(
     private val context: Context,
@@ -22,12 +23,13 @@ class TinyVowNotifier(
 
         val notificationManager =
             context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val textContext = AppText.localizedContext(context)
         val channel = NotificationChannel(
             CHANNEL_ID,
-            context.getString(R.string.notification_channel_name),
+            textContext.getString(R.string.notification_channel_name),
             NotificationManager.IMPORTANCE_DEFAULT,
         ).apply {
-            description = context.getString(R.string.notification_channel_desc)
+            description = textContext.getString(R.string.notification_channel_desc)
         }
         notificationManager.createNotificationChannel(channel)
     }
@@ -38,6 +40,7 @@ class TinyVowNotifier(
         exceededText: String,
     ) {
         ensureChannel()
+        val textContext = AppText.localizedContext(context)
         val openAppIntent = Intent(context, MainActivity::class.java)
         val pendingIntent = PendingIntent.getActivity(
             context,
@@ -49,13 +52,13 @@ class TinyVowNotifier(
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle(
-                context.getString(
+                textContext.getString(
                     R.string.notification_limit_title,
                     appName,
                 ),
             )
             .setContentText(
-                context.getString(
+                textContext.getString(
                     R.string.notification_limit_body,
                     exceededText,
                 ),

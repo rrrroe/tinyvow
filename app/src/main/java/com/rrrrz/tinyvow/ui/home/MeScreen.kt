@@ -1,5 +1,7 @@
 package com.rrrrz.tinyvow.ui.home
 
+import com.rrrrz.tinyvow.i18n.AppText
+
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -72,6 +74,7 @@ import com.rrrrz.tinyvow.data.auth.UserSession
 import com.rrrrz.tinyvow.data.billing.ProEntitlementState
 import com.rrrrz.tinyvow.data.billing.ProEntitlementStatus
 import com.rrrrz.tinyvow.data.billing.SubscriptionOffer
+import com.rrrrz.tinyvow.i18n.AppLanguage
 import com.rrrrz.tinyvow.ui.theme.LocalThemeColors
 import com.rrrrz.tinyvow.ui.theme.ThemePresets
 import com.rrrrz.tinyvow.ui.theme.ThemeSeed
@@ -87,12 +90,14 @@ fun MeScreen(
     userPoints: Double,
     selectedThemeId: String,
     customThemes: List<ThemeSeed>,
+    selectedAppLanguage: AppLanguage,
     usageAccessGranted: Boolean,
     accessibilityServiceEnabled: Boolean,
     isAutoStartDismissed: Boolean,
     isIgnoringBattery: Boolean,
     notificationPermissionGranted: Boolean,
     dismissedPermissionPrompts: Set<String>,
+    onSelectAppLanguage: (AppLanguage) -> Unit,
     onSelectTheme: (String) -> Unit,
     onSaveCustomTheme: (ThemeSeed) -> Unit,
     onDeleteCustomTheme: (String) -> Unit,
@@ -121,6 +126,7 @@ fun MeScreen(
     val themeColors = LocalThemeColors.current
     var showPermissionSettings by remember { mutableStateOf(false) }
     var showDataPrivacy by remember { mutableStateOf(false) }
+    var showLanguageSettings by remember { mutableStateOf(false) }
     var showDeleteAccountConfirm by remember { mutableStateOf(false) }
 
     Column(
@@ -163,13 +169,13 @@ fun MeScreen(
                 Spacer(Modifier.width(16.dp))
                 Column {
                     Text(
-                        userSession?.displayName ?: "未登录",
+                        userSession?.displayName ?: AppText.t("me_not_signed_in"),
                         style = MaterialTheme.typography.titleLarge,
                         color = themeColors.onBase,
                         fontWeight = FontWeight.Bold,
                     )
                     Text(
-                        userSession?.email ?: "登录后可恢复订阅并预留多端同步",
+                        userSession?.email ?: AppText.t("me_sign_in_to_restore_subscriptions_and_prepare_for"),
                         style = MaterialTheme.typography.bodySmall,
                         color = themeColors.onBase.copy(alpha = 0.78f),
                     )
@@ -194,44 +200,44 @@ fun MeScreen(
                     horizontalArrangement = Arrangement.SpaceAround,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    MeStatItem(value = userPoints.toInt().toString(), label = "当前积分", color = themeColors.encourage)
+                    MeStatItem(value = userPoints.toInt().toString(), label = AppText.t("me_current_points"), color = themeColors.encourage)
                     HorizontalDivider(
                         modifier = Modifier
                             .width(1.dp)
                             .height(40.dp),
                         color = MaterialTheme.colorScheme.outlineVariant,
                     )
-                    MeStatItem(value = "0", label = "累计自律", color = themeColors.control)
+                    MeStatItem(value = "0", label = AppText.t("me_discipline_total"), color = themeColors.control)
                     HorizontalDivider(
                         modifier = Modifier
                             .width(1.dp)
                             .height(40.dp),
                         color = MaterialTheme.colorScheme.outlineVariant,
                     )
-                    MeStatItem(value = "1", label = "坚持天数", color = themeColors.base)
+                    MeStatItem(value = "1", label = AppText.t("me_streak_days"), color = themeColors.base)
                 }
             }
 
-            MeMenuSection("账户") {
+            MeMenuSection(AppText.t("me_account")) {
                 if (userSession == null) {
                     MeMenuItem(
                         icon = Icons.Default.Settings,
-                        title = if (isGoogleSignInConfigured) "使用 Google 登录" else "Google 登录未配置",
+                        title = if (isGoogleSignInConfigured) AppText.t("me_usage_google_sign_in") else AppText.t("me_google_sign_in_is_not_configured"),
                         onClick = onSignInWithGoogle,
                         color = if (isGoogleSignInConfigured) themeColors.base else MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 } else {
-                    MeMenuItem(icon = Icons.Default.Settings, title = "退出登录", onClick = onSignOut)
+                    MeMenuItem(icon = Icons.Default.Settings, title = AppText.t("me_sign_out"), onClick = onSignOut)
                     MeMenuItem(
                         icon = Icons.Default.Delete,
-                        title = "删除账户",
+                        title = AppText.t("me_delete_account"),
                         onClick = { showDeleteAccountConfirm = true },
                         color = MaterialTheme.colorScheme.error,
                     )
                 }
             }
 
-            MeMenuSection("订阅") {
+            MeMenuSection(AppText.t("me_subscription")) {
                 SubscriptionStatusPanel(
                     entitlement = proEntitlement,
                     offers = subscriptionOffers,
@@ -241,32 +247,40 @@ fun MeScreen(
                 )
             }
 
-            MeMenuSection("数据与隐私") {
-                MeMenuItem(icon = Icons.Default.Settings, title = "本地数据管理", onClick = { showDataPrivacy = true })
-                MeMenuItem(icon = Icons.AutoMirrored.Filled.HelpOutline, title = "隐私政策", onClick = onOpenPrivacyPolicy)
+            MeMenuSection(AppText.t("me_data_and_privacy")) {
+                MeMenuItem(icon = Icons.Default.Settings, title = AppText.t("me_local_data_management"), onClick = { showDataPrivacy = true })
+                MeMenuItem(icon = Icons.AutoMirrored.Filled.HelpOutline, title = AppText.t("me_privacy_policy"), onClick = onOpenPrivacyPolicy)
             }
 
-            MeMenuSection("权限设置") {
-                MeMenuItem(icon = Icons.Default.Settings, title = "权限设置", onClick = { showPermissionSettings = true })
+            MeMenuSection(AppText.t("me_permission_settings")) {
+                MeMenuItem(icon = Icons.Default.Settings, title = AppText.t("me_permission_settings"), onClick = { showPermissionSettings = true })
             }
 
-            MeMenuSection("外观主题") {
-                MeMenuItem(icon = Icons.Default.Palette, title = "主题管理", onClick = onNavigateToThemeSettings)
+            MeMenuSection(AppText.t("selected_language_title")) {
+                MeMenuItem(
+                    icon = Icons.Default.Settings,
+                    title = "${AppText.t("selected_language_title")}: ${selectedAppLanguage.displayName()}",
+                    onClick = { showLanguageSettings = true },
+                )
             }
 
-            MeMenuSection("使用记录") {
-                MeMenuItem(icon = Icons.Default.History, title = "使用历史", onClick = onNavigateToHistory)
+            MeMenuSection(AppText.t("me_appearance_theme")) {
+                MeMenuItem(icon = Icons.Default.Palette, title = AppText.t("me_theme_management"), onClick = onNavigateToThemeSettings)
             }
 
-            MeMenuSection("帮助与联系") {
-                MeMenuItem(icon = Icons.AutoMirrored.Filled.HelpOutline, title = "帮助与反馈", onClick = onNavigateToHelpFeedback)
-                MeMenuItem(icon = Icons.Default.Email, title = "联系我们", onClick = onNavigateToContactUs)
+            MeMenuSection(AppText.t("me_usage_records")) {
+                MeMenuItem(icon = Icons.Default.History, title = AppText.t("me_usage_history"), onClick = onNavigateToHistory)
             }
 
-            MeMenuSection("高级中心") {
+            MeMenuSection(AppText.t("me_help_and_contact")) {
+                MeMenuItem(icon = Icons.AutoMirrored.Filled.HelpOutline, title = AppText.t("me_help_and_feedback"), onClick = onNavigateToHelpFeedback)
+                MeMenuItem(icon = Icons.Default.Email, title = AppText.t("me_contact_us"), onClick = onNavigateToContactUs)
+            }
+
+            MeMenuSection(AppText.t("me_label")) {
                 MeMenuItem(
                     icon = Icons.Default.Science,
-                    title = "实验室（调试工具）",
+                    title = AppText.t("lab_laboratory_debug_tools"),
                     onClick = onNavigateToLaboratory,
                     color = themeColors.base,
                 )
@@ -302,20 +316,31 @@ fun MeScreen(
         )
     }
 
+    if (showLanguageSettings) {
+        LanguageSettingsDialog(
+            selected = selectedAppLanguage,
+            onSelect = {
+                onSelectAppLanguage(it)
+                showLanguageSettings = false
+            },
+            onDismiss = { showLanguageSettings = false },
+        )
+    }
+
     if (showDeleteAccountConfirm) {
         AlertDialog(
             onDismissRequest = { showDeleteAccountConfirm = false },
-            title = { Text("删除账户") },
+            title = { Text(AppText.t("me_delete_account")) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Text("第一版会删除本机保存的登录会话。若选择同时清除本地数据，也会删除当前设备上的分组、历史、积分、奖励和主题。")
+                    Text(AppText.t("me_the_first_version_deletes_the_sign_in_session"))
                     TextButton(
                         onClick = {
                             showDeleteAccountConfirm = false
                             onDeleteAccount(true)
                         },
                     ) {
-                        Text("删除账户并清除本地数据", color = MaterialTheme.colorScheme.error)
+                        Text(AppText.t("me_delete_account_and_clear_local_data"), color = MaterialTheme.colorScheme.error)
                     }
                 }
             },
@@ -326,16 +351,56 @@ fun MeScreen(
                         onDeleteAccount(false)
                     },
                 ) {
-                    Text("仅删除账户")
+                    Text(AppText.t("me_delete_account_only"))
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showDeleteAccountConfirm = false }) {
-                    Text("取消")
+                    Text(AppText.t("group_cancel"))
                 }
             },
         )
     }
+}
+
+private fun AppLanguage.displayName(): String =
+    when (this) {
+        AppLanguage.SYSTEM -> AppText.t("selected_language_system")
+        AppLanguage.ZH_CN -> AppText.t("selected_language_zh_cn")
+        AppLanguage.EN -> AppText.t("selected_language_en")
+    }
+
+@Composable
+private fun LanguageSettingsDialog(
+    selected: AppLanguage,
+    onSelect: (AppLanguage) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(AppText.t("selected_language_title")) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                AppLanguage.entries.forEach { language ->
+                    TextButton(
+                        onClick = { onSelect(language) },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(
+                            text = language.displayName(),
+                            fontWeight = if (language == selected) FontWeight.Bold else FontWeight.Normal,
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(AppText.t("group_cancel"))
+            }
+        },
+    )
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -357,12 +422,12 @@ private fun DataPrivacySheet(
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             Text(
-                text = "本地数据管理",
+                text = AppText.t("me_local_data_management"),
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
             )
             Text(
-                text = "Tiny Vow 会在本机保存你选择管理的 App、使用时长统计、打开次数、夜间使用、积分、兑换、成就、主题和阻断记录。第一版不会自动上传这些数据。",
+                text = AppText.t("me_tiny_vow_stores_the_apps_you_manage_usage"),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -372,7 +437,7 @@ private fun DataPrivacySheet(
                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
             ) {
                 Text(
-                    text = "导出文件只会生成到本机缓存，并通过系统分享面板由你主动发送。清除本地数据会删除当前设备上的分组、历史、积分、奖励、主题和权限提示状态。",
+                    text = AppText.t("me_export_files_are_created_only_in_local_cache"),
                     modifier = Modifier.padding(14.dp),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -382,19 +447,19 @@ private fun DataPrivacySheet(
                 onClick = onExportLocalData,
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text("导出本地数据")
+                Text(AppText.t("home_export_local_data"))
             }
             TextButton(
                 onClick = onOpenPrivacyPolicy,
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text("查看隐私政策")
+                Text(AppText.t("me_view_privacy_policy"))
             }
             TextButton(
                 onClick = { showClearConfirm = true },
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text("清除本地数据", color = MaterialTheme.colorScheme.error)
+                Text(AppText.t("me_clear_local_data"), color = MaterialTheme.colorScheme.error)
             }
             Spacer(modifier = Modifier.height(48.dp))
         }
@@ -403,8 +468,8 @@ private fun DataPrivacySheet(
     if (showClearConfirm) {
         AlertDialog(
             onDismissRequest = { showClearConfirm = false },
-            title = { Text("清除本地数据") },
-            text = { Text("此操作会删除当前设备上的 Tiny Vow 本地记录，无法从应用内恢复。") },
+            title = { Text(AppText.t("me_clear_local_data")) },
+            text = { Text(AppText.t("me_this_deletes_tiny_vow_local_records_on_this")) },
             confirmButton = {
                 TextButton(
                     onClick = {
@@ -413,12 +478,12 @@ private fun DataPrivacySheet(
                         onDismiss()
                     },
                 ) {
-                    Text("清除", color = MaterialTheme.colorScheme.error)
+                    Text(AppText.t("me_clear"), color = MaterialTheme.colorScheme.error)
                 }
             },
             dismissButton = {
                 TextButton(onClick = { showClearConfirm = false }) {
-                    Text("取消")
+                    Text(AppText.t("group_cancel"))
                 }
             },
         )
@@ -461,19 +526,19 @@ private fun PermissionSettingsSheet(
             ) {
                 Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(
-                        text = "权限设置",
+                        text = AppText.t("me_permission_settings"),
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold,
                     )
                     Text(
-                        text = "检查权限状态，或恢复首页已忽略的权限提示。",
+                        text = AppText.t("me_check_permission_status_or_restore_permission_prompts_dismiss"),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
                 if (dismissedPermissionPrompts.isNotEmpty()) {
                     Button(onClick = onClearDismissedPermissionPrompts) {
-                        Text("取消忽略")
+                        Text(AppText.t("me_undismiss"))
                     }
                 }
             }
@@ -485,7 +550,7 @@ private fun PermissionSettingsSheet(
                     color = MaterialTheme.colorScheme.surfaceContainerHigh,
                 ) {
                     Text(
-                        text = "已忽略 ${dismissedPermissionPrompts.size} 项：取消忽略后，首页会重新显示这些提示。",
+                        text = AppText.t("me_value_prompts_dismissed_after_you_undismiss_them_home", dismissedPermissionPrompts.size),
                         modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -543,7 +608,7 @@ private fun ThemeManager(
                             theme
                         } else {
                             createCustomTheme(
-                                name = "${theme.name} 自定义",
+                                name = AppText.t("me_value_custom", theme.name),
                                 controlColor = theme.controlColor,
                                 encourageColor = theme.encourageColor,
                                 baseColor = theme.baseColor,
@@ -552,7 +617,7 @@ private fun ThemeManager(
                     },
                     onCopy = {
                         editingTheme = createCustomTheme(
-                            name = "${theme.name} 副本",
+                            name = AppText.t("me_value_copy", theme.name),
                             controlColor = theme.controlColor,
                             encourageColor = theme.encourageColor,
                             baseColor = theme.baseColor,
@@ -567,7 +632,7 @@ private fun ThemeManager(
             }
             AddThemeCard {
                 editingTheme = createCustomTheme(
-                    name = "自定义主题",
+                    name = AppText.t("settings_custom_theme"),
                     controlColor = ThemePresets.first().controlColor,
                     encourageColor = ThemePresets.first().encourageColor,
                     baseColor = ThemePresets.first().baseColor,
@@ -579,9 +644,9 @@ private fun ThemeManager(
             modifier = Modifier.padding(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            ThemeLegendDot("限制", LocalThemeColors.current.control)
-            ThemeLegendDot("鼓励", LocalThemeColors.current.encourage)
-            ThemeLegendDot("基础", LocalThemeColors.current.base)
+            ThemeLegendDot(AppText.t("me_limit"), LocalThemeColors.current.control)
+            ThemeLegendDot(AppText.t("me_encourage"), LocalThemeColors.current.encourage)
+            ThemeLegendDot(AppText.t("me_base"), LocalThemeColors.current.base)
         }
     }
 
@@ -631,14 +696,14 @@ private fun RowScope.ThemePreviewCard(
             )
             Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
                 IconButton(onClick = onCopy, modifier = Modifier.size(30.dp)) {
-                    Icon(Icons.Default.ContentCopy, contentDescription = "复制", modifier = Modifier.size(16.dp))
+                    Icon(Icons.Default.ContentCopy, contentDescription = AppText.t("me_copy"), modifier = Modifier.size(16.dp))
                 }
                 IconButton(onClick = onEdit, modifier = Modifier.size(30.dp)) {
-                    Icon(Icons.Default.Edit, contentDescription = "编辑", modifier = Modifier.size(16.dp))
+                    Icon(Icons.Default.Edit, contentDescription = AppText.t("me_edit"), modifier = Modifier.size(16.dp))
                 }
                 if (onDelete != null) {
                     IconButton(onClick = onDelete, modifier = Modifier.size(30.dp)) {
-                        Icon(Icons.Default.Delete, contentDescription = "删除", modifier = Modifier.size(16.dp), tint = LocalThemeColors.current.control)
+                        Icon(Icons.Default.Delete, contentDescription = AppText.t("group_delete"), modifier = Modifier.size(16.dp), tint = LocalThemeColors.current.control)
                     }
                 }
             }
@@ -662,8 +727,8 @@ private fun RowScope.AddThemeCard(onClick: () -> Unit) {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center,
         ) {
-            Icon(Icons.Default.Add, contentDescription = "新建", tint = MaterialTheme.colorScheme.primary)
-            Text("新建主题", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Icon(Icons.Default.Add, contentDescription = AppText.t("me_new"), tint = MaterialTheme.colorScheme.primary)
+            Text(AppText.t("me_new_theme"), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
     }
 }
@@ -681,18 +746,18 @@ private fun ThemeEditorDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("编辑主题", fontWeight = FontWeight.Bold) },
+        title = { Text(AppText.t("me_edit_theme"), fontWeight = FontWeight.Bold) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedTextField(
                     value = name,
                     onValueChange = { name = it },
-                    label = { Text("主题名称") },
+                    label = { Text(AppText.t("me_theme_name")) },
                     singleLine = true,
                 )
-                ColorSliderGroup("限制色", control, onColorChange = { control = it })
-                ColorSliderGroup("鼓励色", encourage, onColorChange = { encourage = it })
-                ColorSliderGroup("基础色", base, onColorChange = { base = it })
+                ColorSliderGroup(AppText.t("me_limit_color"), control, onColorChange = { control = it })
+                ColorSliderGroup(AppText.t("me_encourage_color"), encourage, onColorChange = { encourage = it })
+                ColorSliderGroup(AppText.t("me_base_color"), base, onColorChange = { base = it })
             }
         },
         confirmButton = {
@@ -700,7 +765,7 @@ private fun ThemeEditorDialog(
                 onClick = {
                     onSave(
                         initialTheme.copy(
-                            name = name.ifBlank { "自定义主题" },
+                            name = name.ifBlank { AppText.t("settings_custom_theme") },
                             controlColor = control,
                             encourageColor = encourage,
                             baseColor = base,
@@ -709,11 +774,11 @@ private fun ThemeEditorDialog(
                     )
                 }
             ) {
-                Text("保存")
+                Text(AppText.t("group_save"))
             }
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) { Text("取消") }
+            TextButton(onClick = onDismiss) { Text(AppText.t("group_cancel")) }
         },
     )
 }
@@ -810,7 +875,7 @@ private fun SubscriptionStatusPanel(
                 )
             }
             Text(
-                text = firstOffer?.price ?: if (isActive) "已解锁" else "待加载",
+                text = firstOffer?.price ?: if (isActive) AppText.t("me_unlocked") else AppText.t("me_loading"),
                 style = MaterialTheme.typography.labelLarge,
                 color = if (isActive) LocalThemeColors.current.encourage else MaterialTheme.colorScheme.primary,
                 fontWeight = FontWeight.Bold,
@@ -818,7 +883,7 @@ private fun SubscriptionStatusPanel(
         }
 
         Text(
-            text = "免费核心功能保持可用；Pro 只用于后续高级能力入口。订阅、取消和续费由 Google Play 管理。",
+            text = AppText.t("me_core_features_remain_free_pro_is_reserved_for"),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
@@ -835,14 +900,14 @@ private fun SubscriptionStatusPanel(
             enabled = !isActive && !isPending,
             modifier = Modifier.fillMaxWidth(),
         ) {
-            Text(if (firstOffer == null) "加载订阅信息" else "购买 Pro")
+            Text(if (firstOffer == null) AppText.t("me_loading_subscription_info") else AppText.t("me_buy_pro"))
         }
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             TextButton(onClick = onRestorePurchases) {
-                Text("恢复购买")
+                Text(AppText.t("me_restore_purchases"))
             }
             TextButton(onClick = onManageSubscription) {
-                Text("管理订阅")
+                Text(AppText.t("me_manage_subscription"))
             }
         }
     }
@@ -850,10 +915,10 @@ private fun SubscriptionStatusPanel(
 
 private fun entitlementStatusText(entitlement: ProEntitlementState): String =
     when (entitlement.status) {
-        ProEntitlementStatus.ACTIVE -> "Pro 已生效"
-        ProEntitlementStatus.PENDING -> entitlement.message ?: "付款待完成"
-        ProEntitlementStatus.UNAVAILABLE -> entitlement.message ?: "Play Billing 暂不可用"
-        ProEntitlementStatus.FREE -> "当前为免费版"
+        ProEntitlementStatus.ACTIVE -> AppText.t("me_pro_active")
+        ProEntitlementStatus.PENDING -> entitlement.message ?: AppText.t("me_payment_pending")
+        ProEntitlementStatus.UNAVAILABLE -> entitlement.message ?: AppText.t("billing_play_billing_is_temporarily_unavailable")
+        ProEntitlementStatus.FREE -> AppText.t("me_free_version")
     }
 
 @Composable

@@ -1,5 +1,7 @@
 package com.rrrrz.tinyvow.ui.home
 
+import com.rrrrz.tinyvow.i18n.AppText
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -42,10 +44,10 @@ fun HelpFeedbackScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("帮助与反馈") },
+                title = { Text(AppText.t("me_help_and_feedback")) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = AppText.t("group_back"))
                     }
                 },
             )
@@ -60,27 +62,27 @@ fun HelpFeedbackScreen(
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             HelpCard(
-                title = "权限为什么需要手动开启？",
-                body = "Tiny Vow 需要使用情况访问来统计 App 使用时长；无障碍服务只用于识别前台 App 并在超额时显示阻断页。两个权限都会在打开系统设置前先展示说明并征得同意。",
+                title = AppText.t("support_why_do_permissions_need_to_be_enabled_manually"),
+                body = AppText.t("support_tiny_vow_needs_usage_access_to_measure_app"),
             )
             HelpCard(
-                title = "订阅失败或无法购买怎么办？",
-                body = "请确认应用是从 Google Play 测试轨道或正式渠道安装，并且 Play Console 已配置 tinyvow_pro 订阅商品。未配置时，本地安装包只能看到订阅入口，不能完成真实购买。",
+                title = AppText.t("support_what_if_subscription_purchase_fails"),
+                body = AppText.t("support_make_sure_the_app_was_installed_from_a"),
             )
             HelpCard(
-                title = "本地数据如何处理？",
-                body = "应用内可以导出本地数据，也可以清除本地数据。第一版不会自动上传你的分组、使用记录、积分、主题和阻断记录。",
+                title = AppText.t("support_how_is_local_data_handled"),
+                body = AppText.t("support_you_can_export_or_clear_local_data_inside"),
             )
             HelpCard(
-                title = "反馈时请附带什么信息？",
-                body = "建议说明手机型号、系统版本、问题出现的页面、复现步骤，以及是否开启了使用情况访问或无障碍服务。",
+                title = AppText.t("support_what_should_i_include_in_feedback"),
+                body = AppText.t("support_please_include_your_phone_model_system_version_where"),
             )
             Button(
                 onClick = onSendFeedback,
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Icon(Icons.Default.Email, contentDescription = null)
-                Text("发送反馈")
+                Text(AppText.t("support_send_feedback"))
             }
             Spacer(modifier = Modifier.height(32.dp))
         }
@@ -97,10 +99,10 @@ fun ContactUsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("联系我们") },
+                title = { Text(AppText.t("me_contact_us")) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = AppText.t("group_back"))
                     }
                 },
             )
@@ -125,7 +127,7 @@ fun ContactUsScreen(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     Text(
-                        text = "Tiny Vow 支持邮箱",
+                        text = AppText.t("support_tiny_vow_support_email"),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                     )
@@ -135,7 +137,7 @@ fun ContactUsScreen(
                         color = MaterialTheme.colorScheme.primary,
                     )
                     Text(
-                        text = "你可以通过邮件反馈问题、建议、订阅异常或账号相关需求。",
+                        text = AppText.t("support_you_can_send_email_for_bugs_suggestions_subscription"),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -151,14 +153,14 @@ fun ContactUsScreen(
                     modifier = Modifier.weight(1f),
                 ) {
                     Icon(Icons.Default.Email, contentDescription = null)
-                    Text("发送邮件")
+                    Text(AppText.t("support_send_email"))
                 }
                 OutlinedButton(
                     onClick = onCopyEmail,
                     modifier = Modifier.weight(1f),
                 ) {
                     Icon(Icons.Default.ContentCopy, contentDescription = null)
-                    Text("复制邮箱")
+                    Text(AppText.t("support_copy_email"))
                 }
             }
         }

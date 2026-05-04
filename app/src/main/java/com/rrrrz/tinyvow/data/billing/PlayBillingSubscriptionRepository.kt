@@ -1,5 +1,7 @@
 package com.rrrrz.tinyvow.data.billing
 
+import com.rrrrz.tinyvow.i18n.AppText
+
 import android.app.Activity
 import android.content.Context
 import android.content.Intent
@@ -56,13 +58,13 @@ class PlayBillingSubscriptionRepository(
     override suspend fun refresh(): Result<Unit> = runCatching {
         val setup = ensureConnected()
         if (!setup.isOk()) {
-            _entitlement.value = ProEntitlementState.unavailable(setup.debugMessage.ifBlank { "Play Billing 暂不可用" })
+            _entitlement.value = ProEntitlementState.unavailable(setup.debugMessage.ifBlank { AppText.t("billing_play_billing_is_temporarily_unavailable") })
             return@runCatching
         }
 
         val featureResult = billingClient.isFeatureSupported(BillingClient.FeatureType.SUBSCRIPTIONS)
         if (!featureResult.isOk()) {
-            _entitlement.value = ProEntitlementState.unavailable("当前设备不支持 Google Play 订阅")
+            _entitlement.value = ProEntitlementState.unavailable(AppText.t("billing_this_device_does_not_support_google_play_subscriptions"))
             _offers.value = emptyList()
             return@runCatching
         }
@@ -74,7 +76,7 @@ class PlayBillingSubscriptionRepository(
     override suspend fun restore(): Result<Unit> = runCatching {
         val setup = ensureConnected()
         if (!setup.isOk()) {
-            _entitlement.value = ProEntitlementState.unavailable(setup.debugMessage.ifBlank { "Play Billing 暂不可用" })
+            _entitlement.value = ProEntitlementState.unavailable(setup.debugMessage.ifBlank { AppText.t("billing_play_billing_is_temporarily_unavailable") })
             return@runCatching
         }
 
@@ -85,7 +87,7 @@ class PlayBillingSubscriptionRepository(
     override suspend fun purchase(activity: Activity, offer: SubscriptionOffer): Result<Unit> = runCatching {
         val setup = ensureConnected()
         if (!setup.isOk()) {
-            throw IllegalStateException(setup.debugMessage.ifBlank { "Play Billing 暂不可用" })
+            throw IllegalStateException(setup.debugMessage.ifBlank { AppText.t("billing_play_billing_is_temporarily_unavailable") })
         }
 
         var productDetails = productDetailsByOfferToken[offer.offerToken]
@@ -94,7 +96,7 @@ class PlayBillingSubscriptionRepository(
             productDetails = productDetailsByOfferToken[offer.offerToken]
         }
         if (productDetails == null) {
-            throw IllegalStateException("未找到 tinyvow_pro 订阅商品，请确认 Play Console 已配置订阅和基础方案")
+            throw IllegalStateException(AppText.t("billing_the_tinyvow_pro_subscription_product_was_not_found"))
         }
 
         val productDetailsParams = BillingFlowParams.ProductDetailsParams.newBuilder()
@@ -108,7 +110,7 @@ class PlayBillingSubscriptionRepository(
                 .build(),
         )
         if (!result.isOk()) {
-            throw IllegalStateException(result.debugMessage.ifBlank { "启动购买流程失败" })
+            throw IllegalStateException(result.debugMessage.ifBlank { AppText.t("billing_failed_to_start_purchase_flow") })
         }
     }
 
@@ -136,7 +138,7 @@ class PlayBillingSubscriptionRepository(
                     }
 
                     override fun onBillingServiceDisconnected() {
-                        _entitlement.value = ProEntitlementState.unavailable("Play Billing 连接已断开")
+                        _entitlement.value = ProEntitlementState.unavailable(AppText.t("billing_play_billing_connection_was_lost"))
                     }
                 }
             )

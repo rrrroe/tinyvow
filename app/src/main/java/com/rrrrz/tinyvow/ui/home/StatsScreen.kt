@@ -1,5 +1,7 @@
 package com.rrrrz.tinyvow.ui.home
 
+import com.rrrrz.tinyvow.i18n.AppText
+
 import android.content.Context
 import android.content.ClipData
 import android.content.Intent
@@ -131,10 +133,10 @@ import kotlin.math.roundToInt
 import kotlin.math.roundToLong
 
 private enum class ReportTab(val label: String) {
-    DAY("日报"),
-    WEEK("周报"),
-    MONTH("月报"),
-    YEAR("年报"),
+    DAY(AppText.t("stats_daily_report")),
+    WEEK(AppText.t("stats_weekly_report")),
+    MONTH(AppText.t("stats_monthly_report")),
+    YEAR(AppText.t("stats_yearly_report")),
 }
 
 private data class InstalledAppsState(
@@ -676,14 +678,14 @@ private suspend fun buildArchivedWindowReportUiState(
             YearDualScopeSectionData(
                 naturalYear =
                     buildYearScopeSummary(
-                        title = "自然年",
+                        title = AppText.t("stats_calendar_year"),
                         startDate = currentStart,
                         endDate = endDate,
                         archives = currentArchives,
                     ),
                 rollingYear =
                     buildYearScopeSummary(
-                        title = "近 365 天",
+                        title = AppText.t("stats_last_365_days"),
                         startDate = rollingYearStart,
                         endDate = endDate,
                         archives = rollingYearArchives,
@@ -813,54 +815,54 @@ private fun buildDailyFocusSectionData(
     return DailyFocusSectionData(
         control =
             DailyModeSummary(
-                title = "管控成效",
-                description = if (archive.controlExceededGroupCount > 0) "今天仍有超限，需要收紧重点分组。" else "管控分组整体稳定。",
-                primaryLabel = "节省时长",
+                title = AppText.t("stats_control_results"),
+                description = if (archive.controlExceededGroupCount > 0) AppText.t("stats_today_over_limit_tighten_groups") else AppText.t("stats_control_groups_were_stable_overall"),
+                primaryLabel = AppText.t("stats_time_saved"),
                 primaryValue = formatDuration(archive.savedMillis),
                 metrics =
                     listOf(
-                        DailyFocusMetric("达标", "${archive.controlCompletedGroupCount} 组"),
-                        DailyFocusMetric("超限", "${archive.controlExceededGroupCount} 组"),
-                        DailyFocusMetric("拦截", "${archive.controlBlockEventCount} 次"),
+                        DailyFocusMetric(AppText.t("stats_met"), AppText.t("stats_value_groups_5", archive.controlCompletedGroupCount)),
+                        DailyFocusMetric(AppText.t("stats_over_limit"), AppText.t("stats_value_groups_2", archive.controlExceededGroupCount)),
+                        DailyFocusMetric(AppText.t("group_blocks"), AppText.t("stats_value_times_5", archive.controlBlockEventCount)),
                     ),
                 progress = controlProgress,
                 spotlightLabel =
                     when {
-                        exceededControlGroup != null -> "重点关注"
-                        bestControlGroup != null -> "表现最好"
-                        else -> "管控分组"
+                        exceededControlGroup != null -> AppText.t("stats_label_7")
+                        bestControlGroup != null -> AppText.t("stats_label")
+                        else -> AppText.t("stats_control_group")
                     },
                 spotlightValue =
                     when {
                         exceededControlGroup != null ->
-                            "${exceededControlGroup.groupName} · 超限 ${formatDuration(exceededControlGroup.exceededMillisAtClose)}"
+                            AppText.t("stats_value_over_by_value_2", exceededControlGroup.groupName, formatDuration(exceededControlGroup.exceededMillisAtClose))
                         bestControlGroup != null && bestControlGroup.remainingMillisAtClose > 0L ->
-                            "${bestControlGroup.groupName} · 剩余 ${formatDuration(bestControlGroup.remainingMillisAtClose)}"
+                            AppText.t("stats_value_value_left_2", bestControlGroup.groupName, formatDuration(bestControlGroup.remainingMillisAtClose))
                         bestControlGroup != null -> bestControlGroup.groupName
-                        else -> "暂无分组归档"
+                        else -> AppText.t("stats_no_group_archive")
                     },
                 isWarning = archive.controlExceededGroupCount > 0 || archive.controlBlockEventCount > 0,
             ),
         encourage =
             DailyModeSummary(
-                title = "鼓励进度",
-                description = if (archive.pointsNet >= 0.0) "鼓励使用带来正向积分收益。" else "今天积分净值为负，关注兑换节奏。",
-                primaryLabel = "净积分",
+                title = AppText.t("stats_encourage_progress"),
+                description = if (archive.pointsNet >= 0.0) AppText.t("stats_encourage_usage_produced_positive_point_gains") else AppText.t("stats_negative_net_points_watch_redemptions"),
+                primaryLabel = AppText.t("stats_net_points"),
                 primaryValue = formatSignedPointsLocal(archive.pointsNet),
                 metrics =
                     listOf(
-                        DailyFocusMetric("时长", formatDuration(archive.encourageUsageMillis)),
-                        DailyFocusMetric("达标", "${archive.encourageCompletedGroupCount} 组"),
-                        DailyFocusMetric("兑换", "${archive.redemptionCount} 次"),
+                        DailyFocusMetric(AppText.t("stats_duration"), formatDuration(archive.encourageUsageMillis)),
+                        DailyFocusMetric(AppText.t("stats_met"), AppText.t("stats_value_groups_4", archive.encourageCompletedGroupCount)),
+                        DailyFocusMetric(AppText.t("stats_redemption"), AppText.t("stats_value_times_3", archive.redemptionCount)),
                     ),
                 progress = encourageProgress,
-                spotlightLabel = if (bestEncourageGroup != null) "最佳鼓励" else "鼓励分组",
+                spotlightLabel = if (bestEncourageGroup != null) AppText.t("stats_best_encourage_group") else AppText.t("stats_encourage_group"),
                 spotlightValue =
                     if (bestEncourageGroup != null) {
                         val points = formatSignedPointsLocal(bestEncourageGroup.earnedPoints)
                         "${bestEncourageGroup.groupName} · $points / ${formatDuration(bestEncourageGroup.dailyUsageMillis)}"
                     } else {
-                        "暂无分组归档"
+                        AppText.t("stats_no_group_archive")
                     },
                 isWarning = archive.pointsNet < 0.0,
             ),
@@ -935,63 +937,63 @@ private fun buildWindowFocusSectionData(
         }.coerceIn(0f, 1f)
     val dayUnit =
         when (selectedTab) {
-            ReportTab.WEEK -> "本周"
-            ReportTab.MONTH -> "本月"
-            ReportTab.YEAR -> "今年"
-            ReportTab.DAY -> "今日"
+            ReportTab.WEEK -> AppText.t("group_this_week")
+            ReportTab.MONTH -> AppText.t("stats_this_month")
+            ReportTab.YEAR -> AppText.t("stats_last_365_days")
+            ReportTab.DAY -> AppText.t("group_today")
         }
 
     return WindowFocusSectionData(
         control =
             DailyModeSummary(
-                title = "管控成效",
-                description = if (totalExceededGroups > 0) "$dayUnit 有 $totalExceededGroups 次分组超限。" else "$dayUnit 管控整体稳定。",
-                primaryLabel = "节省时长",
+                title = AppText.t("stats_control_results"),
+                description = if (totalExceededGroups > 0) AppText.t("stats_value_had_value_group_over_limit_events", dayUnit, totalExceededGroups) else AppText.t("stats_value_control_stable_overall", dayUnit),
+                primaryLabel = AppText.t("stats_time_saved"),
                 primaryValue = formatDuration(totalSaved),
                 metrics =
                     listOf(
-                        DailyFocusMetric("达标", "$totalControlCompleted 次"),
-                        DailyFocusMetric("超限", "$totalExceededGroups 次"),
-                        DailyFocusMetric("拦截", "$totalBlockEvents 次"),
+                        DailyFocusMetric(AppText.t("stats_met"), AppText.t("stats_value_times_9", totalControlCompleted)),
+                        DailyFocusMetric(AppText.t("stats_over_limit"), AppText.t("stats_value_times_7", totalExceededGroups)),
+                        DailyFocusMetric(AppText.t("group_blocks"), AppText.t("stats_value_times_8", totalBlockEvents)),
                     ),
                 progress = controlProgress,
-                spotlightLabel = if (severeControl != null) "重点关注" else "表现最好",
+                spotlightLabel = if (severeControl != null) AppText.t("stats_label_7") else AppText.t("stats_label"),
                 spotlightValue =
                     when {
-                        severeControl != null -> "${severeControl.groupName} · 超限 ${formatDuration(severeControl.exceededMillis)}"
-                        bestControl != null && bestControl.remainingMillis > 0L -> "${bestControl.groupName} · 剩余 ${formatDuration(bestControl.remainingMillis)}"
+                        severeControl != null -> AppText.t("stats_value_over_by_value", severeControl.groupName, formatDuration(severeControl.exceededMillis))
+                        bestControl != null && bestControl.remainingMillis > 0L -> AppText.t("stats_value_value_left", bestControl.groupName, formatDuration(bestControl.remainingMillis))
                         bestControl != null -> bestControl.groupName
-                        else -> "暂无管控分组归档"
+                        else -> AppText.t("stats_no_archived_control_groups_yet")
                     },
                 isWarning = totalExceededGroups > 0 || totalBlockEvents > 0,
             ),
         encourage =
             DailyModeSummary(
-                title = "鼓励进度",
-                description = if (pointsNet >= 0.0) "$dayUnit 净积分保持正向。" else "$dayUnit 兑换超过积分收益。",
-                primaryLabel = "净积分",
+                title = AppText.t("stats_encourage_progress"),
+                description = if (pointsNet >= 0.0) AppText.t("stats_net_points_stayed_positive", dayUnit) else AppText.t("stats_value_redemptions_exceeded_point_earnings", dayUnit),
+                primaryLabel = AppText.t("stats_net_points"),
                 primaryValue = formatSignedPointsLocal(pointsNet),
                 metrics =
                     listOf(
-                        DailyFocusMetric("鼓励时长", formatDuration(totalEncourageUsage)),
-                        DailyFocusMetric("达标", "$totalEncourageCompleted 次"),
-                        DailyFocusMetric("兑换", "$totalRedemptions 次"),
+                        DailyFocusMetric(AppText.t("stats_encourage_time"), formatDuration(totalEncourageUsage)),
+                        DailyFocusMetric(AppText.t("stats_met"), AppText.t("stats_value_times", totalEncourageCompleted)),
+                        DailyFocusMetric(AppText.t("stats_redemption"), AppText.t("stats_value_times_2", totalRedemptions)),
                     ),
                 progress = encourageProgress,
-                spotlightLabel = if (bestEncourage != null) "最佳鼓励" else "鼓励分组",
+                spotlightLabel = if (bestEncourage != null) AppText.t("stats_best_encourage_group") else AppText.t("stats_encourage_group"),
                 spotlightValue =
                     if (bestEncourage != null) {
                         "${bestEncourage.groupName} · ${formatSignedPointsLocal(bestEncourage.earnedPoints)} / ${formatDuration(bestEncourage.usageMillis)}"
                     } else {
-                        "暂无鼓励分组归档"
+                        AppText.t("stats_no_archived_encourage_groups_yet")
                     },
                 isWarning = pointsNet < 0.0,
             ),
         highlights =
             listOf(
-                DailyFocusMetric("活跃天数", "$activeDayCount 天"),
-                DailyFocusMetric("日均时长", formatDuration(if (activeDayCount > 0) archives.sumOf { it.totalUsageMillis } / activeDayCount else 0L)),
-                DailyFocusMetric("节省总量", formatDuration(totalSaved)),
+                DailyFocusMetric(AppText.t("stats_active_days"), AppText.t("stats_value_days_2", activeDayCount)),
+                DailyFocusMetric(AppText.t("stats_daily_average"), formatDuration(if (activeDayCount > 0) archives.sumOf { it.totalUsageMillis } / activeDayCount else 0L)),
+                DailyFocusMetric(AppText.t("stats_label_8"), formatDuration(totalSaved)),
             ),
     )
 }
@@ -1012,7 +1014,7 @@ private fun buildYearTimelineBuckets(archives: List<DailyArchiveEntity>): List<D
         val monthArchives = archives.filter { LocalDate.parse(it.archiveDate).monthValue == month }
         DailyTimelineBucket(
             hour = month - 1,
-            label = "${month}月",
+            label = AppText.t("stats_value", month),
             deviceMillis = monthArchives.sumOf { it.totalUsageMillis },
         )
     }
@@ -1031,7 +1033,7 @@ private fun buildHeatmapSectionData(
                 val monthArchives = archives.filter { LocalDate.parse(it.archiveDate).monthValue == month }
                 val total = monthArchives.sumOf { it.totalUsageMillis }
                 HeatmapDayData(
-                    label = "${month}月",
+                    label = AppText.t("stats_value", month),
                     valueMillis = total,
                     exceeded = monthArchives.any { it.controlExceededGroupCount > 0 },
                     selected = total == archives
@@ -1040,8 +1042,8 @@ private fun buildHeatmapSectionData(
                 )
             }
         HeatmapSectionData(
-            title = "年度月份热力",
-            subtitle = "颜色越深代表这个月越值得复盘，红点表示出现过管控超限。",
+            title = AppText.t("stats_year_month_heatmap"),
+            subtitle = AppText.t("stats_darker_colors_mark_months_that_deserve_more_review"),
             days = monthValues,
         )
     } else {
@@ -1059,8 +1061,8 @@ private fun buildHeatmapSectionData(
             date = date.plusDays(1)
         }
         HeatmapSectionData(
-            title = "月历热力",
-            subtitle = "每天一个格子，快速看出高峰、低谷和超限日。",
+            title = AppText.t("stats_month_calendar_heatmap"),
+            subtitle = AppText.t("stats_each_day_gets_one_cell_making_peaks_dips"),
             days = days,
         )
     }
@@ -1080,7 +1082,7 @@ private fun buildYearScopeSummary(
         rangeLabel = "${startDate.format(DateTimeFormatter.ofPattern("M/d", Locale.CHINA))} - ${endDate.format(DateTimeFormatter.ofPattern("M/d", Locale.CHINA))}",
         totalUsage = formatDuration(totalUsage),
         averageUsage = formatDuration(averageUsage),
-        activeDays = "$activeDays 天",
+        activeDays = AppText.t("stats_value_days", activeDays),
         savedUsage = formatDuration(archives.sumOf { it.savedMillis }),
         pointsNet = formatSignedPointsLocal(archives.sumOf { it.pointsNet }),
     )
@@ -1106,48 +1108,58 @@ private fun buildShareReportData(
 ): ShareReportData {
     val tabName =
         when (selectedTab) {
-            ReportTab.DAY -> "日报"
-            ReportTab.WEEK -> "周报"
-            ReportTab.MONTH -> "月报"
-            ReportTab.YEAR -> "年报"
+            ReportTab.DAY -> AppText.t("stats_daily_report")
+            ReportTab.WEEK -> AppText.t("stats_weekly_report")
+            ReportTab.MONTH -> AppText.t("stats_monthly_report")
+            ReportTab.YEAR -> AppText.t("stats_yearly_report")
         }
     val bestDay = archives.maxByOrNull { it.totalUsageMillis }
     val calmDay = archives.filter { it.totalUsageMillis > 0L }.minByOrNull { it.totalUsageMillis }
     val insight =
         when {
             bestDay != null && calmDay != null ->
-                "峰值 ${formatArchiveDate(bestDay.archiveDate, "M/d")} · ${formatDuration(bestDay.totalUsageMillis)}，最低 ${formatArchiveDate(calmDay.archiveDate, "M/d")} · ${formatDuration(calmDay.totalUsageMillis)}。"
-            bestDay != null -> "峰值 ${formatArchiveDate(bestDay.archiveDate, "M/d")} · ${formatDuration(bestDay.totalUsageMillis)}。"
-            else -> "还没有足够归档，下一次复盘会更完整。"
+                AppText.t(
+                    "stats_archived_peak_range",
+                    formatArchiveDate(bestDay.archiveDate, "M/d"),
+                    formatDuration(bestDay.totalUsageMillis),
+                    formatArchiveDate(calmDay.archiveDate, "M/d"),
+                    formatDuration(calmDay.totalUsageMillis),
+                )
+            bestDay != null -> AppText.t(
+                "stats_archived_peak_single",
+                formatArchiveDate(bestDay.archiveDate, "M/d"),
+                formatDuration(bestDay.totalUsageMillis),
+            )
+            else -> AppText.t("stats_there_is_not_enough_archive_data_yet_the")
         }
     val metrics =
         windowFocus?.let {
             listOf(
-                DailyFocusMetric("管控节省", it.control.primaryValue),
-                DailyFocusMetric("鼓励净值", it.encourage.primaryValue),
-                DailyFocusMetric("Top 应用", topApps.firstOrNull()?.label ?: "暂无"),
+                DailyFocusMetric(AppText.t("stats_control_savings"), it.control.primaryValue),
+                DailyFocusMetric(AppText.t("stats_encourage_net_value"), it.encourage.primaryValue),
+                DailyFocusMetric(AppText.t("stats_top_apps"), topApps.firstOrNull()?.label ?: AppText.t("stats_none")),
             )
         } ?: listOf(
-            DailyFocusMetric("节省", formatDuration(savedMillis)),
-            DailyFocusMetric("净积分", formatSignedPointsLocal(pointsNet)),
+            DailyFocusMetric(AppText.t("stats_label_5"), formatDuration(savedMillis)),
+            DailyFocusMetric(AppText.t("stats_net_points"), formatSignedPointsLocal(pointsNet)),
             DailyFocusMetric(
-                if (blockEventCount > 0) "拦截" else "达标",
-                if (blockEventCount > 0) "$blockEventCount 次" else "${((goalCompletionProgress ?: 0f) * 100f).roundToInt()}%",
+                if (blockEventCount > 0) AppText.t("group_blocks") else AppText.t("stats_met"),
+                if (blockEventCount > 0) AppText.t("stats_value_times_6", blockEventCount) else "${((goalCompletionProgress ?: 0f) * 100f).roundToInt()}%",
             ),
         )
     val statusTitle =
         when {
-            dailyGoalMillis > 0L && archives.sumOf { it.totalUsageMillis } <= dailyGoalMillis -> "今天把注意力拿回来了"
-            savedMillis > 0L -> "今天守住了自己的节奏"
-            pointsNet > 0.0 -> "今天攒下了一点行动力"
-            else -> "今天完成了一次诚实复盘"
+            dailyGoalMillis > 0L && archives.sumOf { it.totalUsageMillis } <= dailyGoalMillis -> AppText.t("stats_you_took_your_attention_back_today")
+            savedMillis > 0L -> AppText.t("stats_today_kept_rhythm")
+            pointsNet > 0.0 -> AppText.t("stats_you_saved_a_bit_of_momentum_today")
+            else -> AppText.t("stats_you_completed_an_honest_review_today")
         }
     return ShareReportData(
         title = "Tiny Vow $tabName",
         subtitle = summary.subtitle,
         statusTitle = statusTitle,
         primaryValue = summary.primaryValue,
-        primaryLabel = "总使用时长",
+        primaryLabel = AppText.t("stats_usage_duration"),
         metrics = metrics,
         insight = insight,
         topApps = topApps.take(5),
@@ -1224,9 +1236,9 @@ private fun buildArchivePeriodUsageStats(
     }
     val labels =
         when (selectedTab) {
-            ReportTab.WEEK -> listOf("周初", "周中", "周后段")
-            ReportTab.MONTH -> listOf("第 1 周", "第 2 周", "第 3 周", "第 4 周+")
-            ReportTab.YEAR -> listOf("春", "夏", "秋", "冬")
+            ReportTab.WEEK -> listOf(AppText.t("stats_early_week"), AppText.t("stats_midweek"), AppText.t("stats_late_week"))
+            ReportTab.MONTH -> listOf(AppText.t("stats_week_1"), AppText.t("stats_week_2"), AppText.t("stats_week_3"), AppText.t("stats_week_4"))
+            ReportTab.YEAR -> listOf(AppText.t("stats_spring"), AppText.t("stats_summer"), AppText.t("stats_autumn"), AppText.t("stats_winter"))
             else -> emptyList()
         }
     if (labels.isEmpty()) {
@@ -1273,8 +1285,8 @@ private suspend fun buildArchivedDayReportUiState(
                 previousArchiveDate = null,
                 nextArchiveDate = null,
                 availableArchiveDates = emptyList(),
-                placeholderTitle = "暂无已归档日报",
-                placeholderDescription = "日报只展示昨天和更早的归档数据。等到明天再回来，就能看到第一条记录。",
+                placeholderTitle = AppText.t("stats_no_archived_daily_reports_yet"),
+                placeholderDescription = AppText.t("stats_daily_reports_only_show_yesterday_and_earlier_archived"),
             )
         }
         return
@@ -1357,7 +1369,7 @@ private suspend fun buildArchivedDayReportUiState(
             overview = overview,
             previousMetrics = previousMetrics,
             averagePerDayUsage = averagePerDayUsage,
-            dominantPeriod = periodUsage.maxByOrNull { it.deviceMillis }?.label ?: "全天",
+            dominantPeriod = periodUsage.maxByOrNull { it.deviceMillis }?.label ?: AppText.t("stats_all_day"),
         )
     val behaviorInsight = buildArchivedDayBehaviorInsight(currentSnapshots, timelineBuckets)
     val comparisons =
@@ -1399,7 +1411,7 @@ private suspend fun buildArchivedDayReportUiState(
             nightUsageMillis = currentMetrics.nightUsageMillis,
             trendUsageMillis = (earlierArchives.asReversed() + selectedArchive).takeLast(7).map { it.totalUsageMillis },
             comparisonLabel = summary.secondaryValue,
-            dominantPeriod = periodUsage.maxByOrNull { it.deviceMillis }?.label ?: "全天",
+            dominantPeriod = periodUsage.maxByOrNull { it.deviceMillis }?.label ?: AppText.t("stats_all_day"),
         )
 
     updateState { current ->
@@ -1496,32 +1508,32 @@ private fun buildArchivedReportSummary(
 ): DailyReportSummary {
     val title =
         when (selectedTab) {
-            ReportTab.DAY -> "归档日报"
-            ReportTab.WEEK -> "近 7 日趋势"
-            ReportTab.MONTH -> "近 30 日趋势"
-            ReportTab.YEAR -> "年度趋势"
+            ReportTab.DAY -> AppText.t("stats_archived_daily_reports")
+            ReportTab.WEEK -> AppText.t("stats_last_7_days")
+            ReportTab.MONTH -> AppText.t("stats_last_30_days")
+            ReportTab.YEAR -> AppText.t("stats_yearly_trend")
         }
     val subtitle =
         "${startDate.format(DateTimeFormatter.ofPattern("M/d", Locale.CHINA))} - ${endDate.format(DateTimeFormatter.ofPattern("M/d", Locale.CHINA))}"
     val usageMessage =
         when {
             previousMetrics.deviceUsageMillis > 0L &&
-                overview.totalUsageMillis > previousMetrics.deviceUsageMillis * 1.15f -> "较上一窗口更重"
+                overview.totalUsageMillis > previousMetrics.deviceUsageMillis * 1.15f -> AppText.t("stats_heavier_than_previous_window")
             previousMetrics.deviceUsageMillis > 0L &&
-                overview.totalUsageMillis < previousMetrics.deviceUsageMillis * 0.85f -> "较上一窗口更轻"
-            else -> "与上一窗口接近"
+                overview.totalUsageMillis < previousMetrics.deviceUsageMillis * 0.85f -> AppText.t("stats_lighter_than_previous_window")
+            else -> AppText.t("stats_close_to_previous_window")
         }
     val formattedPoints = String.format(Locale.CHINA, "%.1f", pointsNet)
-    val pointTag = if (pointsNet >= 0) "净积分 +$formattedPoints" else "净积分 $formattedPoints"
+    val pointTag = if (pointsNet >= 0) AppText.t("stats_net_points_value", formattedPoints) else AppText.t("stats_net_points_value_2", formattedPoints)
     return DailyReportSummary(
         title = title,
         subtitle = subtitle,
-        capturedAt = "归档截至 ${endDate.format(DateTimeFormatter.ofPattern("M/d", Locale.CHINA))}",
-        message = "$usageMessage，主要集中在 $dominantPeriod。",
+        capturedAt = AppText.t("stats_archived_until_value", endDate.format(DateTimeFormatter.ofPattern("M/d", Locale.CHINA))),
+        message = AppText.t("stats_value_mainly_concentrated_in_value", usageMessage, dominantPeriod),
         primaryValue = formatDuration(overview.totalUsageMillis),
-        secondaryValue = deltaDescription(overview.totalUsageMillis, previousMetrics.deviceUsageMillis, "较上一窗口"),
-        tertiaryValue = "日均 ${formatDuration(averagePerDayUsage)}",
-        tags = listOf(pointTag, "$redemptionCount 次兑换", dominantPeriod),
+        secondaryValue = deltaDescription(overview.totalUsageMillis, previousMetrics.deviceUsageMillis, AppText.t("stats_vs_previous_window")),
+        tertiaryValue = AppText.t("stats_daily_average_value", formatDuration(averagePerDayUsage)),
+        tags = listOf(pointTag, AppText.t("stats_value_redemptions", redemptionCount), dominantPeriod),
     )
 }
 
@@ -1534,27 +1546,27 @@ private fun buildArchivedComparisonMetrics(
 ): List<ComparisonMetric> {
     return listOf(
         ComparisonMetric(
-            label = "窗口总时长",
+            label = AppText.t("stats_window_total"),
             todayValue = formatDuration(overview.totalUsageMillis),
-            yesterdayDelta = deltaDescription(overview.totalUsageMillis, previousMetrics.deviceUsageMillis, "较上一窗口"),
-            averageDelta = "日均 ${formatDuration(averagePerDayUsage)}",
+            yesterdayDelta = deltaDescription(overview.totalUsageMillis, previousMetrics.deviceUsageMillis, AppText.t("stats_vs_previous_window")),
+            averageDelta = AppText.t("stats_daily_average_value", formatDuration(averagePerDayUsage)),
         ),
         ComparisonMetric(
-            label = "打开次数",
-            todayValue = "${overview.openCount} 次",
-            yesterdayDelta = deltaDescription(overview.openCount.toLong(), previousMetrics.deviceOpenCount.toLong(), "较上一窗口", countUnit = "次"),
-            averageDelta = "日均 ${(overview.openCount.toFloat() / archiveWindowDays(selectedTab).coerceAtLeast(1)).roundToInt()} 次",
+            label = AppText.t("stats_launches"),
+            todayValue = AppText.t("stats_value_times_12", overview.openCount),
+            yesterdayDelta = deltaDescription(overview.openCount.toLong(), previousMetrics.deviceOpenCount.toLong(), AppText.t("stats_vs_previous_window"), countUnit = AppText.t("stats_times")),
+            averageDelta = AppText.t("stats_daily_average_times", (overview.openCount.toFloat() / archiveWindowDays(selectedTab).coerceAtLeast(1)).roundToInt()),
         ),
         ComparisonMetric(
-            label = "夜间使用",
+            label = AppText.t("stats_night_use"),
             todayValue = formatDuration(currentMetrics.nightUsageMillis),
-            yesterdayDelta = deltaDescription(currentMetrics.nightUsageMillis, previousMetrics.nightUsageMillis, "较上一窗口"),
+            yesterdayDelta = deltaDescription(currentMetrics.nightUsageMillis, previousMetrics.nightUsageMillis, AppText.t("stats_vs_previous_window")),
             averageDelta = null,
         ),
         ComparisonMetric(
-            label = "最长单次会话",
+            label = AppText.t("stats_label_11"),
             todayValue = formatDuration(currentMetrics.longestSessionMillis),
-            yesterdayDelta = deltaDescription(currentMetrics.longestSessionMillis, previousMetrics.longestSessionMillis, "较上一窗口"),
+            yesterdayDelta = deltaDescription(currentMetrics.longestSessionMillis, previousMetrics.longestSessionMillis, AppText.t("stats_vs_previous_window")),
             averageDelta = null,
         ),
     )
@@ -1580,20 +1592,20 @@ private fun buildArchivedDaySummary(
     val message =
         when {
             previousMetrics.deviceUsageMillis > 0L &&
-                overview.totalUsageMillis > previousMetrics.deviceUsageMillis * 1.15f -> "这一天的使用明显高于上一条归档。"
+                overview.totalUsageMillis > previousMetrics.deviceUsageMillis * 1.15f -> AppText.t("stats_usage_on_this_day_was_noticeably_higher_than")
             previousMetrics.deviceUsageMillis > 0L &&
-                overview.totalUsageMillis < previousMetrics.deviceUsageMillis * 0.85f -> "这一天的使用明显低于上一条归档。"
-            else -> "这一天的使用强度与上一条归档接近。"
+                overview.totalUsageMillis < previousMetrics.deviceUsageMillis * 0.85f -> AppText.t("stats_usage_lower_than_previous_archive")
+            else -> AppText.t("stats_usage_close_to_previous_archive")
         }
     return DailyReportSummary(
-        title = "归档日报",
-        subtitle = formatArchiveDate(archive.archiveDate, "M月d日 EEEE"),
-        capturedAt = "归档日期 ${formatArchiveDate(archive.archiveDate, "M/d")}",
-        message = "$message 主要集中在 $dominantPeriod。",
+        title = AppText.t("stats_archived_daily_reports"),
+        subtitle = formatArchiveDate(archive.archiveDate, AppText.t("home_mmm_d_eeee")),
+        capturedAt = AppText.t("stats_archive_date_value", formatArchiveDate(archive.archiveDate, "M/d")),
+        message = AppText.t("stats_value_was_mainly_concentrated_in_value", message, dominantPeriod),
         primaryValue = formatDuration(overview.totalUsageMillis),
-        secondaryValue = deltaDescription(overview.totalUsageMillis, previousMetrics.deviceUsageMillis, "较上一条归档"),
-        tertiaryValue = if (averagePerDayUsage > 0L) "近 7 个归档日日均 ${formatDuration(averagePerDayUsage)}" else "暂无更早归档均值",
-        tags = listOf("净积分 ${formatSignedPointsLocal(archive.pointsNet)}", "${archive.redemptionCount} 次兑换", "节省 ${formatDuration(archive.savedMillis)}"),
+        secondaryValue = deltaDescription(overview.totalUsageMillis, previousMetrics.deviceUsageMillis, AppText.t("stats_vs_previous_archive")),
+        tertiaryValue = if (averagePerDayUsage > 0L) AppText.t("stats_last_7_archived_day_average", formatDuration(averagePerDayUsage)) else AppText.t("stats_no_earlier_archive_average_yet"),
+        tags = listOf(AppText.t("stats_net_points_value_3", formatSignedPointsLocal(archive.pointsNet)), AppText.t("stats_value_redemptions_2", archive.redemptionCount), AppText.t("stats_saved_duration_value", formatDuration(archive.savedMillis))),
     )
 }
 
@@ -1649,15 +1661,15 @@ private fun buildArchivedDayBehaviorInsight(
         activeHourCount = activeHours,
         shortSessionRatio = 0f,
         reopenIntensity = if (activeHours > 0) items.sumOf { it.openCount }.toFloat() / activeHours.toFloat() else 0f,
-        predictedSleepLabel = if (nightLeader != null) "${nightLeader.label} · ${formatDuration(nightLeader.value)}" else "暂无记录",
-        predictedSleepDurationLabel = if (mostOpened != null) "${mostOpened.label} · ${mostOpened.value.toInt()} 次" else "暂无记录",
+        predictedSleepLabel = if (nightLeader != null) "${nightLeader.label} · ${formatDuration(nightLeader.value)}" else AppText.t("stats_no_records_yet"),
+        predictedSleepDurationLabel = if (mostOpened != null) AppText.t("stats_value_value_times", mostOpened.label, mostOpened.value.toInt()) else AppText.t("stats_no_records_yet"),
         beforeSleep = BehaviorAppMoment(
-            label = "夜间主导应用",
+            label = AppText.t("stats_night_top_app"),
             packageName = nightLeader?.packageName,
             appLabel = nightLeader?.label,
         ),
         afterWake = BehaviorAppMoment(
-            label = "打开次数最多",
+            label = AppText.t("stats_most_launches"),
             packageName = mostOpened?.packageName,
             appLabel = mostOpened?.label,
         ),
@@ -1677,10 +1689,10 @@ private fun buildArchivedDayComparisonMetrics(
     }
     return listOf(
         ComparisonMetric(
-            label = "总使用时长",
+            label = AppText.t("stats_usage_duration"),
             todayValue = formatDuration(currentArchive.totalUsageMillis),
-            yesterdayDelta = deltaDescription(currentArchive.totalUsageMillis, previousArchive.totalUsageMillis, "较上一条归档"),
-            averageDelta = if (averagePerDayUsage > 0L) "近 7 个归档日日均 ${formatDuration(averagePerDayUsage)}" else null,
+            yesterdayDelta = deltaDescription(currentArchive.totalUsageMillis, previousArchive.totalUsageMillis, AppText.t("stats_vs_previous_archive")),
+            averageDelta = if (averagePerDayUsage > 0L) AppText.t("stats_last_7_archived_day_average", formatDuration(averagePerDayUsage)) else null,
             chartData =
                 ComparisonChartData(
                     currentValue = currentArchive.totalUsageMillis,
@@ -1692,9 +1704,9 @@ private fun buildArchivedDayComparisonMetrics(
                 ),
         ),
         ComparisonMetric(
-            label = "打开次数",
-            todayValue = "${currentMetrics.deviceOpenCount} 次",
-            yesterdayDelta = deltaDescription(currentMetrics.deviceOpenCount.toLong(), previousMetrics.deviceOpenCount.toLong(), "较上一条归档", countUnit = "次"),
+            label = AppText.t("stats_launches"),
+            todayValue = AppText.t("stats_value_times_4", currentMetrics.deviceOpenCount),
+            yesterdayDelta = deltaDescription(currentMetrics.deviceOpenCount.toLong(), previousMetrics.deviceOpenCount.toLong(), AppText.t("stats_vs_previous_archive"), countUnit = AppText.t("stats_times")),
             averageDelta = null,
             chartData =
                 ComparisonChartData(
@@ -1707,9 +1719,9 @@ private fun buildArchivedDayComparisonMetrics(
                 ),
         ),
         ComparisonMetric(
-            label = "夜间使用",
+            label = AppText.t("stats_night_use"),
             todayValue = formatDuration(currentMetrics.nightUsageMillis),
-            yesterdayDelta = deltaDescription(currentMetrics.nightUsageMillis, previousMetrics.nightUsageMillis, "较上一条归档"),
+            yesterdayDelta = deltaDescription(currentMetrics.nightUsageMillis, previousMetrics.nightUsageMillis, AppText.t("stats_vs_previous_archive")),
             averageDelta = null,
             chartData =
                 ComparisonChartData(
@@ -1722,9 +1734,9 @@ private fun buildArchivedDayComparisonMetrics(
                 ),
         ),
         ComparisonMetric(
-            label = "最长单次会话",
+            label = AppText.t("stats_label_11"),
             todayValue = formatDuration(currentMetrics.longestSessionMillis),
-            yesterdayDelta = deltaDescription(currentMetrics.longestSessionMillis, previousMetrics.longestSessionMillis, "较上一条归档"),
+            yesterdayDelta = deltaDescription(currentMetrics.longestSessionMillis, previousMetrics.longestSessionMillis, AppText.t("stats_vs_previous_archive")),
             averageDelta = null,
             chartData =
                 ComparisonChartData(
@@ -1910,15 +1922,15 @@ private suspend fun buildDailyReportUiState(
 
 private fun buildPlaceholderUiState(tab: ReportTab): DailyReportUiState {
     val title = when (tab) {
-        ReportTab.WEEK -> "周报筹备中"
-        ReportTab.MONTH -> "月报筹备中"
-        ReportTab.YEAR -> "年报筹备中"
-        ReportTab.DAY -> "日报"
+        ReportTab.WEEK -> AppText.t("stats_weekly_reports_are_coming_soon")
+        ReportTab.MONTH -> AppText.t("stats_monthly_reports_are_coming_soon")
+        ReportTab.YEAR -> AppText.t("stats_yearly_reports_are_coming_soon")
+        ReportTab.DAY -> AppText.t("stats_daily_report")
     }
     val description = when (tab) {
-        ReportTab.WEEK -> "等日报快照稳定沉淀后，再开放周趋势与连续性洞察。"
-        ReportTab.MONTH -> "月维度会基于日快照做节律、阶段和结构变化分析。"
-        ReportTab.YEAR -> "年维度会沉淀成长轨迹、波峰波谷与长期自律表现。"
+        ReportTab.WEEK -> AppText.t("stats_weekly_trends_and_streak_insights_will_open_after")
+        ReportTab.MONTH -> AppText.t("stats_monthly_views_will_analyze_rhythm_phases_and_structural")
+        ReportTab.YEAR -> AppText.t("stats_year_view_description")
         ReportTab.DAY -> ""
     }
     return DailyReportUiState(
@@ -2016,7 +2028,7 @@ private suspend fun buildBehaviorInsight(
     val predictedSleepLabel = if (predictedSleepStartMillis != null && predictedSleepEndMillis != null && predictedSleepEndMillis > predictedSleepStartMillis) {
         "${formatClockTime(predictedSleepStartMillis, zoneId)} - ${formatClockTime(predictedSleepEndMillis, zoneId)}"
     } else {
-        beforeSleep?.endTime?.let { "${formatClockTime(it, zoneId)} 后" } ?: "样本不足"
+        beforeSleep?.endTime?.let { AppText.t("stats_after_value", formatClockTime(it, zoneId)) } ?: AppText.t("stats_not_enough_samples")
     }
     val predictedSleepDurationLabel = if (predictedSleepStartMillis != null && predictedSleepEndMillis != null && predictedSleepEndMillis > predictedSleepStartMillis) {
         formatDuration(predictedSleepEndMillis - predictedSleepStartMillis)
@@ -2038,12 +2050,12 @@ private suspend fun buildBehaviorInsight(
         predictedSleepLabel = predictedSleepLabel,
         predictedSleepDurationLabel = predictedSleepDurationLabel,
         beforeSleep = BehaviorAppMoment(
-            label = "睡前最后在用",
+            label = AppText.t("stats_last_used_before_bed"),
             packageName = beforeSleep?.packageName,
             appLabel = beforeSleep?.packageName?.let { resolveAppLabel(context, it, installedAppMap) },
         ),
         afterWake = BehaviorAppMoment(
-            label = "起床后先打开",
+            label = AppText.t("stats_first_opened_after_waking"),
             packageName = afterWake?.packageName,
             appLabel = afterWake?.packageName?.let { resolveAppLabel(context, it, installedAppMap) },
         ),
@@ -2061,39 +2073,39 @@ private fun buildDailyReportSummary(
 ): DailyReportSummary {
     val intensity = when {
         averageMetrics.deviceUsageMillis > 0L &&
-            deviceOverview.totalUsageMillis > averageMetrics.deviceUsageMillis * 1.15f -> "今天手机使用偏重"
+            deviceOverview.totalUsageMillis > averageMetrics.deviceUsageMillis * 1.15f -> AppText.t("stats_phone_use_heavy_today")
         averageMetrics.deviceUsageMillis > 0L &&
-            deviceOverview.totalUsageMillis < averageMetrics.deviceUsageMillis * 0.85f -> "今天手机使用偏轻"
-        else -> "今天手机使用接近平时"
+            deviceOverview.totalUsageMillis < averageMetrics.deviceUsageMillis * 0.85f -> AppText.t("stats_phone_use_was_lighter_today")
+        else -> AppText.t("stats_phone_use_near_usual_today")
     }
-    val dominantPeriod = periodUsage.maxByOrNull { it.deviceMillis }?.label ?: "全天"
+    val dominantPeriod = periodUsage.maxByOrNull { it.deviceMillis }?.label ?: AppText.t("stats_all_day")
     val intensityTag = when {
         averageMetrics.deviceUsageMillis > 0L &&
-            deviceOverview.totalUsageMillis > averageMetrics.deviceUsageMillis * 1.15f -> "重度使用"
+            deviceOverview.totalUsageMillis > averageMetrics.deviceUsageMillis * 1.15f -> AppText.t("stats_heavy_use")
         averageMetrics.deviceUsageMillis > 0L &&
-            deviceOverview.totalUsageMillis < averageMetrics.deviceUsageMillis * 0.85f -> "使用克制"
-        else -> "接近日常"
+            deviceOverview.totalUsageMillis < averageMetrics.deviceUsageMillis * 0.85f -> AppText.t("stats_usage_restrained")
+        else -> AppText.t("stats_near_normal")
     }
-    val periodTag = "${dominantPeriod}集中"
+    val periodTag = AppText.t("stats_concentrated_period_tag", dominantPeriod)
     val openTag = when {
         yesterdayMetrics.deviceOpenCount > 0 &&
-            deviceOverview.openCount > yesterdayMetrics.deviceOpenCount * 1.15f -> "切换偏频繁"
-        deviceOverview.openCount == 0 -> "尚无记录"
-        else -> "打开节奏正常"
+            deviceOverview.openCount > yesterdayMetrics.deviceOpenCount * 1.15f -> AppText.t("stats_label_3")
+        deviceOverview.openCount == 0 -> AppText.t("stats_no_records")
+        else -> AppText.t("stats_launch_rhythm_normal")
     }
-    val formattedDate = date.format(DateTimeFormatter.ofPattern("M月d日 EEEE", Locale.CHINA))
+    val formattedDate = date.format(DateTimeFormatter.ofPattern(AppText.t("home_mmm_d_eeee"), Locale.CHINA))
     val capturedAt = java.time.Instant.ofEpochMilli(nowMillis)
         .atZone(zoneId)
         .toLocalTime()
         .format(DateTimeFormatter.ofPattern("HH:mm", Locale.CHINA))
     return DailyReportSummary(
-        title = "今日战报",
+        title = AppText.t("stats_today_report"),
         subtitle = formattedDate,
-        capturedAt = "采样截至 $capturedAt",
-        message = "$intensity，主要集中在$dominantPeriod，$openTag。",
+        capturedAt = AppText.t("stats_peak_value", capturedAt),
+        message = AppText.t("stats_value_mainly_concentrated_in_value_value", intensity, dominantPeriod, openTag),
         primaryValue = formatDuration(deviceOverview.totalUsageMillis),
-        secondaryValue = deltaDescription(deviceOverview.totalUsageMillis, yesterdayMetrics.deviceUsageMillis, "较昨天"),
-        tertiaryValue = deltaDescription(deviceOverview.totalUsageMillis, averageMetrics.deviceUsageMillis, "较近 7 日"),
+        secondaryValue = deltaDescription(deviceOverview.totalUsageMillis, yesterdayMetrics.deviceUsageMillis, AppText.t("stats_vs_yesterday")),
+        tertiaryValue = deltaDescription(deviceOverview.totalUsageMillis, averageMetrics.deviceUsageMillis, AppText.t("stats_vs_last_7_days")),
         tags = listOf(intensityTag, periodTag, openTag),
     )
 }
@@ -2107,28 +2119,28 @@ private fun buildComparisonMetrics(
 ): List<ComparisonMetric> {
     return listOf(
         ComparisonMetric(
-            label = "全机总时长",
+            label = AppText.t("stats_total_device_duration"),
             todayValue = formatDuration(deviceOverview.totalUsageMillis),
-            yesterdayDelta = deltaDescription(deviceOverview.totalUsageMillis, yesterdayMetrics.deviceUsageMillis, "较昨天"),
-            averageDelta = deltaDescription(deviceOverview.totalUsageMillis, averageMetrics.deviceUsageMillis, "较均值"),
+            yesterdayDelta = deltaDescription(deviceOverview.totalUsageMillis, yesterdayMetrics.deviceUsageMillis, AppText.t("stats_vs_yesterday")),
+            averageDelta = deltaDescription(deviceOverview.totalUsageMillis, averageMetrics.deviceUsageMillis, AppText.t("stats_vs_average")),
         ),
         ComparisonMetric(
-            label = "打开次数",
-            todayValue = "${deviceOverview.openCount} 次",
-            yesterdayDelta = deltaDescription(deviceOverview.openCount.toLong(), yesterdayMetrics.deviceOpenCount.toLong(), "较昨天", countUnit = "次"),
-            averageDelta = deltaDescription(deviceOverview.openCount.toLong(), averageMetrics.deviceOpenCount.toLong(), "较均值", countUnit = "次"),
+            label = AppText.t("stats_launches"),
+            todayValue = AppText.t("stats_value_times_11", deviceOverview.openCount),
+            yesterdayDelta = deltaDescription(deviceOverview.openCount.toLong(), yesterdayMetrics.deviceOpenCount.toLong(), AppText.t("stats_vs_yesterday"), countUnit = AppText.t("stats_times")),
+            averageDelta = deltaDescription(deviceOverview.openCount.toLong(), averageMetrics.deviceOpenCount.toLong(), AppText.t("stats_vs_average"), countUnit = AppText.t("stats_times")),
         ),
         ComparisonMetric(
-            label = "夜间使用",
+            label = AppText.t("stats_night_use"),
             todayValue = formatDuration(behaviorInsight.nightUsageMillis),
-            yesterdayDelta = deltaDescription(behaviorInsight.nightUsageMillis, yesterdayMetrics.nightUsageMillis, "较昨天"),
-            averageDelta = deltaDescription(behaviorInsight.nightUsageMillis, averageMetrics.nightUsageMillis, "较均值"),
+            yesterdayDelta = deltaDescription(behaviorInsight.nightUsageMillis, yesterdayMetrics.nightUsageMillis, AppText.t("stats_vs_yesterday")),
+            averageDelta = deltaDescription(behaviorInsight.nightUsageMillis, averageMetrics.nightUsageMillis, AppText.t("stats_vs_average")),
         ),
         ComparisonMetric(
-            label = "最长单次会话",
+            label = AppText.t("stats_label_11"),
             todayValue = formatDuration(longestSessionMillis),
-            yesterdayDelta = deltaDescription(longestSessionMillis, yesterdayMetrics.longestSessionMillis, "较昨天"),
-            averageDelta = deltaDescription(longestSessionMillis, averageMetrics.longestSessionMillis, "较均值"),
+            yesterdayDelta = deltaDescription(longestSessionMillis, yesterdayMetrics.longestSessionMillis, AppText.t("stats_vs_yesterday")),
+            averageDelta = deltaDescription(longestSessionMillis, averageMetrics.longestSessionMillis, AppText.t("stats_vs_average")),
         ),
     )
 }
@@ -2153,10 +2165,10 @@ private fun buildPeriodUsageStats(
     timelineBuckets: List<DailyTimelineBucket>,
 ): List<PeriodUsageStat> {
     val groups = listOf(
-        "凌晨" to 0..5,
-        "上午" to 6..11,
-        "下午" to 12..17,
-        "晚间" to 18..23,
+        AppText.t("stats_late_night") to 0..5,
+        AppText.t("stats_morning") to 6..11,
+        AppText.t("stats_afternoon") to 12..17,
+        AppText.t("stats_label_6") to 18..23,
     )
     return groups.map { (label, range) ->
         val buckets = timelineBuckets.filter { it.hour in range }
@@ -2179,7 +2191,7 @@ private fun buildTimelineSectionData(
         periodUsage = buildPeriodUsageStats(timelineBuckets),
         peakHourLabel = peakHour?.label ?: "--",
         peakHourMillis = peakHour?.deviceMillis ?: 0L,
-        peakTwoHourLabel = peakTwoHour?.first?.let { "${it.first().label}-${it.last().hour + 1}鏃?" } ?: "--",
+        peakTwoHourLabel = peakTwoHour?.first?.let { AppText.t("stats_hour_range_format", it.first().label, it.last().hour + 1) } ?: "--",
         peakTwoHourMillis = peakTwoHour?.second ?: 0L,
         nightUsageMillis = timelineBuckets.filter { it.hour < 6 || it.hour >= 22 }.sumOf { it.deviceMillis },
     )
@@ -2395,10 +2407,10 @@ private fun DailyReportScreen(
 private fun LoadingHintChip(selectedTab: ReportTab) {
     val label =
         when (selectedTab) {
-            ReportTab.DAY -> "正在读取归档日报"
-            ReportTab.WEEK -> "正在更新近 7 日趋势"
-            ReportTab.MONTH -> "正在更新近 30 日趋势"
-            ReportTab.YEAR -> "正在准备年报"
+            ReportTab.DAY -> AppText.t("stats_reading_archived_daily_reports")
+            ReportTab.WEEK -> AppText.t("stats_updating_last_7_days")
+            ReportTab.MONTH -> AppText.t("stats_updating_last_30_days")
+            ReportTab.YEAR -> AppText.t("stats_yearly_report_label")
         }
     Surface(
         shape = RoundedCornerShape(999.dp),
@@ -2450,7 +2462,7 @@ private fun ArchiveDateNavigator(
             ) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "前一天",
+                    contentDescription = AppText.t("stats_previous_day"),
                 )
             }
             Surface(
@@ -2477,12 +2489,12 @@ private fun ArchiveDateNavigator(
                         verticalArrangement = Arrangement.spacedBy(2.dp),
                     ) {
                         Text(
-                            text = formatArchiveDate(selectedArchiveDate, "M月d日 EEEE"),
+                            text = formatArchiveDate(selectedArchiveDate, AppText.t("home_mmm_d_eeee")),
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.Bold,
                         )
                         Text(
-                            text = "只可选择有归档的日期",
+                            text = AppText.t("stats_only_archived_dates_selectable"),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
@@ -2495,7 +2507,7 @@ private fun ArchiveDateNavigator(
             ) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                    contentDescription = "后一天",
+                    contentDescription = AppText.t("stats_next_day"),
                 )
             }
         }
@@ -2545,12 +2557,12 @@ private fun ArchiveCalendarDialog(
         onDismissRequest = onDismiss,
         confirmButton = {
             TextButton(onClick = onDismiss) {
-                Text("关闭")
+                Text(AppText.t("group_close"))
             }
         },
         title = {
             Text(
-                text = "选择归档日期",
+                text = AppText.t("stats_choose_archive_date"),
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
             )
@@ -2565,10 +2577,10 @@ private fun ArchiveCalendarDialog(
                         onClick = { displayedMonth = displayedMonth.minusMonths(1) },
                         enabled = displayedMonth > minMonth,
                     ) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "上个月")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = AppText.t("stats_last_month"))
                     }
                     Text(
-                        text = displayedMonth.format(DateTimeFormatter.ofPattern("yyyy年M月", Locale.CHINA)),
+                        text = displayedMonth.format(DateTimeFormatter.ofPattern(AppText.t("stats_mmmm_yyyy"), Locale.CHINA)),
                         modifier = Modifier.weight(1f),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
@@ -2577,14 +2589,14 @@ private fun ArchiveCalendarDialog(
                         onClick = { displayedMonth = displayedMonth.plusMonths(1) },
                         enabled = displayedMonth < maxMonth,
                     ) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "下个月")
+                        Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = AppText.t("stats_next_month"))
                     }
                 }
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.SpaceBetween,
                 ) {
-                    listOf("一", "二", "三", "四", "五", "六", "日").forEach { dayLabel ->
+                    listOf(AppText.t("stats_mon"), AppText.t("stats_tue"), AppText.t("stats_wed"), AppText.t("stats_thu"), AppText.t("stats_fri"), AppText.t("stats_sat"), AppText.t("stats_sun")).forEach { dayLabel ->
                         Text(
                             text = dayLabel,
                             modifier = Modifier.width(32.dp),
@@ -2639,7 +2651,7 @@ private fun ArchiveCalendarDialog(
                     }
                 }
                 Text(
-                    text = "没有归档数据的日期不可选。",
+                    text = AppText.t("stats_unarchived_dates_not_selectable"),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -3141,7 +3153,7 @@ private fun PlaceholderReportScreen(
                     color = MaterialTheme.colorScheme.secondaryContainer,
                 ) {
                     Text(
-                        text = "趋势维度待开放",
+                        text = AppText.t("stats_trend_views_are_coming_soon"),
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
                         style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.onSecondaryContainer,
@@ -3162,7 +3174,7 @@ private fun PlaceholderReportScreen(
                     color = MaterialTheme.colorScheme.primaryContainer,
                 ) {
                     Text(
-                        text = "当前先把日报做满，趋势页会在日快照能力稳定后开放。",
+                        text = AppText.t("stats_daily_reports_come_first_trend_pages_will_open"),
                         modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -3195,12 +3207,12 @@ private fun PermissionRequiredState(
                     modifier = Modifier.size(28.dp),
                 )
                 Text(
-                    text = "战报需要读取使用记录权限",
+                    text = AppText.t("stats_report_needs_usage_records_permission"),
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
                 )
                 Text(
-                    text = "开启使用记录权限后，日报才能统计手机上的全天使用痕迹、Top 应用和行为趋势。",
+                    text = AppText.t("stats_enable_usage_records_for_daily_report"),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -3209,7 +3221,7 @@ private fun PermissionRequiredState(
                         onClick = onRequestUsageAccess,
                         modifier = Modifier.weight(1f),
                     ) {
-                        Text("查看说明并开启")
+                        Text(AppText.t("stats_view_details_and_enable"))
                     }
                     OutlinedButton(
                         onClick = {
@@ -3219,7 +3231,7 @@ private fun PermissionRequiredState(
                         },
                         modifier = Modifier.weight(1f),
                     ) {
-                        Text("系统设置")
+                        Text(AppText.t("stats_open_settings"))
                     }
                 }
             }
@@ -3305,7 +3317,7 @@ private fun DeviceHeroVisualPanel(
 ) {
     val data = (heroState as? SectionState.Ready)?.data
     val summary = data?.summary ?: DailyReportSummary(
-        title = "归档日报",
+        title = AppText.t("stats_archived_daily_reports"),
         subtitle = "",
         capturedAt = "",
         message = "",
@@ -3350,7 +3362,7 @@ private fun DeviceHeroVisualPanel(
                             )
                         }
                         Text(
-                            text = data?.summary?.title ?: "归档日报",
+                            text = data?.summary?.title ?: AppText.t("stats_archived_daily_reports"),
                             style = MaterialTheme.typography.headlineSmall,
                             fontWeight = FontWeight.Bold,
                         )
@@ -3381,7 +3393,7 @@ private fun DeviceHeroVisualPanel(
                             capMillis = data.dailyGoalMillis.takeIf { selectedTab == ReportTab.DAY && it > 0L }
                                 ?: usageDialCapMillis(selectedTab),
                             goalLabel = data.dailyGoalMillis.takeIf { selectedTab == ReportTab.DAY && it > 0L }
-                                ?.let { "目标 ${formatDuration(it)}" },
+                                ?.let { AppText.t("stats_target_value_2", formatDuration(it)) },
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(chartHeight),
@@ -3455,32 +3467,32 @@ private fun DeviceHeroMetricsPanel(
                     when (index) {
                         0 -> HeroMetricChip(
                             icon = Icons.Default.PhoneAndroid,
-                            label = "全机时长",
+                            label = AppText.t("stats_device_usage"),
                             value = data.summary.primaryValue,
                             modifier = childModifier,
                         )
                         1 -> HeroMetricChip(
                             icon = Icons.AutoMirrored.Filled.CompareArrows,
-                            label = if (data.summary.title == "归档日报") "对比上一条" else "对比基线",
+                            label = if (data.summary.title == AppText.t("stats_archived_daily_reports")) AppText.t("stats_label_10") else AppText.t("stats_comparison_baseline"),
                             value = data.summary.secondaryValue,
                             modifier = childModifier,
                         )
                         2 -> HeroMetricChip(
                             icon = Icons.Default.TouchApp,
-                            label = "打开次数",
-                            value = "${overview.openCount} 次",
+                            label = AppText.t("stats_launches"),
+                            value = AppText.t("stats_value_times_12", overview.openCount),
                             modifier = childModifier,
                         )
                         else -> HeroMetricChip(
                             icon = Icons.Default.NightsStay,
                             label =
-                                if (data.summary.title == "归档日报" && data.goalCompletionProgress != null) {
-                                    "目标完成"
+                                if (data.summary.title == AppText.t("stats_archived_daily_reports") && data.goalCompletionProgress != null) {
+                                    AppText.t("stats_target_complete")
                                 } else {
-                                    "夜间使用"
+                                    AppText.t("stats_night_use")
                                 },
                             value =
-                                if (data.summary.title == "归档日报" && data.goalCompletionProgress != null) {
+                                if (data.summary.title == AppText.t("stats_archived_daily_reports") && data.goalCompletionProgress != null) {
                                     "${(data.goalCompletionProgress * 100f).roundToInt()}%"
                                 } else {
                                     formatDuration(data.nightUsageMillis)
@@ -3517,7 +3529,7 @@ private fun DeviceHeroMetricsPanel(
                             AppIconCircle(topApp.packageName)
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = if (data.summary.title == "归档日报") "当日主导应用" else "窗口主导应用",
+                                    text = if (data.summary.title == AppText.t("stats_archived_daily_reports")) AppText.t("stats_top_app_of_the_day") else AppText.t("stats_top_app_in_window"),
                                     style = MaterialTheme.typography.labelMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
@@ -3583,7 +3595,7 @@ private fun UsageGoalChart(
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(
-                        text = "总使用",
+                        text = AppText.t("group_total_usage"),
                         style = MaterialTheme.typography.labelMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -3596,9 +3608,9 @@ private fun UsageGoalChart(
                 Text(
                     text =
                         goalLabel ?: if (capMillis > 0L) {
-                            "参考 ${formatDuration(capMillis)}"
+                            AppText.t("stats_reference_value", formatDuration(capMillis))
                         } else {
-                            "暂无目标"
+                            AppText.t("stats_no_targets_yet")
                         },
                     style = MaterialTheme.typography.labelLarge,
                     color = if (overLimit) warning else MaterialTheme.colorScheme.onSurfaceVariant,
@@ -3648,7 +3660,7 @@ private fun UsageGoalChart(
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
                 Text(
-                    text = if (overLimit) "已超出 ${formatDuration(usageMillis - capMillis)}" else "剩余 ${formatDuration((capMillis - usageMillis).coerceAtLeast(0L))}",
+                    text = if (overLimit) AppText.t("stats_over_by_value_2", formatDuration(usageMillis - capMillis)) else AppText.t("stats_remaining_value_2", formatDuration((capMillis - usageMillis).coerceAtLeast(0L))),
                     style = MaterialTheme.typography.labelMedium,
                     color = if (overLimit) warning else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -3783,8 +3795,8 @@ private fun WindowFocusCard(
             ReportCard {
                 SectionHeader(
                     icon = Icons.Default.EmojiEvents,
-                    title = "管控与鼓励复盘",
-                    subtitle = "把限制、奖励、积分和重点分组收拢到一个窗口里看。",
+                    title = AppText.t("stats_control_and_encourage_review"),
+                    subtitle = AppText.t("stats_dashboard_summary_description"),
                 )
                 AdaptiveRowGrid(
                     itemCount = 2,
@@ -3842,8 +3854,8 @@ private fun YearDualScopeCard(
             ReportCard {
                 SectionHeader(
                     icon = Icons.Default.CalendarMonth,
-                    title = "年度双口径",
-                    subtitle = "自然年看正式总结，近 365 天看长期惯性。",
+                    title = AppText.t("stats_year_dual_view"),
+                    subtitle = AppText.t("stats_year_dual_view_description"),
                 )
                 AdaptiveRowGrid(
                     itemCount = 2,
@@ -3883,10 +3895,10 @@ private fun YearScopePanel(
             AdaptiveRowGrid(itemCount = 4, compactColumns = 2, expandedColumns = 2, verticalSpacing = 8.dp) { childModifier, index ->
                 val metric =
                     when (index) {
-                        0 -> DailyFocusMetric("日均", summary.averageUsage)
-                        1 -> DailyFocusMetric("活跃", summary.activeDays)
-                        2 -> DailyFocusMetric("节省", summary.savedUsage)
-                        else -> DailyFocusMetric("净积分", summary.pointsNet)
+                        0 -> DailyFocusMetric(AppText.t("stats_daily_average"), summary.averageUsage)
+                        1 -> DailyFocusMetric(AppText.t("stats_active"), summary.activeDays)
+                        2 -> DailyFocusMetric(AppText.t("stats_label_5"), summary.savedUsage)
+                        else -> DailyFocusMetric(AppText.t("stats_net_points"), summary.pointsNet)
                     }
                 FocusMetricPill(
                     metric = metric,
@@ -3910,7 +3922,7 @@ private fun HeatmapCard(
                 SkeletonBlock(modifier = Modifier.fillMaxWidth(), height = 180.dp, shape = RoundedCornerShape(24.dp))
             }
             SectionState.Empty -> {
-                SectionHeader(Icons.Default.CalendarMonth, "热力分布", "暂无足够归档生成热力图。")
+                SectionHeader(Icons.Default.CalendarMonth, AppText.t("stats_heatmap"), AppText.t("stats_not_enough_archived_data_to_build_a_heatmap"))
             }
             is SectionState.Ready -> {
                 SectionHeader(
@@ -3989,14 +4001,14 @@ private fun ShareReportCard(
         }.onSuccess { bitmap ->
             previewBitmap = bitmap
         }.onFailure { error ->
-            Toast.makeText(context, error.message ?: "分享图生成失败", Toast.LENGTH_SHORT).show()
+            Toast.makeText(context, error.message ?: AppText.t("stats_failed_to_generate_share_image"), Toast.LENGTH_SHORT).show()
         }
     }
     ReportCard {
         SectionHeader(
             icon = Icons.Default.Share,
-            title = "分享战报",
-            subtitle = "先预览海报，再分享给朋友或留作记录。",
+            title = AppText.t("stats_share_report"),
+            subtitle = AppText.t("stats_preview_the_poster_then_share_it_with_friends"),
         )
         if (data == null) {
             SkeletonBlock(modifier = Modifier.fillMaxWidth(), height = 126.dp, shape = RoundedCornerShape(24.dp))
@@ -4018,7 +4030,7 @@ private fun ShareReportCard(
                     ) {
                         Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(18.dp))
                         Spacer(modifier = Modifier.width(8.dp))
-                        Text("预览分享海报")
+                        Text(AppText.t("stats_preview_share_poster"))
                     }
                 }
             }
@@ -4028,7 +4040,7 @@ private fun ShareReportCard(
         AlertDialog(
             onDismissRequest = { previewBitmap = null },
             title = {
-                Text("分享预览", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Text(AppText.t("stats_share_preview"), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -4039,7 +4051,7 @@ private fun ShareReportCard(
                     ) {
                         Image(
                             bitmap = bitmap.asImageBitmap(),
-                            contentDescription = "战报海报预览",
+                            contentDescription = AppText.t("stats_report_poster_preview"),
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(520.dp)
@@ -4056,22 +4068,22 @@ private fun ShareReportCard(
                         runCatching {
                             shareReportBitmap(context = context, bitmap = bitmap)
                         }.onFailure { error ->
-                            Toast.makeText(context, error.message ?: "分享图生成失败", Toast.LENGTH_SHORT).show()
+                            Toast.makeText(context, error.message ?: AppText.t("stats_failed_to_generate_share_image"), Toast.LENGTH_SHORT).show()
                         }
                     },
                 ) {
                     Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text("分享")
+                    Text(AppText.t("group_share"))
                 }
             },
             dismissButton = {
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     TextButton(onClick = { generatePreview() }) {
-                        Text("重新生成")
+                        Text(AppText.t("stats_regenerate"))
                     }
                     TextButton(onClick = { previewBitmap = null }) {
-                        Text("关闭")
+                        Text(AppText.t("group_close"))
                     }
                 }
             },
@@ -4090,7 +4102,7 @@ private fun DailyModeSummaryCard(
     val accent =
         when {
             summary.isWarning -> reportColors.warning
-            summary.title == "鼓励进度" -> reportColors.positive
+            summary.title == AppText.t("stats_encourage_progress") -> reportColors.positive
             else -> MaterialTheme.colorScheme.primary
         }
     val animatedPrimaryValue = animateMetricDisplayText(
@@ -4357,7 +4369,7 @@ private fun TimelineCard(
         Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
             SectionHeader(
                 icon = Icons.Default.Timeline,
-                title = if (selectedTab == ReportTab.DAY) "24 小时分布" else "归档趋势",
+                title = if (selectedTab == ReportTab.DAY) AppText.t("stats_24_hour_distribution") else AppText.t("stats_archive_trend"),
             )
             when (timelineState) {
                 SectionState.Loading -> SkeletonTimelineChart()
@@ -4596,7 +4608,7 @@ private fun PeriodDistributionCard(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 Text(
-                    text = "时段热力",
+                    text = AppText.t("stats_time_heatmap"),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                 )
@@ -4759,13 +4771,13 @@ private fun PeakMomentsCard(
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Text(
-                text = "峰值时刻",
+                text = AppText.t("stats_peak_time"),
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.Bold,
             )
             if (timelineState == null) {
                 Text(
-                    text = if (selectedTab == ReportTab.DAY) "这个归档日的样本还不足以判断峰值。" else "这个归档窗口的样本还不足以判断峰值。",
+                    text = if (selectedTab == ReportTab.DAY) AppText.t("stats_archived_day_not_enough_peak_samples") else AppText.t("stats_archive_window_not_enough_peak_samples"),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -4779,19 +4791,19 @@ private fun PeakMomentsCard(
                     when (index) {
                         0 -> MiniInsightCard(
                             icon = Icons.Default.Bolt,
-                            label = "峰值 1h",
+                            label = AppText.t("stats_under_1h"),
                             value = "${behaviorInsight.peakHourLabel} · ${formatDuration(behaviorInsight.peakHourMillis)}",
                             modifier = modifier,
                         )
                         1 -> MiniInsightCard(
                             icon = Icons.AutoMirrored.Filled.CallSplit,
-                            label = "连续 2h",
+                            label = AppText.t("stats_over_2h"),
                             value = "${behaviorInsight.peakTwoHourLabel} · ${formatDuration(behaviorInsight.peakTwoHourMillis)}",
                             modifier = modifier,
                         )
                         else -> MiniInsightCard(
                             icon = Icons.Default.NightsStay,
-                            label = "夜间",
+                            label = AppText.t("stats_night"),
                             value = formatDuration(behaviorInsight.nightUsageMillis),
                             modifier = modifier,
                         )
@@ -5034,15 +5046,15 @@ private fun AppChartsCard(
         Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
             SectionHeader(
                 icon = Icons.Default.BarChart,
-                title = "前 10 个应用",
-                subtitle = if (selectedTab == ReportTab.DAY) "只看当前归档日使用时长最高的 10 个应用。" else "只看当前归档窗口内使用时长最高的 10 个应用。",
+                title = AppText.t("stats_top_10_apps"),
+                subtitle = if (selectedTab == ReportTab.DAY) AppText.t("stats_current_day_top_10_apps_only") else AppText.t("stats_shows_only_the_10_most_used_apps_in"),
             )
             if (topAppsState == SectionState.Loading) {
                 SkeletonUsageSharePanel()
                 SkeletonRankingPanel()
             } else if (topAppsState == SectionState.Empty || usageTopApps.isEmpty()) {
                 Text(
-                    text = if (selectedTab == ReportTab.DAY) "这个归档日还没有足够的使用记录。" else "这个归档窗口还没有足够的使用记录。",
+                    text = if (selectedTab == ReportTab.DAY) AppText.t("stats_this_archived_day_does_not_have_enough_usage") else AppText.t("stats_archive_window_not_enough_usage_records"),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -5076,13 +5088,13 @@ private fun AppUsageShareCard(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 Text(
-                    text = "应用时长",
+                    text = AppText.t("stats_app_duration"),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                 )
                 if (items.isEmpty()) {
                     Text(
-                        text = "还没有足够的前台使用记录。",
+                        text = AppText.t("stats_no_usage_records"),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -5128,7 +5140,7 @@ private fun AppUsageShareCard(
                                     fontWeight = FontWeight.Bold,
                                 )
                                 Text(
-                                    text = "前 10 个应用总时长",
+                                    text = AppText.t("stats_top_10_total_usage"),
                                     style = MaterialTheme.typography.labelMedium,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                 )
@@ -5137,7 +5149,7 @@ private fun AppUsageShareCard(
                     }
                     HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.38f))
                     Text(
-                        text = "时长排名",
+                        text = AppText.t("stats_duration_ranking"),
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Bold,
                     )
@@ -5224,7 +5236,7 @@ private fun TopUsageRankingCard(
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Text(
-                text = "时长排名",
+                text = AppText.t("stats_duration_ranking"),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.Bold,
             )
@@ -5306,8 +5318,8 @@ private fun BehaviorCard(
         Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
             SectionHeader(
                 icon = Icons.Default.Insights,
-                title = "行为分析",
-                subtitle = if (selectedTab == ReportTab.DAY) "只展示已归档数据能够直接支撑的行为指标。" else "当前只保留由归档数据稳定支持的分析项。",
+                title = AppText.t("stats_behavior_analysis"),
+                subtitle = if (selectedTab == ReportTab.DAY) AppText.t("stats_archived_data_supported_metrics_only") else AppText.t("stats_only_insights_backed_by_stable_archived_data_are"),
             )
             if (behaviorState == SectionState.Loading) {
                 AdaptiveRowGrid(
@@ -5332,7 +5344,7 @@ private fun BehaviorCard(
                 }
             } else if (behaviorInsight == null) {
                 Text(
-                    text = if (selectedTab == ReportTab.DAY) "这个归档日还没有足够的行为样本。" else "当前窗口还没有足够的行为样本。",
+                    text = if (selectedTab == ReportTab.DAY) AppText.t("stats_this_archived_day_does_not_have_enough_behavior") else AppText.t("stats_the_current_window_does_not_have_enough_behavior"),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -5346,29 +5358,29 @@ private fun BehaviorCard(
                     when (index) {
                         0 -> MiniInsightCard(
                             icon = Icons.Default.Schedule,
-                            label = "最长单次会话",
-                            value = insight.longestSession?.let { session -> "${session.label} · ${formatDuration(session.value)}" } ?: "暂无",
+                            label = AppText.t("stats_label_11"),
+                            value = insight.longestSession?.let { session -> "${session.label} · ${formatDuration(session.value)}" } ?: AppText.t("stats_none"),
                             visualRatio = ((insight.longestSession?.value ?: 0L).toFloat() / (2 * 60 * 60_000L).toFloat()).coerceIn(0f, 1f),
                             modifier = modifier,
                         )
                         1 -> MiniInsightCard(
                             icon = Icons.Default.AccessTime,
-                            label = "平均单次时长",
+                            label = AppText.t("stats_average_session"),
                             value = formatDuration(insight.averageSessionMillis),
                             visualRatio = (insight.averageSessionMillis.toFloat() / (30 * 60_000L).toFloat()).coerceIn(0f, 1f),
                             modifier = modifier,
                         )
                         2 -> MiniInsightCard(
                             icon = Icons.Default.Timeline,
-                            label = if (selectedTab == ReportTab.DAY) "高峰时段" else "高峰时段",
+                            label = if (selectedTab == ReportTab.DAY) AppText.t("stats_label_9") else AppText.t("stats_label_9"),
                             value = "${insight.peakHourLabel} · ${formatDuration(insight.peakHourMillis)}",
                             visualRatio = (insight.peakHourMillis.toFloat() / (2 * 60 * 60_000L).toFloat()).coerceIn(0f, 1f),
                             modifier = modifier,
                         )
                         3 -> MiniInsightCard(
                             icon = Icons.Default.TouchApp,
-                            label = "打开强度",
-                            value = String.format(Locale.CHINA, "%.1f 次/活跃小时", insight.reopenIntensity),
+                            label = AppText.t("stats_launch_intensity"),
+                            value = String.format(Locale.CHINA, AppText.t("stats_launches_per_active_hour_format"), insight.reopenIntensity),
                             visualRatio = (insight.reopenIntensity / 6f).coerceIn(0f, 1f),
                             modifier = modifier,
                         )
@@ -5392,14 +5404,14 @@ private fun BehaviorCard(
                         0 -> BehaviorMomentCard(
                             icon = Icons.Default.NightsStay,
                             title = insight.beforeSleep.label,
-                            appLabel = insight.beforeSleep.appLabel ?: "暂无记录",
+                            appLabel = insight.beforeSleep.appLabel ?: AppText.t("stats_no_records_yet"),
                             packageName = insight.beforeSleep.packageName,
                             modifier = modifier,
                         )
                         else -> BehaviorMomentCard(
                             icon = Icons.Default.WbSunny,
                             title = insight.afterWake.label,
-                            appLabel = insight.afterWake.appLabel ?: "暂无记录",
+                            appLabel = insight.afterWake.appLabel ?: AppText.t("stats_no_records_yet"),
                             packageName = insight.afterWake.packageName,
                             modifier = modifier,
                         )
@@ -5431,14 +5443,14 @@ private fun BehaviorRingsCard(
             CompactMetricRing(
                 progress = (activeHourCount / 24f).coerceIn(0f, 1f),
                 value = "$activeHourCount",
-                label = "活跃小时",
+                label = AppText.t("stats_hours"),
                 color = MaterialTheme.colorScheme.primary,
                 modifier = Modifier.weight(1f),
             )
             CompactMetricRing(
                 progress = if (peakHourMillis > 0L) (nightUsageMillis.toFloat() / (peakHourMillis * 6f)).coerceIn(0f, 1f) else 0f,
                 value = formatDuration(nightUsageMillis),
-                label = "夜间",
+                label = AppText.t("stats_night"),
                 color = reportColors.warning,
                 modifier = Modifier.weight(1f),
             )
@@ -5537,8 +5549,8 @@ private fun ComparisonCard(
         Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
             SectionHeader(
                 icon = Icons.AutoMirrored.Filled.CompareArrows,
-                title = if (selectedTab == ReportTab.DAY) "归档对比" else "窗口对比",
-                subtitle = if (selectedTab == ReportTab.DAY) "只比较当前归档日与上一条归档之间最稳定的指标。" else "只比较归档窗口里最稳定的核心指标。",
+                title = if (selectedTab == ReportTab.DAY) AppText.t("stats_archive_comparison") else AppText.t("stats_window_comparison"),
+                subtitle = if (selectedTab == ReportTab.DAY) AppText.t("stats_compare_current_day_with_previous_archive") else AppText.t("stats_compare_stable_metrics_only"),
             )
             if (comparisonState == SectionState.Loading) {
                 repeat(3) { index ->
@@ -5556,7 +5568,7 @@ private fun ComparisonCard(
                 }
             } else if (comparisonState == SectionState.Empty) {
                 Text(
-                    text = if (selectedTab == ReportTab.DAY) "更早的归档样本还不够，暂时不展示对比。" else "当前窗口样本还不够，暂时不展示对比。",
+                    text = if (selectedTab == ReportTab.DAY) AppText.t("stats_not_enough_earlier_archive_samples") else AppText.t("stats_this_window_does_not_have_enough_samples_yet"),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -5639,9 +5651,9 @@ private fun ComparisonMiniBars(
     val reportColors = LocalReportColors.current
     val bars =
         listOf(
-            Triple("上次", data.previousValue, data.previousLabel),
-            Triple("均值", data.averageValue, data.averageLabel),
-            Triple("当前", data.currentValue, data.currentLabel),
+            Triple(AppText.t("stats_previous"), data.previousValue, data.previousLabel),
+            Triple(AppText.t("stats_average"), data.averageValue, data.averageLabel),
+            Triple(AppText.t("stats_current"), data.currentValue, data.currentLabel),
         )
     Column(
         modifier = Modifier.fillMaxWidth(),
@@ -5831,11 +5843,11 @@ private fun shareReportBitmap(
         Intent(Intent.ACTION_SEND).apply {
             type = "image/png"
             putExtra(Intent.EXTRA_STREAM, uri)
-            putExtra(Intent.EXTRA_TITLE, "Tiny Vow 战报")
-            clipData = ClipData.newUri(context.contentResolver, "Tiny Vow 战报", uri)
+            putExtra(Intent.EXTRA_TITLE, AppText.t("stats_tiny_vow_report"))
+            clipData = ClipData.newUri(context.contentResolver, AppText.t("stats_tiny_vow_report"), uri)
             addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
         }
-    context.startActivity(Intent.createChooser(intent, "分享战报"))
+    context.startActivity(Intent.createChooser(intent, AppText.t("stats_share_report")))
 }
 
 private fun renderShareReportBitmapV2(
@@ -5892,7 +5904,7 @@ private fun renderShareReportBitmapV2(
     drawSharePosterIcon(context, canvas, context.packageName, "T", 104f, 106f, 82f, primaryArgb)
     canvas.drawText(data.title, 208f, 142f, titlePaint)
     canvas.drawText(data.subtitle, 208f, 190f, subtitlePaint)
-    drawShareStatusPill(canvas, RectF(width - 276f, 120f, width - 104f, 176f), positiveArgb, "节奏守护")
+    drawShareStatusPill(canvas, RectF(width - 276f, 120f, width - 104f, 176f), positiveArgb, AppText.t("stats_label_4"))
 
     val heroRect = RectF(104f, 232f, width - 104f, 560f)
     canvas.drawRoundRect(
@@ -5904,7 +5916,7 @@ private fun renderShareReportBitmapV2(
     drawShareTransparentAppIcon(context, canvas, heroRect.right - 420f, heroRect.top - 54f, 500f, 28)
     canvas.drawCircle(154f, heroRect.top + 52f, 11f, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = positiveArgb })
     canvas.drawText(
-        "今日状态",
+        AppText.t("stats_today_status"),
         178f,
         heroRect.top + 64f,
         Paint(bodyPaint).apply {
@@ -5927,7 +5939,7 @@ private fun renderShareReportBitmapV2(
     val goalDelta = data.goalMillis - data.totalUsageMillis
     val goalText =
         if (data.goalMillis > 0L) {
-            if (goalDelta >= 0L) "剩余 ${formatDuration(goalDelta)}" else "超出 ${formatDuration(-goalDelta)}"
+            if (goalDelta >= 0L) AppText.t("stats_remaining_value", formatDuration(goalDelta)) else AppText.t("stats_over_by_value", formatDuration(-goalDelta))
         } else {
             data.comparisonLabel
         }
@@ -5979,7 +5991,7 @@ private fun renderShareReportBitmapV2(
         },
     )
     canvas.drawText(
-        if (data.goalMillis > 0L) "目标 ${formatDuration(data.goalMillis)}" else "使用进度",
+        if (data.goalMillis > 0L) AppText.t("stats_target_value", formatDuration(data.goalMillis)) else AppText.t("stats_usage_progress"),
         progressLeft,
         progressTop + 68f,
         Paint(labelPaint).apply { typeface = titleTypeface },
@@ -6029,7 +6041,7 @@ private fun renderShareReportBitmapV2(
         Paint(Paint.ANTI_ALIAS_FLAG).apply { color = primary.copy(alpha = 0.08f).toArgb() },
     )
     canvas.drawText(
-        "↩  复盘一句话",
+        AppText.t("stats_share_review_sentence"),
         136f,
         insightRect.top + 54f,
         Paint(titlePaint).apply {
@@ -6048,7 +6060,7 @@ private fun renderShareReportBitmapV2(
         2,
     )
     canvas.drawText(
-        "Tiny Vow · 把注意力还给生活",
+        AppText.t("stats_share_footer"),
         104f,
         height - 92f,
         Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -6241,9 +6253,9 @@ private fun drawShareAppConsumption(
         textSize = 36f
         typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.BOLD)
     }
-    canvas.drawText("应用消耗", 552f, centerY - 164f, titlePaint)
+    canvas.drawText(AppText.t("stats_app_usage"), 552f, centerY - 164f, titlePaint)
     canvas.drawText(
-        "占比",
+        AppText.t("stats_share"),
         930f,
         centerY - 164f,
         Paint(titlePaint).apply {
@@ -6252,7 +6264,7 @@ private fun drawShareAppConsumption(
         },
     )
     if (displayApps.isEmpty()) {
-        canvas.drawText("暂无应用明细", 552f, centerY, Paint(titlePaint).apply { textSize = 30f })
+        canvas.drawText(AppText.t("stats_no_app_details_yet"), 552f, centerY, Paint(titlePaint).apply { textSize = 30f })
         return
     }
     val namePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -6321,13 +6333,13 @@ private fun drawShareWeeklyTrend(
         textSize = 34f
         typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.BOLD)
     }
-    canvas.drawText("一周屏幕节奏", rect.left + 34f, rect.top + 60f, titlePaint)
+    canvas.drawText(AppText.t("stats_weekly_screen_rhythm"), rect.left + 34f, rect.top + 60f, titlePaint)
     canvas.drawText(
         comparisonLabel,
         rect.right - 34f,
         rect.top + 60f,
         Paint(titlePaint).apply {
-            color = if (comparisonLabel.contains("+") || comparisonLabel.contains("增")) warningArgb else positiveArgb
+            color = if (comparisonLabel.contains("+") || comparisonLabel.contains(AppText.t("stats_up"))) warningArgb else positiveArgb
             textSize = 26f
             textAlign = Paint.Align.RIGHT
         },
@@ -6396,7 +6408,7 @@ private fun drawShareWeeklyTrend(
         textAlign = Paint.Align.CENTER
         typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.BOLD)
     }
-    listOf("一", "二", "三", "四", "五", "六", "日").forEachIndexed { index, label ->
+    listOf(AppText.t("stats_mon"), AppText.t("stats_tue"), AppText.t("stats_wed"), AppText.t("stats_thu"), AppText.t("stats_fri"), AppText.t("stats_sat"), AppText.t("stats_sun")).forEachIndexed { index, label ->
         val x = chartLeft + (chartRight - chartLeft) * index / 6f
         canvas.drawText(label, x, rect.bottom - 28f, dayPaint)
     }
@@ -6494,7 +6506,7 @@ private fun renderShareReportBitmap(
     val goalText =
         if (data.goalMillis > 0L) {
             val delta = data.goalMillis - data.totalUsageMillis
-            if (delta >= 0L) "目标内 · 剩余 ${formatDuration(delta)}" else "超出 ${formatDuration(-delta)}"
+            if (delta >= 0L) AppText.t("stats_within_target_value_left", formatDuration(delta)) else AppText.t("stats_over_by_value_3", formatDuration(-delta))
         } else {
             data.comparisonLabel
         }
@@ -6545,7 +6557,7 @@ private fun renderShareReportBitmap(
         },
     )
     canvas.drawText(
-        if (data.goalMillis > 0L) "目标 ${formatDuration(data.goalMillis)}" else "使用进度",
+        if (data.goalMillis > 0L) AppText.t("stats_target_value", formatDuration(data.goalMillis)) else AppText.t("stats_usage_progress"),
         progressLeft,
         progressTop + 68f,
         labelPaint,
@@ -6592,7 +6604,7 @@ private fun renderShareReportBitmap(
 
     val insightTop = 1510f
     canvas.drawRoundRect(RectF(86f, insightTop - 54f, width - 86f, insightTop + 134f), 34f, 34f, softPaint)
-    canvas.drawText("复盘一句话", 126f, insightTop, Paint(sectionTitlePaint).apply { textSize = 34f })
+    canvas.drawText(AppText.t("stats_review_sentence"), 126f, insightTop, Paint(sectionTitlePaint).apply { textSize = 34f })
     val posterInsight = buildSharePosterInsight(data)
     drawMultilineText(canvas, posterInsight, 126f, insightTop + 50f, width - 252f, Paint(bodyPaint).apply { textSize = 29f }, 40f, 2)
 
@@ -6601,7 +6613,7 @@ private fun renderShareReportBitmap(
         textSize = 28f
         typeface = bodyTypeface
     }
-    canvas.drawText("Tiny Vow · 把注意力还给生活", 104f, height - 88f, footerPaint)
+    canvas.drawText(AppText.t("stats_share_footer"), 104f, height - 88f, footerPaint)
     return bitmap
 }
 
@@ -6735,7 +6747,7 @@ private fun drawShareAppDistribution(
         textAlign = Paint.Align.RIGHT
     }
     if (displayApps.isEmpty()) {
-        canvas.drawText("暂无应用明细", rowLeft, centerY, namePaint)
+        canvas.drawText(AppText.t("stats_no_app_details_yet"), rowLeft, centerY, namePaint)
         return
     }
     displayApps.forEachIndexed { index, app ->
@@ -6797,16 +6809,16 @@ private fun drawShareFocusCards(
     drawShareFocusCard(
         canvas = canvas,
         rect = RectF(left, top, left + cardWidth, top + cardHeight),
-        title = "管控成效",
-        primaryLabel = "节省时长",
+        title = AppText.t("stats_control_results"),
+        primaryLabel = AppText.t("stats_time_saved"),
         primaryValue = formatDuration(data.savedMillis),
         accent = if (data.blockEventCount > 0) warningArgb else positiveArgb,
         progress = data.goalProgress ?: if (data.controlExceededGroupCount == 0) 1f else 0f,
         metrics =
             listOf(
-                DailyFocusMetric("达标", "${data.controlCompletedGroupCount} 组"),
-                DailyFocusMetric("超限", "${data.controlExceededGroupCount} 组"),
-                DailyFocusMetric("拦截", "${data.blockEventCount} 次"),
+                DailyFocusMetric(AppText.t("stats_met"), AppText.t("stats_value_groups_3", data.controlCompletedGroupCount)),
+                DailyFocusMetric(AppText.t("stats_over_limit"), AppText.t("stats_value_groups_6", data.controlExceededGroupCount)),
+                DailyFocusMetric(AppText.t("group_blocks"), AppText.t("stats_value_times_13", data.blockEventCount)),
             ),
         textArgb = textArgb,
         mutedArgb = mutedArgb,
@@ -6815,8 +6827,8 @@ private fun drawShareFocusCards(
     drawShareFocusCard(
         canvas = canvas,
         rect = RectF(left + cardWidth + gap, top, left + width, top + cardHeight),
-        title = "鼓励进度",
-        primaryLabel = "净积分",
+        title = AppText.t("stats_encourage_progress"),
+        primaryLabel = AppText.t("stats_net_points"),
         primaryValue = formatSignedPointsLocal(data.pointsNet),
         accent = if (data.pointsNet >= 0.0) positiveArgb else warningArgb,
         progress = if (data.encourageCompletedGroupCount > 0 || data.redemptionCount > 0) {
@@ -6827,9 +6839,9 @@ private fun drawShareFocusCards(
         },
         metrics =
             listOf(
-                DailyFocusMetric("时长", formatDuration(data.encourageUsageMillis)),
-                DailyFocusMetric("达标", "${data.encourageCompletedGroupCount} 组"),
-                DailyFocusMetric("兑换", "${data.redemptionCount} 次"),
+                DailyFocusMetric(AppText.t("stats_duration"), formatDuration(data.encourageUsageMillis)),
+                DailyFocusMetric(AppText.t("stats_met"), AppText.t("stats_value_groups", data.encourageCompletedGroupCount)),
+                DailyFocusMetric(AppText.t("stats_redemption"), AppText.t("stats_value_times_10", data.redemptionCount)),
             ),
         textArgb = textArgb,
         mutedArgb = mutedArgb,
@@ -7006,9 +7018,9 @@ private fun drawSharePosterIcon(
 }
 
 private fun buildSharePosterInsight(data: ShareReportData): String {
-    val nightText = if (data.nightUsageMillis > 0L) "夜间 ${formatDuration(data.nightUsageMillis)}" else "夜间很轻"
-    val appText = data.topApps.firstOrNull()?.let { "Top 应用是 ${it.label}" } ?: "应用使用很分散"
-    return "${data.comparisonLabel}，主要集中在 ${data.dominantPeriod}，$nightText，$appText。"
+    val nightText = if (data.nightUsageMillis > 0L) AppText.t("stats_night_value", formatDuration(data.nightUsageMillis)) else AppText.t("stats_light_night_use")
+    val appText = data.topApps.firstOrNull()?.let { AppText.t("stats_top_app_is_value", it.label) } ?: AppText.t("stats_app_usage_is_spread_out")
+    return AppText.t("stats_value_mainly_concentrated_in_value_value_value", data.comparisonLabel, data.dominantPeriod, nightText, appText)
 }
 
 private fun drawEllipsizedText(
@@ -7352,10 +7364,10 @@ private fun deltaDescription(
     prefix: String,
     countUnit: String? = null,
 ): String {
-    if (baseline <= 0L && current <= 0L) return "$prefix 持平"
+    if (baseline <= 0L && current <= 0L) return AppText.t("stats_value_flat", prefix)
     val delta = current - baseline
-    if (delta == 0L) return "$prefix 持平"
-    val direction = if (delta > 0L) "增加" else "减少"
+    if (delta == 0L) return AppText.t("stats_value_flat", prefix)
+    val direction = if (delta > 0L) AppText.t("stats_label_2") else AppText.t("stats_label_12")
     val deltaValue = countUnit?.let { "${kotlin.math.abs(delta)} $it" } ?: formatDuration(kotlin.math.abs(delta))
     return "$prefix $direction $deltaValue"
 }

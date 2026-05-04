@@ -1,57 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
 <resources>
+    <!-- English default resources: keep only platform identity strings here. Edit app UI copy in app_texts.xml. -->
     <string name="app_name">Tiny Vow</string>
-    <string name="home_title">核心权限配置</string>
-    <string name="home_subtitle">为了统计应用使用时长并在超额时实现软阻断，请先完成核心权限；通知、电池和自启动属于增强可靠性的可选建议。</string>
-    <string name="permission_status_granted">[步骤 1] 使用情况访问已开启</string>
-    <string name="permission_status_denied">[步骤 1] 尚未开启使用情况访问</string>
-    <string name="permission_status_granted_desc">【为什么要开】统计每个 App 每天的使用时长必须有此权限支撑。\n\n【当前状态】核心权限已就绪！可以正常记录时长了。</string>
-    <string name="permission_status_denied_desc">【为什么要开】这是应用存活的必须权限：需要它才能知道目标 App 今天用了多长时间。\n\n【如何操作】点击下方按钮 -> 系统列表中找到「Tiny Vow」 -> 开启「允许访问使用记录」。</string>
-    <string name="permission_primary_action">打开系统设置</string>
-    <string name="permission_manage_action">查看权限设置</string>
-    <string name="permission_steps_title">怎么开启</string>
-    <string name="permission_steps_body">点上面的按钮后，进入系统"使用情况访问"页面，找到 Tiny Vow 并允许访问。返回应用后，首页会自动刷新状态。</string>
-    <string name="mvp_scope_title">这一版只做什么</string>
-    <string name="mvp_scope_body">这一阶段不做系统级强封禁，也不做同步。先把权限检测、目标 App 选择、今日时长读取、每日限额存储和超额提醒做稳。</string>
-
-    <string name="accessibility_card_title">[步骤 2] 无障碍软阻断</string>
-    <string name="accessibility_card_enabled">【为什么要开】在目标 App 超时并且在前台运行时，直接弹出一个全屏覆盖的拦截界面阻断使用。\n\n【当前状态】服务已成功运行中，超额拦截生效。</string>
-    <string name="accessibility_card_disabled">【为什么要开】它能在目标 App 超时并运行在前台时，直接弹出一个全屏悬浮界面来阻止你继续沉迷。这是最核心的拦截手段。\n\n【如何操作】点击下方按钮 -> 在系统的「已下载的应用」或服务列表中找到「Tiny Vow 软阻断服务」 -> 开启服务。</string>
-    <string name="accessibility_card_action">打开无障碍设置</string>
-
-    <string name="autostart_card_title">[可选] 后台自启动建议</string>
-    <string name="autostart_card_desc">【用途】部分手机厂商会限制后台运行，可能影响提醒和阻断服务的及时性。\n\n【说明】这是增强可靠性的可选配置，不开启也可以继续使用核心功能。点击下方按钮后，可在系统应用详情中查找「自启动」或「允许后台行为」等选项。</string>
-    <string name="autostart_card_action">查看自启动设置</string>
-    <string name="autostart_card_action_done">暂时跳过</string>
-
-    <!-- Settings menu -->
-    <string name="action_diagnostic_settings">权限与防杀后台诊断</string>
-    <string name="settings_menu_subtitle">若遇到不拦截、没弹窗等问题，请进入各项系统设置确认权限未被撤销。</string>
-
-    <string name="battery_card_title">[可选] 电池白名单建议</string>
-    <string name="battery_card_enabled">【当前状态】已获电池优化豁免，后台提醒和统计会更稳定。</string>
-    <string name="battery_card_disabled">【用途】降低息屏或系统省电策略导致提醒延迟的概率。\n\n【说明】这是增强可靠性的可选配置，不开启也可以继续使用核心功能。点击下方按钮后，由系统决定是否允许加入电池白名单。</string>
-    <string name="battery_card_action">查看电池白名单说明</string>
-
-    <string name="reminder_card_title">[可选] 超额提醒通知</string>
-    <string name="reminder_card_enabled">【为什么要开】在阻断时，同时在下拉通知栏发一条通知详细汇报使用剩余。\n\n【当前状态】已开启，能正常收到本地通知。</string>
-    <string name="reminder_card_disabled">【为什么要开】除了直接弹窗拦截外，开启此权限可以在你的下拉通知栏实时显示每日超额的报告提醒。\n\n【如何操作】点击下方按钮 -> 授予系统通知权限即可。</string>
-    <string name="reminder_card_action">开启通知权限</string>
-
-    <string name="notification_channel_name">每日限额提醒</string>
-    <string name="notification_channel_desc">当目标 App 超过每日预算时发送提醒。</string>
-    <string name="notification_limit_title">%1$s 已超出今日预算</string>
-    <string name="notification_limit_body">当前已经超出 %1$s，回到 Tiny Vow 查看剩余策略。</string>
-
-    <string name="accessibility_service_label">Tiny Vow 软阻断服务</string>
-    <string name="accessibility_service_desc">检测目标 App 是否超出每日预算，并在进入前台时显示阻断页。</string>
-
-    <string name="block_title">今天的预算已经用完</string>
-    <string name="block_overlay_open_app">回到 Tiny Vow</string>
-    <string name="block_overlay_go_home">返回桌面</string>
-    <string name="block_body_group">分组「%1$s」的总使用时间已超出限额 %2$s。请休息一下，明天再来。</string>
-
-    <string name="group_edit_title">编辑分组属性</string>
-    <string name="group_name_label">分组名称 (如：游戏、视频)</string>
-    <string name="action_save">保存配置</string>
-    <string name="action_cancel">取消</string>
 </resources>

@@ -1,5 +1,7 @@
 package com.rrrrz.tinyvow.service.block
 
+import com.rrrrz.tinyvow.i18n.AppText
+
 import android.accessibilityservice.AccessibilityService
 import android.annotation.SuppressLint
 import android.content.Intent
@@ -70,6 +72,9 @@ class AppLimitAccessibilityService : AccessibilityService() {
         enforcer = GroupLimitEnforcer(applicationContext)
         pointsRepository = PointsRepository(applicationContext, database)
 
+        serviceScope.launch {
+            AppText.setLanguage(preferences.getSelectedAppLanguageOnce(), this@AppLimitAccessibilityService)
+        }
 
         // 启动定时结算协程
         startPeriodicPointsTicker()
@@ -502,10 +507,10 @@ class AppLimitAccessibilityService : AccessibilityService() {
         val totalMinutes = exceededMillis / 60_000
         val hours = totalMinutes / 60
         val minutes = totalMinutes % 60
-        val exceededText = if (hours > 0) "${hours}小时 ${minutes}分钟" else "${minutes}分钟"
+        val exceededText = if (hours > 0) AppText.t("duration_value_h_value_min", hours, minutes) else AppText.t("duration_value_min", minutes)
 
         val title = android.widget.TextView(this).apply {
-            text = "此刻，给自己一个深呼吸"
+            text = AppText.t("accessibility_take_a_deep_breath_right_now")
             textSize = 22f
             setTypeface(null, android.graphics.Typeface.BOLD)
             setTextColor(palette.onSurface)
@@ -515,7 +520,7 @@ class AppLimitAccessibilityService : AccessibilityService() {
         }
 
         val body = android.widget.TextView(this).apply {
-            text = "你今日已使用 $groupName 超过 $exceededText。\n自律不是限制，而是为了遇见更好的自己。"
+            text = AppText.t("accessibility_you_have_used_value_today_over_by_value", groupName, exceededText)
             textSize = 15f
             setLineSpacing(dp(3).toFloat(), 1.15f)
             setTextColor(palette.onSurfaceVariant)
@@ -664,7 +669,7 @@ class AppLimitAccessibilityService : AccessibilityService() {
             
             val formattedRate = if (group.pointsPerMinute % 1.0 == 0.0) group.pointsPerMinute.toInt().toString() else group.pointsPerMinute.toString()
             val rateText = android.widget.TextView(this@AppLimitAccessibilityService).apply {
-                text = "+$formattedRate 分/分钟"
+                text = AppText.t("accessibility_value_pts_min", formattedRate)
                 textSize = 10f
                 setTextColor(encourageAccent)
                 setTypeface(null, android.graphics.Typeface.BOLD)
@@ -685,7 +690,7 @@ class AppLimitAccessibilityService : AccessibilityService() {
         val usedMins = group.usageMs / 60_000
         val targetMins = group.limitMinutes
         val progressText = android.widget.TextView(this).apply {
-            text = "已进行 $usedMins 分钟 / 目标 $targetMins 分钟"
+            text = AppText.t("accessibility_value_minutes_done_value_minute_target", usedMins, targetMins)
             textSize = 10f
             setTextColor(palette.onSurfaceVariant)
             maxLines = 1

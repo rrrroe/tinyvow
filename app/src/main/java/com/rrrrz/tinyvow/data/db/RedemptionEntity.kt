@@ -22,6 +22,9 @@ data class RedemptionEntity(
     val title: String,
     
     val description: String,
+
+    @ColumnInfo(name = "builtin_key")
+    val builtinKey: String? = null,
     
     @ColumnInfo(name = "point_cost")
     val pointCost: Int,

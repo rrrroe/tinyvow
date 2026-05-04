@@ -42,6 +42,10 @@ data class PointLedgerEntity(
     val rewardTitleSnapshot: String? = null,
     @ColumnInfo(name = "source_ref_id")
     val sourceRefId: String? = null,
+    @ColumnInfo(name = "message_key")
+    val messageKey: String? = null,
+    @ColumnInfo(name = "message_args_json")
+    val messageArgsJson: String? = null,
     val note: String = "",
     @ColumnInfo(name = "created_at")
     val createdAt: Long,

@@ -1,5 +1,7 @@
 package com.rrrrz.tinyvow.ui.block
 
+import com.rrrrz.tinyvow.i18n.AppText
+
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.core.*
 import androidx.compose.foundation.Image
@@ -88,7 +90,7 @@ fun BlockOverlayScreen(
 
             // Title
             Text(
-                text = "小约定 已达成",
+                text = AppText.t("block_small_vow_completed"),
                 style = MaterialTheme.typography.headlineLarge,
                 fontWeight = FontWeight.ExtraBold,
                 color = MaterialTheme.colorScheme.onSurface,
@@ -100,11 +102,11 @@ fun BlockOverlayScreen(
             // Body
             Text(
                 text = buildString {
-                    append("你今日已使用 ")
+                    append(AppText.t("block_you_have_used"))
                     append(groupName)
-                    append(" 超过 ")
+                    append(AppText.t("block_over"))
                     append(exceededText)
-                    append("。\n这是我们达成的约定，放下手机，给自己一点呼吸的空间吧。")
+                    append(AppText.t("block_this_is_the_vow_we_made_put_the"))
                 },
                 style = MaterialTheme.typography.bodyLarge.copy(
                     lineHeight = 26.sp,
@@ -131,7 +133,7 @@ fun BlockOverlayScreen(
                 elevation = ButtonDefaults.buttonElevation(defaultElevation = 4.dp)
             ) {
                 Text(
-                    text = "回到首页",
+                    text = AppText.t("block_back_to_home"),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
@@ -148,7 +150,7 @@ fun BlockOverlayScreen(
                 border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.5f))
             ) {
                 Text(
-                    text = "确认并退出",
+                    text = AppText.t("block_confirm_and_exit"),
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

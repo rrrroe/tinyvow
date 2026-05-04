@@ -1,5 +1,7 @@
 package com.rrrrz.tinyvow.ui.home
 
+import com.rrrrz.tinyvow.i18n.AppText
+
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -39,7 +41,7 @@ fun LaboratoryScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text("实验室（调试工具）") },
+                title = { Text(AppText.t("lab_laboratory_debug_tools")) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -56,7 +58,7 @@ fun LaboratoryScreen(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Text("积分模拟", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text(AppText.t("lab_points_simulation"), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = { onAddPoints(10.0) }, modifier = Modifier.weight(1f)) { Text("+10") }
                 Button(onClick = { onAddPoints(100.0) }, modifier = Modifier.weight(1f)) { Text("+100") }
@@ -64,25 +66,25 @@ fun LaboratoryScreen(
 
             HorizontalDivider()
 
-            Text("战报测试", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text(AppText.t("lab_report_test"), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
             Button(
                 onClick = onResetSummary,
                 modifier = Modifier.fillMaxWidth(),
                 colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary),
             ) {
-                Text("重置战报状态（清除今日记录）")
+                Text(AppText.t("lab_reset_report_state_clear_today_s_record"))
             }
 
             Button(
                 onClick = onTriggerSummary,
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text("直接触发战报弹窗")
+                Text(AppText.t("lab_trigger_report_dialog_directly"))
             }
 
             Spacer(modifier = Modifier.height(32.dp))
             Text(
-                "提示：重置后重启 App 即可重新验证昨日战报。",
+                AppText.t("lab_tip_after_resetting_restart_the_app_to_verify"),
                 style = MaterialTheme.typography.bodySmall,
                 color = Color.Gray,
             )

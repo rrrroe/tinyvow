@@ -1,5 +1,6 @@
 package com.rrrrz.tinyvow.ui.theme
 
+import com.rrrrz.tinyvow.i18n.AppText
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Stable
@@ -44,11 +45,11 @@ data class ThemeTokens(
 )
 
 val ThemePresets = listOf(
-    ThemeSeed("preset_sakura_mint", "樱雨薄荷", 0xFFD98B8B.toInt(), 0xFF9BC8A6.toInt(), 0xFF8FBED0.toInt()),
-    ThemeSeed("preset_clear_celadon", "晴瓷浅葱", 0xFFDCA487.toInt(), 0xFFA8C9A1.toInt(), 0xFF91B9C9.toInt()),
-    ThemeSeed("preset_iris_mist", "鸢尾晨雾", 0xFFD59AAA.toInt(), 0xFFA7C7B6.toInt(), 0xFFA7ADD8.toInt()),
-    ThemeSeed("preset_orange_blossom", "橙花云影", 0xFFE0A36F.toInt(), 0xFFB8CF91.toInt(), 0xFFA8BBD8.toInt()),
-    ThemeSeed("preset_seasalt_linen", "海盐亚麻", 0xFFD6A18E.toInt(), 0xFF9FCBBE.toInt(), 0xFFA6C1D4.toInt()),
+    ThemeSeed("preset_sakura_mint", "Sakura Mint", 0xFFD98B8B.toInt(), 0xFF9BC8A6.toInt(), 0xFF8FBED0.toInt()),
+    ThemeSeed("preset_clear_celadon", "Clear Celadon", 0xFFDCA487.toInt(), 0xFFA8C9A1.toInt(), 0xFF91B9C9.toInt()),
+    ThemeSeed("preset_iris_mist", "Iris Mist", 0xFFD59AAA.toInt(), 0xFFA7C7B6.toInt(), 0xFFA7ADD8.toInt()),
+    ThemeSeed("preset_orange_blossom", "Orange Blossom", 0xFFE0A36F.toInt(), 0xFFB8CF91.toInt(), 0xFFA8BBD8.toInt()),
+    ThemeSeed("preset_seasalt_linen", "Sea Salt Linen", 0xFFD6A18E.toInt(), 0xFF9FCBBE.toInt(), 0xFFA6C1D4.toInt()),
 )
 
 val DefaultThemeSeed = ThemePresets.first()
@@ -72,7 +73,7 @@ fun legacyCustomTheme(seedColor: Int): ThemeSeed {
     val base = Color(seedColor)
     return ThemeSeed(
         id = "custom_legacy_seed",
-        name = "旧版自定义",
+        name = "Legacy custom",
         controlColor = rotateHue(base, -28f).toArgb(),
         encourageColor = rotateHue(base, 96f).toArgb(),
         baseColor = base.toArgb(),
@@ -179,12 +180,19 @@ fun createCustomTheme(
     baseColor: Int,
 ): ThemeSeed = ThemeSeed(
     id = "custom_${System.currentTimeMillis()}",
-    name = name.ifBlank { "自定义主题" },
+    name = name.ifBlank { "Custom theme" },
     controlColor = controlColor,
     encourageColor = encourageColor,
     baseColor = baseColor,
     isCustom = true,
 )
+
+fun ThemeSeed.localizedName(): String {
+    if (isCustom) return name
+    val key = "theme_${id}_name"
+    val value = AppText.t(key)
+    return if (value == key) name else value
+}
 
 fun argbToHex(color: Int): String = "#%06X".format(color and 0x00FFFFFF)
 

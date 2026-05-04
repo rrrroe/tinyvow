@@ -1,5 +1,7 @@
 package com.rrrrz.tinyvow.data.settings
 
+import com.rrrrz.tinyvow.i18n.AppText
+
 import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.doublePreferencesKey
@@ -9,6 +11,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.rrrrz.tinyvow.ui.theme.DefaultThemeSeed
+import com.rrrrz.tinyvow.i18n.AppLanguage
 import com.rrrrz.tinyvow.ui.theme.ThemeSeed
 import com.rrrrz.tinyvow.ui.theme.legacyCustomTheme
 import com.rrrrz.tinyvow.ui.theme.legacyThemeId
@@ -37,6 +40,7 @@ class ManagedAppPreferences(
         val dismissedPermissionPrompts = stringSetPreferencesKey("dismissed_permission_prompts")
         val usageAccessDisclosureAccepted = booleanPreferencesKey("usage_access_disclosure_accepted")
         val accessibilityDisclosureAccepted = booleanPreferencesKey("accessibility_disclosure_accepted")
+        val selectedAppLanguage = stringPreferencesKey("selected_app_language")
     }
 
     val selectedPackageName: Flow<String?> = context.managedAppDataStore.data.map { preferences ->
@@ -104,6 +108,10 @@ class ManagedAppPreferences(
 
     val accessibilityDisclosureAccepted: Flow<Boolean> = context.managedAppDataStore.data.map { preferences ->
         preferences[Keys.accessibilityDisclosureAccepted] ?: false
+    }
+
+    val selectedAppLanguage: Flow<AppLanguage> = context.managedAppDataStore.data.map { preferences ->
+        AppLanguage.fromStorageValue(preferences[Keys.selectedAppLanguage])
     }
 
     suspend fun addUserPoints(points: Double) {
@@ -222,6 +230,12 @@ class ManagedAppPreferences(
         }
     }
 
+    suspend fun setSelectedAppLanguage(language: AppLanguage) {
+        context.managedAppDataStore.edit { preferences ->
+            preferences[Keys.selectedAppLanguage] = language.storageValue
+        }
+    }
+
     suspend fun setDailyLimitMinutes(packageName: String, minutes: Int) {
         context.managedAppDataStore.edit { preferences ->
             preferences[intPreferencesKey("daily_limit_minutes_$packageName")] = minutes
@@ -236,6 +250,10 @@ class ManagedAppPreferences(
 
     suspend fun getSelectedPackageNameOnce(): String? {
         return selectedPackageName.first()
+    }
+
+    suspend fun getSelectedAppLanguageOnce(): AppLanguage {
+        return selectedAppLanguage.first()
     }
 
     suspend fun getDailyLimitMinutesOnce(packageName: String): Int? {
@@ -274,7 +292,7 @@ class ManagedAppPreferences(
                 for (index in 0 until array.length()) {
                     val item = array.optJSONObject(index) ?: continue
                     val id = item.optString("id").takeIf { it.isNotBlank() } ?: continue
-                    val name = item.optString("name").takeIf { it.isNotBlank() } ?: "自定义主题"
+                    val name = item.optString("name").takeIf { it.isNotBlank() } ?: AppText.t("settings_custom_theme")
                     add(
                         ThemeSeed(
                             id = id,

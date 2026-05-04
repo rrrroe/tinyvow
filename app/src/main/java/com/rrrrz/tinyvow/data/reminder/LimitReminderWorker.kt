@@ -1,5 +1,7 @@
 package com.rrrrz.tinyvow.data.reminder
 
+import com.rrrrz.tinyvow.i18n.AppText
+
 import android.content.Context
 import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
@@ -30,6 +32,7 @@ class LimitReminderWorker(
         }
 
         val preferences = ManagedAppPreferences(applicationContext)
+        AppText.setLanguage(preferences.getSelectedAppLanguageOnce(), applicationContext)
         val selectedPackageName = preferences.getSelectedPackageNameOnce() ?: return Result.success()
         val dailyLimitMinutes =
             preferences.getDailyLimitMinutesOnce(selectedPackageName) ?: return Result.success()
@@ -75,11 +78,11 @@ class LimitReminderWorker(
         val seconds = totalSeconds % 60
 
         return when {
-            hours > 0 && minutes > 0 -> "${hours}小时 ${minutes}分钟"
-            hours > 0 -> "${hours}小时"
-            totalMinutes > 0L -> "${minutes}分钟"
-            totalSeconds > 0L -> "${seconds}秒"
-            else -> "0秒"
+            hours > 0 && minutes > 0 -> AppText.t("duration_value_h_value_min", hours, minutes)
+            hours > 0 -> AppText.t("duration_value_h", hours)
+            totalMinutes > 0L -> AppText.t("duration_value_min", minutes)
+            totalSeconds > 0L -> AppText.t("duration_value_sec", seconds)
+            else -> AppText.t("duration_0_sec")
         }
     }
 }

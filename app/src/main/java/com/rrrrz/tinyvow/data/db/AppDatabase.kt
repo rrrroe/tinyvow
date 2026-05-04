@@ -22,7 +22,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         DailyArchiveStateEntity::class,
         BlockEventEntity::class,
     ],
-    version = 14,
+    version = 15,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -456,6 +456,34 @@ abstract class AppDatabase : RoomDatabase() {
                 }
             }
 
+        val MIGRATION_14_15 =
+            object : Migration(14, 15) {
+                override fun migrate(db: SupportSQLiteDatabase) {
+                    db.execSQL("ALTER TABLE `redemptions` ADD COLUMN `builtin_key` TEXT")
+                    db.execSQL("ALTER TABLE `redemption_history` ADD COLUMN `reward_builtin_key` TEXT")
+                    db.execSQL("ALTER TABLE `point_ledger` ADD COLUMN `message_key` TEXT")
+                    db.execSQL("ALTER TABLE `point_ledger` ADD COLUMN `message_args_json` TEXT")
+                    db.execSQL(
+                        "UPDATE `redemptions` SET `builtin_key` = 'reward_time_pack_30' WHERE `title` = '30\u5206\u949f \u4e34\u65f6\u7eed\u547d\u5361' AND `bonus_minutes` = 30"
+                    )
+                    db.execSQL(
+                        "UPDATE `redemptions` SET `builtin_key` = 'reward_time_pack_60' WHERE `title` = '1\u5c0f\u65f6 \u81ea\u7531\u51b2\u6d6a\u5361' AND `bonus_minutes` = 60"
+                    )
+                    db.execSQL(
+                        "UPDATE `redemptions` SET `builtin_key` = 'reward_offline_treat' WHERE `title` = '\u5927\u5feb\u6735\u9890 (\u7ebf\u4e0b\u5956\u52b1)'"
+                    )
+                    db.execSQL(
+                        "UPDATE `redemption_history` SET `reward_builtin_key` = 'reward_time_pack_30' WHERE `reward_title` = '30\u5206\u949f \u4e34\u65f6\u7eed\u547d\u5361' AND `bonus_minutes` = 30"
+                    )
+                    db.execSQL(
+                        "UPDATE `redemption_history` SET `reward_builtin_key` = 'reward_time_pack_60' WHERE `reward_title` = '1\u5c0f\u65f6 \u81ea\u7531\u51b2\u6d6a\u5361' AND `bonus_minutes` = 60"
+                    )
+                    db.execSQL(
+                        "UPDATE `redemption_history` SET `reward_builtin_key` = 'reward_offline_treat' WHERE `reward_title` = '\u5927\u5feb\u6735\u9890 (\u7ebf\u4e0b\u5956\u52b1)'"
+                    )
+                }
+            }
+
         @Volatile
         private var INSTANCE: AppDatabase? = null
         @Volatile
@@ -482,6 +510,7 @@ abstract class AppDatabase : RoomDatabase() {
                             MIGRATION_11_12,
                             MIGRATION_12_13,
                             MIGRATION_13_14,
+                            MIGRATION_14_15,
                         )
                         .build()
                 INSTANCE = instance

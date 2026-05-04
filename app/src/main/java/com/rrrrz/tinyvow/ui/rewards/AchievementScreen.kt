@@ -1,5 +1,7 @@
 package com.rrrrz.tinyvow.ui.rewards
 
+import com.rrrrz.tinyvow.i18n.AppText
+
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.*
 import androidx.compose.animation.fadeIn
@@ -61,11 +63,11 @@ private data class TierTab(
 )
 
 private fun tierTabsForTheme(tokens: ThemeTokens) = listOf(
-    TierTab(AchievementTier.BRONZE, "🥉", "铜阶", lerp(tokens.control, tokens.base, 0.28f), tokens.controlContainer.copy(alpha = 0.48f)),
-    TierTab(AchievementTier.SILVER, "🥈", "银阶", lerp(tokens.base, tokens.encourage, 0.22f), tokens.baseContainer.copy(alpha = 0.50f)),
-    TierTab(AchievementTier.GOLD, "🥇", "金阶", lerp(tokens.encourage, tokens.base, 0.18f), tokens.encourageContainer.copy(alpha = 0.52f)),
-    TierTab(AchievementTier.DIAMOND, "💎", "钻石阶", tokens.base, tokens.baseContainer.copy(alpha = 0.60f)),
-    TierTab(AchievementTier.LEGENDARY, "🌟", "传奇阶", tokens.encourage, lerp(tokens.encourageContainer, tokens.controlContainer, 0.32f).copy(alpha = 0.62f)),
+    TierTab(AchievementTier.BRONZE, "🥉", AppText.t("achievement_bronze"), lerp(tokens.control, tokens.base, 0.28f), tokens.controlContainer.copy(alpha = 0.48f)),
+    TierTab(AchievementTier.SILVER, "🥈", AppText.t("achievement_silver"), lerp(tokens.base, tokens.encourage, 0.22f), tokens.baseContainer.copy(alpha = 0.50f)),
+    TierTab(AchievementTier.GOLD, "🥇", AppText.t("achievement_gold"), lerp(tokens.encourage, tokens.base, 0.18f), tokens.encourageContainer.copy(alpha = 0.52f)),
+    TierTab(AchievementTier.DIAMOND, "💎", AppText.t("achievement_diamond"), tokens.base, tokens.baseContainer.copy(alpha = 0.60f)),
+    TierTab(AchievementTier.LEGENDARY, "🌟", AppText.t("achievement_legendary"), tokens.encourage, lerp(tokens.encourageContainer, tokens.controlContainer, 0.32f).copy(alpha = 0.62f)),
 )
 
 // ──────── 主屏幕 ────────
@@ -187,7 +189,7 @@ private fun TierPage(
             contentAlignment = Alignment.Center
         ) {
             Text(
-                "此等级暂无成就",
+                AppText.t("achievement_no_achievements_in_this_tier_yet"),
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -209,7 +211,7 @@ private fun TierPage(
         if (unlockedList.isNotEmpty()) {
             item {
                 Text(
-                    "✅ 已达成",
+                    AppText.t("achievement_completed"),
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier.padding(top = 8.dp)
@@ -233,7 +235,7 @@ private fun TierPage(
         if (lockedList.isNotEmpty()) {
             item {
                 Text(
-                    "🔒 待解锁",
+                    AppText.t("achievement_locked"),
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -288,18 +290,18 @@ private fun TierHeader(tab: TierTab, unlocked: Int, total: Int) {
 
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = "${tab.label}成就",
+                    text = AppText.t("achievement_value_achievements", tab.label),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = when (tab.tier) {
-                        AchievementTier.BRONZE -> "自律之路的起点，每一步都是勇气"
-                        AchievementTier.SILVER -> "意志渐坚，你正走在蜕变的路上"
-                        AchievementTier.GOLD -> "强者之证，少有人能达到的高度"
-                        AchievementTier.DIAMOND -> "光芒万丈，你已名动天下"
-                        AchievementTier.LEGENDARY -> "传奇铸就，你就是传说本身"
+                        AchievementTier.BRONZE -> AppText.t("achievement_the_beginning_of_discipline_every_step_takes_courage")
+                        AchievementTier.SILVER -> AppText.t("achievement_your_will_is_growing_stronger_as_you_change")
+                        AchievementTier.GOLD -> AppText.t("achievement_proof_of_strength_a_height_few_reach")
+                        AchievementTier.DIAMOND -> AppText.t("achievement_you_shine_brightly_and_stand_out")
+                        AchievementTier.LEGENDARY -> AppText.t("achievement_a_legend_forged_you_are_the_legend_itself")
                         else -> ""
                     },
                     style = MaterialTheme.typography.bodySmall,
@@ -319,7 +321,7 @@ private fun TierHeader(tab: TierTab, unlocked: Int, total: Int) {
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
-                    text = "$unlocked / $total 已完成",
+                    text = AppText.t("achievement_value_value_completed", unlocked, total),
                     style = MaterialTheme.typography.labelSmall,
                     color = tab.accentColor
                 )
@@ -560,14 +562,14 @@ private fun UnlockedAchievementCard(achievement: AchievementEntity) {
                     // 中间: 名称 + 描述
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = achievement.title,
+                            text = achievement.localizedTitle(),
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = FontWeight.ExtraBold,
                             color = MaterialTheme.colorScheme.onSurface
                         )
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = achievement.description,
+                            text = achievement.localizedDescription(),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 2,
@@ -580,7 +582,7 @@ private fun UnlockedAchievementCard(achievement: AchievementEntity) {
                                 SimpleDateFormat("yyyy/MM/dd HH:mm", Locale.getDefault()).format(Date(millis))
                             }
                             Text(
-                                text = "✨ $dateStr 解锁成就",
+                                text = AppText.t("achievement_value_achievement_unlocked", dateStr),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
                                 fontWeight = FontWeight.Bold
@@ -591,7 +593,7 @@ private fun UnlockedAchievementCard(achievement: AchievementEntity) {
                     // 右侧: 完成标记
                     Icon(
                         Icons.Default.CheckCircle,
-                        contentDescription = "已解锁",
+                        contentDescription = AppText.t("me_unlocked"),
                         tint = when (achievement.tier) {
                             AchievementTier.LEGENDARY -> themeTokens.encourage
                             AchievementTier.DIAMOND -> themeTokens.base
@@ -687,14 +689,14 @@ private fun LockedAchievementCard(
 
             Column(modifier = Modifier.weight(1f)) {
                 Text(
-                    text = achievement.title,
+                    text = achievement.localizedTitle(),
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Medium,
                     color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
                 )
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
-                    text = achievement.description,
+                    text = achievement.localizedDescription(),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
                     maxLines = 2,
@@ -725,10 +727,22 @@ private fun LockedAchievementCard(
 
             Icon(
                 Icons.Default.Lock,
-                contentDescription = "未解锁",
+                contentDescription = AppText.t("achievement_locked_2"),
                 tint = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f),
                 modifier = Modifier.size(24.dp)
             )
         }
     }
+}
+
+private fun AchievementEntity.localizedTitle(): String {
+    val key = "achievement_${id.lowercase()}_title"
+    val value = AppText.t(key)
+    return if (value == key) title else value
+}
+
+private fun AchievementEntity.localizedDescription(): String {
+    val key = "achievement_${id.lowercase()}_desc"
+    val value = AppText.t(key)
+    return if (value == key) description else value
 }

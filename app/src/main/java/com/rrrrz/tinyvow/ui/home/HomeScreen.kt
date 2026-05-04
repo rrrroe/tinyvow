@@ -1,5 +1,7 @@
 package com.rrrrz.tinyvow.ui.home
 
+import com.rrrrz.tinyvow.i18n.AppText
+
 import android.Manifest
 import android.content.ClipData
 import android.content.Intent
@@ -123,7 +125,7 @@ private const val CONTACT_EMAIL = "rrrr.zhao@gmail.com"
 private object PermissionPromptIds {
     const val USAGE_ACCESS = "usage_access"
     const val ACCESSIBILITY = "accessibility"
-    const val AUTO_START = "auto_start"
+    const val BACKGROUND_START = "background_start"
     const val BATTERY = "battery"
     const val NOTIFICATION = "notification"
 }
@@ -133,7 +135,7 @@ private enum class SensitivePermissionDisclosure {
     ACCESSIBILITY,
     NOTIFICATION,
     BATTERY_OPTIMIZATION,
-    AUTO_START,
+    BACKGROUND_START,
 }
 
 @Composable
@@ -149,7 +151,7 @@ fun RewardsHome(
     onBack: () -> Unit
 ) {
     var selectedTab by remember { mutableIntStateOf(0) }
-    val tabs = listOf("成就殿堂", "积分商城")
+    val tabs = listOf(AppText.t("home_achievements"), AppText.t("home_rewards_store"))
     
     Column(modifier = Modifier.fillMaxSize()) {
         TabRow(
@@ -226,6 +228,7 @@ fun HomeRoute(
     val todayPoints by preferences.todayPoints.collectAsState(initial = 0.0)
     val selectedThemeId by preferences.selectedThemeId.collectAsState(initial = DefaultThemeSeed.id)
     val customThemes by preferences.customThemes.collectAsState(initial = emptyList())
+    val selectedAppLanguage by preferences.selectedAppLanguage.collectAsState(initial = com.rrrrz.tinyvow.i18n.AppLanguage.SYSTEM)
     val rewards by appLimitRepository.getAllRewards().collectAsState(initial = emptyList())
     val achievements by appLimitRepository.getAllAchievements().collectAsState(initial = emptyList())
     val redemptionHistory by appLimitRepository.getRedemptionHistory().collectAsState(initial = emptyList())
@@ -376,10 +379,10 @@ fun HomeRoute(
                     tonalElevation = 8.dp
                 ) {
                     val screens = listOf(
-                        Triple(Screen.HOME, "首页", Icons.Default.Home),
-                        Triple(Screen.STATS, "战报", Icons.Default.BarChart),
-                        Triple(Screen.REWARDS, "奖励", Icons.Default.CardGiftcard),
-                        Triple(Screen.ME, "我的", Icons.Default.Person)
+                        Triple(Screen.HOME, AppText.t("home_home"), Icons.Default.Home),
+                        Triple(Screen.STATS, AppText.t("home_report"), Icons.Default.BarChart),
+                        Triple(Screen.REWARDS, AppText.t("home_rewards"), Icons.Default.CardGiftcard),
+                        Triple(Screen.ME, AppText.t("home_me"), Icons.Default.Person)
                     )
                     screens.forEach { (screen, label, icon) ->
                         NavigationBarItem(
@@ -429,7 +432,7 @@ fun HomeRoute(
                             }
                         },
                         onOpenAutoStartSettings = {
-                            pendingSensitiveDisclosure = SensitivePermissionDisclosure.AUTO_START
+                            pendingSensitiveDisclosure = SensitivePermissionDisclosure.BACKGROUND_START
                         },
                         onRequestBatteryOptimization = {
                             pendingSensitiveDisclosure = SensitivePermissionDisclosure.BATTERY_OPTIMIZATION
@@ -443,7 +446,7 @@ fun HomeRoute(
                             coroutineScope.launch {
                                 ids.forEach { id ->
                                     preferences.setPermissionPromptDismissed(id, true)
-                                    if (id == PermissionPromptIds.AUTO_START) {
+                                    if (id == PermissionPromptIds.BACKGROUND_START) {
                                         preferences.setAutoStartDismissed(true)
                                     }
                                 }
@@ -511,12 +514,19 @@ fun HomeRoute(
                         userPoints = userPoints,
                         selectedThemeId = selectedThemeId,
                         customThemes = customThemes,
+                        selectedAppLanguage = selectedAppLanguage,
                         usageAccessGranted = effectiveUsageAccessStatus == UsageAccessStatus.GRANTED,
                         accessibilityServiceEnabled = effectiveAccessibilityServiceEnabled,
                         isAutoStartDismissed = isAutoStartDismissed,
                         isIgnoringBattery = isIgnoringBattery,
                         notificationPermissionGranted = notificationPermissionGranted,
                         dismissedPermissionPrompts = dismissedPermissionPrompts,
+                        onSelectAppLanguage = { language ->
+                            coroutineScope.launch {
+                                preferences.setSelectedAppLanguage(language)
+                                AppText.setLanguage(language, context)
+                            }
+                        },
                         onSelectTheme = { themeId ->
                             coroutineScope.launch {
                                 preferences.setSelectedThemeId(themeId)
@@ -554,7 +564,7 @@ fun HomeRoute(
                             }
                         },
                         onOpenAutoStartSettings = {
-                            pendingSensitiveDisclosure = SensitivePermissionDisclosure.AUTO_START
+                            pendingSensitiveDisclosure = SensitivePermissionDisclosure.BACKGROUND_START
                         },
                         onSetAutoStartDismissed = {
                             coroutineScope.launch { preferences.setAutoStartDismissed(true) }
@@ -567,7 +577,7 @@ fun HomeRoute(
                                 dismissedPermissionPrompts.forEach { id ->
                                     preferences.setPermissionPromptDismissed(id, false)
                                 }
-                                if (PermissionPromptIds.AUTO_START in dismissedPermissionPrompts) {
+                                if (PermissionPromptIds.BACKGROUND_START in dismissedPermissionPrompts) {
                                     preferences.setAutoStartDismissed(false)
                                 }
                             }
@@ -590,17 +600,17 @@ fun HomeRoute(
                                     val intent = Intent(Intent.ACTION_SEND).apply {
                                         type = "application/json"
                                         putExtra(Intent.EXTRA_STREAM, uri)
-                                        putExtra(Intent.EXTRA_TITLE, "Tiny Vow 本地数据导出")
+                                        putExtra(Intent.EXTRA_TITLE, AppText.t("home_tiny_vow_local_data_export"))
                                         clipData = ClipData.newUri(
                                             context.contentResolver,
-                                            "Tiny Vow 本地数据导出",
+                                            AppText.t("home_tiny_vow_local_data_export"),
                                             uri,
                                         )
                                         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                                     }
-                                    context.startActivity(Intent.createChooser(intent, "导出本地数据"))
+                                    context.startActivity(Intent.createChooser(intent, AppText.t("home_export_local_data")))
                                 }.onFailure {
-                                    snackbarHostState.showSnackbar("导出本地数据失败")
+                                    snackbarHostState.showSnackbar(AppText.t("home_export_local_data_failed"))
                                 }
                             }
                         },
@@ -609,9 +619,9 @@ fun HomeRoute(
                                 runCatching {
                                     localDataManager.clearLocalData()
                                 }.onSuccess {
-                                    snackbarHostState.showSnackbar("本地数据已清除")
+                                    snackbarHostState.showSnackbar(AppText.t("home_local_data_cleared"))
                                 }.onFailure {
-                                    snackbarHostState.showSnackbar("清除本地数据失败")
+                                    snackbarHostState.showSnackbar(AppText.t("home_clear_local_data_failed"))
                                 }
                             }
                         },
@@ -627,16 +637,16 @@ fun HomeRoute(
                             val activity = context as? androidx.activity.ComponentActivity
                             if (activity == null) {
                                 coroutineScope.launch {
-                                    snackbarHostState.showSnackbar("当前界面无法启动 Google 登录")
+                                    snackbarHostState.showSnackbar(AppText.t("home_google_sign_in_cannot_start_from_this_screen"))
                                 }
                             } else {
                                 coroutineScope.launch {
                                     authRepository.signInWithGoogle(activity)
                                         .onSuccess {
-                                            snackbarHostState.showSnackbar("已登录 Google 账户")
+                                            snackbarHostState.showSnackbar(AppText.t("home_signed_in_with_google"))
                                         }
                                         .onFailure {
-                                            snackbarHostState.showSnackbar(it.message ?: "Google 登录失败")
+                                            snackbarHostState.showSnackbar(it.message ?: AppText.t("home_google_sign_in_failed"))
                                         }
                                 }
                             }
@@ -644,7 +654,7 @@ fun HomeRoute(
                         onSignOut = {
                             coroutineScope.launch {
                                 authRepository.signOut()
-                                snackbarHostState.showSnackbar("已退出登录")
+                                snackbarHostState.showSnackbar(AppText.t("home_signed_out"))
                             }
                         },
                         onDeleteAccount = { clearLocalData ->
@@ -654,7 +664,7 @@ fun HomeRoute(
                                     localDataManager.clearLocalData()
                                 }
                                 snackbarHostState.showSnackbar(
-                                    if (clearLocalData) "账户与本地数据已删除" else "账户已删除"
+                                    if (clearLocalData) AppText.t("home_account_and_local_data_deleted") else AppText.t("home_account_deleted")
                                 )
                             }
                         },
@@ -662,13 +672,13 @@ fun HomeRoute(
                             val activity = context as? android.app.Activity
                             if (activity == null) {
                                 coroutineScope.launch {
-                                    snackbarHostState.showSnackbar("当前界面无法启动 Google Play 购买")
+                                    snackbarHostState.showSnackbar(AppText.t("home_google_play_purchase_cannot_start_from_this_screen"))
                                 }
                             } else {
                                 coroutineScope.launch {
                                     subscriptionRepository.purchase(activity, offer)
                                         .onFailure {
-                                            snackbarHostState.showSnackbar(it.message ?: "启动 Pro 订阅失败")
+                                            snackbarHostState.showSnackbar(it.message ?: AppText.t("home_failed_to_start_pro_subscription"))
                                         }
                                 }
                             }
@@ -677,10 +687,10 @@ fun HomeRoute(
                             coroutineScope.launch {
                                 subscriptionRepository.refresh()
                                     .onSuccess {
-                                        snackbarHostState.showSnackbar("订阅状态已刷新")
+                                        snackbarHostState.showSnackbar(AppText.t("home_subscription_status_refreshed"))
                                     }
                                     .onFailure {
-                                        snackbarHostState.showSnackbar(it.message ?: "恢复购买失败")
+                                        snackbarHostState.showSnackbar(it.message ?: AppText.t("home_failed_to_restore_purchases"))
                                     }
                             }
                         },
@@ -715,9 +725,9 @@ fun HomeRoute(
                     HelpFeedbackScreen(
                         onBack = { currentScreen = Screen.ME },
                         onSendFeedback = {
-                            if (!context.openSupportEmail("Tiny Vow 反馈")) {
+                            if (!context.openSupportEmail(AppText.t("home_feedback_subject"))) {
                                 coroutineScope.launch {
-                                    snackbarHostState.showSnackbar("未找到可用的邮件应用，已复制邮箱")
+                                    snackbarHostState.showSnackbar(AppText.t("home_no_mail_app_was_found_email_address_copied"))
                                 }
                                 context.copyContactEmail()
                             }
@@ -728,9 +738,9 @@ fun HomeRoute(
                     ContactUsScreen(
                         onBack = { currentScreen = Screen.ME },
                         onSendEmail = {
-                            if (!context.openSupportEmail("Tiny Vow 联系我们")) {
+                            if (!context.openSupportEmail(AppText.t("home_contact_tiny_vow"))) {
                                 coroutineScope.launch {
-                                    snackbarHostState.showSnackbar("未找到可用的邮件应用，已复制邮箱")
+                                    snackbarHostState.showSnackbar(AppText.t("home_no_mail_app_was_found_email_address_copied"))
                                 }
                                 context.copyContactEmail()
                             }
@@ -738,7 +748,7 @@ fun HomeRoute(
                         onCopyEmail = {
                             context.copyContactEmail()
                             coroutineScope.launch {
-                                snackbarHostState.showSnackbar("邮箱已复制")
+                                snackbarHostState.showSnackbar(AppText.t("home_email_copied"))
                             }
                         },
                     )
@@ -779,12 +789,12 @@ fun HomeRoute(
                         modifier = Modifier.size(32.dp)
                     )
                     Spacer(modifier = Modifier.width(12.dp))
-                    Text("昨日战报", fontWeight = FontWeight.Bold)
+                    Text(AppText.t("home_yesterday_s_report"), fontWeight = FontWeight.Bold)
                 }
             },
             text = {
                 Column {
-                    Text("太棒了！昨天你凭借强大的意志力，在受控应用中省下了：")
+                    Text(AppText.t("home_well_done_yesterday_your_strong_will_saved_this"))
                     Spacer(modifier = Modifier.height(16.dp))
                     Box(
                         modifier = Modifier.fillMaxWidth().background(
@@ -795,9 +805,9 @@ fun HomeRoute(
                     ) {
                         Text(
                             text = if (yesterdaySavedMinutes >= 60) {
-                                "${yesterdaySavedMinutes / 60} 小时 ${yesterdaySavedMinutes % 60} 分钟"
+                                AppText.t("home_value_h_value_min", yesterdaySavedMinutes / 60, yesterdaySavedMinutes % 60)
                             } else {
-                                "$yesterdaySavedMinutes 分钟"
+                                AppText.t("home_value_minutes", yesterdaySavedMinutes)
                             },
                             style = MaterialTheme.typography.headlineSmall,
                             fontWeight = FontWeight.ExtraBold,
@@ -805,12 +815,12 @@ fun HomeRoute(
                         )
                     }
                     Spacer(modifier = Modifier.height(16.dp))
-                    Text("继续保持，自律即自由！", style = MaterialTheme.typography.bodyMedium)
+                    Text(AppText.t("home_keep_going_discipline_is_freedom"), style = MaterialTheme.typography.bodyMedium)
                 }
             },
             confirmButton = {
                 Button(onClick = { showYesterdaySummary = false }) {
-                    Text("我知道了")
+                    Text(AppText.t("home_got_it"))
                 }
             }
         )
@@ -868,7 +878,7 @@ fun HomeRoute(
                                 context.startActivity(intent)
                             }
                         }
-                        SensitivePermissionDisclosure.AUTO_START -> {
+                        SensitivePermissionDisclosure.BACKGROUND_START -> {
                             pendingSensitiveDisclosure = null
                             runCatching {
                                 val intent = Intent().apply {
@@ -911,7 +921,7 @@ private fun android.content.Context.openSupportEmail(subject: String): Boolean {
 
 private fun android.content.Context.copyContactEmail() {
     val clipboard = getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
-    clipboard.setPrimaryClip(ClipData.newPlainText("Tiny Vow 联系邮箱", CONTACT_EMAIL))
+    clipboard.setPrimaryClip(ClipData.newPlainText(AppText.t("home_tiny_vow_contact_email"), CONTACT_EMAIL))
 }
 
 @Composable
@@ -936,11 +946,11 @@ fun AchievementNotificationBanner(achievement: AchievementEntity) {
     }
 
     val tierLabel = when (achievement.tier) {
-        AchievementTier.LEGENDARY -> "💎 传奇成就解锁"
-        AchievementTier.DIAMOND -> "💫 钻石成就解锁"
-        AchievementTier.GOLD -> "🥇 金阶成就解锁"
-        AchievementTier.SILVER -> "🥈 银阶成就解锁"
-        else -> "🥉 铜阶成就解锁"
+        AchievementTier.LEGENDARY -> AppText.t("home_legendary_achievement_unlocked")
+        AchievementTier.DIAMOND -> AppText.t("home_diamond_achievement_unlocked")
+        AchievementTier.GOLD -> AppText.t("home_gold_achievement_unlocked")
+        AchievementTier.SILVER -> AppText.t("home_silver_achievement_unlocked")
+        else -> AppText.t("home_bronze_achievement_unlocked")
     }
     
     val infiniteTransition = rememberInfiniteTransition(label = "banner_shine")
@@ -1066,24 +1076,24 @@ private fun SensitivePermissionDisclosureDialog(
 ) {
     val (title, body) = when (disclosure) {
         SensitivePermissionDisclosure.USAGE_ACCESS -> {
-            "使用情况访问说明" to
-                "Tiny Vow 会读取本机 App 使用情况数据，包括应用包名、应用名称、前台使用时长、打开次数、会话和夜间使用统计，用于计算每日限额、战报、积分和提醒。数据默认只保存在本机，不会自动上传。"
+            AppText.t("home_usage_access_disclosure") to
+                AppText.t("home_tiny_vow_reads_local_app_usage_data_including")
         }
         SensitivePermissionDisclosure.ACCESSIBILITY -> {
-            "无障碍服务说明" to
-                "Tiny Vow 的无障碍服务只监听窗口切换事件，用于判断你是否进入已设置限额的 App，并在超额时显示本应用的阻断页面。服务不会读取屏幕文字，不会代替你点击，也不会更改系统设置。"
+            AppText.t("home_accessibility_service_disclosure") to
+                AppText.t("home_tiny_vow_s_accessibility_service_only_listens_for")
         }
         SensitivePermissionDisclosure.NOTIFICATION -> {
-            "通知权限说明" to
-                "Tiny Vow 使用通知权限发送本地限额提醒和超额提示，帮助你及时知道当天预算状态。拒绝通知权限不会影响分组、统计和阻断等核心功能。"
+            AppText.t("home_notification_permission_disclosure") to
+                AppText.t("home_tiny_vow_uses_notification_permission_to_send_local")
         }
         SensitivePermissionDisclosure.BATTERY_OPTIMIZATION -> {
-            "电池白名单说明" to
-                "电池白名单是可选的可靠性建议，用于降低系统休眠后提醒和后台统计被延迟的概率。拒绝或跳过后，Tiny Vow 仍可继续使用，但部分提醒可能不够及时。"
+            AppText.t("home_battery_allowlist_disclosure") to
+                AppText.t("home_the_battery_allowlist_is_an_optional_reliability_setting")
         }
-        SensitivePermissionDisclosure.AUTO_START -> {
-            "自启动设置说明" to
-                "部分手机厂商会限制后台运行。自启动是可选的可靠性建议，用于减少计时、提醒或阻断服务被系统清理的情况。你可以跳过，核心功能仍会保留。"
+        SensitivePermissionDisclosure.BACKGROUND_START -> {
+            AppText.t("home_background_start_disclosure") to
+                AppText.t("home_some_phone_vendors_restrict_background_work_background_start")
         }
     }
 
@@ -1093,12 +1103,12 @@ private fun SensitivePermissionDisclosureDialog(
         text = { Text(body) },
         confirmButton = {
             TextButton(onClick = onAccept) {
-                Text("同意并打开设置")
+                Text(AppText.t("home_agree_and_open_settings"))
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("取消")
+                Text(AppText.t("group_cancel"))
             }
         },
     )
@@ -1171,27 +1181,27 @@ fun HomeScreen(
             val pendingPermissionPrompts =
                 listOfNotNull(
                     if (!usageAccessGranted && PermissionPromptIds.USAGE_ACCESS !in dismissedPermissionPrompts) {
-                        PermissionPromptIds.USAGE_ACCESS to "使用情况访问"
+                        PermissionPromptIds.USAGE_ACCESS to AppText.t("home_usage_access")
                     } else {
                         null
                     },
                     if (!accessibilityServiceEnabled && PermissionPromptIds.ACCESSIBILITY !in dismissedPermissionPrompts) {
-                        PermissionPromptIds.ACCESSIBILITY to "无障碍拦截"
+                        PermissionPromptIds.ACCESSIBILITY to AppText.t("home_accessibility_blocking")
                     } else {
                         null
                     },
-                    if (!isAutoStartDismissed && PermissionPromptIds.AUTO_START !in dismissedPermissionPrompts) {
-                        PermissionPromptIds.AUTO_START to "后台自启动"
+                    if (!isAutoStartDismissed && PermissionPromptIds.BACKGROUND_START !in dismissedPermissionPrompts) {
+                        PermissionPromptIds.BACKGROUND_START to AppText.t("home_background_start")
                     } else {
                         null
                     },
                     if (!isIgnoringBattery && PermissionPromptIds.BATTERY !in dismissedPermissionPrompts) {
-                        PermissionPromptIds.BATTERY to "电池白名单"
+                        PermissionPromptIds.BATTERY to AppText.t("home_battery_allowlist")
                     } else {
                         null
                     },
                     if (!notificationPermissionGranted && PermissionPromptIds.NOTIFICATION !in dismissedPermissionPrompts) {
-                        PermissionPromptIds.NOTIFICATION to "通知权限"
+                        PermissionPromptIds.NOTIFICATION to AppText.t("home_notifications_permission")
                     } else {
                         null
                     },
@@ -1244,7 +1254,7 @@ fun HomeScreen(
                         ) {
                             val currentDate = remember {
                                 val date = java.time.LocalDate.now()
-                                val formatter = java.time.format.DateTimeFormatter.ofPattern("M月d日 EEEE", java.util.Locale.CHINESE)
+                                val formatter = java.time.format.DateTimeFormatter.ofPattern(AppText.t("home_mmm_d_eeee"), java.util.Locale.CHINESE)
                                 date.format(formatter)
                             }
                             
@@ -1262,7 +1272,7 @@ fun HomeScreen(
                                         maxLines = 1,
                                     )
                                     Text(
-                                        text = "自律即自由",
+                                        text = AppText.t("home_discipline_is_freedom"),
                                         style = MaterialTheme.typography.labelLarge,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                         maxLines = 1,
@@ -1271,7 +1281,7 @@ fun HomeScreen(
                                 
                                 Column(horizontalAlignment = Alignment.End) {
                                     Text(
-                                        text = "当前累计",
+                                        text = AppText.t("home_current_total"),
                                         style = MaterialTheme.typography.labelSmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
@@ -1284,7 +1294,7 @@ fun HomeScreen(
                                             modifier = Modifier.alignByBaseline()
                                         )
                                         Text(
-                                            text = " 分",
+                                            text = AppText.t("home_label"),
                                             style = MaterialTheme.typography.labelLarge,
                                             fontWeight = FontWeight.Bold,
                                             color = MaterialTheme.colorScheme.primary,
@@ -1300,13 +1310,13 @@ fun HomeScreen(
                                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 ) {
                                     OverviewStatTile(
-                                        label = "小约定",
+                                        label = AppText.t("group_commitment"),
                                         value = "$safeVows/${controlGroups.size}",
                                         color = MaterialTheme.colorScheme.secondary,
                                         modifier = Modifier.weight(1f),
                                     )
                                     OverviewStatTile(
-                                        label = "小鼓励",
+                                        label = AppText.t("group_small_encouragement"),
                                         value = "$doneEncs/${encourageGroups.size}",
                                         color = MaterialTheme.colorScheme.tertiary,
                                         modifier = Modifier.weight(1f),
@@ -1317,14 +1327,14 @@ fun HomeScreen(
                                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 ) {
                                     OverviewStatTile(
-                                        label = "今日用时",
-                                        value = "${controlUsageMinutes}分钟",
+                                        label = AppText.t("home_today_usage_time"),
+                                        value = AppText.t("home_value_min", controlUsageMinutes),
                                         color = MaterialTheme.colorScheme.secondary,
                                         modifier = Modifier.weight(1f),
                                     )
                                     OverviewStatTile(
-                                        label = "今日可得",
-                                        value = "+%.1f分".format(displayTodayPoints),
+                                        label = AppText.t("home_available_today"),
+                                        value = AppText.t("home_value_pts").format(displayTodayPoints),
                                         color = MaterialTheme.colorScheme.tertiary,
                                         modifier = Modifier.weight(1f),
                                     )
@@ -1370,7 +1380,7 @@ fun HomeScreen(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text(
-                        text = "开启使用情况访问后显示分组和实时统计",
+                        text = AppText.t("home_enable_usage_access_to_show_groups"),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(horizontal = 4.dp, vertical = 8.dp),
@@ -1447,7 +1457,7 @@ private fun CompactPermissionBanner(
                     .background(MaterialTheme.colorScheme.error, CircleShape),
             )
             Text(
-                text = "还有 ${prompts.size} 项权限建议配置",
+                text = AppText.t("home_permission_suggestions_count", prompts.size),
                 modifier = Modifier.weight(1f),
                 style = MaterialTheme.typography.labelLarge,
                 fontWeight = FontWeight.SemiBold,
@@ -1456,10 +1466,10 @@ private fun CompactPermissionBanner(
                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
             )
             TextButton(onClick = onOpen, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)) {
-                Text("处理", maxLines = 1)
+                Text(AppText.t("home_review"), maxLines = 1)
             }
             TextButton(onClick = onDismiss, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)) {
-                Text("忽略", maxLines = 1)
+                Text(AppText.t("home_dismiss"), maxLines = 1)
             }
         }
     }
@@ -1525,7 +1535,7 @@ fun PermissionProcessList(
 
     if (showUsageAccess || showAccessibility) {
         Text(
-            text = "核心权限",
+            text = AppText.t("home_core_permissions"),
             style = MaterialTheme.typography.labelLarge,
             fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -1552,7 +1562,7 @@ fun PermissionProcessList(
 
         if (showAutoStart || showBattery || showNotification) {
             Text(
-                text = "增强可靠性（可选）",
+                text = AppText.t("home_improve_reliability_optional"),
                 style = MaterialTheme.typography.labelLarge,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -1617,7 +1627,7 @@ private fun AccessibilityStatusCard(
                 color = MaterialTheme.colorScheme.onSurface,
             )
             PermissionStatusLine(
-                text = if (accessibilityServiceEnabled) "服务已运行" else "尚未开启",
+                text = if (accessibilityServiceEnabled) AppText.t("home_service_running") else AppText.t("home_not_enabled"),
                 color = statusColor,
             )
             Text(
@@ -1672,7 +1682,7 @@ private fun ReminderStatusCard(
                 color = MaterialTheme.colorScheme.onSurface,
             )
             PermissionStatusLine(
-                text = if (notificationPermissionGranted) "通知已开启" else "尚未开启",
+                text = if (notificationPermissionGranted) AppText.t("home_notifications_enabled") else AppText.t("home_not_enabled"),
                 color = statusColor,
             )
             Text(
@@ -1715,13 +1725,13 @@ private fun PermissionCard(
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             Text(
-                text = "[步骤 1] 使用情况访问",
+                text = AppText.t("home_usage_access_step_title"),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurface,
             )
             PermissionStatusLine(
-                text = if (usageAccessGranted) "已开启" else "尚未开启",
+                text = if (usageAccessGranted) AppText.t("home_enabled") else AppText.t("home_not_enabled"),
                 color = statusColor,
             )
 
@@ -1782,7 +1792,7 @@ private fun AutoStartCard(
                 color = MaterialTheme.colorScheme.onSurface,
             )
             PermissionStatusLine(
-                text = if (isAutoStartDismissed) "已确认开启" else "建议手动配置",
+                text = if (isAutoStartDismissed) AppText.t("home_confirmed_enabled") else AppText.t("home_manual_setup_recommended"),
                 color = statusColor,
             )
             Text(
@@ -1865,7 +1875,7 @@ private fun BatteryOptimizationCard(
                 color = MaterialTheme.colorScheme.onSurface,
             )
             PermissionStatusLine(
-                text = if (isIgnoringBattery) "白名单已开启" else "尚未开启",
+                text = if (isIgnoringBattery) AppText.t("home_allowlist_enabled") else AppText.t("home_not_enabled"),
                 color = statusColor,
             )
             Text(
