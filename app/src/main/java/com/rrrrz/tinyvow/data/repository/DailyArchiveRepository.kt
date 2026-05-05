@@ -27,7 +27,7 @@ import kotlinx.coroutines.withContext
 import kotlin.math.max
 
 class DailyArchiveRepository(
-    context: Context,
+    private val context: Context,
     private val database: AppDatabase,
     private val usageRepository: UsageRepository = UsageStatsUsageRepository(context),
 ) {
@@ -99,6 +99,7 @@ class DailyArchiveRepository(
                 "Only completed days can be refreshed."
             }
             archiveDate(targetDate)
+            checkAchievementsAfterArchive()
         }
     }
 
@@ -117,12 +118,14 @@ class DailyArchiveRepository(
                 )
                 stateDao.upsert(state)
                 repairArchivesMissingAppSnapshots()
+                checkAchievementsAfterArchive()
                 return@withContext
             }
 
             val archiveStartDate = LocalDate.parse(state.archiveStartDate)
             if (!today.isAfter(archiveStartDate)) {
                 repairArchivesMissingAppSnapshots()
+                checkAchievementsAfterArchive()
                 return@withContext
             }
 
@@ -131,6 +134,7 @@ class DailyArchiveRepository(
                 state.lastArchivedDate?.let { LocalDate.parse(it).plusDays(1) } ?: archiveStartDate
             if (nextDate.isAfter(endDate)) {
                 repairArchivesMissingAppSnapshots()
+                checkAchievementsAfterArchive()
                 return@withContext
             }
 
@@ -157,6 +161,7 @@ class DailyArchiveRepository(
                     date = date.plusDays(1)
                 }
                 repairArchivesMissingAppSnapshots()
+                checkAchievementsAfterArchive()
             } catch (error: Exception) {
                 stateDao.upsert(
                     mutableState.copy(
@@ -167,6 +172,10 @@ class DailyArchiveRepository(
                 throw error
             }
         }
+    }
+
+    private suspend fun checkAchievementsAfterArchive() {
+        AppLimitRepository(context, database).checkAchievements()
     }
 
     private suspend fun repairArchivesMissingAppSnapshots() {

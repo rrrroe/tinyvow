@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import kotlinx.coroutines.flow.Flow
 
 @Dao
 interface PointLedgerDao {
@@ -51,4 +52,40 @@ interface PointLedgerDao {
         """
     )
     suspend fun sumEarnedByDateAndGroup(date: String, groupId: String): Double
+
+    @Query(
+        """
+        SELECT COALESCE(SUM(delta_points), 0)
+        FROM point_ledger
+        WHERE delta_points > 0
+        """
+    )
+    suspend fun sumEarnedTotal(): Double
+
+    @Query(
+        """
+        SELECT COALESCE(SUM(delta_points), 0)
+        FROM point_ledger
+        WHERE delta_points > 0
+        """
+    )
+    fun observeEarnedTotal(): Flow<Double>
+
+    @Query(
+        """
+        SELECT COALESCE(ABS(SUM(delta_points)), 0)
+        FROM point_ledger
+        WHERE entry_type = 'REWARD_SPEND' AND delta_points < 0
+        """
+    )
+    suspend fun sumRewardSpentTotal(): Double
+
+    @Query(
+        """
+        SELECT COALESCE(ABS(SUM(delta_points)), 0)
+        FROM point_ledger
+        WHERE entry_type = 'REWARD_SPEND' AND delta_points < 0
+        """
+    )
+    fun observeRewardSpentTotal(): Flow<Double>
 }

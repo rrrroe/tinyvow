@@ -96,6 +96,7 @@ import com.rrrrz.tinyvow.data.privacy.LocalDataManager
 import com.rrrrz.tinyvow.data.pro.ProFeatureGate
 import com.rrrrz.tinyvow.data.repository.AppGroupWithApps
 import com.rrrrz.tinyvow.data.repository.AppLimitRepository
+import com.rrrrz.tinyvow.data.repository.AchievementProgress
 import com.rrrrz.tinyvow.data.repository.DailyArchiveRepository
 import com.rrrrz.tinyvow.data.repository.PointsRepository
 import com.rrrrz.tinyvow.data.settings.ManagedAppPreferences
@@ -147,6 +148,7 @@ private enum class SensitivePermissionDisclosure {
 fun RewardsHome(
     userPoints: Double,
     achievements: List<AchievementEntity>,
+    achievementProgress: AchievementProgress,
     rewards: List<RedemptionEntity>,
     groups: List<AppGroupWithApps>,
     redemptionHistory: List<RedemptionHistoryEntity>,
@@ -185,7 +187,7 @@ fun RewardsHome(
             when (selectedTab) {
                 0 -> AchievementScreen(
                     achievements = achievements,
-                    currentPoints = userPoints,
+                    achievementProgress = achievementProgress,
                     onBack = onBack
                 )
                 1 -> RedeemScreen(
@@ -253,6 +255,7 @@ fun HomeRoute(
     val selectedAppLanguage by preferences.selectedAppLanguage.collectAsState(initial = com.rrrrz.tinyvow.i18n.AppLanguage.SYSTEM)
     val rewards by appLimitRepository.getAllRewards().collectAsState(initial = emptyList())
     val achievements by appLimitRepository.getAllAchievements().collectAsState(initial = emptyList())
+    val achievementProgress by appLimitRepository.observeAchievementProgress().collectAsState(initial = AchievementProgress())
     val redemptionHistory by appLimitRepository.getRedemptionHistory().collectAsState(initial = emptyList())
     val dismissedPermissionPrompts by preferences.dismissedPermissionPrompts.collectAsState(initial = emptySet())
     val usageAccessDisclosureAccepted by preferences.usageAccessDisclosureAccepted.collectAsState(initial = false)
@@ -295,6 +298,9 @@ fun HomeRoute(
                     accessibilityServiceStateChecker.isEnabled(AppLimitAccessibilityService::class.java)
                 notificationPermissionGranted = notificationPermissionChecker.isGranted()
                 isIgnoringBattery = powerManager.isIgnoringBatteryOptimizations(context.packageName)
+                coroutineScope.launch {
+                    subscriptionRepository.refresh()
+                }
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -360,7 +366,8 @@ fun HomeRoute(
 
     // 仅在应用首次启动时检查一次成就，避免每次积分变化都触发高代价 DB 扫描
     LaunchedEffect(Unit) {
-        appLimitRepository.checkAchievements(preferences.userPoints.first())
+        appLimitRepository.syncAchievementDefinitions()
+        appLimitRepository.checkAchievements()
     }
 
     var newlyUnlockedAchievement by remember { mutableStateOf<AchievementEntity?>(null) }
@@ -519,6 +526,7 @@ fun HomeRoute(
                     RewardsHome(
                         userPoints = userPoints,
                         achievements = achievements,
+                        achievementProgress = achievementProgress,
                         rewards = rewards,
                         groups = groupsWithApps,
                         redemptionHistory = redemptionHistory,
@@ -740,7 +748,7 @@ fun HomeRoute(
                                 }
                             } else {
                                 coroutineScope.launch {
-                                    subscriptionRepository.purchase(activity, offer)
+                                    subscriptionRepository.purchase(activity, offer, userSession?.userId)
                                         .onFailure {
                                             snackbarHostState.showSnackbar(it.message ?: AppText.t("home_failed_to_start_pro_subscription"))
                                         }
@@ -845,7 +853,6 @@ fun HomeRoute(
                             pts ->
                             coroutineScope.launch {
                                 pointsRepository.recordManualAdjustment(pts, "Laboratory adjustment")
-                                appLimitRepository.checkAchievements(preferences.userPoints.first())
                             }
                         },
                         onResetSummary = { coroutineScope.launch { preferences.setLastSummaryShownDate("reset") } },
@@ -1138,14 +1145,14 @@ fun AchievementNotificationBanner(achievement: AchievementEntity) {
                         color = Brush.linearGradient(tierGradient).let { Color.Unspecified } // 占位
                     )
                     Text(
-                        achievement.title,
+                        achievement.localizedAchievementTitle(),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
-                        achievement.description,
+                        achievement.localizedAchievementDescription(),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -1154,6 +1161,18 @@ fun AchievementNotificationBanner(achievement: AchievementEntity) {
         }
     }
 
+}
+
+private fun AchievementEntity.localizedAchievementTitle(): String {
+    val key = "achievement_${id.lowercase()}_title"
+    val value = AppText.t(key)
+    return if (value == key) title else value
+}
+
+private fun AchievementEntity.localizedAchievementDescription(): String {
+    val key = "achievement_${id.lowercase()}_desc"
+    val value = AppText.t(key)
+    return if (value == key) description else value
 }
 
 @Composable

@@ -102,7 +102,7 @@ class LocalActivationSubscriptionRepository(
 
     override suspend fun restore(): Result<Unit> = refresh()
 
-    override suspend fun purchase(activity: Activity, offer: SubscriptionOffer): Result<Unit> =
+    override suspend fun purchase(activity: Activity, offer: SubscriptionOffer, accountId: String?): Result<Unit> =
         Result.failure(IllegalStateException("本渠道不使用 Google Play Billing"))
 
     override fun openManageSubscription(context: Context) = Unit

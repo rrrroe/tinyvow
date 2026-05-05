@@ -17,7 +17,7 @@ class NoopSubscriptionRepository : SubscriptionRepository {
 
     override suspend fun restore(): Result<Unit> = Result.success(Unit)
 
-    override suspend fun purchase(activity: Activity, offer: SubscriptionOffer): Result<Unit> =
+    override suspend fun purchase(activity: Activity, offer: SubscriptionOffer, accountId: String?): Result<Unit> =
         Result.failure(IllegalStateException("Play Billing is disabled for this channel."))
 
     override fun openManageSubscription(context: Context) = Unit

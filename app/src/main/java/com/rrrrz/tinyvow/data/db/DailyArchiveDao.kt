@@ -25,4 +25,10 @@ interface DailyArchiveDao {
 
     @Query("SELECT archive_date FROM daily_archives ORDER BY archive_date ASC")
     suspend fun getAllArchiveDatesAsc(): List<String>
+
+    @Query("SELECT * FROM daily_archives ORDER BY archive_date ASC")
+    suspend fun getAllAsc(): List<DailyArchiveEntity>
+
+    @Query("SELECT * FROM daily_archives ORDER BY archive_date ASC")
+    fun observeAllAsc(): Flow<List<DailyArchiveEntity>>
 }

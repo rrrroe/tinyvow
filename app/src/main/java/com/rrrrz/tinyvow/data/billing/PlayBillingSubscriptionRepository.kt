@@ -24,6 +24,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.suspendCancellableCoroutine
+import java.security.MessageDigest
 import kotlin.coroutines.resume
 
 class PlayBillingSubscriptionRepository(
@@ -69,8 +70,12 @@ class PlayBillingSubscriptionRepository(
             return@runCatching
         }
 
-        updateOffers(queryProductDetails())
+        val productDetails = queryProductDetails()
+        updateOffers(productDetails)
         restore().getOrThrow()
+        if (productDetails.isEmpty() && _entitlement.value.status == ProEntitlementStatus.FREE) {
+            _entitlement.value = ProEntitlementState.unavailable(AppText.t("billing_the_tinyvow_pro_subscription_product_was_not_found"))
+        }
     }
 
     override suspend fun restore(): Result<Unit> = runCatching {
@@ -84,17 +89,14 @@ class PlayBillingSubscriptionRepository(
         processPurchases(purchases)
     }
 
-    override suspend fun purchase(activity: Activity, offer: SubscriptionOffer): Result<Unit> = runCatching {
+    override suspend fun purchase(activity: Activity, offer: SubscriptionOffer, accountId: String?): Result<Unit> = runCatching {
         val setup = ensureConnected()
         if (!setup.isOk()) {
             throw IllegalStateException(setup.debugMessage.ifBlank { AppText.t("billing_play_billing_is_temporarily_unavailable") })
         }
 
-        var productDetails = productDetailsByOfferToken[offer.offerToken]
-        if (productDetails == null) {
-            updateOffers(queryProductDetails())
-            productDetails = productDetailsByOfferToken[offer.offerToken]
-        }
+        updateOffers(queryProductDetails())
+        val productDetails = productDetailsByOfferToken[offer.offerToken]
         if (productDetails == null) {
             throw IllegalStateException(AppText.t("billing_the_tinyvow_pro_subscription_product_was_not_found"))
         }
@@ -103,11 +105,14 @@ class PlayBillingSubscriptionRepository(
             .setProductDetails(productDetails)
             .setOfferToken(offer.offerToken)
             .build()
+        val flowParamsBuilder = BillingFlowParams.newBuilder()
+            .setProductDetailsParamsList(listOf(productDetailsParams))
+        accountId
+            ?.takeIf { it.isNotBlank() }
+            ?.let { flowParamsBuilder.setObfuscatedAccountId(it.sha256Hex()) }
         val result = billingClient.launchBillingFlow(
             activity,
-            BillingFlowParams.newBuilder()
-                .setProductDetailsParamsList(listOf(productDetailsParams))
-                .build(),
+            flowParamsBuilder.build(),
         )
         if (!result.isOk()) {
             throw IllegalStateException(result.debugMessage.ifBlank { AppText.t("billing_failed_to_start_purchase_flow") })
@@ -234,4 +239,9 @@ class PlayBillingSubscriptionRepository(
 
     private fun BillingResult.isOk(): Boolean =
         responseCode == BillingClient.BillingResponseCode.OK
+
+    private fun String.sha256Hex(): String {
+        val bytes = MessageDigest.getInstance("SHA-256").digest(toByteArray(Charsets.UTF_8))
+        return bytes.joinToString(separator = "") { "%02x".format(it.toInt() and 0xff) }
+    }
 }

@@ -910,7 +910,6 @@ private fun SubscriptionStatusPanel(
     onManageSubscription: () -> Unit,
     onActivateProCode: (String) -> Unit,
 ) {
-    val firstOffer = offers.firstOrNull()
     val isActive = entitlement.status == ProEntitlementStatus.ACTIVE
     val isPending = entitlement.status == ProEntitlementStatus.PENDING
     var showActivationDialog by remember { mutableStateOf(false) }
@@ -939,7 +938,7 @@ private fun SubscriptionStatusPanel(
                 )
             }
             Text(
-                text = firstOffer?.price ?: if (isActive) AppText.t("me_unlocked") else AppText.t("me_loading"),
+                text = subscriptionPriceSummary(offers, isActive),
                 style = MaterialTheme.typography.labelLarge,
                 color = if (isActive) LocalThemeColors.current.encourage else MaterialTheme.colorScheme.primary,
                 fontWeight = FontWeight.Bold,
@@ -955,6 +954,14 @@ private fun SubscriptionStatusPanel(
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
+
+        if (isPlayBillingEnabled) {
+            Text(
+                text = AppText.t("pro_upsell_common_benefits"),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
 
         if (isLocalActivationEnabled) {
             OutlinedButton(
@@ -977,19 +984,24 @@ private fun SubscriptionStatusPanel(
             return@Column
         }
 
-        Button(
-            onClick = {
-                val offer = firstOffer
-                if (offer == null) {
-                    onRestorePurchases()
-                } else {
-                    onPurchasePro(offer)
+        if (offers.isEmpty()) {
+            Button(
+                onClick = onRestorePurchases,
+                enabled = !isActive && !isPending,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(AppText.t("me_loading_subscription_info"))
+            }
+        } else {
+            offers.forEach { offer ->
+                Button(
+                    onClick = { onPurchasePro(offer) },
+                    enabled = !isActive && !isPending,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(AppText.t("me_buy_pro_with_price", offer.price))
                 }
-            },
-            enabled = !isActive && !isPending,
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Text(if (firstOffer == null) AppText.t("me_loading_subscription_info") else AppText.t("me_buy_pro"))
+            }
         }
         Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             TextButton(onClick = onRestorePurchases) {
@@ -1001,6 +1013,14 @@ private fun SubscriptionStatusPanel(
         }
     }
 }
+
+private fun subscriptionPriceSummary(offers: List<SubscriptionOffer>, isActive: Boolean): String =
+    when {
+        isActive -> AppText.t("me_unlocked")
+        offers.size > 1 -> AppText.t("me_subscription_options_count", offers.size)
+        offers.size == 1 -> offers.first().price
+        else -> AppText.t("me_loading")
+    }
 
 private fun entitlementStatusText(entitlement: ProEntitlementState): String =
     when (entitlement.status) {

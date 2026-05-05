@@ -13,7 +13,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 
 class PointsRepository(
-    context: Context,
+    private val context: Context,
     private val database: AppDatabase,
 ) {
     private val preferences = ManagedAppPreferences(context)
@@ -111,6 +111,7 @@ class PointsRepository(
                 )
             )
             applyBalanceDelta(deltaPoints)
+            AppLimitRepository(context, database).checkAchievements()
         }
     }
 }

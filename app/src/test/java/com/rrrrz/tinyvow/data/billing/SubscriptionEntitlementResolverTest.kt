@@ -59,4 +59,46 @@ class SubscriptionEntitlementResolverTest {
 
         assertEquals(ProEntitlementStatus.FREE, state.status)
     }
+
+    @Test
+    fun purchasedProWinsOverPendingPro() {
+        val state = SubscriptionEntitlementResolver.resolve(
+            listOf(
+                PurchaseSnapshot(
+                    productIds = listOf(TINYVOW_PRO_PRODUCT_ID),
+                    purchaseToken = "pending-token",
+                    purchaseState = Purchase.PurchaseState.PENDING,
+                    acknowledged = false,
+                    autoRenewing = false,
+                ),
+                PurchaseSnapshot(
+                    productIds = listOf(TINYVOW_PRO_PRODUCT_ID),
+                    purchaseToken = "active-token",
+                    purchaseState = Purchase.PurchaseState.PURCHASED,
+                    acknowledged = true,
+                    autoRenewing = true,
+                ),
+            )
+        )
+
+        assertEquals(ProEntitlementStatus.ACTIVE, state.status)
+        assertEquals("active-token", state.purchaseToken)
+    }
+
+    @Test
+    fun pendingUnrelatedPurchaseDoesNotMaskFreePro() {
+        val state = SubscriptionEntitlementResolver.resolve(
+            listOf(
+                PurchaseSnapshot(
+                    productIds = listOf("other_product"),
+                    purchaseToken = "pending-token",
+                    purchaseState = Purchase.PurchaseState.PENDING,
+                    acknowledged = false,
+                    autoRenewing = false,
+                ),
+            )
+        )
+
+        assertEquals(ProEntitlementStatus.FREE, state.status)
+    }
 }

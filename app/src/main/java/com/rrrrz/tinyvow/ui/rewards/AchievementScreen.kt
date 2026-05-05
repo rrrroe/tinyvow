@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.rrrrz.tinyvow.data.db.AchievementEntity
 import com.rrrrz.tinyvow.data.db.AchievementTier
+import com.rrrrz.tinyvow.data.repository.AchievementProgress
 import com.rrrrz.tinyvow.ui.theme.LocalThemeColors
 import com.rrrrz.tinyvow.ui.theme.ThemeTokens
 import kotlinx.coroutines.launch
@@ -76,12 +77,7 @@ private fun tierTabsForTheme(tokens: ThemeTokens) = listOf(
 @Composable
 fun AchievementScreen(
     achievements: List<AchievementEntity>,
-    currentPoints: Double = 0.0,
-    redeemedPointsTotal: Double = 0.0,
-    controlDaysTotal: Int = 0,
-    controlStreak: Int = 0,
-    encourageDaysTotal: Int = 0,
-    encourageStreak: Int = 0,
+    achievementProgress: AchievementProgress = AchievementProgress(),
     onBack: () -> Unit
 ) {
     val themeTokens = LocalThemeColors.current
@@ -156,12 +152,7 @@ fun AchievementScreen(
             TierPage(
                 tab = tab,
                 achievements = list,
-                currentPoints = currentPoints,
-                redeemedPointsTotal = redeemedPointsTotal,
-                controlDaysTotal = controlDaysTotal,
-                controlStreak = controlStreak,
-                encourageDaysTotal = encourageDaysTotal,
-                encourageStreak = encourageStreak
+                achievementProgress = achievementProgress
             )
         }
     }
@@ -173,12 +164,7 @@ fun AchievementScreen(
 private fun TierPage(
     tab: TierTab,
     achievements: List<AchievementEntity>,
-    currentPoints: Double,
-    redeemedPointsTotal: Double,
-    controlDaysTotal: Int,
-    controlStreak: Int,
-    encourageDaysTotal: Int,
-    encourageStreak: Int
+    achievementProgress: AchievementProgress,
 ) {
     val unlockedList = achievements.filter { it.isUnlocked }
     val lockedList = achievements.filter { !it.isUnlocked }
@@ -221,12 +207,7 @@ private fun TierPage(
                 AchievementCard(
                     achievement = achievement,
                     animationDelay = index * 80,
-                    currentPoints = currentPoints,
-                    redeemedPointsTotal = redeemedPointsTotal,
-                    controlDaysTotal = controlDaysTotal,
-                    controlStreak = controlStreak,
-                    encourageDaysTotal = encourageDaysTotal,
-                    encourageStreak = encourageStreak
+                    achievementProgress = achievementProgress
                 )
             }
         }
@@ -246,12 +227,7 @@ private fun TierPage(
                 AchievementCard(
                     achievement = achievement,
                     animationDelay = index * 80,
-                    currentPoints = currentPoints,
-                    redeemedPointsTotal = redeemedPointsTotal,
-                    controlDaysTotal = controlDaysTotal,
-                    controlStreak = controlStreak,
-                    encourageDaysTotal = encourageDaysTotal,
-                    encourageStreak = encourageStreak
+                    achievementProgress = achievementProgress
                 )
             }
         }
@@ -337,12 +313,7 @@ private fun TierHeader(tab: TierTab, unlocked: Int, total: Int) {
 private fun AchievementCard(
     achievement: AchievementEntity,
     animationDelay: Int = 0,
-    currentPoints: Double,
-    redeemedPointsTotal: Double,
-    controlDaysTotal: Int,
-    controlStreak: Int,
-    encourageDaysTotal: Int,
-    encourageStreak: Int
+    achievementProgress: AchievementProgress,
 ) {
     var visible by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
@@ -362,12 +333,7 @@ private fun AchievementCard(
         } else {
             LockedAchievementCard(
                 achievement = achievement,
-                currentPoints = currentPoints,
-                redeemedPointsTotal = redeemedPointsTotal,
-                controlDaysTotal = controlDaysTotal,
-                controlStreak = controlStreak,
-                encourageDaysTotal = encourageDaysTotal,
-                encourageStreak = encourageStreak
+                achievementProgress = achievementProgress,
             )
         }
     }
@@ -619,12 +585,7 @@ private fun UnlockedAchievementCard(achievement: AchievementEntity) {
 @Composable
 private fun LockedAchievementCard(
     achievement: AchievementEntity,
-    currentPoints: Double,
-    redeemedPointsTotal: Double,
-    controlDaysTotal: Int,
-    controlStreak: Int,
-    encourageDaysTotal: Int,
-    encourageStreak: Int
+    achievementProgress: AchievementProgress,
 ) {
     // 解析目标进度
     val (type, targetValue) = remember(achievement.requirement) {
@@ -637,14 +598,14 @@ private fun LockedAchievementCard(
     }
 
     // 计算当前进度
-    val currentValue = remember(type, currentPoints, redeemedPointsTotal, controlDaysTotal, controlStreak, encourageDaysTotal, encourageStreak) {
+    val currentValue = remember(type, achievementProgress) {
         when (type) {
-            "points" -> currentPoints
-            "redeem_points" -> redeemedPointsTotal
-            "control_days" -> controlDaysTotal.toDouble()
-            "control_streak" -> controlStreak.toDouble()
-            "encourage_days" -> encourageDaysTotal.toDouble()
-            "encourage_streak" -> encourageStreak.toDouble()
+            "points" -> achievementProgress.earnedPointsTotal
+            "redeem_points" -> achievementProgress.redeemedPointsTotal
+            "control_days" -> achievementProgress.controlDaysTotal.toDouble()
+            "control_streak" -> achievementProgress.controlStreak.toDouble()
+            "encourage_days" -> achievementProgress.encourageDaysTotal.toDouble()
+            "encourage_streak" -> achievementProgress.encourageStreak.toDouble()
             else -> 0.0
         }
     }

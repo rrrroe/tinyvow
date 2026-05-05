@@ -69,6 +69,17 @@
 - `TIME_PACK` 只能兑换给 `CONTROL` 分组，兑换成功后插入 `BonusTimeEntity`，同时写兑换历史和积分 ledger。
 - 内置奖励通过 `builtinKey` 做本地化，数据库旧标题只作兜底；自定义奖励标题和描述是用户数据，不自动翻译。
 
+### 成就体系
+
+- 成就是 6 个 `requirement.type` × 5 个等级的内置体系：`points`、`redeem_points`、`control_days`、`control_streak`、`encourage_days`、`encourage_streak`。
+- 内置成就名称和条件由字符串资源 + `AppLimitRepository.syncAchievementDefinitions()` 同步；数据库里的旧标题/描述只作兜底。
+- `points` 表示 `point_ledger` 中所有正向 `delta_points` 的累计值，不是当前积分余额。
+- `redeem_points` 表示 `PointLedgerEntryType.REWARD_SPEND` 的累计消费积分。
+- `control_days` / `encourage_days` 按“当天至少有 1 个对应类型分组完成”计 1 天，不按完成分组数量累加。
+- `control_streak` / `encourage_streak` 从最新已归档日期向前连续统计；今天未归档，不参与 streak。
+- 成就达标天数和连续天数基于每日归档，不用实时 UsageStats 临时计算。
+- 修改成就定义时必须同步英文/中文资源、种子定义、进度计算、UI 进度传参和测试。
+
 ### 统计、归档与历史快照
 
 - `DailyArchiveRepository.ensureArchivesUpToYesterday()` 从归档起始日补齐到昨天；`archiveDate(date)` 只归档已完成日期，不归档今天。
@@ -174,7 +185,11 @@
 
 - Play Billing 产品当前围绕 `tinyvow_pro`。错误提示要解释 Play Console 产品/基础计划未配置、设备不支持、连接断开、支付 pending 等常见状态。
 - `PlayBillingSubscriptionRepository` 查询订阅商品、发起购买、查询购买状态并 acknowledge 已购买订单。
+- Google Play 版购买前要重新查询最新 `ProductDetails`；App 启动、回到前台、手动恢复购买都要刷新订阅状态。
+- Google Play 购买可传入哈希后的本地 `userId` 作为 `obfuscatedAccountId`，但 Google 登录不作为购买前置条件。
 - `SubscriptionEntitlementResolver` 将购买快照解析为 `FREE`、`ACTIVE`、`PENDING` 或 `UNAVAILABLE`。
+- `PURCHASED tinyvow_pro` 才解锁 PRO；`PENDING` 只显示待完成，不解锁高级权益；非 `tinyvow_pro` 购买不能影响权益。
+- Play Console 必须创建并激活 `tinyvow_pro` 订阅和至少一个 base plan；本地代码不能替代商品、价格、国家地区、测试轨道和 license tester 配置。
 - 本地调试构建不一定能完成真实购买，不要把它当成代码必然错误。
 - `LocalDataManager.exportPrivacyReport()` 导出本地表级摘要到缓存分享目录。
 - 账号删除、隐私说明相关改动要同步检查 `docs/account-delete.html`、`docs/privacy.html` 和应用内支持页文案。
@@ -201,6 +216,19 @@
 - 英文默认资源无中文。
 - 无生成型 `auto_[hash]` key。
 - 主文案在 `app_texts.xml`。
+
+成就逻辑改动至少运行：
+
+```powershell
+.\gradlew.bat testChinaDebugUnitTest
+.\gradlew.bat assembleDefaultDebug
+```
+
+涉及安装验证时再运行：
+
+```powershell
+.\gradlew.bat installDefaultDebug
+```
 
 修改后进行编译测试，并安装应用，不需要自动实机测试，修改较大或风险较高时提醒人工真机验证，尤其是：
 

@@ -10,6 +10,6 @@ interface SubscriptionRepository {
 
     suspend fun refresh(): Result<Unit>
     suspend fun restore(): Result<Unit>
-    suspend fun purchase(activity: Activity, offer: SubscriptionOffer): Result<Unit>
+    suspend fun purchase(activity: Activity, offer: SubscriptionOffer, accountId: String? = null): Result<Unit>
     fun openManageSubscription(context: Context)
 }

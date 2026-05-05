@@ -14,6 +14,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
+import java.time.LocalDate
 import java.util.Calendar
 import java.util.TimeZone
 import java.util.UUID
@@ -26,6 +27,15 @@ data class AppGroupWithApps(
 data class RedemptionResult(
     val pointCost: Int,
     val message: String,
+)
+
+data class AchievementProgress(
+    val earnedPointsTotal: Double = 0.0,
+    val redeemedPointsTotal: Double = 0.0,
+    val controlDaysTotal: Int = 0,
+    val controlStreak: Int = 0,
+    val encourageDaysTotal: Int = 0,
+    val encourageStreak: Int = 0,
 )
 
 internal fun calculateBonusExpiryTime(
@@ -47,6 +57,43 @@ internal fun calculateBonusExpiryTime(
     }.timeInMillis
 }
 
+internal fun calculateAchievementProgress(
+    earnedPointsTotal: Double,
+    redeemedPointsTotal: Double,
+    archives: List<DailyArchiveEntity>,
+): AchievementProgress {
+    val sortedArchives = archives.sortedBy { it.archiveDate }
+    return AchievementProgress(
+        earnedPointsTotal = earnedPointsTotal,
+        redeemedPointsTotal = redeemedPointsTotal,
+        controlDaysTotal = sortedArchives.count { it.controlCompletedGroupCount > 0 },
+        controlStreak = calculateCompletedArchiveStreak(sortedArchives) {
+            it.controlCompletedGroupCount > 0
+        },
+        encourageDaysTotal = sortedArchives.count { it.encourageCompletedGroupCount > 0 },
+        encourageStreak = calculateCompletedArchiveStreak(sortedArchives) {
+            it.encourageCompletedGroupCount > 0
+        },
+    )
+}
+
+private fun calculateCompletedArchiveStreak(
+    sortedArchives: List<DailyArchiveEntity>,
+    isCompleted: (DailyArchiveEntity) -> Boolean,
+): Int {
+    var expectedDate: LocalDate? = null
+    var streak = 0
+    for (archive in sortedArchives.asReversed()) {
+        val archiveDate = runCatching { LocalDate.parse(archive.archiveDate) }.getOrNull() ?: break
+        val currentExpectedDate = expectedDate
+        if (currentExpectedDate != null && archiveDate != currentExpectedDate) break
+        if (!isCompleted(archive)) break
+        streak += 1
+        expectedDate = archiveDate.minusDays(1)
+    }
+    return streak
+}
+
 class AppLimitRepository(
     private val context: Context,
     private val database: AppDatabase,
@@ -58,6 +105,7 @@ class AppLimitRepository(
     private val achievementDao = database.achievementDao()
     private val redemptionHistoryDao = database.redemptionHistoryDao()
     private val pointLedgerDao = database.pointLedgerDao()
+    private val dailyArchiveDao = database.dailyArchiveDao()
     private val preferences = ManagedAppPreferences(context)
 
     private val _newAchievementsAction = MutableSharedFlow<AchievementEntity>()
@@ -222,6 +270,7 @@ class AppLimitRepository(
             }
 
             _redemptionEvents.emit(message)
+            checkAchievements()
             RedemptionResult(
                 pointCost = latestReward.pointCost,
                 message = message,
@@ -326,6 +375,28 @@ class AppLimitRepository(
     fun getAllRewards(): Flow<List<RedemptionEntity>> = redemptionDao.getAllActiveRedemptions()
     fun getAllAchievements(): Flow<List<AchievementEntity>> = achievementDao.getAllAchievements()
 
+    fun observeAchievementProgress(): Flow<AchievementProgress> =
+        combine(
+            pointLedgerDao.observeEarnedTotal(),
+            pointLedgerDao.observeRewardSpentTotal(),
+            dailyArchiveDao.observeAllAsc(),
+        ) { earnedPointsTotal, redeemedPointsTotal, archives ->
+            calculateAchievementProgress(
+                earnedPointsTotal = earnedPointsTotal,
+                redeemedPointsTotal = redeemedPointsTotal,
+                archives = archives,
+            )
+        }
+
+    suspend fun getAchievementProgress(): AchievementProgress =
+        withContext(Dispatchers.IO) {
+            calculateAchievementProgress(
+                earnedPointsTotal = pointLedgerDao.sumEarnedTotal(),
+                redeemedPointsTotal = pointLedgerDao.sumRewardSpentTotal(),
+                archives = dailyArchiveDao.getAllAsc(),
+            )
+        }
+
     // ──────── 积分与加时逻辑 ────────
 
     /** 获取某个分组当前生效的所有加时时长（单位：毫秒） */
@@ -413,103 +484,101 @@ class AppLimitRepository(
             addReward("1-hour Free Browsing Pass", 100, RewardType.TIME_PACK, -1, "Get 1 extra hour immediately.", 60, "reward_time_pack_60")
             addReward("Offline Treat", 500, RewardType.CUSTOM, 5, "Treat yourself offline.", 0, "reward_offline_treat")
 
-            // 使用 seedAchievement (IGNORE) 避免覆盖已解锁状态
-            suspend fun seed(id: String, title: String, desc: String, req: String, tier: Int, emoji: String) {
-                achievementDao.seedAchievement(AchievementEntity(id, title, desc, req, tier, emoji))
-            }
-
-            // ══════════ 🥉 Bronze 铜阶 ══════════
-            seed("BRONZE_POINTS", "First Steps", "Earn 100 points",
-                """{"type":"points","value":100}""", AchievementTier.BRONZE, "🌱")
-            seed("BRONZE_REDEEM", "First Spend", "Spend 100 points",
-                """{"type":"redeem_points","value":100}""", AchievementTier.BRONZE, "🍬")
-            seed("BRONZE_CTRL_DAYS", "Small Wins", "Stay within commitment limits for 10 total days",
-                """{"type":"control_days","value":10}""", AchievementTier.BRONZE, "🤝")
-            seed("BRONZE_CTRL_STREAK", "Three-Day Rock", "Stay within commitment limits for 3 days in a row",
-                """{"type":"control_streak","value":3}""", AchievementTier.BRONZE, "🪨")
-            seed("BRONZE_ENC_DAYS", "Toward the Sun", "Meet encouragement goals for 10 total days",
-                """{"type":"encourage_days","value":10}""", AchievementTier.BRONZE, "🌻")
-            seed("BRONZE_ENC_STREAK", "Original Intention", "Meet encouragement goals for 3 days in a row",
-                """{"type":"encourage_streak","value":3}""", AchievementTier.BRONZE, "🕯️")
-
-            // ══════════ 🥈 Silver 银阶 ══════════
-            seed("SILVER_POINTS", "Ride the Waves", "Earn 300 points",
-                """{"type":"points","value":300}""", AchievementTier.SILVER, "🌊")
-            seed("SILVER_REDEEM", "Smart Shopper", "Spend 300 points",
-                """{"type":"redeem_points","value":300}""", AchievementTier.SILVER, "🛒")
-            seed("SILVER_CTRL_DAYS", "Steady as a Mountain", "Stay within commitment limits for 30 total days",
-                """{"type":"control_days","value":30}""", AchievementTier.SILVER, "⛰️")
-            seed("SILVER_CTRL_STREAK", "Ten-Day Stand", "Stay within commitment limits for 10 days in a row",
-                """{"type":"control_streak","value":10}""", AchievementTier.SILVER, "🌓")
-            seed("SILVER_ENC_DAYS", "Habit Builder", "Meet encouragement goals for 30 total days",
-                """{"type":"encourage_days","value":30}""", AchievementTier.SILVER, "📖")
-            seed("SILVER_ENC_STREAK", "Ten Out of Ten", "Meet encouragement goals for 10 days in a row",
-                """{"type":"encourage_streak","value":10}""", AchievementTier.SILVER, "🌿")
-
-            // ══════════ 🥇 Gold 金阶 ══════════
-            seed("GOLD_POINTS", "Thousand-Point Master", "Earn 1000 points",
-                """{"type":"points","value":1000}""", AchievementTier.GOLD, "👑")
-            seed("GOLD_REDEEM", "Bounty Hunter", "Spend 1000 points",
-                """{"type":"redeem_points","value":1000}""", AchievementTier.GOLD, "🎯")
-            seed("GOLD_CTRL_DAYS", "Hundred-Day Guardian", "Stay within commitment limits for 100 total days",
-                """{"type":"control_days","value":100}""", AchievementTier.GOLD, "🛡️")
-            seed("GOLD_CTRL_STREAK", "Moon Warrior", "Stay within commitment limits for 30 days in a row",
-                """{"type":"control_streak","value":30}""", AchievementTier.GOLD, "🌙")
-            seed("GOLD_ENC_DAYS", "Forged by Practice", "Meet encouragement goals for 100 total days",
-                """{"type":"encourage_days","value":100}""", AchievementTier.GOLD, "🔥")
-            seed("GOLD_ENC_STREAK", "Bamboo Momentum", "Meet encouragement goals for 30 days in a row",
-                """{"type":"encourage_streak","value":30}""", AchievementTier.GOLD, "🎍")
-
-            // ══════════ 💎 Diamond 钻石阶 ══════════
-            seed("DIAMOND_POINTS", "Known Far and Wide", "Earn 3000 points",
-                """{"type":"points","value":3000}""", AchievementTier.DIAMOND, "💫")
-            seed("DIAMOND_REDEEM", "Big Spender", "Spend 3000 points",
-                """{"type":"redeem_points","value":3000}""", AchievementTier.DIAMOND, "🏛️")
-            seed("DIAMOND_CTRL_DAYS", "A Year in Tune", "Stay within commitment limits for 365 total days",
-                """{"type":"control_days","value":365}""", AchievementTier.DIAMOND, "🏰")
-            seed("DIAMOND_CTRL_STREAK", "Hundred-Day Flawless", "Stay within commitment limits for 100 days in a row",
-                """{"type":"control_streak","value":100}""", AchievementTier.DIAMOND, "⚡")
-            seed("DIAMOND_ENC_DAYS", "A Full Year Ahead", "Meet encouragement goals for 365 total days",
-                """{"type":"encourage_days","value":365}""", AchievementTier.DIAMOND, "⚔️")
-            seed("DIAMOND_ENC_STREAK", "Hundred Battles Won", "Meet encouragement goals for 100 days in a row",
-                """{"type":"encourage_streak","value":100}""", AchievementTier.DIAMOND, "🗡️")
-
-            // ══════════ 🌟 Legendary 传奇阶 ══════════
-            seed("LEGEND_POINTS", "Immortal Legend", "Earn 10000 points",
-                """{"type":"points","value":10000}""", AchievementTier.LEGENDARY, "🐉")
-            seed("LEGEND_REDEEM", "Ten Thousand Spent", "Spend 10000 points",
-                """{"type":"redeem_points","value":10000}""", AchievementTier.LEGENDARY, "💰")
-            seed("LEGEND_CTRL_DAYS", "Eternal Commitment", "Stay within commitment limits for 10000 total days",
-                """{"type":"control_days","value":10000}""", AchievementTier.LEGENDARY, "⭐")
-            seed("LEGEND_CTRL_STREAK", "Vow Eternal", "Stay within commitment limits for 365 days in a row",
-                """{"type":"control_streak","value":365}""", AchievementTier.LEGENDARY, "🔱")
-            seed("LEGEND_ENC_DAYS", "Bright as the Sun", "Meet encouragement goals for 10000 total days",
-                """{"type":"encourage_days","value":10000}""", AchievementTier.LEGENDARY, "🌈")
-            seed("LEGEND_ENC_STREAK", "Time Keeper", "Meet encouragement goals for 365 days in a row",
-                """{"type":"encourage_streak","value":365}""", AchievementTier.LEGENDARY, "⏳")
+            syncAchievementDefinitionsInternal()
         }
+    }
+
+    suspend fun syncAchievementDefinitions() {
+        withContext(Dispatchers.IO) {
+            syncAchievementDefinitionsInternal()
+        }
+    }
+
+    private suspend fun syncAchievementDefinitionsInternal() {
+        suspend fun seed(id: String, title: String, desc: String, req: String, tier: Int, emoji: String) {
+            achievementDao.upsertAchievementDefinition(AchievementEntity(id, title, desc, req, tier, emoji))
+        }
+
+        // ══════════ 🥉 Bronze 铜阶 ══════════
+        seed("BRONZE_POINTS", "Starlet Gatherer", "Earn 1,000 points",
+            """{"type":"points","value":1000}""", AchievementTier.BRONZE, "🌱")
+        seed("BRONZE_REDEEM", "First Keepsake", "Spend 1,000 points",
+            """{"type":"redeem_points","value":1000}""", AchievementTier.BRONZE, "🍬")
+        seed("BRONZE_CTRL_DAYS", "Grain of Promise", "Stay within commitment limits for 10 total days",
+            """{"type":"control_days","value":10}""", AchievementTier.BRONZE, "🤝")
+        seed("BRONZE_CTRL_STREAK", "Three Dawns", "Stay within commitment limits for 3 days in a row",
+            """{"type":"control_streak","value":3}""", AchievementTier.BRONZE, "🪨")
+        seed("BRONZE_ENC_DAYS", "Sprout of Sun", "Meet encouragement goals for 10 total days",
+            """{"type":"encourage_days","value":10}""", AchievementTier.BRONZE, "🌻")
+        seed("BRONZE_ENC_STREAK", "Threefold Gleam", "Meet encouragement goals for 3 days in a row",
+            """{"type":"encourage_streak","value":3}""", AchievementTier.BRONZE, "🕯️")
+
+        // ══════════ 🥈 Silver 银阶 ══════════
+        seed("SILVER_POINTS", "Moonlight Seeker", "Earn 3,000 points",
+            """{"type":"points","value":3000}""", AchievementTier.SILVER, "🌊")
+        seed("SILVER_REDEEM", "Silver Wish", "Spend 3,000 points",
+            """{"type":"redeem_points","value":3000}""", AchievementTier.SILVER, "🛒")
+        seed("SILVER_CTRL_DAYS", "Verdant Stone", "Stay within commitment limits for 30 total days",
+            """{"type":"control_days","value":30}""", AchievementTier.SILVER, "⛰️")
+        seed("SILVER_CTRL_STREAK", "Tenfold Dawn", "Stay within commitment limits for 10 days in a row",
+            """{"type":"control_streak","value":10}""", AchievementTier.SILVER, "🌓")
+        seed("SILVER_ENC_DAYS", "Dewlit Branch", "Meet encouragement goals for 30 total days",
+            """{"type":"encourage_days","value":30}""", AchievementTier.SILVER, "📖")
+        seed("SILVER_ENC_STREAK", "Ten Rays Aligned", "Meet encouragement goals for 10 days in a row",
+            """{"type":"encourage_streak","value":10}""", AchievementTier.SILVER, "🌿")
+
+        // ══════════ 🥇 Gold 金阶 ══════════
+        seed("GOLD_POINTS", "Solar Chaser", "Earn 10,000 points",
+            """{"type":"points","value":10000}""", AchievementTier.GOLD, "👑")
+        seed("GOLD_REDEEM", "Golden Seal", "Spend 10,000 points",
+            """{"type":"redeem_points","value":10000}""", AchievementTier.GOLD, "🎯")
+        seed("GOLD_CTRL_DAYS", "Rampart Builder", "Stay within commitment limits for 100 total days",
+            """{"type":"control_days","value":100}""", AchievementTier.GOLD, "🛡️")
+        seed("GOLD_CTRL_STREAK", "Balanced Moon", "Stay within commitment limits for 30 days in a row",
+            """{"type":"control_streak","value":30}""", AchievementTier.GOLD, "🌙")
+        seed("GOLD_ENC_DAYS", "Field in Bloom", "Meet encouragement goals for 100 total days",
+            """{"type":"encourage_days","value":100}""", AchievementTier.GOLD, "🔥")
+        seed("GOLD_ENC_STREAK", "Unfading Moonlight", "Meet encouragement goals for 30 days in a row",
+            """{"type":"encourage_streak","value":30}""", AchievementTier.GOLD, "🎍")
+
+        // ══════════ 💎 Diamond 钻石阶 ══════════
+        seed("DIAMOND_POINTS", "River of Stars", "Earn 30,000 points",
+            """{"type":"points","value":30000}""", AchievementTier.DIAMOND, "💫")
+        seed("DIAMOND_REDEEM", "Crystal Keybearer", "Spend 30,000 points",
+            """{"type":"redeem_points","value":30000}""", AchievementTier.DIAMOND, "🏛️")
+        seed("DIAMOND_CTRL_DAYS", "Crystal Citadel", "Stay within commitment limits for 365 total days",
+            """{"type":"control_days","value":365}""", AchievementTier.DIAMOND, "🏰")
+        seed("DIAMOND_CTRL_STREAK", "Hundred Days True", "Stay within commitment limits for 100 days in a row",
+            """{"type":"control_streak","value":100}""", AchievementTier.DIAMOND, "⚡")
+        seed("DIAMOND_ENC_DAYS", "Canopy of Green", "Meet encouragement goals for 365 total days",
+            """{"type":"encourage_days","value":365}""", AchievementTier.DIAMOND, "⚔️")
+        seed("DIAMOND_ENC_STREAK", "Crown of Hundred Rays", "Meet encouragement goals for 100 days in a row",
+            """{"type":"encourage_streak","value":100}""", AchievementTier.DIAMOND, "🗡️")
+
+        // ══════════ 🌟 Legendary 传奇阶 ══════════
+        seed("LEGEND_POINTS", "Celestial Ascendant", "Earn 100,000 points",
+            """{"type":"points","value":100000}""", AchievementTier.LEGENDARY, "🐉")
+        seed("LEGEND_REDEEM", "Vault of Wonders", "Spend 100,000 points",
+            """{"type":"redeem_points","value":100000}""", AchievementTier.LEGENDARY, "💰")
+        seed("LEGEND_CTRL_DAYS", "Eternal Peak", "Stay within commitment limits for 1,000 total days",
+            """{"type":"control_days","value":1000}""", AchievementTier.LEGENDARY, "⭐")
+        seed("LEGEND_CTRL_STREAK", "Yearbound Oath", "Stay within commitment limits for 365 days in a row",
+            """{"type":"control_streak","value":365}""", AchievementTier.LEGENDARY, "🔱")
+        seed("LEGEND_ENC_DAYS", "Sunlit Courtyard", "Meet encouragement goals for 1,000 total days",
+            """{"type":"encourage_days","value":1000}""", AchievementTier.LEGENDARY, "🌈")
+        seed("LEGEND_ENC_STREAK", "Everlasting Radiance", "Meet encouragement goals for 365 days in a row",
+            """{"type":"encourage_streak","value":365}""", AchievementTier.LEGENDARY, "⏳")
     }
 
     private fun localizedRewardTitle(reward: RedemptionEntity): String =
         reward.builtinKey?.let { AppText.t("${it}_title") } ?: reward.title
 
-    /**
-     * 检查并解锁达成条件的成就
-     * @param currentPoints 累计赚取积分
-     * @param redeemedPointsTotal 累计消费积分
-     * @param controlDaysTotal 累计约定未超标天数
-     * @param controlStreak 连续约定未超标天数
-     * @param encourageDaysTotal 累计鼓励达标天数
-     * @param encourageStreak 连续鼓励达标天数
-     */
-    suspend fun checkAchievements(
-        currentPoints: Double,
-        redeemedPointsTotal: Double = 0.0,
-        controlDaysTotal: Int = 0,
-        controlStreak: Int = 0,
-        encourageDaysTotal: Int = 0,
-        encourageStreak: Int = 0
-    ) {
+    /** 检查并解锁达成条件的成就 */
+    suspend fun checkAchievements() {
+        checkAchievements(getAchievementProgress())
+    }
+
+    internal suspend fun checkAchievements(progress: AchievementProgress) {
         withContext(Dispatchers.IO) {
             val locked = achievementDao.getLockedAchievements()
             val now = System.currentTimeMillis()
@@ -520,12 +589,12 @@ class AppLimitRepository(
                     val value = json.optDouble("value", Double.MAX_VALUE)
 
                     val shouldUnlock = when (type) {
-                        "points" -> currentPoints >= value
-                        "redeem_points" -> redeemedPointsTotal >= value
-                        "control_days" -> controlDaysTotal >= value.toInt()
-                        "control_streak" -> controlStreak >= value.toInt()
-                        "encourage_days" -> encourageDaysTotal >= value.toInt()
-                        "encourage_streak" -> encourageStreak >= value.toInt()
+                        "points" -> progress.earnedPointsTotal >= value
+                        "redeem_points" -> progress.redeemedPointsTotal >= value
+                        "control_days" -> progress.controlDaysTotal >= value.toInt()
+                        "control_streak" -> progress.controlStreak >= value.toInt()
+                        "encourage_days" -> progress.encourageDaysTotal >= value.toInt()
+                        "encourage_streak" -> progress.encourageStreak >= value.toInt()
                         else -> false
                     }
 
