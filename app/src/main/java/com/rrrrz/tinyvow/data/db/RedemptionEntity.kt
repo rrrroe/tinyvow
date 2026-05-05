@@ -2,6 +2,7 @@ package com.rrrrz.tinyvow.data.db
 
 import androidx.room.ColumnInfo
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 
 enum class RewardType {
@@ -14,7 +15,12 @@ enum class RedemptionHistoryType {
     CUSTOM
 }
 
-@Entity(tableName = "redemptions")
+@Entity(
+    tableName = "redemptions",
+    indices = [
+        Index(value = ["builtin_key"], unique = true),
+    ],
+)
 data class RedemptionEntity(
     @PrimaryKey
     val id: String,

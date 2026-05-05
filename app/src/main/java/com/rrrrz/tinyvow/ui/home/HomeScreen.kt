@@ -14,6 +14,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Brush
@@ -99,6 +100,9 @@ import com.rrrrz.tinyvow.data.repository.AppLimitRepository
 import com.rrrrz.tinyvow.data.repository.AchievementProgress
 import com.rrrrz.tinyvow.data.repository.DailyArchiveRepository
 import com.rrrrz.tinyvow.data.repository.PointsRepository
+import com.rrrrz.tinyvow.data.repository.RedeemRewardResult
+import com.rrrrz.tinyvow.data.repository.RewardSaveResult
+import com.rrrrz.tinyvow.data.repository.RewardSaveValidationError
 import com.rrrrz.tinyvow.data.settings.ManagedAppPreferences
 import com.rrrrz.tinyvow.data.usage.UsageAccessStateChecker
 import com.rrrrz.tinyvow.data.usage.UsageAccessStatus
@@ -121,10 +125,12 @@ import com.rrrrz.tinyvow.data.db.RedemptionEntity
 import com.rrrrz.tinyvow.data.db.RedemptionHistoryEntity
 import com.rrrrz.tinyvow.ui.rewards.RedeemScreen
 import com.rrrrz.tinyvow.ui.rewards.AchievementScreen
+import com.rrrrz.tinyvow.ui.rewards.RedemptionHistoryScreen
 import com.rrrrz.tinyvow.ui.theme.DefaultThemeSeed
 import com.rrrrz.tinyvow.ui.theme.LocalThemeColors
 
 enum class Screen { HOME, REWARDS, STATS, ME, LABORATORY, HISTORY, THEME, HELP_FEEDBACK, CONTACT_US }
+enum class RewardsSection { STORE, ACHIEVEMENTS, HISTORY }
 
 private const val CONTACT_EMAIL = "rrrr.zhao@gmail.com"
 
@@ -155,42 +161,16 @@ fun RewardsHome(
     onRedeem: (RedemptionEntity, String?) -> Unit,
     onAddReward: (String, Int, Int, String) -> Unit,
     onUpdateReward: (RedemptionEntity) -> Unit,
+    onArchiveReward: (RedemptionEntity) -> Unit,
     isProActive: Boolean,
     onShowProUpsell: (ProUpsellSource) -> Unit,
-    onBack: () -> Unit
+    currentSection: RewardsSection,
+    onSectionChange: (RewardsSection) -> Unit,
 ) {
-    var selectedTab by remember { mutableIntStateOf(0) }
-    val tabs = listOf(AppText.t("home_achievements"), AppText.t("home_rewards_store"))
-    
     Column(modifier = Modifier.fillMaxSize()) {
-        TabRow(
-            selectedTabIndex = selectedTab,
-            containerColor = MaterialTheme.colorScheme.surface,
-            contentColor = MaterialTheme.colorScheme.primary,
-            indicator = { tabPositions ->
-                TabRowDefaults.SecondaryIndicator(
-                    Modifier.tabIndicatorOffset(tabPositions[selectedTab]),
-                    color = MaterialTheme.colorScheme.primary
-                )
-            }
-        ) {
-            tabs.forEachIndexed { index, title ->
-                Tab(
-                    selected = selectedTab == index,
-                    onClick = { selectedTab = index },
-                    text = { Text(title, fontWeight = if (selectedTab == index) FontWeight.Bold else FontWeight.Normal) }
-                )
-            }
-        }
-        
-        Box(modifier = Modifier.weight(1f)) {
-            when (selectedTab) {
-                0 -> AchievementScreen(
-                    achievements = achievements,
-                    achievementProgress = achievementProgress,
-                    onBack = onBack
-                )
-                1 -> RedeemScreen(
+        when (currentSection) {
+            RewardsSection.STORE -> {
+                RedeemScreen(
                     userPoints = userPoints,
                     rewards = rewards,
                     groups = groups,
@@ -198,14 +178,88 @@ fun RewardsHome(
                     onRedeem = onRedeem,
                     onAddReward = onAddReward,
                     onUpdateReward = onUpdateReward,
+                    onArchiveReward = onArchiveReward,
                     isProActive = isProActive,
                     onShowProUpsell = onShowProUpsell,
-                    onBack = onBack
+                    onOpenAchievements = { onSectionChange(RewardsSection.ACHIEVEMENTS) },
+                    onOpenHistory = { onSectionChange(RewardsSection.HISTORY) },
                 )
+            }
+            RewardsSection.ACHIEVEMENTS -> {
+                RewardsSecondaryPage(
+                    title = AppText.t("home_achievements"),
+                    onBack = { onSectionChange(RewardsSection.STORE) },
+                ) {
+                    AchievementScreen(
+                        achievements = achievements,
+                        achievementProgress = achievementProgress,
+                        onBack = { onSectionChange(RewardsSection.STORE) },
+                    )
+                }
+            }
+            RewardsSection.HISTORY -> {
+                RewardsSecondaryPage(
+                    title = AppText.t("redeem_recent_redemptions"),
+                    onBack = { onSectionChange(RewardsSection.STORE) },
+                ) {
+                    RedemptionHistoryScreen(
+                        redemptionHistory = redemptionHistory,
+                    )
+                }
             }
         }
     }
 }
+
+@Composable
+private fun RewardsSecondaryPage(
+    title: String,
+    onBack: () -> Unit,
+    content: @Composable () -> Unit,
+) {
+    Column(modifier = Modifier.fillMaxSize()) {
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IconButton(onClick = onBack) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = AppText.t("group_back"))
+            }
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+            )
+        }
+        Box(modifier = Modifier.weight(1f)) {
+            content()
+        }
+    }
+}
+
+private fun redeemResultMessage(result: RedeemRewardResult): String =
+    when (result) {
+        is RedeemRewardResult.Success -> result.message
+        RedeemRewardResult.InsufficientPoints -> AppText.t("redeem_error_insufficient_points")
+        RedeemRewardResult.OutOfStock -> AppText.t("redeem_error_out_of_stock")
+        RedeemRewardResult.MissingTargetGroup -> AppText.t("redeem_error_missing_target_group")
+        RedeemRewardResult.InvalidReward -> AppText.t("redeem_error_invalid_reward")
+    }
+
+private fun rewardSaveResultMessage(result: RewardSaveResult): String? =
+    when (result) {
+        RewardSaveResult.Success -> null
+        is RewardSaveResult.Invalid ->
+            when (result.error) {
+                RewardSaveValidationError.TITLE_REQUIRED -> AppText.t("redeem_error_title_required")
+                RewardSaveValidationError.POINT_COST_INVALID -> AppText.t("redeem_error_point_cost_invalid")
+                RewardSaveValidationError.STOCK_INVALID -> AppText.t("redeem_error_stock_invalid")
+                RewardSaveValidationError.REWARD_NOT_EDITABLE -> AppText.t("redeem_error_reward_not_editable")
+            }
+    }
 
 @Composable
 fun HomeRoute(
@@ -265,6 +319,7 @@ fun HomeRoute(
     val subscriptionOffers by subscriptionRepository.offers.collectAsState()
 
     var currentScreen by remember { mutableStateOf(Screen.HOME) }
+    var rewardsSection by remember { mutableStateOf(RewardsSection.STORE) }
     val snackbarHostState = remember { SnackbarHostState() }
     var proUpsellSource by remember { mutableStateOf<ProUpsellSource?>(null) }
     var pendingSensitiveDisclosure by remember { mutableStateOf<SensitivePermissionDisclosure?>(null) }
@@ -358,14 +413,9 @@ fun HomeRoute(
         }
     }
 
-    LaunchedEffect(rewards) {
-        if (rewards.isEmpty()) {
-            appLimitRepository.seedInitialData()
-        }
-    }
-
     // 仅在应用首次启动时检查一次成就，避免每次积分变化都触发高代价 DB 扫描
     LaunchedEffect(Unit) {
+        appLimitRepository.syncBuiltinRewards()
         appLimitRepository.syncAchievementDefinitions()
         appLimitRepository.checkAchievements()
     }
@@ -379,17 +429,18 @@ fun HomeRoute(
         }
     }
 
-    LaunchedEffect(Unit) {
-        appLimitRepository.redemptionEvents.collectLatest { message ->
-            snackbarHostState.showSnackbar(message)
-        }
-    }
-
     if (currentScreen != Screen.HOME) {
         BackHandler {
-            currentScreen = when (currentScreen) {
-                Screen.LABORATORY, Screen.HISTORY, Screen.THEME, Screen.HELP_FEEDBACK, Screen.CONTACT_US -> Screen.ME
-                else -> Screen.HOME
+            if (currentScreen == Screen.REWARDS && rewardsSection != RewardsSection.STORE) {
+                rewardsSection = RewardsSection.STORE
+            } else {
+                if (currentScreen == Screen.REWARDS) {
+                    rewardsSection = RewardsSection.STORE
+                }
+                currentScreen = when (currentScreen) {
+                    Screen.LABORATORY, Screen.HISTORY, Screen.THEME, Screen.HELP_FEEDBACK, Screen.CONTACT_US -> Screen.ME
+                    else -> Screen.HOME
+                }
             }
         }
     }
@@ -441,7 +492,12 @@ fun HomeRoute(
                     screens.forEach { (screen, label, icon) ->
                         NavigationBarItem(
                             selected = currentScreen == screen || (screen == Screen.REWARDS && (currentScreen == Screen.REWARDS)),
-                            onClick = { currentScreen = screen },
+                            onClick = {
+                                if (screen == Screen.REWARDS) {
+                                    rewardsSection = RewardsSection.STORE
+                                }
+                                currentScreen = screen
+                            },
                             icon = { Icon(icon, contentDescription = label) },
                             label = { Text(label) }
                         )
@@ -463,8 +519,14 @@ fun HomeRoute(
                         userPoints = userPoints,
                         todayPoints = todayPoints,
                         isLoadingApps = isLoadingApps,
-                        onNavigateToRedeem = { currentScreen = Screen.REWARDS }, // Placeholder
-                        onNavigateToAchievements = { currentScreen = Screen.REWARDS },
+                        onNavigateToRedeem = {
+                            rewardsSection = RewardsSection.STORE
+                            currentScreen = Screen.REWARDS
+                        },
+                        onNavigateToAchievements = {
+                            rewardsSection = RewardsSection.ACHIEVEMENTS
+                            currentScreen = Screen.REWARDS
+                        },
                         onOpenUsageAccessSettings = {
                             if (usageAccessDisclosureAccepted) {
                                 val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -532,18 +594,40 @@ fun HomeRoute(
                         redemptionHistory = redemptionHistory,
                         onRedeem = { reward, gId -> 
                             coroutineScope.launch {
-                                appLimitRepository.redeemReward(reward, gId)
+                                snackbarHostState.showSnackbar(
+                                    redeemResultMessage(appLimitRepository.redeemReward(reward, gId))
+                                )
                             }
                         },
                         onAddReward = { name, cost, stock, desc ->
-                            coroutineScope.launch { appLimitRepository.addReward(name, cost, com.rrrrz.tinyvow.data.db.RewardType.CUSTOM, stock, desc) }
+                            coroutineScope.launch {
+                                rewardSaveResultMessage(
+                                    appLimitRepository.addReward(
+                                        name,
+                                        cost,
+                                        com.rrrrz.tinyvow.data.db.RewardType.CUSTOM,
+                                        stock,
+                                        desc,
+                                    )
+                                )?.let { snackbarHostState.showSnackbar(it) }
+                            }
                         },
                         onUpdateReward = { reward ->
-                            coroutineScope.launch { appLimitRepository.updateReward(reward) }
+                            coroutineScope.launch {
+                                rewardSaveResultMessage(appLimitRepository.updateReward(reward))
+                                    ?.let { snackbarHostState.showSnackbar(it) }
+                            }
+                        },
+                        onArchiveReward = { reward ->
+                            coroutineScope.launch {
+                                appLimitRepository.archiveReward(reward.id)
+                                snackbarHostState.showSnackbar(AppText.t("redeem_archived_reward"))
+                            }
                         },
                         isProActive = proEntitlement.isProActive,
                         onShowProUpsell = { proUpsellSource = it },
-                        onBack = { currentScreen = Screen.HOME }
+                        currentSection = rewardsSection,
+                        onSectionChange = { rewardsSection = it },
                     )
                 }
                 Screen.STATS -> {

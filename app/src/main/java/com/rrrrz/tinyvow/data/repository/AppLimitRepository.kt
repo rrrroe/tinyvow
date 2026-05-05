@@ -12,6 +12,8 @@ import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import java.time.LocalDate
@@ -24,9 +26,44 @@ data class AppGroupWithApps(
     val packageNames: List<String>
 )
 
-data class RedemptionResult(
+sealed interface RedeemRewardResult {
+    data class Success(
+        val pointCost: Int,
+        val message: String,
+    ) : RedeemRewardResult
+
+    data object InsufficientPoints : RedeemRewardResult
+
+    data object OutOfStock : RedeemRewardResult
+
+    data object MissingTargetGroup : RedeemRewardResult
+
+    data object InvalidReward : RedeemRewardResult
+}
+
+enum class RewardSaveValidationError {
+    TITLE_REQUIRED,
+    POINT_COST_INVALID,
+    STOCK_INVALID,
+    REWARD_NOT_EDITABLE,
+}
+
+sealed interface RewardSaveResult {
+    data object Success : RewardSaveResult
+
+    data class Invalid(
+        val error: RewardSaveValidationError,
+    ) : RewardSaveResult
+}
+
+internal data class BuiltinRewardDefinition(
+    val builtinKey: String,
+    val title: String,
+    val description: String,
+    val rewardType: RewardType,
     val pointCost: Int,
-    val message: String,
+    val stock: Int,
+    val bonusMinutes: Int = 0,
 )
 
 data class AchievementProgress(
@@ -77,6 +114,48 @@ internal fun calculateAchievementProgress(
     )
 }
 
+internal fun validateCustomRewardInput(
+    title: String,
+    pointCost: Int,
+    stock: Int,
+): RewardSaveValidationError? =
+    when {
+        title.isBlank() -> RewardSaveValidationError.TITLE_REQUIRED
+        pointCost <= 0 -> RewardSaveValidationError.POINT_COST_INVALID
+        stock != -1 && stock <= 0 -> RewardSaveValidationError.STOCK_INVALID
+        else -> null
+    }
+
+private val BUILTIN_REWARD_DEFINITIONS =
+    listOf(
+        BuiltinRewardDefinition(
+            builtinKey = "reward_time_pack_30",
+            title = "30-minute Time Pass",
+            description = "Get 30 extra minutes immediately.",
+            rewardType = RewardType.TIME_PACK,
+            pointCost = 50,
+            stock = -1,
+            bonusMinutes = 30,
+        ),
+        BuiltinRewardDefinition(
+            builtinKey = "reward_time_pack_60",
+            title = "1-hour Free Browsing Pass",
+            description = "Get 1 extra hour immediately.",
+            rewardType = RewardType.TIME_PACK,
+            pointCost = 100,
+            stock = -1,
+            bonusMinutes = 60,
+        ),
+        BuiltinRewardDefinition(
+            builtinKey = "reward_offline_treat",
+            title = "Offline Treat",
+            description = "Treat yourself offline.",
+            rewardType = RewardType.CUSTOM,
+            pointCost = 500,
+            stock = 5,
+        ),
+    )
+
 private fun calculateCompletedArchiveStreak(
     sortedArchives: List<DailyArchiveEntity>,
     isCompleted: (DailyArchiveEntity) -> Boolean,
@@ -107,11 +186,10 @@ class AppLimitRepository(
     private val pointLedgerDao = database.pointLedgerDao()
     private val dailyArchiveDao = database.dailyArchiveDao()
     private val preferences = ManagedAppPreferences(context)
+    private val rewardRedeemMutex = Mutex()
 
     private val _newAchievementsAction = MutableSharedFlow<AchievementEntity>()
     val newAchievementsAction: SharedFlow<AchievementEntity> = _newAchievementsAction.asSharedFlow()
-    private val _redemptionEvents = MutableSharedFlow<String>()
-    val redemptionEvents: SharedFlow<String> = _redemptionEvents.asSharedFlow()
 
     // ──────── 兑换记录 ────────
 
@@ -136,145 +214,153 @@ class AppLimitRepository(
     suspend fun redeemReward(
         reward: RedemptionEntity,
         targetGroupId: String?,
-    ): RedemptionResult? {
+    ): RedeemRewardResult {
         return withContext(Dispatchers.IO) {
-            val latestReward = redemptionDao.getRedemptionById(reward.id) ?: return@withContext null
-            if (!latestReward.isActive || latestReward.stock == 0) return@withContext null
-            if (latestReward.pointCost <= 0) return@withContext null
-            if (preferences.userPoints.first() < latestReward.pointCost) return@withContext null
-
-            val redeemedAt = System.currentTimeMillis()
-            val redemptionHistoryId = UUID.randomUUID().toString()
-            val ledgerEntryId = UUID.randomUUID().toString()
-            var createdBonusId: String? = null
-            val targetGroup =
-                if (latestReward.rewardType == RewardType.TIME_PACK) {
-                    if (latestReward.bonusMinutes <= 0) return@withContext null
-                    val groupId = targetGroupId ?: return@withContext null
-                    groupDao.getGroupByIdSync(groupId)
-                        ?.takeIf { it.type == GroupType.CONTROL }
-                        ?: return@withContext null
-                } else {
-                    null
+            rewardRedeemMutex.withLock {
+                val latestReward =
+                    redemptionDao.getRedemptionById(reward.id)
+                        ?: return@withLock RedeemRewardResult.InvalidReward
+                if (!latestReward.isActive || latestReward.pointCost <= 0) {
+                    return@withLock RedeemRewardResult.InvalidReward
                 }
-            val targetGroupName = targetGroup?.name
-            val redeemedGroupId =
-                if (latestReward.rewardType == RewardType.TIME_PACK) {
-                    targetGroup!!.id
-                } else {
-                    null
+                if (latestReward.stock == 0) {
+                    return@withLock RedeemRewardResult.OutOfStock
                 }
 
-            database.withTransaction {
-                if (latestReward.rewardType == RewardType.TIME_PACK) {
-                    val bonusId = UUID.randomUUID().toString()
-                    insertTimePackBonus(
-                        bonusId = bonusId,
-                        groupId = redeemedGroupId!!,
-                        extraMinutes = latestReward.bonusMinutes,
-                        createdAt = redeemedAt,
+                val targetGroup =
+                    if (latestReward.rewardType == RewardType.TIME_PACK) {
+                        if (latestReward.bonusMinutes <= 0) {
+                            return@withLock RedeemRewardResult.InvalidReward
+                        }
+                        val groupId = targetGroupId ?: return@withLock RedeemRewardResult.MissingTargetGroup
+                        groupDao.getGroupByIdSync(groupId)
+                            ?.takeIf { it.type == GroupType.CONTROL }
+                            ?: return@withLock RedeemRewardResult.MissingTargetGroup
+                    } else {
+                        null
+                    }
+
+                if (preferences.userPoints.first() < latestReward.pointCost) {
+                    return@withLock RedeemRewardResult.InsufficientPoints
+                }
+
+                val redeemedAt = System.currentTimeMillis()
+                val redemptionHistoryId = UUID.randomUUID().toString()
+                val ledgerEntryId = UUID.randomUUID().toString()
+                var createdBonusId: String? = null
+                val targetGroupName = targetGroup?.name
+                val redeemedGroupId =
+                    if (latestReward.rewardType == RewardType.TIME_PACK) targetGroup!!.id else null
+
+                database.withTransaction {
+                    if (latestReward.rewardType == RewardType.TIME_PACK) {
+                        val bonusId = UUID.randomUUID().toString()
+                        insertTimePackBonus(
+                            bonusId = bonusId,
+                            groupId = redeemedGroupId!!,
+                            extraMinutes = latestReward.bonusMinutes,
+                            createdAt = redeemedAt,
+                        )
+                        createdBonusId = bonusId
+                    }
+
+                    if (latestReward.stock > 0) {
+                        redemptionDao.insertRedemption(
+                            latestReward.copy(
+                                stock = latestReward.stock - 1,
+                                updatedAt = redeemedAt,
+                            )
+                        )
+                    }
+
+                    redemptionHistoryDao.insertHistory(
+                        RedemptionHistoryEntity(
+                            id = redemptionHistoryId,
+                            rewardTitle = latestReward.title,
+                            rewardBuiltinKey = latestReward.builtinKey,
+                            pointCost = latestReward.pointCost,
+                            historyType = when (latestReward.rewardType) {
+                                RewardType.TIME_PACK -> RedemptionHistoryType.TIME_PACK
+                                RewardType.CUSTOM -> RedemptionHistoryType.CUSTOM
+                            },
+                            bonusMinutes = latestReward.bonusMinutes,
+                            targetGroupName = targetGroupName,
+                            redeemedAt = redeemedAt,
+                        )
                     )
-                    createdBonusId = bonusId
-                }
 
-                if (latestReward.stock > 0) {
-                    redemptionDao.insertRedemption(
-                        latestReward.copy(
-                            stock = latestReward.stock - 1,
-                            updatedAt = redeemedAt,
+                    pointLedgerDao.insert(
+                        PointLedgerEntity(
+                            id = ledgerEntryId,
+                            occurredAt = redeemedAt,
+                            ledgerDate = ArchiveDateUtils.formatDate(ArchiveDateUtils.localDateAt(redeemedAt, java.time.ZoneId.systemDefault())),
+                            entryType = PointLedgerEntryType.REWARD_SPEND,
+                            deltaPoints = -latestReward.pointCost.toDouble(),
+                            rewardId = latestReward.id,
+                            rewardTitleSnapshot = latestReward.title,
+                            sourceRefId = redemptionHistoryId,
+                            messageKey = when (latestReward.rewardType) {
+                                RewardType.TIME_PACK -> "ledger_redeemed_time_pack"
+                                RewardType.CUSTOM -> "ledger_redeemed_custom_reward"
+                            },
+                            messageArgsJson = when (latestReward.rewardType) {
+                                RewardType.TIME_PACK ->
+                                    JSONObject()
+                                        .put("rewardTitle", latestReward.title)
+                                        .put("pointCost", latestReward.pointCost)
+                                        .put("groupName", targetGroupName.orEmpty())
+                                        .put("bonusMinutes", latestReward.bonusMinutes)
+                                        .toString()
+                                RewardType.CUSTOM ->
+                                    JSONObject()
+                                        .put("rewardTitle", latestReward.title)
+                                        .put("pointCost", latestReward.pointCost)
+                                        .toString()
+                            },
+                            createdAt = redeemedAt,
                         )
                     )
                 }
 
-                redemptionHistoryDao.insertHistory(
-                    RedemptionHistoryEntity(
-                        id = redemptionHistoryId,
-                        rewardTitle = latestReward.title,
-                        rewardBuiltinKey = latestReward.builtinKey,
-                        pointCost = latestReward.pointCost,
-                        historyType = when (latestReward.rewardType) {
-                            RewardType.TIME_PACK -> RedemptionHistoryType.TIME_PACK
-                            RewardType.CUSTOM -> RedemptionHistoryType.CUSTOM
-                        },
-                        bonusMinutes = latestReward.bonusMinutes,
-                        targetGroupName = targetGroupName,
-                        redeemedAt = redeemedAt,
-                    )
-                )
-
-                pointLedgerDao.insert(
-                    PointLedgerEntity(
-                        id = ledgerEntryId,
-                        occurredAt = redeemedAt,
-                        ledgerDate = ArchiveDateUtils.formatDate(ArchiveDateUtils.localDateAt(redeemedAt, java.time.ZoneId.systemDefault())),
-                        entryType = PointLedgerEntryType.REWARD_SPEND,
-                        deltaPoints = -latestReward.pointCost.toDouble(),
-                        rewardId = latestReward.id,
-                        rewardTitleSnapshot = latestReward.title,
-                        sourceRefId = redemptionHistoryId,
-                        messageKey = when (latestReward.rewardType) {
-                            RewardType.TIME_PACK -> "ledger_redeemed_time_pack"
-                            RewardType.CUSTOM -> "ledger_redeemed_custom_reward"
-                        },
-                        messageArgsJson = when (latestReward.rewardType) {
-                            RewardType.TIME_PACK ->
-                                JSONObject()
-                                    .put("rewardTitle", latestReward.title)
-                                    .put("pointCost", latestReward.pointCost)
-                                    .put("groupName", targetGroupName.orEmpty())
-                                    .put("bonusMinutes", latestReward.bonusMinutes)
-                                    .toString()
-                            RewardType.CUSTOM ->
-                                JSONObject()
-                                    .put("rewardTitle", latestReward.title)
-                                    .put("pointCost", latestReward.pointCost)
-                                    .toString()
-                        },
-                        createdAt = redeemedAt,
-                    )
-                )
-            }
-
-            try {
-                preferences.addUserPoints(-latestReward.pointCost.toDouble())
-            } catch (error: Exception) {
-                database.withTransaction {
-                    if (latestReward.stock > 0) {
-                        redemptionDao.insertRedemption(latestReward)
+                try {
+                    preferences.addUserPoints(-latestReward.pointCost.toDouble())
+                } catch (error: Exception) {
+                    database.withTransaction {
+                        if (latestReward.stock > 0) {
+                            redemptionDao.insertRedemption(latestReward)
+                        }
+                        redemptionHistoryDao.deleteById(redemptionHistoryId)
+                        pointLedgerDao.deleteById(ledgerEntryId)
+                        createdBonusId?.let { bonusTimeDao.deleteById(it) }
                     }
-                    redemptionHistoryDao.deleteById(redemptionHistoryId)
-                    pointLedgerDao.deleteById(ledgerEntryId)
-                    createdBonusId?.let { bonusTimeDao.deleteById(it) }
+                    throw error
                 }
-                throw error
-            }
 
-            val message = when (latestReward.rewardType) {
-                RewardType.TIME_PACK -> {
-                    val groupName = targetGroupName ?: AppText.t("generic_target_group")
-                    AppText.t(
-                        "redeem_success_time_pack",
-                        localizedRewardTitle(latestReward),
-                        latestReward.pointCost,
-                        groupName,
-                        latestReward.bonusMinutes,
-                    )
-                }
-                RewardType.CUSTOM -> {
-                    AppText.t(
-                        "redeem_success_custom_reward",
-                        localizedRewardTitle(latestReward),
-                        latestReward.pointCost,
-                    )
-                }
+                checkAchievements()
+                RedeemRewardResult.Success(
+                    pointCost = latestReward.pointCost,
+                    message =
+                        when (latestReward.rewardType) {
+                            RewardType.TIME_PACK -> {
+                                val groupName = targetGroupName ?: AppText.t("generic_target_group")
+                                AppText.t(
+                                    "redeem_success_time_pack",
+                                    localizedRewardTitle(latestReward),
+                                    latestReward.pointCost,
+                                    groupName,
+                                    latestReward.bonusMinutes,
+                                )
+                            }
+                            RewardType.CUSTOM -> {
+                                AppText.t(
+                                    "redeem_success_custom_reward",
+                                    localizedRewardTitle(latestReward),
+                                    latestReward.pointCost,
+                                )
+                            }
+                        },
+                )
             }
-
-            _redemptionEvents.emit(message)
-            checkAchievements()
-            RedemptionResult(
-                pointCost = latestReward.pointCost,
-                message = message,
-            )
         }
     }
 
@@ -451,41 +537,95 @@ class AppLimitRepository(
         description: String = "",
         bonusMinutes: Int = 0,
         builtinKey: String? = null,
-    ) {
+    ): RewardSaveResult {
+        val validation = validateCustomRewardInput(title, cost, stock)
+        if (validation != null) {
+            return RewardSaveResult.Invalid(validation)
+        }
+        if (type != RewardType.CUSTOM || builtinKey != null || bonusMinutes != 0) {
+            return RewardSaveResult.Invalid(RewardSaveValidationError.REWARD_NOT_EDITABLE)
+        }
         withContext(Dispatchers.IO) {
             redemptionDao.insertRedemption(
                 RedemptionEntity(
                     id = UUID.randomUUID().toString(),
-                    title = title,
-                    description = description,
-                    builtinKey = builtinKey,
+                    title = title.trim(),
+                    description = description.trim(),
+                    builtinKey = null,
                     pointCost = cost,
                     rewardType = type,
-                    bonusMinutes = bonusMinutes,
+                    bonusMinutes = 0,
                     stock = stock,
                     createdAt = System.currentTimeMillis(),
-                    updatedAt = System.currentTimeMillis()
+                    updatedAt = System.currentTimeMillis(),
                 )
             )
         }
+        return RewardSaveResult.Success
     }
 
-    suspend fun updateReward(reward: RedemptionEntity) {
+    suspend fun updateReward(reward: RedemptionEntity): RewardSaveResult {
+        if (reward.builtinKey != null) {
+            return RewardSaveResult.Invalid(RewardSaveValidationError.REWARD_NOT_EDITABLE)
+        }
+        val validation = validateCustomRewardInput(reward.title, reward.pointCost, reward.stock)
+        if (validation != null) {
+            return RewardSaveResult.Invalid(validation)
+        }
         withContext(Dispatchers.IO) {
-            redemptionDao.insertRedemption(reward.copy(updatedAt = System.currentTimeMillis()))
+            redemptionDao.insertRedemption(
+                reward.copy(
+                    title = reward.title.trim(),
+                    description = reward.description.trim(),
+                    updatedAt = System.currentTimeMillis(),
+                )
+            )
+        }
+        return RewardSaveResult.Success
+    }
+
+    suspend fun archiveReward(rewardId: String) {
+        withContext(Dispatchers.IO) {
+            redemptionDao.deactivateRedemption(rewardId)
         }
     }
 
-    /** 预置初始数据 */
+    suspend fun syncBuiltinRewards() {
+        withContext(Dispatchers.IO) {
+            val activeBuiltinKeys = BUILTIN_REWARD_DEFINITIONS.map { it.builtinKey }
+            redemptionDao.deactivateBuiltinRedemptionsExcept(activeBuiltinKeys)
+            BUILTIN_REWARD_DEFINITIONS.forEach { definition ->
+                upsertBuiltinReward(definition)
+            }
+        }
+    }
+
+    /** 兼容旧初始化入口 */
     suspend fun seedInitialData() {
         withContext(Dispatchers.IO) {
-            // 只保留三个基础可兑选项，默认库存无穷大
-            addReward("30-minute Time Pass", 50, RewardType.TIME_PACK, -1, "Get 30 extra minutes immediately.", 30, "reward_time_pack_30")
-            addReward("1-hour Free Browsing Pass", 100, RewardType.TIME_PACK, -1, "Get 1 extra hour immediately.", 60, "reward_time_pack_60")
-            addReward("Offline Treat", 500, RewardType.CUSTOM, 5, "Treat yourself offline.", 0, "reward_offline_treat")
-
+            syncBuiltinRewards()
             syncAchievementDefinitionsInternal()
         }
+    }
+
+    private suspend fun upsertBuiltinReward(definition: BuiltinRewardDefinition) {
+        val now = System.currentTimeMillis()
+        val existing = redemptionDao.getRedemptionByBuiltinKey(definition.builtinKey)
+        redemptionDao.insertRedemption(
+            RedemptionEntity(
+                id = existing?.id ?: "builtin:${definition.builtinKey}",
+                title = definition.title,
+                description = definition.description,
+                builtinKey = definition.builtinKey,
+                pointCost = definition.pointCost,
+                rewardType = definition.rewardType,
+                bonusMinutes = definition.bonusMinutes,
+                isActive = true,
+                stock = definition.stock,
+                createdAt = existing?.createdAt ?: now,
+                updatedAt = now,
+            )
+        )
     }
 
     suspend fun syncAchievementDefinitions() {
