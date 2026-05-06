@@ -55,51 +55,21 @@ public static class AchievementIconProcessor
 
     private static Bitmap ProcessDiamond(Bitmap original, int ringSize)
     {
-        var core = new Bitmap(original.Width, original.Height, PixelFormat.Format32bppArgb);
-        using (var graphics = Graphics.FromImage(core))
+        using (var working = new Bitmap(original.Width, original.Height, PixelFormat.Format32bppArgb))
         {
-            graphics.DrawImage(original, 0, 0, original.Width, original.Height);
-        }
-
-        RemoveEdgeConnectedBackground(core, preserveBrightEdges: true);
-        bool[] coreMask = ExtractLargestOpaqueComponent(core);
-        core.Dispose();
-
-        int[] distanceMask = BuildDistanceMask(coreMask, original.Width, original.Height, ringSize);
-        var result = new Bitmap(original.Width, original.Height, PixelFormat.Format32bppArgb);
-        var rect = new Rectangle(0, 0, result.Width, result.Height);
-        var data = result.LockBits(rect, ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
-        try
-        {
-            int stride = data.Stride;
-            int bytes = Math.Abs(stride) * result.Height;
-            byte[] buffer = new byte[bytes];
-
-            for (int y = 0; y < result.Height; y++)
+            using (var graphics = Graphics.FromImage(working))
             {
-                for (int x = 0; x < result.Width; x++)
-                {
-                    int maskIndex = y * result.Width + x;
-                    int distance = distanceMask[maskIndex];
-                    if (distance < 0) continue;
-
-                    Color source = original.GetPixel(x, y);
-                    int offset = y * stride + x * 4;
-                    buffer[offset] = source.B;
-                    buffer[offset + 1] = source.G;
-                    buffer[offset + 2] = source.R;
-                    buffer[offset + 3] = (byte)FeatherAlpha(distance);
-                }
+                graphics.DrawImage(original, 0, 0, original.Width, original.Height);
             }
 
-            Marshal.Copy(buffer, 0, data.Scan0, bytes);
-        }
-        finally
-        {
-            result.UnlockBits(data);
-        }
+            RemoveEdgeConnectedBackground(working, preserveBrightEdges: true);
+            bool[] mask = ExtractOpaqueMask(working);
+            mask = MorphClose(mask, working.Width, working.Height, radius: 2);
+            FillInnerHoles(mask, working.Width, working.Height);
+            RepairMaskInsideDiamondSilhouette(mask, working.Width, working.Height);
 
-        return result;
+            return ApplyMask(original, mask);
+        }
     }
 
     private static void RemoveEdgeConnectedBackground(Bitmap bitmap, bool preserveBrightEdges)
@@ -183,7 +153,7 @@ public static class AchievementIconProcessor
         return brightness >= 232 && (max - min) <= 14;
     }
 
-    private static bool[] ExtractLargestOpaqueComponent(Bitmap bitmap)
+    private static bool[] ExtractOpaqueMask(Bitmap bitmap)
     {
         int width = bitmap.Width;
         int height = bitmap.Height;
@@ -205,52 +175,7 @@ public static class AchievementIconProcessor
                 }
             }
 
-            bool[] visited = new bool[opaque.Length];
-            bool[] best = new bool[opaque.Length];
-            int bestCount = 0;
-            var queue = new Queue<int>();
-            var component = new List<int>();
-            int[] dx = new[] { 1, 1, 1, 0, 0, -1, -1, -1 };
-            int[] dy = new[] { 1, 0, -1, 1, -1, 1, 0, -1 };
-
-            for (int start = 0; start < opaque.Length; start++)
-            {
-                if (!opaque[start] || visited[start]) continue;
-
-                visited[start] = true;
-                queue.Enqueue(start);
-                component.Clear();
-
-                while (queue.Count > 0)
-                {
-                    int current = queue.Dequeue();
-                    component.Add(current);
-                    int x = current % width;
-                    int y = current / width;
-
-                    for (int i = 0; i < 8; i++)
-                    {
-                        int nx = x + dx[i];
-                        int ny = y + dy[i];
-                        if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
-
-                        int next = ny * width + nx;
-                        if (visited[next] || !opaque[next]) continue;
-                        visited[next] = true;
-                        queue.Enqueue(next);
-                    }
-                }
-
-                if (component.Count <= bestCount) continue;
-                Array.Clear(best, 0, best.Length);
-                foreach (int index in component)
-                {
-                    best[index] = true;
-                }
-                bestCount = component.Count;
-            }
-
-            return best;
+            return opaque;
         }
         finally
         {
@@ -258,32 +183,93 @@ public static class AchievementIconProcessor
         }
     }
 
-    private static int[] BuildDistanceMask(bool[] coreMask, int width, int height, int ringSize)
+    private static bool[] MorphClose(bool[] mask, int width, int height, int radius)
     {
-        int[] distance = new int[coreMask.Length];
-        for (int i = 0; i < distance.Length; i++)
+        return ErodeMask(DilateMask(mask, width, height, radius), width, height, radius);
+    }
+
+    private static bool[] DilateMask(bool[] mask, int width, int height, int radius)
+    {
+        bool[] result = new bool[mask.Length];
+        int radiusSquared = radius * radius;
+
+        for (int y = 0; y < height; y++)
         {
-            distance[i] = -1;
+            for (int x = 0; x < width; x++)
+            {
+                bool on = false;
+                for (int ny = Math.Max(0, y - radius); ny <= Math.Min(height - 1, y + radius) && !on; ny++)
+                {
+                    for (int nx = Math.Max(0, x - radius); nx <= Math.Min(width - 1, x + radius); nx++)
+                    {
+                        int dx = nx - x;
+                        int dy = ny - y;
+                        if (dx * dx + dy * dy > radiusSquared) continue;
+                        if (!mask[ny * width + nx]) continue;
+                        on = true;
+                        break;
+                    }
+                }
+                result[y * width + x] = on;
+            }
         }
+
+        return result;
+    }
+
+    private static bool[] ErodeMask(bool[] mask, int width, int height, int radius)
+    {
+        bool[] result = new bool[mask.Length];
+        int radiusSquared = radius * radius;
+
+        for (int y = 0; y < height; y++)
+        {
+            for (int x = 0; x < width; x++)
+            {
+                bool on = true;
+                for (int ny = Math.Max(0, y - radius); ny <= Math.Min(height - 1, y + radius) && on; ny++)
+                {
+                    for (int nx = Math.Max(0, x - radius); nx <= Math.Min(width - 1, x + radius); nx++)
+                    {
+                        int dx = nx - x;
+                        int dy = ny - y;
+                        if (dx * dx + dy * dy > radiusSquared) continue;
+                        if (mask[ny * width + nx]) continue;
+                        on = false;
+                        break;
+                    }
+                }
+                result[y * width + x] = on;
+            }
+        }
+
+        return result;
+    }
+
+    private static void FillInnerHoles(bool[] mask, int width, int height)
+    {
+        bool[] visited = new bool[mask.Length];
         var queue = new Queue<int>();
         int[] dx = new[] { 1, 1, 1, 0, 0, -1, -1, -1 };
         int[] dy = new[] { 1, 0, -1, 1, -1, 1, 0, -1 };
 
-        for (int index = 0; index < coreMask.Length; index++)
+        for (int x = 0; x < width; x++)
         {
-            if (!coreMask[index]) continue;
-            distance[index] = 0;
-            queue.Enqueue(index);
+            SeedHole(mask, visited, queue, width, height, x, 0);
+            SeedHole(mask, visited, queue, width, height, x, height - 1);
+        }
+        for (int y = 0; y < height; y++)
+        {
+            SeedHole(mask, visited, queue, width, height, 0, y);
+            SeedHole(mask, visited, queue, width, height, width - 1, y);
         }
 
         while (queue.Count > 0)
         {
             int current = queue.Dequeue();
-            int currentDistance = distance[current];
-            if (currentDistance >= ringSize) continue;
-
             int x = current % width;
             int y = current / width;
+
             for (int i = 0; i < 8; i++)
             {
                 int nx = x + dx[i];
@@ -291,31 +277,72 @@ public static class AchievementIconProcessor
                 if (nx < 0 || ny < 0 || nx >= width || ny >= height) continue;
 
                 int next = ny * width + nx;
-                if (distance[next] >= 0 && distance[next] <= currentDistance + 1) continue;
-                distance[next] = currentDistance + 1;
+                if (visited[next] || mask[next]) continue;
+                visited[next] = true;
                 queue.Enqueue(next);
             }
         }
 
-        return distance;
+        for (int i = 0; i < mask.Length; i++)
+        {
+            if (!mask[i] && !visited[i])
+            {
+                mask[i] = true;
+            }
+        }
     }
 
-    private static int FeatherAlpha(int distance)
+    private static void SeedHole(bool[] mask, bool[] visited, Queue<int> queue, int width, int height, int x, int y)
     {
-        switch (distance)
+        if (x < 0 || y < 0 || x >= width || y >= height) return;
+        int index = y * width + x;
+        if (visited[index] || mask[index]) return;
+        visited[index] = true;
+        queue.Enqueue(index);
+    }
+
+    private static void RepairMaskInsideDiamondSilhouette(bool[] mask, int width, int height)
+    {
+        using (var path = new GraphicsPath())
         {
-            case 0: return 255;
-            case 1: return 220;
-            case 2: return 188;
-            case 3: return 150;
-            case 4: return 116;
-            case 5: return 84;
-            case 6: return 60;
-            case 7: return 42;
-            case 8: return 30;
-            case 9: return 20;
-            default: return 14;
+            path.AddPolygon(new[]
+            {
+                new PointF(625f, 34f),
+                new PointF(969f, 155f),
+                new PointF(1178f, 441f),
+                new PointF(1150f, 812f),
+                new PointF(969f, 1102f),
+                new PointF(625f, 1214f),
+                new PointF(284f, 1102f),
+                new PointF(77f, 812f),
+                new PointF(77f, 441f),
+                new PointF(284f, 155f),
+            });
+
+            for (int y = 0; y < height; y++)
+            {
+                for (int x = 0; x < width; x++)
+                {
+                    int index = y * width + x;
+                    if (mask[index]) continue;
+                    if (!path.IsVisible(x, y)) continue;
+                    mask[index] = true;
+                }
+            }
         }
+    }
+
+    private static Bitmap ApplyMask(Bitmap original, bool[] mask)
+    {
+        var result = new Bitmap(original.Width, original.Height, PixelFormat.Format32bppArgb);
+        for (int y = 0; y < original.Height; y++)
+        {
+            for (int x = 0; x < original.Width; x++)
+            {
+                result.SetPixel(x, y, mask[y * original.Width + x] ? original.GetPixel(x, y) : Color.Transparent);
+            }
+        }
+        return result;
     }
 
     private static void SetTransparent(byte[] buffer, int stride, int x, int y)

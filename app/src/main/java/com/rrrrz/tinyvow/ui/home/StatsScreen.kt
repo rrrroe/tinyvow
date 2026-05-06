@@ -91,6 +91,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
@@ -121,6 +122,7 @@ import com.rrrrz.tinyvow.data.usage.UsageAccessStatus
 import com.rrrrz.tinyvow.data.usage.UsageRepository
 import com.rrrrz.tinyvow.data.usage.UsageStatsUsageRepository
 import com.rrrrz.tinyvow.ui.theme.LocalReportColors
+import com.rrrrz.tinyvow.ui.theme.ReportColors
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.Dispatchers
@@ -129,6 +131,7 @@ import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.ZoneId
+import java.time.temporal.TemporalAdjusters
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import java.io.File
@@ -327,6 +330,158 @@ private data class YearScopeSummary(
     val pointsNet: String,
 )
 
+private enum class PeriodTone {
+    PRIMARY,
+    POSITIVE,
+    WARNING,
+    SECONDARY,
+    NEUTRAL,
+}
+
+private data class PeriodHeroData(
+    val eyebrow: String,
+    val title: String,
+    val rangeLabel: String,
+    val primaryValue: String,
+    val message: String,
+    val comparisonValue: String,
+    val tertiaryValue: String,
+    val tags: List<String>,
+    val metrics: List<DailyFocusMetric>,
+)
+
+private data class TrendPoint(
+    val label: String,
+    val totalUsageMillis: Long,
+    val secondaryValue: Long = 0L,
+    val tertiaryValue: Long = 0L,
+)
+
+private data class TrendSectionData(
+    val title: String,
+    val subtitle: String,
+    val primaryLabel: String,
+    val secondaryLabel: String?,
+    val tertiaryLabel: String? = null,
+    val points: List<TrendPoint>,
+    val summary: List<DailyFocusMetric>,
+)
+
+private data class ScatterPointData(
+    val label: String,
+    val xValue: Float,
+    val yValue: Float,
+    val sizeValue: Float,
+    val xDisplay: String,
+    val yDisplay: String,
+    val detail: String,
+    val tone: PeriodTone,
+)
+
+private data class ScatterSectionData(
+    val title: String,
+    val subtitle: String,
+    val xLabel: String,
+    val yLabel: String,
+    val sizeLabel: String?,
+    val points: List<ScatterPointData>,
+    val summary: List<DailyFocusMetric>,
+)
+
+private data class PeriodHeatmapData(
+    val title: String,
+    val subtitle: String,
+    val columns: Int,
+    val cells: List<HeatmapDayData>,
+)
+
+private data class AppFocusInsight(
+    val title: String,
+    val value: String,
+    val detail: String,
+)
+
+private data class AppFocusSectionData(
+    val title: String,
+    val subtitle: String,
+    val totalUsageLabel: String,
+    val topApps: List<AppDisplayItem>,
+    val insights: List<AppFocusInsight>,
+)
+
+private data class MonthlyWeekSummary(
+    val label: String,
+    val totalUsageMillis: Long,
+    val averageUsageMillis: Long,
+    val peakDayLabel: String,
+)
+
+private data class MonthlyWeekStructureData(
+    val title: String,
+    val subtitle: String,
+    val weeks: List<MonthlyWeekSummary>,
+)
+
+private data class YearQuarterSummary(
+    val label: String,
+    val totalUsageMillis: Long,
+    val bestMonthLabel: String,
+    val bestMonthUsageMillis: Long,
+    val topAppLabel: String,
+)
+
+private data class YearQuarterSectionData(
+    val title: String,
+    val subtitle: String,
+    val quarters: List<YearQuarterSummary>,
+)
+
+private data class PeriodReportData(
+    val tab: ReportTab,
+    val hero: PeriodHeroData,
+    val trend: TrendSectionData,
+    val scatter: ScatterSectionData,
+    val heatmap: PeriodHeatmapData? = null,
+    val appFocus: AppFocusSectionData,
+    val windowFocus: WindowFocusSectionData,
+    val behavior: BehaviorSectionData?,
+    val comparison: ComparisonSectionData?,
+    val monthStructure: MonthlyWeekStructureData? = null,
+    val quarterSection: YearQuarterSectionData? = null,
+)
+
+private data class PeriodBounds(
+    val startDate: LocalDate,
+    val endDate: LocalDate,
+    val previousStartDate: LocalDate,
+    val previousEndDate: LocalDate,
+)
+
+private data class PeriodDaySummary(
+    val date: LocalDate,
+    val usageMillis: Long,
+    val controlUsageMillis: Long,
+    val encourageUsageMillis: Long,
+    val savedMillis: Long,
+    val pointsNet: Double,
+    val openCount: Int,
+    val nightUsageMillis: Long,
+    val longestSessionMillis: Long,
+    val exceeded: Boolean,
+    val blockCount: Int,
+)
+
+private data class PeriodMonthSummary(
+    val month: Int,
+    val label: String,
+    val usageMillis: Long,
+    val savedMillis: Long,
+    val pointsNet: Double,
+    val activeDays: Int,
+    val exceededMonths: Boolean,
+    val topAppLabel: String,
+)
+
 private data class ShareReportData(
     val tab: ReportTab,
     val title: String,
@@ -390,10 +545,23 @@ private data class DailyReportUiState(
     val topAppsState: SectionState<TopAppsSectionData> = SectionState.Loading,
     val behaviorState: SectionState<BehaviorSectionData> = SectionState.Loading,
     val comparisonState: SectionState<ComparisonSectionData> = SectionState.Loading,
+    val periodReportState: SectionState<PeriodReportData> = SectionState.Empty,
     val selectedArchiveDate: String? = null,
     val previousArchiveDate: String? = null,
     val nextArchiveDate: String? = null,
     val availableArchiveDates: List<String> = emptyList(),
+    val selectedWeekStart: LocalDate? = null,
+    val previousWeekStart: LocalDate? = null,
+    val nextWeekStart: LocalDate? = null,
+    val availableWeekStarts: List<LocalDate> = emptyList(),
+    val selectedMonth: YearMonth? = null,
+    val previousMonth: YearMonth? = null,
+    val nextMonth: YearMonth? = null,
+    val availableMonths: List<YearMonth> = emptyList(),
+    val selectedYear: Int? = null,
+    val previousYear: Int? = null,
+    val nextYear: Int? = null,
+    val availableYears: List<Int> = emptyList(),
     val placeholderTitle: String? = null,
     val placeholderDescription: String? = null,
 )
@@ -413,6 +581,9 @@ fun StatsRoute(
     val zoneId = remember { ZoneId.systemDefault() }
     var selectedTab by remember { mutableStateOf(ReportTab.DAY) }
     var selectedArchiveDate by remember { mutableStateOf<String?>(null) }
+    var selectedWeekStart by remember { mutableStateOf<LocalDate?>(null) }
+    var selectedMonth by remember { mutableStateOf<YearMonth?>(null) }
+    var selectedYear by remember { mutableStateOf<Int?>(null) }
     var uiState by remember { mutableStateOf(DailyReportUiState(selectedTab = selectedTab)) }
 
     LaunchedEffect(
@@ -420,6 +591,9 @@ fun StatsRoute(
         groupsWithApps,
         selectedTab,
         selectedArchiveDate,
+        selectedWeekStart,
+        selectedMonth,
+        selectedYear,
         userPoints,
         todayPoints,
     ) {
@@ -429,9 +603,18 @@ fun StatsRoute(
                 selectedTab = selectedTab,
                 isRefreshing = false,
                 selectedArchiveDate = selectedArchiveDate,
+                selectedWeekStart = selectedWeekStart,
+                selectedMonth = selectedMonth,
+                selectedYear = selectedYear,
             )
             return@LaunchedEffect
         }
+
+        val recentArchives =
+            archiveRepository
+                .getRecentArchives(limit = 3650)
+                .first()
+                .sortedByDescending { it.archiveDate }
 
         when (selectedTab) {
             ReportTab.DAY -> {
@@ -440,12 +623,10 @@ fun StatsRoute(
                         selectedTab = selectedTab,
                         previous = uiState,
                         selectedArchiveDate = selectedArchiveDate,
+                        selectedWeekStart = selectedWeekStart,
+                        selectedMonth = selectedMonth,
+                        selectedYear = selectedYear,
                     )
-                val recentArchives =
-                    archiveRepository
-                        .getRecentArchives(limit = 3650)
-                        .first()
-                        .sortedByDescending { it.archiveDate }
                 val normalizedSelectedDate =
                     when {
                         recentArchives.isEmpty() -> null
@@ -470,11 +651,42 @@ fun StatsRoute(
                         selectedTab = selectedTab,
                         previous = uiState,
                         selectedArchiveDate = selectedArchiveDate,
+                        selectedWeekStart = selectedWeekStart,
+                        selectedMonth = selectedMonth,
+                        selectedYear = selectedYear,
                     )
+                val availableWeekStarts = buildAvailableWeekStarts(recentArchives)
+                val availableMonths = buildAvailableMonths(recentArchives)
+                val availableYears = buildAvailableYears(recentArchives)
+                val normalizedWeekStart =
+                    selectedWeekStart
+                        ?.takeIf { it in availableWeekStarts }
+                        ?: availableWeekStarts.firstOrNull()
+                val normalizedMonth =
+                    selectedMonth
+                        ?.takeIf { it in availableMonths }
+                        ?: availableMonths.firstOrNull()
+                val normalizedYear =
+                    selectedYear
+                        ?.takeIf { it in availableYears }
+                        ?: availableYears.firstOrNull()
+                if (selectedTab == ReportTab.WEEK && normalizedWeekStart != selectedWeekStart) {
+                    selectedWeekStart = normalizedWeekStart
+                }
+                if (selectedTab == ReportTab.MONTH && normalizedMonth != selectedMonth) {
+                    selectedMonth = normalizedMonth
+                }
+                if (selectedTab == ReportTab.YEAR && normalizedYear != selectedYear) {
+                    selectedYear = normalizedYear
+                }
                 buildArchivedWindowReportUiState(
                     selectedTab = selectedTab,
                     zoneId = zoneId,
                     archiveRepository = archiveRepository,
+                    recentArchives = recentArchives,
+                    selectedWeekStart = normalizedWeekStart,
+                    selectedMonth = normalizedMonth,
+                    selectedYear = normalizedYear,
                     updateState = { transform -> uiState = transform(uiState) },
                 )
                 return@LaunchedEffect
@@ -498,6 +710,33 @@ fun StatsRoute(
         onSelectArchiveDate = { date ->
             selectedArchiveDate = date
         },
+        onPreviousWeek = {
+            uiState.previousWeekStart?.let { selectedWeekStart = it }
+        },
+        onNextWeek = {
+            uiState.nextWeekStart?.let { selectedWeekStart = it }
+        },
+        onSelectWeekStart = { weekStart ->
+            selectedWeekStart = weekStart
+        },
+        onPreviousMonth = {
+            uiState.previousMonth?.let { selectedMonth = it }
+        },
+        onNextMonth = {
+            uiState.nextMonth?.let { selectedMonth = it }
+        },
+        onSelectMonth = { month ->
+            selectedMonth = month
+        },
+        onPreviousYear = {
+            uiState.previousYear?.let { selectedYear = it }
+        },
+        onNextYear = {
+            uiState.nextYear?.let { selectedYear = it }
+        },
+        onSelectYear = { year ->
+            selectedYear = year
+        },
         isProActive = isProActive,
         onShowProUpsell = onShowProUpsell,
         onRequestUsageAccess = onRequestUsageAccess,
@@ -509,6 +748,9 @@ private fun createRefreshingUiState(
     selectedTab: ReportTab,
     previous: DailyReportUiState? = null,
     selectedArchiveDate: String? = previous?.selectedArchiveDate,
+    selectedWeekStart: LocalDate? = previous?.selectedWeekStart,
+    selectedMonth: YearMonth? = previous?.selectedMonth,
+    selectedYear: Int? = previous?.selectedYear,
 ): DailyReportUiState {
     return DailyReportUiState(
         isPermissionGranted = true,
@@ -544,10 +786,28 @@ private fun createRefreshingUiState(
         topAppsState = previous?.topAppsState ?: SectionState.Loading,
         behaviorState = previous?.behaviorState ?: SectionState.Loading,
         comparisonState = previous?.comparisonState ?: SectionState.Loading,
+        periodReportState =
+            if (selectedTab == ReportTab.DAY) {
+                SectionState.Empty
+            } else {
+                previous?.periodReportState ?: SectionState.Loading
+            },
         selectedArchiveDate = selectedArchiveDate,
         previousArchiveDate = previous?.previousArchiveDate,
         nextArchiveDate = previous?.nextArchiveDate,
         availableArchiveDates = previous?.availableArchiveDates.orEmpty(),
+        selectedWeekStart = selectedWeekStart,
+        previousWeekStart = previous?.previousWeekStart,
+        nextWeekStart = previous?.nextWeekStart,
+        availableWeekStarts = previous?.availableWeekStarts.orEmpty(),
+        selectedMonth = selectedMonth,
+        previousMonth = previous?.previousMonth,
+        nextMonth = previous?.nextMonth,
+        availableMonths = previous?.availableMonths.orEmpty(),
+        selectedYear = selectedYear,
+        previousYear = previous?.previousYear,
+        nextYear = previous?.nextYear,
+        availableYears = previous?.availableYears.orEmpty(),
     )
 }
 
@@ -555,64 +815,75 @@ private suspend fun buildArchivedWindowReportUiState(
     selectedTab: ReportTab,
     zoneId: ZoneId,
     archiveRepository: DailyArchiveRepository,
+    recentArchives: List<DailyArchiveEntity>,
+    selectedWeekStart: LocalDate?,
+    selectedMonth: YearMonth?,
+    selectedYear: Int?,
     updateState: ((DailyReportUiState) -> DailyReportUiState) -> Unit,
 ) {
-    val today = LocalDate.now(zoneId)
-    val endDate = today.minusDays(1)
-    val windowDays = archiveWindowDays(selectedTab)
-    val currentStart =
-        if (selectedTab == ReportTab.YEAR) {
-            LocalDate.of(endDate.year, 1, 1)
-        } else {
-            endDate.minusDays((windowDays - 1).toLong())
-        }
-    val actualWindowDays = (endDate.toEpochDay() - currentStart.toEpochDay() + 1L).coerceAtLeast(1L).toInt()
-    val previousEnd = currentStart.minusDays(1)
-    val previousStart = previousEnd.minusDays((actualWindowDays - 1).toLong())
-    val currentFrom = ArchiveDateUtils.formatDate(currentStart)
-    val currentTo = ArchiveDateUtils.formatDate(endDate)
-    val previousFrom = ArchiveDateUtils.formatDate(previousStart)
-    val previousTo = ArchiveDateUtils.formatDate(previousEnd)
+    val availableWeekStarts = buildAvailableWeekStarts(recentArchives)
+    val availableMonths = buildAvailableMonths(recentArchives)
+    val availableYears = buildAvailableYears(recentArchives)
+    val periodBounds =
+        resolvePeriodBounds(
+            selectedTab = selectedTab,
+            zoneId = zoneId,
+            selectedWeekStart = selectedWeekStart,
+            selectedMonth = selectedMonth,
+            selectedYear = selectedYear,
+        )
 
+    if (recentArchives.isEmpty() || periodBounds == null) {
+        updateState { current ->
+            current.copy(
+                isRefreshing = false,
+                heroState = SectionState.Empty,
+                dailyFocusState = SectionState.Empty,
+                windowFocusState = SectionState.Empty,
+                heatmapState = SectionState.Empty,
+                yearDualScopeState = SectionState.Empty,
+                shareState = SectionState.Empty,
+                timelineState = SectionState.Empty,
+                topAppsState = SectionState.Empty,
+                behaviorState = SectionState.Empty,
+                comparisonState = SectionState.Empty,
+                periodReportState = SectionState.Empty,
+                selectedArchiveDate = null,
+                previousArchiveDate = null,
+                nextArchiveDate = null,
+                availableArchiveDates = emptyList(),
+                selectedWeekStart = selectedWeekStart,
+                previousWeekStart = null,
+                nextWeekStart = null,
+                availableWeekStarts = availableWeekStarts,
+                selectedMonth = selectedMonth,
+                previousMonth = null,
+                nextMonth = null,
+                availableMonths = availableMonths,
+                selectedYear = selectedYear,
+                previousYear = null,
+                nextYear = null,
+                availableYears = availableYears,
+                placeholderTitle = AppText.t("stats_no_archived_daily_reports_yet"),
+                placeholderDescription = AppText.t("stats_daily_reports_only_show_yesterday_and_earlier_archived"),
+            )
+        }
+        return
+    }
+
+    val currentFrom = ArchiveDateUtils.formatDate(periodBounds.startDate)
+    val currentTo = ArchiveDateUtils.formatDate(periodBounds.endDate)
+    val previousFrom = ArchiveDateUtils.formatDate(periodBounds.previousStartDate)
+    val previousTo = ArchiveDateUtils.formatDate(periodBounds.previousEndDate)
     val currentArchives = archiveRepository.getArchivesByRange(currentFrom, currentTo).first()
     val previousArchives = archiveRepository.getArchivesByRange(previousFrom, previousTo).first()
-    val rollingYearStart = endDate.minusDays(364)
-    val rollingYearArchives =
-        if (selectedTab == ReportTab.YEAR) {
-            archiveRepository
-                .getArchivesByRange(
-                    from = ArchiveDateUtils.formatDate(rollingYearStart),
-                    to = currentTo,
-                ).first()
-        } else {
-            emptyList()
-        }
-
-    val currentAppArchives =
-        archiveRepository
-            .getAppArchivesByRange(
-                from = currentFrom,
-                to = currentTo,
-            ).first()
-    val previousAppArchives =
-        archiveRepository
-            .getAppArchivesByRange(
-                from = previousFrom,
-                to = previousTo,
-            ).first()
+    val currentAppArchives = archiveRepository.getAppArchivesByRange(currentFrom, currentTo).first()
+    val previousAppArchives = archiveRepository.getAppArchivesByRange(previousFrom, previousTo).first()
     val currentGroupArchives = archiveRepository.getGroupArchivesByRange(currentFrom, currentTo).first()
-
     val currentSnapshots = mergeArchivedAppSnapshots(currentAppArchives)
     val previousSnapshots = mergeArchivedAppSnapshots(previousAppArchives)
     val currentMetrics = buildArchivedWindowMetrics(currentSnapshots)
     val previousMetrics = buildArchivedWindowMetrics(previousSnapshots)
-    val timelineBuckets =
-        if (selectedTab == ReportTab.YEAR) {
-            buildYearTimelineBuckets(currentArchives)
-        } else {
-            buildArchiveTimelineBuckets(currentArchives)
-        }
-    val periodUsage = buildArchivePeriodUsageStats(selectedTab, timelineBuckets)
     val topApps =
         archiveRepository
             .getTopAppsByRange(
@@ -631,7 +902,7 @@ private suspend fun buildArchivedWindowReportUiState(
         ScopeOverview(
             totalUsageMillis = currentArchives.sumOf { it.totalUsageMillis },
             openCount = currentMetrics.deviceOpenCount,
-            activeBucketCount = timelineBuckets.count { it.deviceMillis > 0L },
+            activeBucketCount = currentArchives.size,
             topApp = topApps.firstOrNull(),
         )
     val averagePerDayUsage =
@@ -640,36 +911,9 @@ private suspend fun buildArchivedWindowReportUiState(
         } else {
             currentArchives.sumOf { it.totalUsageMillis } / currentArchives.size
         }
-    val pointsNet = currentArchives.sumOf { it.pointsNet }
-    val redemptionCount = currentArchives.sumOf { it.redemptionCount }
-    val summary =
-        buildArchivedReportSummary(
-            selectedTab = selectedTab,
-            startDate = currentStart,
-            endDate = endDate,
-            overview = overview,
-            previousMetrics = previousMetrics,
-            dominantPeriod = periodUsage.maxByOrNull { it.deviceMillis }?.label ?: "--",
-            pointsNet = pointsNet,
-            redemptionCount = redemptionCount,
-            averagePerDayUsage = averagePerDayUsage,
-        )
-    val behaviorInsight = buildArchivedDayBehaviorInsight(currentSnapshots, timelineBuckets)
-    val comparisons =
-        buildArchivedComparisonMetrics(
-            selectedTab = selectedTab,
-            overview = overview,
-            currentMetrics = currentMetrics,
-            previousMetrics = previousMetrics,
-            averagePerDayUsage = averagePerDayUsage,
-        )
-    val timelineStateData =
-        buildArchiveTimelineSectionData(
-            selectedTab = selectedTab,
-            timelineBuckets = timelineBuckets,
-            nightUsageMillis = currentMetrics.nightUsageMillis,
-            periodUsage = periodUsage,
-        )
+    val daySummaries = buildPeriodDaySummaries(periodBounds.startDate, periodBounds.endDate, currentArchives, currentSnapshots)
+    val hourBuckets = buildPeriodHourBuckets(currentSnapshots)
+    val behaviorInsight = buildArchivedDayBehaviorInsight(currentSnapshots, hourBuckets)
     val windowFocusData =
         buildWindowFocusSectionData(
             selectedTab = selectedTab,
@@ -677,108 +921,219 @@ private suspend fun buildArchivedWindowReportUiState(
             groupArchives = currentGroupArchives,
             activeDayCount = currentArchives.size,
         )
-    val heatmapData =
-        if (selectedTab == ReportTab.MONTH || selectedTab == ReportTab.YEAR) {
-            buildHeatmapSectionData(
-                selectedTab = selectedTab,
-                startDate = currentStart,
-                endDate = endDate,
-                archives = currentArchives,
-            )
-        } else {
-            null
-        }
-    val yearDualScopeData =
-        if (selectedTab == ReportTab.YEAR) {
-            YearDualScopeSectionData(
-                naturalYear =
-                    buildYearScopeSummary(
-                        title = AppText.t("stats_calendar_year"),
-                        startDate = currentStart,
-                        endDate = endDate,
-                        archives = currentArchives,
-                    ),
-                rollingYear =
-                    buildYearScopeSummary(
-                        title = AppText.t("stats_last_365_days"),
-                        startDate = rollingYearStart,
-                        endDate = endDate,
-                        archives = rollingYearArchives,
-                    ),
-            )
-        } else {
-            null
-        }
-    val shareData =
-        buildShareReportData(
+    val comparisonData =
+        buildArchivedComparisonMetrics(
             selectedTab = selectedTab,
-            summary = summary,
+            overview = overview,
+            currentMetrics = currentMetrics,
+            previousMetrics = previousMetrics,
+            averagePerDayUsage = averagePerDayUsage,
+        ).takeIf { it.isNotEmpty() }?.let { ComparisonSectionData(it) }
+    val reportData =
+        buildPeriodReportData(
+            selectedTab = selectedTab,
+            bounds = periodBounds,
             archives = currentArchives,
-            windowFocus = windowFocusData,
+            daySummaries = daySummaries,
+            snapshots = currentSnapshots,
             topApps = topApps,
-            timelineBuckets = timelineBuckets,
-            dailyGoalMillis = 0L,
-            goalCompletionProgress = null,
-            savedMillis = currentArchives.sumOf { it.savedMillis },
-            pointsNet = pointsNet,
-            blockEventCount = currentArchives.sumOf { it.controlBlockEventCount },
-            redemptionCount = currentArchives.sumOf { it.redemptionCount },
-            nightUsageMillis = currentMetrics.nightUsageMillis,
-            comparisonLabel = summary.secondaryValue,
-            dominantPeriod = periodUsage.maxByOrNull { it.deviceMillis }?.label ?: "--",
+            windowFocus = windowFocusData,
+            behavior = behaviorInsight?.let { BehaviorSectionData(it) },
+            comparison = comparisonData,
         )
+    val selectedWeekIndex = availableWeekStarts.indexOf(selectedWeekStart)
+    val selectedMonthIndex = availableMonths.indexOf(selectedMonth)
+    val selectedYearIndex = availableYears.indexOf(selectedYear)
 
     updateState { current ->
         current.copy(
             isRefreshing = false,
-            heroState =
-                SectionState.Ready(
-                    HeroSectionData(
-                        summary = summary,
-                        overview = overview,
-                        nightUsageMillis = currentMetrics.nightUsageMillis,
-                    ),
-                ),
+            heroState = SectionState.Empty,
             dailyFocusState = SectionState.Empty,
-            windowFocusState =
-                if (currentArchives.isEmpty()) {
-                    SectionState.Empty
-                } else {
-                    SectionState.Ready(windowFocusData)
-                },
-            heatmapState = heatmapData?.let { SectionState.Ready(it) } ?: SectionState.Empty,
-            yearDualScopeState = yearDualScopeData?.let { SectionState.Ready(it) } ?: SectionState.Empty,
-            shareState = SectionState.Ready(shareData),
-            timelineState =
-                if (timelineBuckets.isEmpty()) {
-                    SectionState.Empty
-                } else {
-                    SectionState.Ready(timelineStateData)
-                },
-            topAppsState =
-                if (topApps.isEmpty()) {
-                    SectionState.Empty
-                } else {
-                    SectionState.Ready(TopAppsSectionData(usageTopApps = topApps))
-                },
-            behaviorState =
-                if (behaviorInsight == null) {
-                    SectionState.Empty
-                } else {
-                    SectionState.Ready(BehaviorSectionData(behaviorInsight = behaviorInsight))
-                },
-            comparisonState =
-                if (comparisons.isEmpty()) {
-                    SectionState.Empty
-                } else {
-                    SectionState.Ready(ComparisonSectionData(comparisons = comparisons))
-                },
+            windowFocusState = SectionState.Empty,
+            heatmapState = SectionState.Empty,
+            yearDualScopeState = SectionState.Empty,
+            shareState = SectionState.Empty,
+            timelineState = SectionState.Empty,
+            topAppsState = SectionState.Empty,
+            behaviorState = SectionState.Empty,
+            comparisonState = SectionState.Empty,
+            periodReportState = SectionState.Ready(reportData),
             selectedArchiveDate = null,
             previousArchiveDate = null,
             nextArchiveDate = null,
+            availableArchiveDates = emptyList(),
+            selectedWeekStart = selectedWeekStart,
+            previousWeekStart = availableWeekStarts.getOrNull(selectedWeekIndex + 1),
+            nextWeekStart = availableWeekStarts.getOrNull(selectedWeekIndex - 1),
+            availableWeekStarts = availableWeekStarts,
+            selectedMonth = selectedMonth,
+            previousMonth = availableMonths.getOrNull(selectedMonthIndex + 1),
+            nextMonth = availableMonths.getOrNull(selectedMonthIndex - 1),
+            availableMonths = availableMonths,
+            selectedYear = selectedYear,
+            previousYear = availableYears.getOrNull(selectedYearIndex + 1),
+            nextYear = availableYears.getOrNull(selectedYearIndex - 1),
+            availableYears = availableYears,
             placeholderTitle = null,
             placeholderDescription = null,
         )
+    }
+}
+
+private fun buildAvailableWeekStarts(recentArchives: List<DailyArchiveEntity>): List<LocalDate> =
+    recentArchives
+        .map { LocalDate.parse(it.archiveDate).with(TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY)) }
+        .distinct()
+        .sortedDescending()
+
+private fun buildAvailableMonths(recentArchives: List<DailyArchiveEntity>): List<YearMonth> =
+    recentArchives
+        .map { YearMonth.from(LocalDate.parse(it.archiveDate)) }
+        .distinct()
+        .sortedDescending()
+
+private fun buildAvailableYears(recentArchives: List<DailyArchiveEntity>): List<Int> =
+    recentArchives
+        .map { LocalDate.parse(it.archiveDate).year }
+        .distinct()
+        .sortedDescending()
+
+private fun resolvePeriodBounds(
+    selectedTab: ReportTab,
+    zoneId: ZoneId,
+    selectedWeekStart: LocalDate?,
+    selectedMonth: YearMonth?,
+    selectedYear: Int?,
+): PeriodBounds? {
+    val yesterday = LocalDate.now(zoneId).minusDays(1)
+    return when (selectedTab) {
+        ReportTab.WEEK -> {
+            val start = selectedWeekStart ?: return null
+            val end = minOf(start.plusDays(6), yesterday)
+            val daySpan = (end.toEpochDay() - start.toEpochDay()).coerceAtLeast(0L)
+            val previousStart = start.minusWeeks(1)
+            PeriodBounds(
+                startDate = start,
+                endDate = end,
+                previousStartDate = previousStart,
+                previousEndDate = previousStart.plusDays(daySpan),
+            )
+        }
+        ReportTab.MONTH -> {
+            val month = selectedMonth ?: return null
+            val start = month.atDay(1)
+            val end = minOf(month.atEndOfMonth(), yesterday)
+            val daySpan = (end.toEpochDay() - start.toEpochDay()).coerceAtLeast(0L)
+            val previousMonth = month.minusMonths(1)
+            val previousStart = previousMonth.atDay(1)
+            PeriodBounds(
+                startDate = start,
+                endDate = end,
+                previousStartDate = previousStart,
+                previousEndDate = minOf(previousMonth.atEndOfMonth(), previousStart.plusDays(daySpan)),
+            )
+        }
+        ReportTab.YEAR -> {
+            val year = selectedYear ?: return null
+            val start = LocalDate.of(year, 1, 1)
+            val end = minOf(LocalDate.of(year, 12, 31), yesterday)
+            val daySpan = (end.toEpochDay() - start.toEpochDay()).coerceAtLeast(0L)
+            val previousStart = LocalDate.of(year - 1, 1, 1)
+            PeriodBounds(
+                startDate = start,
+                endDate = end,
+                previousStartDate = previousStart,
+                previousEndDate = minOf(LocalDate.of(year - 1, 12, 31), previousStart.plusDays(daySpan)),
+            )
+        }
+        ReportTab.DAY -> null
+    }
+}
+
+private fun buildPeriodDaySummaries(
+    startDate: LocalDate,
+    endDate: LocalDate,
+    archives: List<DailyArchiveEntity>,
+    snapshots: List<ArchivedAppSnapshot>,
+): List<PeriodDaySummary> {
+    val archiveByDate = archives.associateBy { LocalDate.parse(it.archiveDate) }
+    val openCountsByDate = snapshots.groupBy { LocalDate.parse(it.archiveDate) }.mapValues { (_, items) -> items.sumOf { it.openCount } }
+    val nightUsageByDate = snapshots.groupBy { LocalDate.parse(it.archiveDate) }.mapValues { (_, items) -> items.sumOf { it.nightUsageMillis } }
+    val longestByDate = snapshots.groupBy { LocalDate.parse(it.archiveDate) }.mapValues { (_, items) -> items.maxOfOrNull { it.longestSessionMillis } ?: 0L }
+    return generateDateSequence(startDate, endDate).map { date ->
+        val archive = archiveByDate[date]
+        PeriodDaySummary(
+            date = date,
+            usageMillis = archive?.totalUsageMillis ?: 0L,
+            controlUsageMillis = archive?.controlUsageMillis ?: 0L,
+            encourageUsageMillis = archive?.encourageUsageMillis ?: 0L,
+            savedMillis = archive?.savedMillis ?: 0L,
+            pointsNet = archive?.pointsNet ?: 0.0,
+            openCount = openCountsByDate[date] ?: 0,
+            nightUsageMillis = nightUsageByDate[date] ?: 0L,
+            longestSessionMillis = longestByDate[date] ?: 0L,
+            exceeded = (archive?.controlExceededGroupCount ?: 0) > 0,
+            blockCount = archive?.controlBlockEventCount ?: 0,
+        )
+    }
+}
+
+private fun buildPeriodHourBuckets(items: List<ArchivedAppSnapshot>): List<DailyTimelineBucket> =
+    (0 until 24).map { hour ->
+        DailyTimelineBucket(
+            hour = hour,
+            label = dayHourLabel(hour),
+            deviceMillis = items.sumOf { snapshot -> snapshot.hourlyBuckets.getOrElse(hour) { 0L } },
+        )
+    }
+
+private fun buildPeriodReportData(
+    selectedTab: ReportTab,
+    bounds: PeriodBounds,
+    archives: List<DailyArchiveEntity>,
+    daySummaries: List<PeriodDaySummary>,
+    snapshots: List<ArchivedAppSnapshot>,
+    topApps: List<AppDisplayItem>,
+    windowFocus: WindowFocusSectionData,
+    behavior: BehaviorSectionData?,
+    comparison: ComparisonSectionData?,
+): PeriodReportData {
+    return when (selectedTab) {
+        ReportTab.WEEK ->
+            buildWeeklyReportData(
+                bounds = bounds,
+                archives = archives,
+                daySummaries = daySummaries,
+                snapshots = snapshots,
+                topApps = topApps,
+                windowFocus = windowFocus,
+                behavior = behavior,
+                comparison = comparison,
+            )
+        ReportTab.MONTH ->
+            buildMonthlyReportData(
+                bounds = bounds,
+                archives = archives,
+                daySummaries = daySummaries,
+                snapshots = snapshots,
+                topApps = topApps,
+                windowFocus = windowFocus,
+                behavior = behavior,
+                comparison = comparison,
+            )
+        ReportTab.YEAR ->
+            buildYearlyReportData(
+                bounds = bounds,
+                archives = archives,
+                daySummaries = daySummaries,
+                snapshots = snapshots,
+                topApps = topApps,
+                windowFocus = windowFocus,
+                behavior = behavior,
+                comparison = comparison,
+            )
+        ReportTab.DAY -> error("DAY is not supported in period report builder")
     }
 }
 
@@ -789,6 +1144,533 @@ private fun archiveWindowDays(tab: ReportTab): Int =
         ReportTab.MONTH -> 30
         ReportTab.YEAR -> 365
     }
+
+private fun buildWeeklyReportData(
+    bounds: PeriodBounds,
+    archives: List<DailyArchiveEntity>,
+    daySummaries: List<PeriodDaySummary>,
+    snapshots: List<ArchivedAppSnapshot>,
+    topApps: List<AppDisplayItem>,
+    windowFocus: WindowFocusSectionData,
+    behavior: BehaviorSectionData?,
+    comparison: ComparisonSectionData?,
+): PeriodReportData {
+    val activeDays = daySummaries.count { it.usageMillis > 0L }
+    val totalUsage = daySummaries.sumOf { it.usageMillis }
+    val totalNight = daySummaries.sumOf { it.nightUsageMillis }
+    val weekdayDays = daySummaries.filter { it.date.dayOfWeek.value in 1..5 }
+    val weekendDays = daySummaries.filter { it.date.dayOfWeek.value >= 6 }
+    val bestDay = daySummaries.maxByOrNull { it.usageMillis }
+    val calmDay = daySummaries.filter { it.usageMillis > 0L }.minByOrNull { it.usageMillis }
+    val trendPoints =
+        daySummaries.map { summary ->
+            TrendPoint(
+                label = summary.date.format(DateTimeFormatter.ofPattern("M/d", Locale.getDefault())),
+                totalUsageMillis = summary.usageMillis,
+                secondaryValue = summary.controlUsageMillis,
+                tertiaryValue = summary.encourageUsageMillis,
+            )
+        }
+    val trend =
+        TrendSectionData(
+            title = AppText.t("stats_weekly_rhythm_curve"),
+            subtitle = AppText.t("stats_weekly_rhythm_curve_description"),
+            primaryLabel = AppText.t("stats_usage_duration"),
+            secondaryLabel = AppText.t("stats_control_results"),
+            tertiaryLabel = AppText.t("stats_encourage_progress"),
+            points = trendPoints,
+            summary =
+                listOf(
+                    DailyFocusMetric(
+                        AppText.t("stats_weekday_average"),
+                        formatDuration(if (weekdayDays.isNotEmpty()) weekdayDays.sumOf { it.usageMillis } / weekdayDays.size else 0L),
+                    ),
+                    DailyFocusMetric(
+                        AppText.t("stats_weekend_average"),
+                        formatDuration(if (weekendDays.isNotEmpty()) weekendDays.sumOf { it.usageMillis } / weekendDays.size else 0L),
+                    ),
+                    DailyFocusMetric(
+                        AppText.t("stats_highest_day"),
+                        bestDay?.let { "${it.date.format(DateTimeFormatter.ofPattern("M/d", Locale.getDefault()))} · ${formatDuration(it.usageMillis)}" } ?: AppText.t("stats_none"),
+                    ),
+                    DailyFocusMetric(
+                        AppText.t("stats_lowest_day"),
+                        calmDay?.let { "${it.date.format(DateTimeFormatter.ofPattern("M/d", Locale.getDefault()))} · ${formatDuration(it.usageMillis)}" } ?: AppText.t("stats_none"),
+                    ),
+                ),
+        )
+    val scatter =
+        ScatterSectionData(
+            title = AppText.t("stats_weekly_scatter"),
+            subtitle = AppText.t("stats_weekly_scatter_description"),
+            xLabel = AppText.t("stats_launches"),
+            yLabel = AppText.t("stats_usage_duration"),
+            sizeLabel = AppText.t("stats_night_use"),
+            points =
+                daySummaries.map { summary ->
+                    ScatterPointData(
+                        label = summary.date.format(DateTimeFormatter.ofPattern("M/d", Locale.getDefault())),
+                        xValue = summary.openCount.toFloat(),
+                        yValue = summary.usageMillis.toFloat(),
+                        sizeValue = summary.nightUsageMillis.toFloat(),
+                        xDisplay = AppText.t("stats_value_times_12", summary.openCount),
+                        yDisplay = formatDuration(summary.usageMillis),
+                        detail = AppText.t("stats_night_value", formatDuration(summary.nightUsageMillis)),
+                        tone =
+                            when {
+                                summary.exceeded || summary.blockCount > 0 -> PeriodTone.WARNING
+                                summary.savedMillis > 0L -> PeriodTone.POSITIVE
+                                else -> PeriodTone.PRIMARY
+                            },
+                    )
+                },
+            summary =
+                listOf(
+                    DailyFocusMetric(AppText.t("stats_active_days"), AppText.t("stats_value_days_2", activeDays)),
+                    DailyFocusMetric(AppText.t("stats_night_use"), formatDuration(totalNight)),
+                    DailyFocusMetric(
+                        AppText.t("stats_most_intense_day"),
+                        bestDay?.let { "${it.date.format(DateTimeFormatter.ofPattern("M/d", Locale.getDefault()))} · ${AppText.t("stats_value_times_12", it.openCount)}" } ?: AppText.t("stats_none"),
+                    ),
+                ),
+        )
+    return PeriodReportData(
+        tab = ReportTab.WEEK,
+        hero =
+            PeriodHeroData(
+                eyebrow = AppText.t("stats_weekly_report"),
+                title = AppText.t("stats_weekly_battle_title"),
+                rangeLabel = periodRangeLabel(bounds.startDate, bounds.endDate),
+                primaryValue = formatDuration(totalUsage),
+                message = AppText.t("stats_weekly_battle_message"),
+                comparisonValue = comparison?.comparisons?.firstOrNull()?.yesterdayDelta ?: AppText.t("stats_not_enough_samples"),
+                tertiaryValue = AppText.t("stats_daily_average_value", formatDuration(if (activeDays > 0) totalUsage / activeDays else 0L)),
+                tags = listOf(windowFocus.control.primaryValue, windowFocus.encourage.primaryValue, totalNight.takeIf { it > 0L }?.let(::formatDuration) ?: AppText.t("stats_none")),
+                metrics =
+                    listOf(
+                        DailyFocusMetric(AppText.t("stats_active_days"), AppText.t("stats_value_days_2", activeDays)),
+                        DailyFocusMetric(AppText.t("stats_night_use"), formatDuration(totalNight)),
+                        DailyFocusMetric(AppText.t("stats_best_day"), bestDay?.let { it.date.format(DateTimeFormatter.ofPattern("M/d", Locale.getDefault())) } ?: AppText.t("stats_none")),
+                        DailyFocusMetric(AppText.t("stats_calmest_day"), calmDay?.let { it.date.format(DateTimeFormatter.ofPattern("M/d", Locale.getDefault())) } ?: AppText.t("stats_none")),
+                    ),
+            ),
+        trend = trend,
+        scatter = scatter,
+        appFocus = buildAppFocusSectionData(ReportTab.WEEK, topApps, snapshots, totalUsage),
+        windowFocus = windowFocus,
+        behavior = behavior,
+        comparison = comparison,
+    )
+}
+
+private fun buildMonthlyReportData(
+    bounds: PeriodBounds,
+    archives: List<DailyArchiveEntity>,
+    daySummaries: List<PeriodDaySummary>,
+    snapshots: List<ArchivedAppSnapshot>,
+    topApps: List<AppDisplayItem>,
+    windowFocus: WindowFocusSectionData,
+    behavior: BehaviorSectionData?,
+    comparison: ComparisonSectionData?,
+): PeriodReportData {
+    val totalUsage = daySummaries.sumOf { it.usageMillis }
+    val activeDays = daySummaries.count { it.usageMillis > 0L }
+    val totalSaved = daySummaries.sumOf { it.savedMillis }
+    val totalNight = daySummaries.sumOf { it.nightUsageMillis }
+    val overLimitDays = daySummaries.count { it.exceeded }
+    val bestDay = daySummaries.maxByOrNull { it.usageMillis }
+    var cumulative = 0L
+    val averageDaily = if (daySummaries.isNotEmpty()) totalUsage / daySummaries.size else 0L
+    val trendPoints =
+        daySummaries.mapIndexed { index, summary ->
+            cumulative += summary.usageMillis
+            TrendPoint(
+                label = summary.date.dayOfMonth.toString(),
+                totalUsageMillis = cumulative,
+                secondaryValue = averageDaily * (index + 1L),
+            )
+        }
+    val scatterPoints =
+        daySummaries.map { summary ->
+            ScatterPointData(
+                label = summary.date.dayOfMonth.toString(),
+                xValue = summary.openCount.toFloat(),
+                yValue = summary.usageMillis.toFloat(),
+                sizeValue = summary.nightUsageMillis.toFloat(),
+                xDisplay = AppText.t("stats_value_times_12", summary.openCount),
+                yDisplay = formatDuration(summary.usageMillis),
+                detail = formatDuration(summary.savedMillis),
+                tone =
+                    when {
+                        summary.exceeded || summary.blockCount > 0 -> PeriodTone.WARNING
+                        summary.savedMillis > 0L -> PeriodTone.POSITIVE
+                        else -> PeriodTone.PRIMARY
+                    },
+            )
+        }
+    val monthWeeks = buildMonthlyWeekSummaries(bounds.startDate, bounds.endDate, daySummaries)
+    return PeriodReportData(
+        tab = ReportTab.MONTH,
+        hero =
+            PeriodHeroData(
+                eyebrow = AppText.t("stats_monthly_report"),
+                title = AppText.t("stats_monthly_battle_title"),
+                rangeLabel = periodRangeLabel(bounds.startDate, bounds.endDate),
+                primaryValue = formatDuration(totalUsage),
+                message = AppText.t("stats_monthly_battle_message"),
+                comparisonValue = comparison?.comparisons?.firstOrNull()?.yesterdayDelta ?: AppText.t("stats_not_enough_samples"),
+                tertiaryValue = AppText.t("stats_daily_average_value", formatDuration(if (activeDays > 0) totalUsage / activeDays else 0L)),
+                tags = listOf(AppText.t("stats_value_days_2", activeDays), windowFocus.control.primaryValue, windowFocus.encourage.primaryValue),
+                metrics =
+                    listOf(
+                        DailyFocusMetric(AppText.t("stats_active_days"), AppText.t("stats_value_days_2", activeDays)),
+                        DailyFocusMetric(AppText.t("stats_over_limit"), AppText.t("stats_value_times_12", overLimitDays)),
+                        DailyFocusMetric(AppText.t("stats_time_saved"), formatDuration(totalSaved)),
+                        DailyFocusMetric(AppText.t("stats_net_points"), formatSignedPointsLocal(archives.sumOf { it.pointsNet })),
+                    ),
+            ),
+        trend =
+            TrendSectionData(
+                title = AppText.t("stats_monthly_cumulative_curve"),
+                subtitle = AppText.t("stats_monthly_cumulative_curve_description"),
+                primaryLabel = AppText.t("stats_usage_duration"),
+                secondaryLabel = AppText.t("stats_average"),
+                points = trendPoints,
+                summary =
+                    listOf(
+                        DailyFocusMetric(AppText.t("stats_highest_day"), bestDay?.let { "${it.date.dayOfMonth} · ${formatDuration(it.usageMillis)}" } ?: AppText.t("stats_none")),
+                        DailyFocusMetric(AppText.t("stats_night_use"), formatDuration(totalNight)),
+                        DailyFocusMetric(AppText.t("stats_time_saved"), formatDuration(totalSaved)),
+                    ),
+            ),
+        scatter =
+            ScatterSectionData(
+                title = AppText.t("stats_monthly_scatter"),
+                subtitle = AppText.t("stats_monthly_scatter_description"),
+                xLabel = AppText.t("stats_launches"),
+                yLabel = AppText.t("stats_usage_duration"),
+                sizeLabel = AppText.t("stats_night_use"),
+                points = scatterPoints,
+                summary =
+                    listOf(
+                        DailyFocusMetric(AppText.t("stats_active_days"), AppText.t("stats_value_days_2", activeDays)),
+                        DailyFocusMetric(AppText.t("stats_over_limit"), AppText.t("stats_value_times_12", overLimitDays)),
+                        DailyFocusMetric(AppText.t("stats_label_11"), formatDuration(daySummaries.maxOfOrNull { it.longestSessionMillis } ?: 0L)),
+                    ),
+            ),
+        heatmap =
+            PeriodHeatmapData(
+                title = AppText.t("stats_month_calendar_heatmap"),
+                subtitle = AppText.t("stats_month_calendar_heatmap_description"),
+                columns = 7,
+                cells =
+                    buildMonthHeatmapCells(
+                        startDate = bounds.startDate,
+                        endDate = bounds.endDate,
+                        summaries = daySummaries,
+                    ),
+            ),
+        appFocus = buildAppFocusSectionData(ReportTab.MONTH, topApps, snapshots, totalUsage),
+        windowFocus = windowFocus,
+        behavior = behavior,
+        comparison = comparison,
+        monthStructure =
+            MonthlyWeekStructureData(
+                title = AppText.t("stats_month_week_structure"),
+                subtitle = AppText.t("stats_month_week_structure_description"),
+                weeks = monthWeeks,
+            ),
+    )
+}
+
+private fun buildYearlyReportData(
+    bounds: PeriodBounds,
+    archives: List<DailyArchiveEntity>,
+    daySummaries: List<PeriodDaySummary>,
+    snapshots: List<ArchivedAppSnapshot>,
+    topApps: List<AppDisplayItem>,
+    windowFocus: WindowFocusSectionData,
+    behavior: BehaviorSectionData?,
+    comparison: ComparisonSectionData?,
+): PeriodReportData {
+    val monthSummaries = buildYearMonthSummaries(bounds.startDate.year, archives, snapshots)
+    val activeMonths = monthSummaries.count { it.usageMillis > 0L }
+    val totalUsage = monthSummaries.sumOf { it.usageMillis }
+    val totalSaved = monthSummaries.sumOf { it.savedMillis }
+    val bestMonth = monthSummaries.maxByOrNull { it.usageMillis }
+    val trend =
+        TrendSectionData(
+            title = AppText.t("stats_yearly_curve"),
+            subtitle = AppText.t("stats_yearly_curve_description"),
+            primaryLabel = AppText.t("stats_usage_duration"),
+            secondaryLabel = AppText.t("stats_time_saved"),
+            points =
+                monthSummaries.map {
+                    TrendPoint(
+                        label = it.label,
+                        totalUsageMillis = it.usageMillis,
+                        secondaryValue = it.savedMillis,
+                    )
+                },
+            summary =
+                listOf(
+                    DailyFocusMetric(AppText.t("stats_active_months"), AppText.t("stats_value_times_12", activeMonths)),
+                    DailyFocusMetric(AppText.t("stats_best_month"), bestMonth?.label ?: AppText.t("stats_none")),
+                    DailyFocusMetric(AppText.t("stats_time_saved"), formatDuration(totalSaved)),
+                ),
+        )
+    val scatter =
+        ScatterSectionData(
+            title = AppText.t("stats_yearly_scatter"),
+            subtitle = AppText.t("stats_yearly_scatter_description"),
+            xLabel = AppText.t("stats_time_saved"),
+            yLabel = AppText.t("stats_usage_duration"),
+            sizeLabel = AppText.t("stats_active_days"),
+            points =
+                monthSummaries.map { month ->
+                    ScatterPointData(
+                        label = month.label,
+                        xValue = month.savedMillis.toFloat(),
+                        yValue = month.usageMillis.toFloat(),
+                        sizeValue = month.activeDays.toFloat(),
+                        xDisplay = formatDuration(month.savedMillis),
+                        yDisplay = formatDuration(month.usageMillis),
+                        detail = AppText.t("stats_value_days_2", month.activeDays),
+                        tone =
+                            when {
+                                month.exceededMonths -> PeriodTone.WARNING
+                                month.pointsNet >= 0.0 && month.savedMillis > 0L -> PeriodTone.POSITIVE
+                                else -> PeriodTone.PRIMARY
+                            },
+                    )
+                },
+            summary =
+                listOf(
+                    DailyFocusMetric(AppText.t("stats_active_months"), AppText.t("stats_value_times_12", activeMonths)),
+                    DailyFocusMetric(AppText.t("stats_net_points"), formatSignedPointsLocal(archives.sumOf { it.pointsNet })),
+                    DailyFocusMetric(AppText.t("stats_over_limit"), AppText.t("stats_value_times_12", daySummaries.count { it.exceeded })),
+                ),
+        )
+    return PeriodReportData(
+        tab = ReportTab.YEAR,
+        hero =
+            PeriodHeroData(
+                eyebrow = AppText.t("stats_yearly_report"),
+                title = AppText.t("stats_yearly_battle_title"),
+                rangeLabel = periodRangeLabel(bounds.startDate, bounds.endDate),
+                primaryValue = formatDuration(totalUsage),
+                message = AppText.t("stats_yearly_battle_message"),
+                comparisonValue = comparison?.comparisons?.firstOrNull()?.yesterdayDelta ?: AppText.t("stats_not_enough_samples"),
+                tertiaryValue = AppText.t("stats_monthly_average_value", formatDuration(if (activeMonths > 0) totalUsage / activeMonths else 0L)),
+                tags = listOf(formatDuration(totalSaved), formatSignedPointsLocal(archives.sumOf { it.pointsNet }), AppText.t("stats_value_times_12", activeMonths)),
+                metrics =
+                    listOf(
+                        DailyFocusMetric(AppText.t("stats_active_months"), AppText.t("stats_value_times_12", activeMonths)),
+                        DailyFocusMetric(AppText.t("stats_best_month"), bestMonth?.label ?: AppText.t("stats_none")),
+                        DailyFocusMetric(AppText.t("stats_time_saved"), formatDuration(totalSaved)),
+                        DailyFocusMetric(AppText.t("stats_net_points"), formatSignedPointsLocal(archives.sumOf { it.pointsNet })),
+                    ),
+            ),
+        trend = trend,
+        scatter = scatter,
+        heatmap =
+            PeriodHeatmapData(
+                title = AppText.t("stats_year_month_heatmap"),
+                subtitle = AppText.t("stats_year_month_heatmap_description"),
+                columns = 4,
+                cells =
+                    monthSummaries.map { month ->
+                        HeatmapDayData(
+                            label = month.label,
+                            valueMillis = month.usageMillis,
+                            exceeded = month.exceededMonths,
+                            selected = month == bestMonth,
+                        )
+                    },
+            ),
+        appFocus = buildAppFocusSectionData(ReportTab.YEAR, topApps, snapshots, totalUsage),
+        windowFocus = windowFocus,
+        behavior = behavior,
+        comparison = comparison,
+        quarterSection =
+            YearQuarterSectionData(
+                title = AppText.t("stats_quarter_breakdown"),
+                subtitle = AppText.t("stats_quarter_breakdown_description"),
+                quarters = buildQuarterSummaries(monthSummaries, snapshots),
+            ),
+    )
+}
+
+private fun generateDateSequence(startDate: LocalDate, endDate: LocalDate): List<LocalDate> {
+    if (endDate.isBefore(startDate)) return emptyList()
+    return buildList {
+        var cursor = startDate
+        while (!cursor.isAfter(endDate)) {
+            add(cursor)
+            cursor = cursor.plusDays(1)
+        }
+    }
+}
+
+private fun periodRangeLabel(startDate: LocalDate, endDate: LocalDate): String =
+    "${startDate.format(DateTimeFormatter.ofPattern("M/d", Locale.getDefault()))} - ${endDate.format(DateTimeFormatter.ofPattern("M/d", Locale.getDefault()))}"
+
+private fun buildMonthHeatmapCells(
+    startDate: LocalDate,
+    endDate: LocalDate,
+    summaries: List<PeriodDaySummary>,
+): List<HeatmapDayData> {
+    val summaryByDate = summaries.associateBy { it.date }
+    val leadingBlankDays = (startDate.dayOfWeek.value + 6) % 7
+    val cells = MutableList(leadingBlankDays) { HeatmapDayData("", 0L, exceeded = false, selected = false) }
+    val maxUsage = summaries.maxOfOrNull { it.usageMillis } ?: 0L
+    generateDateSequence(startDate, endDate).forEach { date ->
+        val summary = summaryByDate[date]
+        cells += HeatmapDayData(
+            label = date.dayOfMonth.toString(),
+            valueMillis = summary?.usageMillis ?: 0L,
+            exceeded = summary?.exceeded == true,
+            selected = summary != null && summary.usageMillis == maxUsage && maxUsage > 0L,
+        )
+    }
+    return cells
+}
+
+private fun buildMonthlyWeekSummaries(
+    startDate: LocalDate,
+    endDate: LocalDate,
+    summaries: List<PeriodDaySummary>,
+): List<MonthlyWeekSummary> {
+    val summaryByDate = summaries.associateBy { it.date }
+    val weeks = mutableListOf<List<LocalDate>>()
+    var cursor = startDate
+    while (!cursor.isAfter(endDate)) {
+        val weekEnd = minOf(cursor.with(TemporalAdjusters.nextOrSame(java.time.DayOfWeek.SUNDAY)), endDate)
+        weeks += generateDateSequence(cursor, weekEnd)
+        cursor = weekEnd.plusDays(1)
+    }
+    return weeks.mapIndexed { index, dates ->
+        val items = dates.mapNotNull { summaryByDate[it] }
+        val totalUsage = items.sumOf { it.usageMillis }
+        val peakDay = items.maxByOrNull { it.usageMillis }
+        MonthlyWeekSummary(
+            label = AppText.t("stats_week_number", index + 1),
+            totalUsageMillis = totalUsage,
+            averageUsageMillis = if (items.isNotEmpty()) totalUsage / items.size else 0L,
+            peakDayLabel = peakDay?.date?.format(DateTimeFormatter.ofPattern("M/d", Locale.getDefault())) ?: AppText.t("stats_none"),
+        )
+    }
+}
+
+private fun buildYearMonthSummaries(
+    year: Int,
+    archives: List<DailyArchiveEntity>,
+    snapshots: List<ArchivedAppSnapshot>,
+): List<PeriodMonthSummary> {
+    val snapshotsByMonth = snapshots.groupBy { LocalDate.parse(it.archiveDate).monthValue }
+    return (1..12).map { month ->
+        val monthArchives = archives.filter { LocalDate.parse(it.archiveDate).monthValue == month }
+        val topAppLabel =
+            snapshotsByMonth[month]
+                ?.groupBy { it.packageName to it.label }
+                ?.maxByOrNull { entry -> entry.value.sumOf { it.usageMillis } }
+                ?.key
+                ?.second
+                ?: AppText.t("stats_none")
+        PeriodMonthSummary(
+            month = month,
+            label = LocalDate.of(year, month, 1).format(DateTimeFormatter.ofPattern("MMM", Locale.getDefault())),
+            usageMillis = monthArchives.sumOf { it.totalUsageMillis },
+            savedMillis = monthArchives.sumOf { it.savedMillis },
+            pointsNet = monthArchives.sumOf { it.pointsNet },
+            activeDays = monthArchives.size,
+            exceededMonths = monthArchives.any { it.controlExceededGroupCount > 0 || it.controlBlockEventCount > 0 },
+            topAppLabel = topAppLabel,
+        )
+    }
+}
+
+private fun buildQuarterSummaries(
+    monthSummaries: List<PeriodMonthSummary>,
+    snapshots: List<ArchivedAppSnapshot>,
+): List<YearQuarterSummary> {
+    return (0 until 4).map { index ->
+        val quarterMonths = monthSummaries.filter { ((it.month - 1) / 3) == index }
+        val quarterSnapshotTopApp =
+            snapshots
+                .filter { ((LocalDate.parse(it.archiveDate).monthValue - 1) / 3) == index }
+                .groupBy { it.packageName to it.label }
+                .maxByOrNull { entry -> entry.value.sumOf { it.usageMillis } }
+                ?.key
+                ?.second
+                ?: AppText.t("stats_none")
+        val bestMonth = quarterMonths.maxByOrNull { it.usageMillis }
+        YearQuarterSummary(
+            label = "Q${index + 1}",
+            totalUsageMillis = quarterMonths.sumOf { it.usageMillis },
+            bestMonthLabel = bestMonth?.label ?: AppText.t("stats_none"),
+            bestMonthUsageMillis = bestMonth?.usageMillis ?: 0L,
+            topAppLabel = quarterSnapshotTopApp,
+        )
+    }
+}
+
+private fun buildAppFocusSectionData(
+    tab: ReportTab,
+    topApps: List<AppDisplayItem>,
+    snapshots: List<ArchivedAppSnapshot>,
+    totalUsage: Long,
+): AppFocusSectionData {
+    val stableApp =
+        snapshots
+            .groupBy { it.packageName to it.label }
+            .maxWithOrNull(
+                compareBy<Map.Entry<Pair<String, String>, List<ArchivedAppSnapshot>>> { entry ->
+                    entry.value.map { it.archiveDate }.distinct().size
+                }.thenBy { entry ->
+                    entry.value.sumOf { it.usageMillis }
+                },
+            )
+    val burstApp =
+        snapshots
+            .maxByOrNull { it.usageMillis }
+    val totalUsageLabel =
+        when (tab) {
+            ReportTab.WEEK -> AppText.t("stats_weekly_top_apps_total", formatDuration(totalUsage))
+            ReportTab.MONTH -> AppText.t("stats_monthly_top_apps_total", formatDuration(totalUsage))
+            ReportTab.YEAR -> AppText.t("stats_yearly_top_apps_total", formatDuration(totalUsage))
+            ReportTab.DAY -> formatDuration(totalUsage)
+        }
+    return AppFocusSectionData(
+        title = AppText.t("stats_app_focus"),
+        subtitle = AppText.t("stats_app_focus_description"),
+        totalUsageLabel = totalUsageLabel,
+        topApps = topApps,
+        insights =
+            listOf(
+                AppFocusInsight(
+                    title = AppText.t("stats_most_stable_app"),
+                    value = stableApp?.key?.second ?: AppText.t("stats_none"),
+                    detail =
+                        stableApp?.value?.let { items ->
+                            AppText.t(
+                                "stats_app_focus_days_usage",
+                                items.map { it.archiveDate }.distinct().size,
+                                formatDuration(items.sumOf { it.usageMillis }),
+                            )
+                        } ?: AppText.t("stats_no_app_details_yet"),
+                ),
+                AppFocusInsight(
+                    title = AppText.t("stats_burst_app"),
+                    value = burstApp?.label ?: AppText.t("stats_none"),
+                    detail =
+                        burstApp?.let {
+                            "${formatArchiveDate(it.archiveDate, "M/d")} · ${formatDuration(it.usageMillis)}"
+                        } ?: AppText.t("stats_no_app_details_yet"),
+                ),
+            ),
+    )
+}
 
 private fun buildDailyFocusSectionData(
     archive: DailyArchiveEntity,
@@ -2314,6 +3196,15 @@ private fun StatsScreenLayout(
     onPreviousArchiveDate: () -> Unit,
     onNextArchiveDate: () -> Unit,
     onSelectArchiveDate: (String) -> Unit,
+    onPreviousWeek: () -> Unit,
+    onNextWeek: () -> Unit,
+    onSelectWeekStart: (LocalDate) -> Unit,
+    onPreviousMonth: () -> Unit,
+    onNextMonth: () -> Unit,
+    onSelectMonth: (YearMonth) -> Unit,
+    onPreviousYear: () -> Unit,
+    onNextYear: () -> Unit,
+    onSelectYear: (Int) -> Unit,
     isProActive: Boolean,
     onShowProUpsell: (ProUpsellSource) -> Unit,
     onRequestUsageAccess: () -> Unit,
@@ -2343,6 +3234,15 @@ private fun StatsScreenLayout(
                 onPreviousArchiveDate = onPreviousArchiveDate,
                 onNextArchiveDate = onNextArchiveDate,
                 onSelectArchiveDate = onSelectArchiveDate,
+                onPreviousWeek = onPreviousWeek,
+                onNextWeek = onNextWeek,
+                onSelectWeekStart = onSelectWeekStart,
+                onPreviousMonth = onPreviousMonth,
+                onNextMonth = onNextMonth,
+                onSelectMonth = onSelectMonth,
+                onPreviousYear = onPreviousYear,
+                onNextYear = onNextYear,
+                onSelectYear = onSelectYear,
                 isProActive = isProActive,
                 onShowProUpsell = onShowProUpsell,
             )
@@ -2357,6 +3257,15 @@ private fun DailyReportScreen(
     onPreviousArchiveDate: () -> Unit,
     onNextArchiveDate: () -> Unit,
     onSelectArchiveDate: (String) -> Unit,
+    onPreviousWeek: () -> Unit,
+    onNextWeek: () -> Unit,
+    onSelectWeekStart: (LocalDate) -> Unit,
+    onPreviousMonth: () -> Unit,
+    onNextMonth: () -> Unit,
+    onSelectMonth: (YearMonth) -> Unit,
+    onPreviousYear: () -> Unit,
+    onNextYear: () -> Unit,
+    onSelectYear: (Int) -> Unit,
     isProActive: Boolean,
     onShowProUpsell: (ProUpsellSource) -> Unit,
 ) {
@@ -2383,6 +3292,31 @@ private fun DailyReportScreen(
                         onNextArchiveDate = onNextArchiveDate,
                         onSelectArchiveDate = onSelectArchiveDate,
                     )
+                } else {
+                    PeriodNavigator(
+                        selectedTab = state.selectedTab,
+                        selectedWeekStart = state.selectedWeekStart,
+                        previousWeekStart = state.previousWeekStart,
+                        nextWeekStart = state.nextWeekStart,
+                        availableWeekStarts = state.availableWeekStarts,
+                        selectedMonth = state.selectedMonth,
+                        previousMonth = state.previousMonth,
+                        nextMonth = state.nextMonth,
+                        availableMonths = state.availableMonths,
+                        selectedYear = state.selectedYear,
+                        previousYear = state.previousYear,
+                        nextYear = state.nextYear,
+                        availableYears = state.availableYears,
+                        onPreviousWeek = onPreviousWeek,
+                        onNextWeek = onNextWeek,
+                        onSelectWeekStart = onSelectWeekStart,
+                        onPreviousMonth = onPreviousMonth,
+                        onNextMonth = onNextMonth,
+                        onSelectMonth = onSelectMonth,
+                        onPreviousYear = onPreviousYear,
+                        onNextYear = onNextYear,
+                        onSelectYear = onSelectYear,
+                    )
                 }
                 if (state.isRefreshing) {
                     LoadingHintChip(selectedTab = state.selectedTab)
@@ -2408,45 +3342,945 @@ private fun DailyReportScreen(
                         onShowProUpsell = onShowProUpsell,
                     )
                 } else {
-                    DeviceHeroCard(
-                        selectedTab = state.selectedTab,
-                        heroState = state.heroState,
-                    )
-                    WindowFocusCard(focusState = state.windowFocusState)
-                    if (state.selectedTab == ReportTab.YEAR) {
-                        YearDualScopeCard(yearState = state.yearDualScopeState)
-                    }
-                    TimelineCard(
-                        selectedTab = state.selectedTab,
-                        timelineState = state.timelineState,
-                    )
-                    if (state.selectedTab == ReportTab.MONTH || state.selectedTab == ReportTab.YEAR) {
-                        HeatmapCard(heatmapState = state.heatmapState)
-                    }
-                    AppChartsCard(
-                        selectedTab = state.selectedTab,
-                        topAppsState = state.topAppsState,
-                    )
-                    if (isProActive) {
-                        BehaviorCard(
-                            selectedTab = state.selectedTab,
-                            behaviorState = state.behaviorState,
-                        )
-                        ComparisonCard(
-                            selectedTab = state.selectedTab,
-                            comparisonState = state.comparisonState,
-                        )
-                        ShareReportCard(
-                            selectedTab = state.selectedTab,
-                            shareState = state.shareState,
-                        )
-                    } else {
-                        LockedAdvancedReportCard(onClick = { onShowProUpsell(ProUpsellSource.ADVANCED_REPORT) })
-                    }
+                    PeriodReportScreen(state = state)
                 }
                 Spacer(modifier = Modifier.height(24.dp))
             }
         }
+    }
+}
+
+@Composable
+private fun PeriodNavigator(
+    selectedTab: ReportTab,
+    selectedWeekStart: LocalDate?,
+    previousWeekStart: LocalDate?,
+    nextWeekStart: LocalDate?,
+    availableWeekStarts: List<LocalDate>,
+    selectedMonth: YearMonth?,
+    previousMonth: YearMonth?,
+    nextMonth: YearMonth?,
+    availableMonths: List<YearMonth>,
+    selectedYear: Int?,
+    previousYear: Int?,
+    nextYear: Int?,
+    availableYears: List<Int>,
+    onPreviousWeek: () -> Unit,
+    onNextWeek: () -> Unit,
+    onSelectWeekStart: (LocalDate) -> Unit,
+    onPreviousMonth: () -> Unit,
+    onNextMonth: () -> Unit,
+    onSelectMonth: (YearMonth) -> Unit,
+    onPreviousYear: () -> Unit,
+    onNextYear: () -> Unit,
+    onSelectYear: (Int) -> Unit,
+) {
+    var showDialog by remember(selectedTab) { mutableStateOf(false) }
+    val title =
+        when (selectedTab) {
+            ReportTab.WEEK -> selectedWeekStart?.let { periodRangeLabel(it, it.plusDays(6)) } ?: AppText.t("stats_choose_period")
+            ReportTab.MONTH -> selectedMonth?.format(DateTimeFormatter.ofPattern(AppText.t("stats_mmmm_yyyy"), Locale.getDefault())) ?: AppText.t("stats_choose_period")
+            ReportTab.YEAR -> selectedYear?.toString() ?: AppText.t("stats_choose_period")
+            ReportTab.DAY -> ""
+        }
+    val subtitle =
+        when (selectedTab) {
+            ReportTab.WEEK -> AppText.t("stats_natural_week")
+            ReportTab.MONTH -> AppText.t("stats_natural_month")
+            ReportTab.YEAR -> AppText.t("stats_natural_year")
+            ReportTab.DAY -> ""
+        }
+    val canGoPrevious =
+        when (selectedTab) {
+            ReportTab.WEEK -> previousWeekStart != null
+            ReportTab.MONTH -> previousMonth != null
+            ReportTab.YEAR -> previousYear != null
+            ReportTab.DAY -> false
+        }
+    val canGoNext =
+        when (selectedTab) {
+            ReportTab.WEEK -> nextWeekStart != null
+            ReportTab.MONTH -> nextMonth != null
+            ReportTab.YEAR -> nextYear != null
+            ReportTab.DAY -> false
+        }
+    Surface(
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.84f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.28f)),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            IconButton(
+                onClick = {
+                    when (selectedTab) {
+                        ReportTab.WEEK -> onPreviousWeek()
+                        ReportTab.MONTH -> onPreviousMonth()
+                        ReportTab.YEAR -> onPreviousYear()
+                        ReportTab.DAY -> Unit
+                    }
+                },
+                enabled = canGoPrevious,
+            ) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
+            }
+            Surface(
+                modifier = Modifier.weight(1f).clickable { showDialog = true },
+                shape = RoundedCornerShape(14.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f),
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.CalendarMonth,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(18.dp),
+                    )
+                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        Text(
+                            text = title,
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                        )
+                        Text(
+                            text = subtitle,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+            IconButton(
+                onClick = {
+                    when (selectedTab) {
+                        ReportTab.WEEK -> onNextWeek()
+                        ReportTab.MONTH -> onNextMonth()
+                        ReportTab.YEAR -> onNextYear()
+                        ReportTab.DAY -> Unit
+                    }
+                },
+                enabled = canGoNext,
+            ) {
+                Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null)
+            }
+        }
+    }
+    if (showDialog) {
+        when (selectedTab) {
+            ReportTab.WEEK ->
+                PeriodWeekPickerDialog(
+                    selectedWeekStart = selectedWeekStart,
+                    availableWeekStarts = availableWeekStarts,
+                    onDismiss = { showDialog = false },
+                    onSelectWeekStart = {
+                        showDialog = false
+                        onSelectWeekStart(it)
+                    },
+                )
+            ReportTab.MONTH ->
+                PeriodMonthPickerDialog(
+                    selectedMonth = selectedMonth,
+                    availableMonths = availableMonths,
+                    onDismiss = { showDialog = false },
+                    onSelectMonth = {
+                        showDialog = false
+                        onSelectMonth(it)
+                    },
+                )
+            ReportTab.YEAR ->
+                PeriodYearPickerDialog(
+                    selectedYear = selectedYear,
+                    availableYears = availableYears,
+                    onDismiss = { showDialog = false },
+                    onSelectYear = {
+                        showDialog = false
+                        onSelectYear(it)
+                    },
+                )
+            ReportTab.DAY -> Unit
+        }
+    }
+}
+
+@Composable
+private fun PeriodWeekPickerDialog(
+    selectedWeekStart: LocalDate?,
+    availableWeekStarts: List<LocalDate>,
+    onDismiss: () -> Unit,
+    onSelectWeekStart: (LocalDate) -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(AppText.t("group_close"))
+            }
+        },
+        title = {
+            Text(AppText.t("stats_choose_week"), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        },
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                availableWeekStarts.forEach { weekStart ->
+                    val selected = weekStart == selectedWeekStart
+                    Surface(
+                        modifier = Modifier.fillMaxWidth().clickable { onSelectWeekStart(weekStart) },
+                        shape = RoundedCornerShape(14.dp),
+                        color = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.32f),
+                    ) {
+                        Text(
+                            text = periodRangeLabel(weekStart, weekStart.plusDays(6)),
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                        )
+                    }
+                }
+            }
+        },
+    )
+}
+
+@Composable
+private fun PeriodMonthPickerDialog(
+    selectedMonth: YearMonth?,
+    availableMonths: List<YearMonth>,
+    onDismiss: () -> Unit,
+    onSelectMonth: (YearMonth) -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text(AppText.t("group_close")) }
+        },
+        title = {
+            Text(AppText.t("stats_choose_month"), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        },
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                availableMonths.forEach { month ->
+                    val selected = month == selectedMonth
+                    Surface(
+                        modifier = Modifier.fillMaxWidth().clickable { onSelectMonth(month) },
+                        shape = RoundedCornerShape(14.dp),
+                        color = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.32f),
+                    ) {
+                        Text(
+                            text = month.format(DateTimeFormatter.ofPattern(AppText.t("stats_mmmm_yyyy"), Locale.getDefault())),
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                        )
+                    }
+                }
+            }
+        },
+    )
+}
+
+@Composable
+private fun PeriodYearPickerDialog(
+    selectedYear: Int?,
+    availableYears: List<Int>,
+    onDismiss: () -> Unit,
+    onSelectYear: (Int) -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text(AppText.t("group_close")) }
+        },
+        title = {
+            Text(AppText.t("stats_choose_year"), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+        },
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                availableYears.forEach { year ->
+                    val selected = year == selectedYear
+                    Surface(
+                        modifier = Modifier.fillMaxWidth().clickable { onSelectYear(year) },
+                        shape = RoundedCornerShape(14.dp),
+                        color = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.32f),
+                    ) {
+                        Text(
+                            text = year.toString(),
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                        )
+                    }
+                }
+            }
+        },
+    )
+}
+
+@Composable
+private fun PeriodReportScreen(
+    state: DailyReportUiState,
+) {
+    when (val periodState = state.periodReportState) {
+        SectionState.Loading -> {
+            repeat(4) {
+                HeroSkeletonCard()
+            }
+        }
+        SectionState.Empty -> {
+            Text(
+                text = AppText.t("stats_not_enough_samples"),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        is SectionState.Ready -> {
+            val data = periodState.data
+            PeriodHeroCard(hero = data.hero)
+            when (data.tab) {
+                ReportTab.WEEK -> {
+                    PeriodTrendCard(data.trend)
+                    PeriodScatterCard(data.scatter)
+                    PeriodAppFocusCard(data.appFocus)
+                    PeriodInsightSection(data = data)
+                }
+                ReportTab.MONTH -> {
+                    data.heatmap?.let { PeriodHeatmapCard(it) }
+                    PeriodTrendCard(data.trend)
+                    PeriodScatterCard(data.scatter)
+                    data.monthStructure?.let { PeriodMonthStructureCard(it) }
+                    PeriodAppFocusCard(data.appFocus)
+                    PeriodInsightSection(data = data)
+                }
+                ReportTab.YEAR -> {
+                    data.heatmap?.let { PeriodHeatmapCard(it) }
+                    PeriodTrendCard(data.trend)
+                    PeriodScatterCard(data.scatter)
+                    data.quarterSection?.let { PeriodQuarterBreakdownCard(it) }
+                    PeriodAppFocusCard(data.appFocus)
+                    PeriodInsightSection(data = data)
+                }
+                ReportTab.DAY -> Unit
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun PeriodHeroCard(hero: PeriodHeroData) {
+    val reportColors = LocalReportColors.current
+    ReportCard {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(26.dp))
+                .background(
+                    Brush.linearGradient(
+                        colors = listOf(
+                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.54f),
+                            MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
+                            reportColors.warning.copy(alpha = 0.12f),
+                        ),
+                    ),
+                ),
+        ) {
+            Column(
+                modifier = Modifier.padding(horizontal = 18.dp, vertical = 18.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.Top,
+                ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Text(
+                            text = hero.eyebrow,
+                            style = MaterialTheme.typography.labelLarge,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Text(
+                            text = hero.title,
+                            style = MaterialTheme.typography.titleLarge,
+                            fontWeight = FontWeight.Bold,
+                        )
+                    }
+                    Surface(
+                        shape = RoundedCornerShape(999.dp),
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
+                    ) {
+                        Text(
+                            text = hero.rangeLabel,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+                Text(
+                    text = hero.primaryValue,
+                    style = MaterialTheme.typography.displaySmall,
+                    fontWeight = FontWeight.Black,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+                Text(
+                    text = hero.message,
+                    style = MaterialTheme.typography.titleSmall,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                AdaptiveRowGrid(
+                    itemCount = 2,
+                    compactColumns = 1,
+                    expandedColumns = 2,
+                    horizontalSpacing = 8.dp,
+                    verticalSpacing = 8.dp,
+                ) { modifier, index ->
+                    BattleHeadlineChip(
+                        label = if (index == 0) AppText.t("stats_vs_previous_window") else AppText.t("stats_daily_average"),
+                        value = if (index == 0) hero.comparisonValue else hero.tertiaryValue,
+                        accent = if (index == 0) reportColors.warning else reportColors.positive,
+                        modifier = modifier,
+                    )
+                }
+                AdaptiveRowGrid(
+                    itemCount = hero.metrics.size,
+                    compactColumns = 2,
+                    expandedColumns = 4,
+                    horizontalSpacing = 8.dp,
+                    verticalSpacing = 8.dp,
+                ) { modifier, index ->
+                    val metric = hero.metrics[index]
+                    BattleMetricTile(
+                        label = metric.label,
+                        value = metric.value,
+                        accent = periodToneColor(
+                            tone = if (index % 2 == 0) PeriodTone.PRIMARY else PeriodTone.POSITIVE,
+                            primary = MaterialTheme.colorScheme.primary,
+                            secondary = MaterialTheme.colorScheme.secondary,
+                            muted = MaterialTheme.colorScheme.outline,
+                            reportColors = reportColors,
+                        ),
+                        modifier = modifier,
+                    )
+                }
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    hero.tags.forEach { tag ->
+                        SummaryTagChip(tag)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PeriodTrendCard(data: TrendSectionData) {
+    ReportCard {
+        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            SectionHeader(icon = Icons.Default.Timeline, title = data.title, subtitle = data.subtitle)
+            TrendLineChart(data = data)
+            AdaptiveRowGrid(
+                itemCount = data.summary.size,
+                compactColumns = 1,
+                expandedColumns = 3,
+                horizontalSpacing = 8.dp,
+                verticalSpacing = 8.dp,
+            ) { modifier, index ->
+                MetricTileCompact(metric = data.summary[index], modifier = modifier)
+            }
+        }
+    }
+}
+
+@Composable
+private fun TrendLineChart(
+    data: TrendSectionData,
+) {
+    val reportColors = LocalReportColors.current
+    val outlineColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.26f)
+    val primary = MaterialTheme.colorScheme.primary
+    val secondary = reportColors.warning
+    val tertiary = reportColors.positive
+    val maxValue =
+        max(
+            data.points.maxOfOrNull { max(it.totalUsageMillis, max(it.secondaryValue, it.tertiaryValue)) } ?: 1L,
+            1L,
+        ).toFloat()
+    Canvas(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(188.dp),
+    ) {
+        val chartWidth = size.width
+        val chartHeight = size.height
+        repeat(4) { index ->
+            val y = chartHeight - chartHeight * (index / 3f)
+            drawLine(
+                color = outlineColor,
+                start = Offset(0f, y),
+                end = Offset(chartWidth, y),
+                strokeWidth = 2f,
+            )
+        }
+        fun buildSeriesPath(values: List<Long>): Path {
+            val path = Path()
+            values.forEachIndexed { index, value ->
+                val x = if (values.size == 1) chartWidth / 2f else chartWidth * index / (values.lastIndex.toFloat())
+                val y = chartHeight - (value.toFloat() / maxValue).coerceIn(0f, 1f) * chartHeight
+                if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
+            }
+            return path
+        }
+        val primaryValues = data.points.map { it.totalUsageMillis }
+        val primaryPath = buildSeriesPath(primaryValues)
+        val fillPath = Path().apply {
+            addPath(primaryPath)
+            if (primaryValues.isNotEmpty()) {
+                lineTo(chartWidth, chartHeight)
+                lineTo(0f, chartHeight)
+                close()
+            }
+        }
+        drawPath(fillPath, color = primary.copy(alpha = 0.12f))
+        drawPath(primaryPath, color = primary, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 6f))
+        if (data.points.any { it.secondaryValue > 0L }) {
+            drawPath(
+                buildSeriesPath(data.points.map { it.secondaryValue }),
+                color = secondary,
+                style = androidx.compose.ui.graphics.drawscope.Stroke(width = 4f),
+            )
+        }
+        if (data.points.any { it.tertiaryValue > 0L }) {
+            drawPath(
+                buildSeriesPath(data.points.map { it.tertiaryValue }),
+                color = tertiary,
+                style = androidx.compose.ui.graphics.drawscope.Stroke(width = 4f),
+            )
+        }
+    }
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        data.points.take(5).forEach { point ->
+            Text(
+                text = point.label,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
+private fun PeriodScatterCard(data: ScatterSectionData) {
+    ReportCard {
+        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            SectionHeader(icon = Icons.Default.Insights, title = data.title, subtitle = data.subtitle)
+            ScatterPlotChart(data = data)
+            AdaptiveRowGrid(
+                itemCount = data.summary.size,
+                compactColumns = 1,
+                expandedColumns = 3,
+                horizontalSpacing = 8.dp,
+                verticalSpacing = 8.dp,
+            ) { modifier, index ->
+                MetricTileCompact(metric = data.summary[index], modifier = modifier)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ScatterPlotChart(
+    data: ScatterSectionData,
+) {
+    val reportColors = LocalReportColors.current
+    val colorScheme = MaterialTheme.colorScheme
+    val gridColor = colorScheme.outlineVariant.copy(alpha = 0.22f)
+    val maxX = (data.points.maxOfOrNull { it.xValue } ?: 1f).coerceAtLeast(1f)
+    val maxY = (data.points.maxOfOrNull { it.yValue } ?: 1f).coerceAtLeast(1f)
+    val maxSize = (data.points.maxOfOrNull { it.sizeValue } ?: 1f).coerceAtLeast(1f)
+    Canvas(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(188.dp),
+    ) {
+        repeat(4) { index ->
+            val x = size.width * (index / 3f)
+            val y = size.height - size.height * (index / 3f)
+            drawLine(gridColor, Offset(x, 0f), Offset(x, size.height), 2f)
+            drawLine(gridColor, Offset(0f, y), Offset(size.width, y), 2f)
+        }
+        data.points.forEach { point ->
+            drawCircle(
+                color = periodToneColor(
+                    tone = point.tone,
+                    primary = colorScheme.primary,
+                    secondary = colorScheme.secondary,
+                    muted = colorScheme.outline,
+                    reportColors = reportColors,
+                ).copy(alpha = 0.72f),
+                radius = 10f + 18f * (point.sizeValue / maxSize).coerceIn(0f, 1f),
+                center = Offset(
+                    x = (point.xValue / maxX).coerceIn(0f, 1f) * size.width,
+                    y = size.height - (point.yValue / maxY).coerceIn(0f, 1f) * size.height,
+                ),
+            )
+        }
+    }
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Text(data.xLabel, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(data.yLabel, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
+private fun PeriodHeatmapCard(data: PeriodHeatmapData) {
+    val maxValue = data.cells.maxOfOrNull { it.valueMillis }?.coerceAtLeast(1L) ?: 1L
+    ReportCard {
+        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            SectionHeader(icon = Icons.Default.CalendarMonth, title = data.title, subtitle = data.subtitle)
+            data.cells.chunked(data.columns).forEach { row ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    row.forEach { cell ->
+                        val intensity = if (cell.valueMillis > 0L) cell.valueMillis.toFloat() / maxValue.toFloat() else 0f
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(40.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(
+                                    when {
+                                        cell.label.isBlank() -> MaterialTheme.colorScheme.surface.copy(alpha = 0f)
+                                        cell.exceeded -> LocalReportColors.current.warning.copy(alpha = 0.18f + intensity * 0.52f)
+                                        else -> MaterialTheme.colorScheme.primary.copy(alpha = 0.08f + intensity * 0.62f)
+                                    },
+                                ),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            if (cell.label.isNotBlank()) {
+                                Text(
+                                    text = cell.label,
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = if (cell.selected) FontWeight.Bold else FontWeight.Medium,
+                                    color = if (cell.exceeded) LocalReportColors.current.warning else MaterialTheme.colorScheme.onSurface,
+                                )
+                            }
+                        }
+                    }
+                    repeat((data.columns - row.size).coerceAtLeast(0)) {
+                        Spacer(modifier = Modifier.weight(1f).height(40.dp))
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PeriodAppFocusCard(data: AppFocusSectionData) {
+    val palette = LocalReportColors.current.appChartPalette
+    val maxUsage = data.topApps.maxOfOrNull { it.value }?.coerceAtLeast(1L) ?: 1L
+    ReportCard {
+        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            SectionHeader(icon = Icons.Default.BarChart, title = data.title, subtitle = data.subtitle)
+            Text(
+                text = data.totalUsageLabel,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            data.topApps.take(6).forEachIndexed { index, app ->
+                val accent = palette.getOrElse(index) { MaterialTheme.colorScheme.primary }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    AppIconCircle(app.packageName)
+                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text(
+                                text = app.label,
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                            )
+                            Text(
+                                text = formatDuration(app.value),
+                                style = MaterialTheme.typography.labelLarge,
+                                color = accent,
+                                fontWeight = FontWeight.Bold,
+                            )
+                        }
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(8.dp)
+                                .clip(CircleShape)
+                                .background(accent.copy(alpha = 0.14f)),
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth((app.value.toFloat() / maxUsage.toFloat()).coerceIn(0.05f, 1f))
+                                    .fillMaxHeight()
+                                    .clip(CircleShape)
+                                    .background(accent.copy(alpha = 0.72f)),
+                            )
+                        }
+                    }
+                }
+            }
+            AdaptiveRowGrid(
+                itemCount = data.insights.size,
+                compactColumns = 1,
+                expandedColumns = 2,
+                horizontalSpacing = 8.dp,
+                verticalSpacing = 8.dp,
+            ) { modifier, index ->
+                val insight = data.insights[index]
+                Surface(
+                    modifier = modifier,
+                    shape = RoundedCornerShape(18.dp),
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
+                ) {
+                    Column(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Text(
+                            text = insight.title,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Text(
+                            text = insight.value,
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            text = insight.detail,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PeriodInsightSection(data: PeriodReportData) {
+    ReportCard {
+        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            SectionHeader(
+                icon = Icons.Default.RocketLaunch,
+                title = AppText.t("stats_pattern_summary"),
+                subtitle = AppText.t("stats_pattern_summary_description"),
+            )
+            AdaptiveRowGrid(
+                itemCount = 2,
+                compactColumns = 1,
+                expandedColumns = 2,
+                horizontalSpacing = 10.dp,
+                verticalSpacing = 10.dp,
+            ) { modifier, index ->
+                DailyModeSummaryCard(
+                    summary = if (index == 0) data.windowFocus.control else data.windowFocus.encourage,
+                    icon = if (index == 0) Icons.Default.Bolt else Icons.Default.EmojiEvents,
+                    compact = true,
+                    modifier = modifier,
+                )
+            }
+            data.behavior?.behaviorInsight?.let { insight ->
+                AdaptiveRowGrid(
+                    itemCount = 3,
+                    compactColumns = 1,
+                    expandedColumns = 3,
+                    horizontalSpacing = 8.dp,
+                    verticalSpacing = 8.dp,
+                ) { modifier, index ->
+                    when (index) {
+                        0 -> MiniInsightCard(
+                            icon = Icons.Default.Timeline,
+                            label = AppText.t("stats_peak_time"),
+                            value = "${insight.peakHourLabel} · ${formatDuration(insight.peakHourMillis)}",
+                            visualRatio = (insight.peakHourMillis.toFloat() / (2 * 60 * 60_000L).toFloat()).coerceIn(0f, 1f),
+                            modifier = modifier,
+                        )
+                        1 -> MiniInsightCard(
+                            icon = Icons.Default.NightsStay,
+                            label = AppText.t("stats_night_use"),
+                            value = formatDuration(insight.nightUsageMillis),
+                            visualRatio = (insight.nightUsageMillis.toFloat() / (4 * 60 * 60_000L).toFloat()).coerceIn(0f, 1f),
+                            modifier = modifier,
+                        )
+                        else -> MiniInsightCard(
+                            icon = Icons.Default.Schedule,
+                            label = AppText.t("stats_label_11"),
+                            value = insight.longestSession?.let { "${it.label} · ${formatDuration(it.value)}" } ?: AppText.t("stats_none"),
+                            visualRatio = ((insight.longestSession?.value ?: 0L).toFloat() / (2 * 60 * 60_000L).toFloat()).coerceIn(0f, 1f),
+                            modifier = modifier,
+                        )
+                    }
+                }
+            }
+            data.comparison?.comparisons?.take(3)?.forEach { item ->
+                ComparisonRow(
+                    item = item,
+                    averageBarLabel = AppText.t("stats_average"),
+                    showChips = false,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PeriodMonthStructureCard(data: MonthlyWeekStructureData) {
+    ReportCard {
+        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            SectionHeader(icon = Icons.AutoMirrored.Filled.CallSplit, title = data.title, subtitle = data.subtitle)
+            AdaptiveRowGrid(
+                itemCount = data.weeks.size,
+                compactColumns = 1,
+                expandedColumns = 2,
+                horizontalSpacing = 8.dp,
+                verticalSpacing = 8.dp,
+            ) { modifier, index ->
+                val week = data.weeks[index]
+                Surface(
+                    modifier = modifier,
+                    shape = RoundedCornerShape(18.dp),
+                    color = MaterialTheme.colorScheme.secondary.copy(alpha = 0.08f),
+                ) {
+                    Column(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Text(week.label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(formatDuration(week.totalUsageMillis), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Text(AppText.t("stats_daily_average_value", formatDuration(week.averageUsageMillis)), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(AppText.t("stats_peak_time"), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(week.peakDayLabel, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PeriodQuarterBreakdownCard(data: YearQuarterSectionData) {
+    ReportCard {
+        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            SectionHeader(icon = Icons.Default.CalendarMonth, title = data.title, subtitle = data.subtitle)
+            AdaptiveRowGrid(
+                itemCount = data.quarters.size,
+                compactColumns = 1,
+                expandedColumns = 2,
+                horizontalSpacing = 8.dp,
+                verticalSpacing = 8.dp,
+            ) { modifier, index ->
+                val quarter = data.quarters[index]
+                Surface(
+                    modifier = modifier,
+                    shape = RoundedCornerShape(18.dp),
+                    color = MaterialTheme.colorScheme.tertiary.copy(alpha = 0.08f),
+                ) {
+                    Column(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
+                    ) {
+                        Text(quarter.label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(formatDuration(quarter.totalUsageMillis), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Text(AppText.t("stats_best_month"), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text("${quarter.bestMonthLabel} · ${formatDuration(quarter.bestMonthUsageMillis)}", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+                        Text(AppText.t("stats_top_apps"), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(quarter.topAppLabel, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MetricTileCompact(
+    metric: DailyFocusMetric,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.72f),
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(
+                text = metric.label,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                text = metric.value,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+            )
+        }
+    }
+}
+
+private fun periodToneColor(
+    tone: PeriodTone,
+    primary: Color,
+    secondary: Color,
+    muted: Color,
+    reportColors: ReportColors,
+): Color {
+    return when (tone) {
+        PeriodTone.PRIMARY -> primary
+        PeriodTone.POSITIVE -> reportColors.positive
+        PeriodTone.WARNING -> reportColors.warning
+        PeriodTone.SECONDARY -> secondary
+        PeriodTone.NEUTRAL -> muted
     }
 }
 
