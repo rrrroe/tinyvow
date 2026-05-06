@@ -8,17 +8,18 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.scaleIn
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.*
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.runtime.*
@@ -29,11 +30,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.rotate
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -41,34 +39,90 @@ import androidx.compose.ui.unit.sp
 import com.rrrrz.tinyvow.data.db.AchievementEntity
 import com.rrrrz.tinyvow.data.db.AchievementTier
 import com.rrrrz.tinyvow.data.repository.AchievementProgress
-import com.rrrrz.tinyvow.ui.theme.LocalThemeColors
-import com.rrrrz.tinyvow.ui.theme.ThemeTokens
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
-import kotlin.math.PI
-import kotlin.math.cos
-import kotlin.math.sin
 
-// ──────── 等级颜色方案 ────────
+private data class TierPalette(
+    val accent: Color,
+    val accentStrong: Color,
+    val surface: Color,
+    val surfaceRaised: Color,
+    val border: Color,
+    val muted: Color,
+    val track: Color,
+    val pageGlow: Color,
+)
+
+private fun tierPaletteFor(tier: Int): TierPalette = when (tier) {
+    AchievementTier.BRONZE -> TierPalette(
+        accent = Color(0xFF7A5426),
+        accentStrong = Color(0xFFD8923C),
+        surface = Color(0xFFFFF7EF),
+        surfaceRaised = Color(0xFFFFF0DF),
+        border = Color(0xFFE5C59C),
+        muted = Color(0xFF8B7153),
+        track = Color(0xFFF1E1CF),
+        pageGlow = Color(0x33E6A14A),
+    )
+    AchievementTier.SILVER -> TierPalette(
+        accent = Color(0xFF3E5D88),
+        accentStrong = Color(0xFF77A9E8),
+        surface = Color(0xFFF5F8FF),
+        surfaceRaised = Color(0xFFEBF1FF),
+        border = Color(0xFFC7D5EE),
+        muted = Color(0xFF697C99),
+        track = Color(0xFFDEE7F7),
+        pageGlow = Color(0x336AA6FF),
+    )
+    AchievementTier.GOLD -> TierPalette(
+        accent = Color(0xFF556E72),
+        accentStrong = Color(0xFFE0A22A),
+        surface = Color(0xFFF4FBFB),
+        surfaceRaised = Color(0xFFE8F5F4),
+        border = Color(0xFFC2DDDB),
+        muted = Color(0xFF6D8386),
+        track = Color(0xFFD9ECEA),
+        pageGlow = Color(0x33F0B548),
+    )
+    AchievementTier.DIAMOND -> TierPalette(
+        accent = Color(0xFF3B5C96),
+        accentStrong = Color(0xFF67B9F7),
+        surface = Color(0xFFF4F8FF),
+        surfaceRaised = Color(0xFFEAF1FF),
+        border = Color(0xFFC5D6F6),
+        muted = Color(0xFF687A9B),
+        track = Color(0xFFDCE6F8),
+        pageGlow = Color(0x336DCBFF),
+    )
+    AchievementTier.LEGENDARY -> TierPalette(
+        accent = Color(0xFF6B4E8F),
+        accentStrong = Color(0xFFC07AF3),
+        surface = Color(0xFFFBF6FF),
+        surfaceRaised = Color(0xFFF1E8FA),
+        border = Color(0xFFE2D1F2),
+        muted = Color(0xFF8A74A3),
+        track = Color(0xFFEADFF6),
+        pageGlow = Color(0x33D786FF),
+    )
+    else -> tierPaletteFor(AchievementTier.BRONZE)
+}
 
 // ──────── Tab 定义 ────────
 
 private data class TierTab(
     val tier: Int,
-    val emoji: String,
     val label: String,
-    val accentColor: Color,
-    val bgColor: Color
+    val palette: TierPalette,
 )
 
-private fun tierTabsForTheme(tokens: ThemeTokens) = listOf(
-    TierTab(AchievementTier.BRONZE, "🥉", AppText.t("achievement_bronze"), lerp(tokens.control, tokens.base, 0.28f), tokens.controlContainer.copy(alpha = 0.48f)),
-    TierTab(AchievementTier.SILVER, "🥈", AppText.t("achievement_silver"), lerp(tokens.base, tokens.encourage, 0.22f), tokens.baseContainer.copy(alpha = 0.50f)),
-    TierTab(AchievementTier.GOLD, "🥇", AppText.t("achievement_gold"), lerp(tokens.encourage, tokens.base, 0.18f), tokens.encourageContainer.copy(alpha = 0.52f)),
-    TierTab(AchievementTier.DIAMOND, "💎", AppText.t("achievement_diamond"), tokens.base, tokens.baseContainer.copy(alpha = 0.60f)),
-    TierTab(AchievementTier.LEGENDARY, "🌟", AppText.t("achievement_legendary"), tokens.encourage, lerp(tokens.encourageContainer, tokens.controlContainer, 0.32f).copy(alpha = 0.62f)),
+private fun tierTabs() = listOf(
+    TierTab(AchievementTier.BRONZE, AppText.t("achievement_bronze"), tierPaletteFor(AchievementTier.BRONZE)),
+    TierTab(AchievementTier.SILVER, AppText.t("achievement_silver"), tierPaletteFor(AchievementTier.SILVER)),
+    TierTab(AchievementTier.GOLD, AppText.t("achievement_gold"), tierPaletteFor(AchievementTier.GOLD)),
+    TierTab(AchievementTier.DIAMOND, AppText.t("achievement_diamond"), tierPaletteFor(AchievementTier.DIAMOND)),
+    TierTab(AchievementTier.LEGENDARY, AppText.t("achievement_legendary"), tierPaletteFor(AchievementTier.LEGENDARY)),
 )
 
 // ──────── 主屏幕 ────────
@@ -80,8 +134,7 @@ fun AchievementScreen(
     achievementProgress: AchievementProgress = AchievementProgress(),
     onBack: () -> Unit
 ) {
-    val themeTokens = LocalThemeColors.current
-    val themedTierTabs = remember(themeTokens) { tierTabsForTheme(themeTokens) }
+    val themedTierTabs = remember { tierTabs() }
     val grouped = remember(achievements, themedTierTabs) {
         themedTierTabs.map { tab ->
             tab to achievements.filter { it.tier == tab.tier }
@@ -100,14 +153,14 @@ fun AchievementScreen(
         ScrollableTabRow(
             selectedTabIndex = pagerState.currentPage,
             containerColor = Color.Transparent,
-            contentColor = MaterialTheme.colorScheme.primary,
+            contentColor = themedTierTabs[pagerState.currentPage].palette.accent,
             edgePadding = 16.dp,
             indicator = { tabPositions ->
                 if (pagerState.currentPage < tabPositions.size) {
                     TabRowDefaults.SecondaryIndicator(
                         modifier = Modifier.tabIndicatorOffset(tabPositions[pagerState.currentPage]),
                         height = 3.dp,
-                        color = themedTierTabs[pagerState.currentPage].accentColor
+                        color = themedTierTabs[pagerState.currentPage].palette.accentStrong
                     )
                 }
             },
@@ -126,16 +179,18 @@ fun AchievementScreen(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(4.dp)
                         ) {
-                            Text(
-                                text = tab.emoji,
-                                fontSize = 16.sp
+                            AchievementBadge(
+                                achievementId = representativeAchievementIdForTier(tab.tier),
+                                tier = tab.tier,
+                                modifier = Modifier.size(22.dp),
+                                animated = true,
                             )
                             Text(
                                 text = tab.label,
                                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
                                 style = MaterialTheme.typography.labelLarge,
-                                color = if (isSelected) tab.accentColor
-                                        else MaterialTheme.colorScheme.onSurfaceVariant
+                                color = if (isSelected) tab.palette.accent
+                                        else tab.palette.muted.copy(alpha = 0.72f)
                             )
                         }
                     }
@@ -166,6 +221,7 @@ private fun TierPage(
     achievements: List<AchievementEntity>,
     achievementProgress: AchievementProgress,
 ) {
+    val textColor = Color(0xFFDDE8F5)
     val unlockedList = achievements.filter { it.isUnlocked }
     val lockedList = achievements.filter { !it.isUnlocked }
 
@@ -177,7 +233,7 @@ private fun TierPage(
             Text(
                 AppText.t("achievement_no_achievements_in_this_tier_yet"),
                 style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = textColor.copy(alpha = 0.76f)
             )
         }
         return
@@ -185,8 +241,8 @@ private fun TierPage(
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {
         // 等级头图
         item {
@@ -196,11 +252,11 @@ private fun TierPage(
         // 已解锁
         if (unlockedList.isNotEmpty()) {
             item {
-                Text(
-                    AppText.t("achievement_completed"),
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(top = 8.dp)
+                AchievementSectionHeader(
+                    title = AppText.t("achievement_completed"),
+                    count = unlockedList.size,
+                    palette = tab.palette,
+                    subdued = false,
                 )
             }
             itemsIndexed(unlockedList) { index, achievement ->
@@ -215,12 +271,11 @@ private fun TierPage(
         // 未解锁
         if (lockedList.isNotEmpty()) {
             item {
-                Text(
-                    AppText.t("achievement_locked"),
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 8.dp)
+                AchievementSectionHeader(
+                    title = AppText.t("achievement_locked"),
+                    count = lockedList.size,
+                    palette = tab.palette,
+                    subdued = true,
                 )
             }
             itemsIndexed(lockedList) { index, achievement ->
@@ -233,6 +288,49 @@ private fun TierPage(
         }
 
         item { Spacer(modifier = Modifier.height(24.dp)) }
+    }
+}
+
+@Composable
+private fun AchievementSectionHeader(
+    title: String,
+    count: Int,
+    palette: TierPalette,
+    subdued: Boolean,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 6.dp, bottom = 0.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.Bold,
+            color = if (subdued) palette.muted else palette.accent
+        )
+        Surface(
+            shape = RoundedCornerShape(999.dp),
+            color = if (subdued) palette.surfaceRaised.copy(alpha = 0.72f) else palette.accent.copy(alpha = 0.14f),
+            border = androidx.compose.foundation.BorderStroke(
+                width = 1.dp,
+                color = if (subdued) palette.border.copy(alpha = 0.32f) else palette.accentStrong.copy(alpha = 0.3f)
+            )
+        ) {
+            Text(
+                text = count.toString(),
+                modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp),
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = FontWeight.Bold,
+                color = if (subdued) palette.muted else palette.accent
+            )
+        }
+        HorizontalDivider(
+            modifier = Modifier.weight(1f),
+            color = palette.border.copy(alpha = if (subdued) 0.16f else 0.24f)
+        )
     }
 }
 
@@ -250,27 +348,31 @@ private fun TierHeader(tab: TierTab, unlocked: Int, total: Int) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(20.dp),
-        color = tab.bgColor,
+        color = tab.palette.surface,
+        border = androidx.compose.foundation.BorderStroke(1.dp, tab.palette.border.copy(alpha = 0.34f)),
         tonalElevation = 1.dp
     ) {
         Row(
-            modifier = Modifier.padding(20.dp),
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 15.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(16.dp)
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             // 等级大图标
-            Text(
-                text = tab.emoji,
-                fontSize = 40.sp
-            )
+                AchievementBadge(
+                    achievementId = representativeAchievementIdForTier(tab.tier),
+                    tier = tab.tier,
+                    modifier = Modifier.size(50.dp),
+                    animated = true,
+                )
 
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = AppText.t("achievement_value_achievements", tab.label),
                     style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Bold,
+                    color = tab.palette.accent,
                 )
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = when (tab.tier) {
                         AchievementTier.BRONZE -> AppText.t("achievement_the_beginning_of_discipline_every_step_takes_courage")
@@ -281,27 +383,82 @@ private fun TierHeader(tab: TierTab, unlocked: Int, total: Int) {
                         else -> ""
                     },
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = tab.palette.muted
                 )
-                Spacer(modifier = Modifier.height(10.dp))
+                Spacer(modifier = Modifier.height(8.dp))
 
-                // 进度条
-                LinearProgressIndicator(
-                    progress = { animatedProgress },
+                TierProgressBar(
+                    progress = animatedProgress,
+                    palette = tab.palette,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(8.dp)
-                        .clip(RoundedCornerShape(4.dp)),
-                    color = tab.accentColor,
-                    trackColor = tab.accentColor.copy(alpha = 0.15f)
+                        .height(10.dp)
                 )
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(3.dp))
                 Text(
                     text = AppText.t("achievement_value_value_completed", unlocked, total),
                     style = MaterialTheme.typography.labelSmall,
-                    color = tab.accentColor
+                    color = tab.palette.muted
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun TierProgressBar(
+    progress: Float,
+    palette: TierPalette,
+    modifier: Modifier = Modifier,
+) {
+    val sheenTransition = rememberInfiniteTransition(label = "achievement_progress_sheen")
+    val sheen by sheenTransition.animateFloat(
+        initialValue = -0.4f,
+        targetValue = 1.3f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(3000, easing = LinearEasing),
+            repeatMode = RepeatMode.Restart
+        ),
+        label = "achievement_progress_sheen_value"
+    )
+    BoxWithConstraints(
+        modifier = modifier
+            .clip(RoundedCornerShape(999.dp))
+            .background(palette.track)
+            .border(1.dp, palette.border.copy(alpha = 0.24f), RoundedCornerShape(999.dp))
+    ) {
+        val progressWidth = maxWidth * progress.coerceIn(0f, 1f)
+        val sheenStart = maxWidth.value * sheen
+        Box(
+            modifier = Modifier
+                .fillMaxHeight()
+                .width(progressWidth)
+                .clip(RoundedCornerShape(999.dp))
+                .background(
+                    Brush.horizontalGradient(
+                        colors = listOf(
+                            palette.accentStrong,
+                            lerp(palette.accent, Color.White, 0.18f),
+                            palette.accent,
+                        )
+                    )
+                )
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.linearGradient(
+                            colors = listOf(
+                                Color.Transparent,
+                                Color.White.copy(alpha = 0.22f),
+                                Color.Transparent,
+                            ),
+                            start = Offset(sheenStart, 0f),
+                            end = Offset(sheenStart + 90f, 200f),
+                        )
+                    )
+            )
         }
     }
 }
@@ -343,7 +500,7 @@ private fun AchievementCard(
 
 @Composable
 private fun UnlockedAchievementCard(achievement: AchievementEntity) {
-    val themeTokens = LocalThemeColors.current
+    val palette = remember(achievement.tier) { tierPaletteFor(achievement.tier) }
     val infiniteTransition = rememberInfiniteTransition(label = "unlocked_${achievement.id}")
 
     val shimmerOffset by infiniteTransition.animateFloat(
@@ -352,10 +509,10 @@ private fun UnlockedAchievementCard(achievement: AchievementEntity) {
         animationSpec = infiniteRepeatable(
             animation = tween(
                 durationMillis = when (achievement.tier) {
-                    AchievementTier.LEGENDARY -> 1200
-                    AchievementTier.DIAMOND -> 1600
-                    AchievementTier.GOLD -> 1800
-                    else -> 2500
+                    AchievementTier.LEGENDARY -> 2600
+                    AchievementTier.DIAMOND -> 3200
+                    AchievementTier.GOLD -> 3600
+                    else -> 4200
                 },
                 easing = LinearEasing
             ),
@@ -364,215 +521,127 @@ private fun UnlockedAchievementCard(achievement: AchievementEntity) {
         label = "shimmer"
     )
 
-    val rainbowAngle by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(4000, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "rainbow"
-    )
-
-    val pulseScale by infiniteTransition.animateFloat(
-        initialValue = 1f,
-        targetValue = if (achievement.tier == AchievementTier.LEGENDARY) 1.06f else 1.03f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1200, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "pulse"
-    )
-
     val sparkleAlpha by infiniteTransition.animateFloat(
         initialValue = 0.2f,
         targetValue = 0.9f,
         animationSpec = infiniteRepeatable(
-            animation = tween(600, easing = FastOutSlowInEasing),
+            animation = tween(1800, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
         ),
         label = "sparkle"
     )
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(22.dp),
+        color = palette.surface,
+        border = androidx.compose.foundation.BorderStroke(1.dp, palette.border.copy(alpha = 0.38f)),
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp
+    ) {
+        Box(Modifier.fillMaxSize()) {
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                drawRect(
+                    brush = Brush.linearGradient(
+                        colors = listOf(
+                            palette.pageGlow.copy(alpha = 0.06f),
+                            Color.Transparent,
+                            palette.accentStrong.copy(alpha = 0.08f + sparkleAlpha * 0.05f),
+                        ),
+                        start = Offset(0f, 0f),
+                        end = Offset(size.width, size.height)
+                    )
+                )
+                drawRect(
+                    brush = Brush.linearGradient(
+                        colors = listOf(
+                            Color.Transparent,
+                            Color.White.copy(alpha = 0.12f),
+                            Color.Transparent,
+                        ),
+                        start = Offset(shimmerOffset, 0f),
+                        end = Offset(shimmerOffset + 180f, size.height)
+                    )
+                )
+            }
 
-    val tierBgColor = when (achievement.tier) {
-        AchievementTier.LEGENDARY -> lerp(themeTokens.encourageContainer, themeTokens.controlContainer, 0.32f).copy(alpha = 0.62f)
-        AchievementTier.GOLD -> themeTokens.encourageContainer.copy(alpha = 0.52f)
-        AchievementTier.SILVER -> themeTokens.baseContainer.copy(alpha = 0.50f)
-        else -> themeTokens.controlContainer.copy(alpha = 0.48f)
-    }
+            Row(
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 13.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                AchievementBadge(
+                    achievement = achievement,
+                    modifier = Modifier.size(54.dp),
+                    animated = true,
+                )
 
-    val tierGradient = when (achievement.tier) {
-        AchievementTier.LEGENDARY -> Brush.linearGradient(
-            listOf(themeTokens.control, themeTokens.base, themeTokens.encourage, lerp(themeTokens.control, themeTokens.encourage, 0.5f), themeTokens.control),
-            start = Offset(shimmerOffset, 0f),
-            end = Offset(shimmerOffset + 300f, 300f)
-        )
-        AchievementTier.GOLD -> Brush.linearGradient(
-            listOf(themeTokens.encourage, lerp(themeTokens.encourage, Color.White, 0.42f), themeTokens.base, themeTokens.encourage),
-            start = Offset(shimmerOffset, 0f),
-            end = Offset(shimmerOffset + 200f, 200f)
-        )
-        AchievementTier.SILVER -> Brush.linearGradient(
-            listOf(themeTokens.base, lerp(themeTokens.base, Color.White, 0.55f), lerp(themeTokens.base, themeTokens.encourage, 0.35f), themeTokens.base),
-            start = Offset(shimmerOffset, 0f),
-            end = Offset(shimmerOffset + 150f, 150f)
-        )
-        else -> Brush.linearGradient(
-            listOf(themeTokens.control, lerp(themeTokens.control, themeTokens.base, 0.42f), lerp(themeTokens.control, Color.Black, 0.12f)),
-            start = Offset(shimmerOffset, 0f),
-            end = Offset(shimmerOffset + 120f, 120f)
-        )
-    }
-    val legendaryRingColors = listOf(
-        themeTokens.control,
-        themeTokens.base,
-        themeTokens.encourage,
-        lerp(themeTokens.base, themeTokens.encourage, 0.55f),
-        lerp(themeTokens.control, themeTokens.encourage, 0.50f),
-        themeTokens.control,
-    )
-
-    val cardModifier = Modifier.fillMaxWidth()
-
-    Box(modifier = Modifier.fillMaxWidth()) {
-        Surface(
-            modifier = cardModifier,
-            shape = RoundedCornerShape(20.dp),
-            color = tierBgColor,
-            tonalElevation = 0.dp,
-            shadowElevation = 0.dp
-        ) {
-            Box(Modifier.fillMaxSize()) {
-                // 背景全息光泽流光
-                if (achievement.tier >= AchievementTier.GOLD) {
-                    Canvas(modifier = Modifier.fillMaxSize().graphicsLayer { alpha = 0.2f }) {
-                        drawRect(brush = tierGradient)
-                    }
-                }
-                
-                // 全局粒子效果 (更高级动效)
-                if (achievement.tier == AchievementTier.LEGENDARY || achievement.tier == AchievementTier.DIAMOND) {
-                    Canvas(modifier = Modifier.fillMaxSize()) {
-                        val baseColor = if (achievement.tier == AchievementTier.LEGENDARY) themeTokens.encourage else themeTokens.base
-                        for (i in 0..8) {
-                            val x = (size.width * 0.1f * i + shimmerOffset * 0.2f) % size.width
-                            val y = (sin((x + shimmerOffset) * 0.05f) * 20f + size.height / 2)
-                            drawCircle(
-                                color = baseColor.copy(alpha = sparkleAlpha * 0.5f),
-                                radius = ((i % 4) + 2).dp.toPx(),
-                                center = Offset(x, y)
-                            )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = achievement.localizedTitle(),
+                        fontSize = 18.sp,
+                        lineHeight = 22.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = palette.accent
+                    )
+                    Spacer(modifier = Modifier.height(2.dp))
+                    Text(
+                        text = achievement.localizedDescription(),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = palette.muted,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        fontWeight = FontWeight.Medium
+                    )
+                    achievement.unlockedAt?.let { millis ->
+                        Spacer(modifier = Modifier.height(6.dp))
+                        val dateStr = remember(millis) {
+                            SimpleDateFormat("yyyy/MM/dd HH:mm", Locale.getDefault()).format(Date(millis))
+                        }
+                        Surface(
+                            shape = RoundedCornerShape(999.dp),
+                            color = palette.surfaceRaised.copy(alpha = 0.92f),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, palette.border.copy(alpha = 0.28f))
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Icon(
+                                    Icons.Default.Schedule,
+                                    contentDescription = null,
+                                    tint = palette.accentStrong,
+                                    modifier = Modifier.size(12.dp)
+                                )
+                                Text(
+                                    text = dateStr,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = palette.muted,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
                         }
                     }
                 }
 
-                Row(
-                    modifier = Modifier.padding(16.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(14.dp)
+                Surface(
+                    shape = RoundedCornerShape(999.dp),
+                    color = palette.accent.copy(alpha = 0.12f),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, palette.accentStrong.copy(alpha = 0.24f))
                 ) {
-                    // 左侧: Emoji 图标 + 等级光环
-                    Box(
-                        modifier = Modifier.size(56.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        if (achievement.tier == AchievementTier.LEGENDARY) {
-                            // 彩虹旋转光环
-                            Canvas(modifier = Modifier.fillMaxSize()) {
-                                rotate(rainbowAngle) {
-                                    drawCircle(
-                                        brush = Brush.sweepGradient(legendaryRingColors),
-                                        radius = size.minDimension / 2,
-                                        style = Stroke(width = 4.dp.toPx(), cap = StrokeCap.Round)
-                                    )
-                                }
-                            }
-                            // 闪烁超级星光粒子
-                            Canvas(modifier = Modifier.fillMaxSize()) {
-                                val center = Offset(size.width / 2, size.height / 2)
-                                val radius = size.minDimension / 2 + 6.dp.toPx()
-                                for (i in 0..7) {
-                                    val angle = (i * 45 + rainbowAngle.toInt()) * PI / 180
-                                    val x = center.x + (radius * cos(angle)).toFloat()
-                                    val y = center.y + (radius * sin(angle)).toFloat()
-                                    drawCircle(
-                                        color = legendaryRingColors[i % legendaryRingColors.size]
-                                            .copy(alpha = sparkleAlpha),
-                                        radius = 3.dp.toPx(),
-                                        center = Offset(x, y)
-                                    )
-                                }
-                            }
-                        } else {
-                            // 渐变圆形底
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxSize()
-                                    .clip(CircleShape)
-                                    .background(tierGradient)
-                            )
-                        }
-
-                        Text(
-                            text = achievement.iconEmoji,
-                            fontSize = if (achievement.tier == AchievementTier.LEGENDARY) 28.sp else 24.sp,
-                            modifier = Modifier.graphicsLayer {
-                                if (achievement.tier >= AchievementTier.GOLD) {
-                                    scaleX = pulseScale * 1.05f
-                                    scaleY = pulseScale * 1.05f
-                                }
-                            }
-                        )
-                    }
-
-                    // 中间: 名称 + 描述
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = achievement.localizedTitle(),
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = achievement.localizedDescription(),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
-                            fontWeight = FontWeight.Medium
-                        )
-                        achievement.unlockedAt?.let { millis ->
-                            Spacer(modifier = Modifier.height(4.dp))
-                            val dateStr = remember(millis) {
-                                SimpleDateFormat("yyyy/MM/dd HH:mm", Locale.getDefault()).format(Date(millis))
-                            }
-                            Text(
-                                text = AppText.t("achievement_value_achievement_unlocked", dateStr),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.85f),
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-                    }
-
-                    // 右侧: 完成标记
                     Icon(
                         Icons.Default.CheckCircle,
                         contentDescription = AppText.t("me_unlocked"),
-                        tint = when (achievement.tier) {
-                            AchievementTier.LEGENDARY -> themeTokens.encourage
-                            AchievementTier.DIAMOND -> themeTokens.base
-                            AchievementTier.GOLD -> lerp(themeTokens.encourage, themeTokens.base, 0.18f)
-                            AchievementTier.SILVER -> lerp(themeTokens.base, themeTokens.encourage, 0.22f)
-                            else -> lerp(themeTokens.control, themeTokens.base, 0.28f)
-                        },
-                        modifier = Modifier.size(32.dp).graphicsLayer {
-                            if (achievement.tier == AchievementTier.LEGENDARY) {
-                                scaleX = 1f + (sparkleAlpha - 0.5f) * 0.2f
-                                scaleY = scaleX
+                        tint = palette.accentStrong,
+                        modifier = Modifier
+                            .padding(8.dp)
+                            .size(20.dp)
+                            .graphicsLayer {
+                                if (achievement.tier == AchievementTier.LEGENDARY) {
+                                    scaleX = 1f + (sparkleAlpha - 0.5f) * 0.12f
+                                    scaleY = scaleX
+                                }
                             }
-                        }
                     )
                 }
             }
@@ -587,6 +656,7 @@ private fun LockedAchievementCard(
     achievement: AchievementEntity,
     achievementProgress: AchievementProgress,
 ) {
+    val palette = remember(achievement.tier) { tierPaletteFor(achievement.tier) }
     // 解析目标进度
     val (type, targetValue) = remember(achievement.requirement) {
         try {
@@ -622,78 +692,97 @@ private fun LockedAchievementCard(
     Surface(
         modifier = Modifier
             .fillMaxWidth()
-            .graphicsLayer { alpha = 0.85f },
-        shape = RoundedCornerShape(20.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f),
+            .graphicsLayer { alpha = 0.96f },
+        shape = RoundedCornerShape(22.dp),
+        color = palette.surface.copy(alpha = 0.88f),
+        border = androidx.compose.foundation.BorderStroke(1.dp, palette.border.copy(alpha = 0.3f)),
         tonalElevation = 0.dp
     ) {
         Row(
-            modifier = Modifier.padding(16.dp),
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 13.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(14.dp)
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Box(
-                modifier = Modifier
-                    .size(56.dp)
-                    .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)),
+                modifier = Modifier.size(54.dp),
                 contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = achievement.iconEmoji,
-                    fontSize = 24.sp,
+                AchievementBadge(
+                    achievement = achievement,
                     modifier = Modifier
-                        .blur(2.dp)
-                        .graphicsLayer { alpha = 0.5f }
+                        .fillMaxSize()
+                        .blur(1.dp),
+                    locked = true,
+                    animated = true,
                 )
             }
 
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = achievement.localizedTitle(),
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Medium,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
+                    fontSize = 18.sp,
+                    lineHeight = 22.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = palette.accent.copy(alpha = 0.94f)
                 )
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = achievement.localizedDescription(),
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f),
+                    color = palette.muted.copy(alpha = 0.88f),
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
                 
-                Spacer(modifier = Modifier.height(8.dp))
-                // 进度指示器
-                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-                    LinearProgressIndicator(
-                        progress = { animatedProgress },
-                        modifier = Modifier
-                            .weight(1f)
-                            .height(6.dp)
-                            .clip(RoundedCornerShape(3.dp)),
-                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.6f),
-                        trackColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.2f),
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "${currentValue.toLong()} / ${targetValue.toLong()}",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.7f),
-                        fontWeight = FontWeight.Bold
-                    )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    Surface(
+                        shape = RoundedCornerShape(999.dp),
+                        color = palette.surfaceRaised,
+                        border = androidx.compose.foundation.BorderStroke(1.dp, palette.border.copy(alpha = 0.24f))
+                    ) {
+                        Text(
+                            text = "${formatAchievementValue(currentValue)} / ${formatAchievementValue(targetValue)}",
+                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 3.dp),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = palette.accent,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
                 }
+                Spacer(modifier = Modifier.height(6.dp))
+                TierProgressBar(
+                    progress = animatedProgress,
+                    palette = palette,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(10.dp)
+                )
             }
 
-            Icon(
-                Icons.Default.Lock,
-                contentDescription = AppText.t("achievement_locked_2"),
-                tint = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f),
-                modifier = Modifier.size(24.dp)
-            )
+            Surface(
+                shape = RoundedCornerShape(999.dp),
+                color = palette.surfaceRaised.copy(alpha = 0.9f),
+                border = androidx.compose.foundation.BorderStroke(1.dp, palette.border.copy(alpha = 0.22f))
+            ) {
+                Icon(
+                    Icons.Default.Lock,
+                    contentDescription = AppText.t("achievement_locked_2"),
+                    tint = palette.muted.copy(alpha = 0.88f),
+                    modifier = Modifier
+                        .padding(8.dp)
+                        .size(18.dp)
+                )
+            }
         }
     }
+}
+
+private fun formatAchievementValue(value: Double): String {
+    val longValue = value.toLong()
+    return String.format(Locale.getDefault(), "%,d", longValue)
 }
 
 private fun AchievementEntity.localizedTitle(): String {

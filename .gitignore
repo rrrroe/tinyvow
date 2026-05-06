@@ -12,6 +12,7 @@
 /captures
 .externalNativeBuild
 .cxx
+.kotlin/errors/*.log
 local.properties
 tools/activation/private_key.pkcs8
 tools/activation/*.private

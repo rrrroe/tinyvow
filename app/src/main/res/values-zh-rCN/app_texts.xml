@@ -301,7 +301,13 @@
     <string name="home_well_done_yesterday_your_strong_will_saved_this">太棒了！昨天你凭借强大的意志力，在受控应用中省下了：</string>
     <string name="home_yesterday_s_report">昨日战报</string>
     <string name="lab_laboratory_debug_tools">实验室（调试工具）</string>
+    <string name="lab_add_pro_days">+%1$d 天</string>
+    <string name="lab_clear_debug_pro">清除调试 Pro</string>
+    <string name="lab_debug_pro_cleared">已清除调试 Pro</string>
+    <string name="lab_debug_pro_extended">已增加 %1$d 天调试 Pro</string>
     <string name="lab_points_simulation">积分模拟</string>
+    <string name="lab_pro_debug">Pro 调试</string>
+    <string name="lab_pro_debug_description">仅 debug 构建显示。为任意渠道增加本地 Pro 时长，不改真实 Google Play 订阅或激活码记录。</string>
     <string name="lab_report_test">战报测试</string>
     <string name="lab_reset_report_state_clear_today_s_record">重置战报状态（清除今日记录）</string>
     <string name="lab_tip_after_resetting_restart_the_app_to_verify">提示：重置后重启 App 即可重新验证昨日战报。</string>
@@ -519,6 +525,7 @@
     <string name="stats_preview_share_poster">预览分享海报</string>
     <string name="stats_preview_the_poster_then_share_it_with_friends">先预览海报，再分享给朋友或留作记录。</string>
     <string name="stats_previous">上次</string>
+    <string name="stats_seven_day">七日</string>
     <string name="stats_reading_archived_daily_reports">正在读取归档日报</string>
     <string name="stats_redemption">兑换</string>
     <string name="stats_reference_value">参考 %1$s</string>
@@ -530,6 +537,7 @@
     <string name="stats_share">占比</string>
     <string name="stats_share_preview">分享预览</string>
     <string name="stats_share_report">分享战报</string>
+    <string name="stats_share_slogan">过好这一天，节奏就会更清晰。</string>
     <string name="stats_shows_only_the_10_most_used_apps_in">只看当前归档窗口内使用时长最高的 10 个应用。</string>
     <string name="stats_spring">春</string>
     <string name="stats_summer">夏</string>

@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.doublePreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
@@ -41,6 +42,7 @@ class ManagedAppPreferences(
         val usageAccessDisclosureAccepted = booleanPreferencesKey("usage_access_disclosure_accepted")
         val accessibilityDisclosureAccepted = booleanPreferencesKey("accessibility_disclosure_accepted")
         val selectedAppLanguage = stringPreferencesKey("selected_app_language")
+        val debugProExpiresAtMillis = longPreferencesKey("debug_pro_expires_at_millis")
     }
 
     val selectedPackageName: Flow<String?> = context.managedAppDataStore.data.map { preferences ->
@@ -112,6 +114,10 @@ class ManagedAppPreferences(
 
     val selectedAppLanguage: Flow<AppLanguage> = context.managedAppDataStore.data.map { preferences ->
         AppLanguage.fromStorageValue(preferences[Keys.selectedAppLanguage])
+    }
+
+    val debugProExpiresAtMillis: Flow<Long?> = context.managedAppDataStore.data.map { preferences ->
+        preferences[Keys.debugProExpiresAtMillis]
     }
 
     suspend fun addUserPoints(points: Double) {
@@ -233,6 +239,22 @@ class ManagedAppPreferences(
     suspend fun setSelectedAppLanguage(language: AppLanguage) {
         context.managedAppDataStore.edit { preferences ->
             preferences[Keys.selectedAppLanguage] = language.storageValue
+        }
+    }
+
+    suspend fun extendDebugPro(durationDays: Int, currentExpiresAtMillis: Long? = null) {
+        val now = System.currentTimeMillis()
+        val durationMillis = durationDays * 86_400_000L
+        context.managedAppDataStore.edit { preferences ->
+            val currentDebugExpiresAt = preferences[Keys.debugProExpiresAtMillis]
+            preferences[Keys.debugProExpiresAtMillis] =
+                maxOf(now, currentDebugExpiresAt ?: 0L, currentExpiresAtMillis ?: 0L) + durationMillis
+        }
+    }
+
+    suspend fun clearDebugPro() {
+        context.managedAppDataStore.edit { preferences ->
+            preferences.remove(Keys.debugProExpiresAtMillis)
         }
     }
 

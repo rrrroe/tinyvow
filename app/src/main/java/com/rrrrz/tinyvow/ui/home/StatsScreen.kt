@@ -24,6 +24,8 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Arrangement
@@ -100,6 +102,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.core.graphics.drawable.toBitmap
 import androidx.core.content.FileProvider
 import coil.compose.AsyncImage
@@ -324,8 +328,10 @@ private data class YearScopeSummary(
 )
 
 private data class ShareReportData(
+    val tab: ReportTab,
     val title: String,
     val subtitle: String,
+    val slogan: String,
     val statusTitle: String,
     val primaryValue: String,
     val primaryLabel: String,
@@ -345,6 +351,7 @@ private data class ShareReportData(
     val encourageUsageMillis: Long,
     val nightUsageMillis: Long,
     val hourlyUsageMillis: List<Long>,
+    val timelineLabels: List<String>,
     val trendUsageMillis: List<Long>,
     val targetMillisPerBucket: Long?,
     val comparisonLabel: String,
@@ -1163,8 +1170,10 @@ private fun buildShareReportData(
             else -> AppText.t("stats_you_completed_an_honest_review_today")
         }
     return ShareReportData(
+        tab = selectedTab,
         title = "Tiny Vow $tabName",
         subtitle = summary.subtitle,
+        slogan = AppText.t("stats_share_slogan"),
         statusTitle = statusTitle,
         primaryValue = summary.primaryValue,
         primaryLabel = AppText.t("stats_usage_duration"),
@@ -1184,6 +1193,7 @@ private fun buildShareReportData(
         encourageUsageMillis = archives.sumOf { it.encourageUsageMillis },
         nightUsageMillis = nightUsageMillis,
         hourlyUsageMillis = timelineBuckets.map { it.deviceMillis },
+        timelineLabels = timelineBuckets.map { it.label },
         trendUsageMillis = trendUsageMillis,
         targetMillisPerBucket = dailyGoalMillis.takeIf { it > 0L }?.let { it / 24L },
         comparisonLabel = comparisonLabel,
@@ -2350,6 +2360,7 @@ private fun DailyReportScreen(
     isProActive: Boolean,
     onShowProUpsell: (ProUpsellSource) -> Unit,
 ) {
+    val isDayReport = state.selectedTab == ReportTab.DAY
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
         verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -2376,51 +2387,614 @@ private fun DailyReportScreen(
                 if (state.isRefreshing) {
                     LoadingHintChip(selectedTab = state.selectedTab)
                 }
-                if (!isProActive && state.selectedTab != ReportTab.DAY) {
+                if (!isProActive && !isDayReport) {
                     LockedAdvancedReportCard(onClick = { onShowProUpsell(ProUpsellSource.ADVANCED_REPORT) })
                     Spacer(modifier = Modifier.height(24.dp))
                     return@Column
                 }
-                DeviceHeroCard(
-                    selectedTab = state.selectedTab,
-                    heroState = state.heroState,
-                )
-                if (state.selectedTab == ReportTab.DAY) {
-                    DailyFocusCard(focusState = state.dailyFocusState)
-                } else {
-                    WindowFocusCard(focusState = state.windowFocusState)
-                }
-                if (state.selectedTab == ReportTab.YEAR) {
-                    YearDualScopeCard(yearState = state.yearDualScopeState)
-                }
-                TimelineCard(
-                    selectedTab = state.selectedTab,
-                    timelineState = state.timelineState,
-                )
-                if (state.selectedTab == ReportTab.MONTH || state.selectedTab == ReportTab.YEAR) {
-                    HeatmapCard(heatmapState = state.heatmapState)
-                }
-                AppChartsCard(
-                    selectedTab = state.selectedTab,
-                    topAppsState = state.topAppsState,
-                )
-                if (isProActive) {
-                    BehaviorCard(
-                        selectedTab = state.selectedTab,
+                if (isDayReport) {
+                    DailyBattleHeroCard(heroState = state.heroState)
+                    DailyFocusCard(
+                        focusState = state.dailyFocusState,
+                        compactLayout = true,
+                    )
+                    DailyRhythmCard(timelineState = state.timelineState)
+                    DailyAppsAndAnalysisCard(
+                        topAppsState = state.topAppsState,
                         behaviorState = state.behaviorState,
-                    )
-                    ComparisonCard(
-                        selectedTab = state.selectedTab,
                         comparisonState = state.comparisonState,
-                    )
-                    ShareReportCard(
-                        selectedTab = state.selectedTab,
                         shareState = state.shareState,
+                        isProActive = isProActive,
+                        onShowProUpsell = onShowProUpsell,
                     )
                 } else {
-                    LockedAdvancedReportCard(onClick = { onShowProUpsell(ProUpsellSource.ADVANCED_REPORT) })
+                    DeviceHeroCard(
+                        selectedTab = state.selectedTab,
+                        heroState = state.heroState,
+                    )
+                    WindowFocusCard(focusState = state.windowFocusState)
+                    if (state.selectedTab == ReportTab.YEAR) {
+                        YearDualScopeCard(yearState = state.yearDualScopeState)
+                    }
+                    TimelineCard(
+                        selectedTab = state.selectedTab,
+                        timelineState = state.timelineState,
+                    )
+                    if (state.selectedTab == ReportTab.MONTH || state.selectedTab == ReportTab.YEAR) {
+                        HeatmapCard(heatmapState = state.heatmapState)
+                    }
+                    AppChartsCard(
+                        selectedTab = state.selectedTab,
+                        topAppsState = state.topAppsState,
+                    )
+                    if (isProActive) {
+                        BehaviorCard(
+                            selectedTab = state.selectedTab,
+                            behaviorState = state.behaviorState,
+                        )
+                        ComparisonCard(
+                            selectedTab = state.selectedTab,
+                            comparisonState = state.comparisonState,
+                        )
+                        ShareReportCard(
+                            selectedTab = state.selectedTab,
+                            shareState = state.shareState,
+                        )
+                    } else {
+                        LockedAdvancedReportCard(onClick = { onShowProUpsell(ProUpsellSource.ADVANCED_REPORT) })
+                    }
                 }
                 Spacer(modifier = Modifier.height(24.dp))
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun DailyBattleHeroCard(
+    heroState: SectionState<HeroSectionData>,
+) {
+    val data = (heroState as? SectionState.Ready)?.data
+    val summary = data?.summary
+    val overview = data?.overview
+    val reportColors = LocalReportColors.current
+    ReportCard {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(26.dp))
+                .background(
+                    Brush.linearGradient(
+                        colors = listOf(
+                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.52f),
+                            MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
+                            reportColors.positive.copy(alpha = 0.12f),
+                        ),
+                    ),
+                ),
+        ) {
+            Column(
+                modifier = Modifier.padding(horizontal = 18.dp, vertical = 18.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                if (data == null || summary == null || overview == null) {
+                    SkeletonLine(width = 110.dp, height = 12.dp)
+                    SkeletonLine(width = 156.dp, height = 28.dp)
+                    SkeletonLine(fill = true, height = 18.dp)
+                    AdaptiveRowGrid(
+                        itemCount = 4,
+                        compactColumns = 2,
+                        expandedColumns = 4,
+                        horizontalSpacing = 8.dp,
+                        verticalSpacing = 8.dp,
+                    ) { modifier, _ ->
+                        SkeletonMetricChip(modifier = modifier)
+                    }
+                } else {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.Top,
+                    ) {
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(
+                                text = summary.title,
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                            Text(
+                                text = summary.subtitle,
+                                style = MaterialTheme.typography.titleLarge,
+                                fontWeight = FontWeight.Bold,
+                            )
+                        }
+                        Surface(
+                            shape = RoundedCornerShape(999.dp),
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
+                        ) {
+                            Text(
+                                text = summary.capturedAt,
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                    Text(
+                        text = summary.primaryValue,
+                        style = MaterialTheme.typography.displaySmall,
+                        fontWeight = FontWeight.Black,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                    Text(
+                        text = summary.message,
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    AdaptiveRowGrid(
+                        itemCount = 2,
+                        compactColumns = 1,
+                        expandedColumns = 2,
+                        horizontalSpacing = 8.dp,
+                        verticalSpacing = 8.dp,
+                    ) { modifier, index ->
+                        when (index) {
+                            0 -> BattleHeadlineChip(
+                                label = AppText.t("stats_vs_previous_archive"),
+                                value = summary.secondaryValue,
+                                accent = reportColors.warning,
+                                modifier = modifier,
+                            )
+                            else -> BattleHeadlineChip(
+                                label = AppText.t("stats_daily_average"),
+                                value = summary.tertiaryValue,
+                                accent = reportColors.positive,
+                                modifier = modifier,
+                            )
+                        }
+                    }
+                    AdaptiveRowGrid(
+                        itemCount = 4,
+                        compactColumns = 2,
+                        expandedColumns = 4,
+                        horizontalSpacing = 8.dp,
+                        verticalSpacing = 8.dp,
+                    ) { modifier, index ->
+                        when (index) {
+                            0 -> BattleMetricTile(
+                                label = AppText.t("stats_launches"),
+                                value = AppText.t("stats_value_times_12", overview.openCount),
+                                accent = MaterialTheme.colorScheme.primary,
+                                modifier = modifier,
+                            )
+                            1 -> BattleMetricTile(
+                                label = AppText.t("stats_night_use"),
+                                value = formatDuration(data.nightUsageMillis),
+                                accent = reportColors.warning,
+                                modifier = modifier,
+                            )
+                            2 -> BattleMetricTile(
+                                label = AppText.t("stats_target_complete"),
+                                value = data.goalCompletionProgress?.let { "${(it * 100f).roundToInt()}%" }
+                                    ?: AppText.t("stats_none"),
+                                accent = reportColors.positive,
+                                modifier = modifier,
+                            )
+                            else -> BattleMetricTile(
+                                label = AppText.t("stats_top_app_of_the_day"),
+                                value = overview.topApp?.label ?: AppText.t("stats_none"),
+                                accent = MaterialTheme.colorScheme.secondary,
+                                modifier = modifier,
+                            )
+                        }
+                    }
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        summary.tags.forEach { tag ->
+                            SummaryTagChip(tag)
+                        }
+                    }
+                    overview.topApp?.let { topApp ->
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(20.dp))
+                                .background(MaterialTheme.colorScheme.secondary.copy(alpha = 0.1f)),
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            ) {
+                                AppIconCircle(topApp.packageName)
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = AppText.t("stats_top_app_of_the_day"),
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                    Text(
+                                        text = topApp.label,
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                }
+                                Text(
+                                    text = formatDuration(topApp.value),
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun BattleHeadlineChip(
+    label: String,
+    value: String,
+    accent: Color,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(20.dp),
+        color = accent.copy(alpha = 0.12f),
+        border = BorderStroke(1.dp, accent.copy(alpha = 0.18f)),
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                text = value,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = accent,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
+private fun BattleMetricTile(
+    label: String,
+    value: String,
+    accent: Color,
+    modifier: Modifier = Modifier,
+) {
+    val animatedValue = animateMetricDisplayText(
+        rawText = value,
+        label = "battle_metric_${label.hashCode()}",
+        delayMillis = 180,
+    )
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(18.dp),
+        color = accent.copy(alpha = 0.1f),
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = animatedValue,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                color = accent,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
+private fun DailyRhythmCard(
+    timelineState: SectionState<TimelineSectionData>,
+) {
+    ReportCard {
+        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            SectionHeader(
+                icon = Icons.Default.Timeline,
+                title = AppText.t("stats_24_hour_distribution"),
+                subtitle = AppText.t("stats_time_heatmap"),
+            )
+            when (timelineState) {
+                SectionState.Loading -> {
+                    SkeletonTimelineChart()
+                    AdaptiveRowGrid(
+                        itemCount = 3,
+                        compactColumns = 1,
+                        expandedColumns = 3,
+                        horizontalSpacing = 10.dp,
+                        verticalSpacing = 10.dp,
+                    ) { modifier, _ ->
+                        SkeletonMetricChip(modifier = modifier)
+                    }
+                }
+                SectionState.Empty -> {
+                    DailyTimelineChart(emptyList())
+                    Text(
+                        text = AppText.t("stats_this_archived_day_does_not_have_enough_usage"),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                is SectionState.Ready -> {
+                    DailyTimelineChart(
+                        buckets = timelineState.data.buckets,
+                        targetMillisPerBucket = timelineState.data.targetMillisPerBucket,
+                    )
+                    TimelineFooter(labels = buildTimelineFooterLabels(ReportTab.DAY, timelineState.data.buckets))
+                    AdaptiveRowGrid(
+                        itemCount = 3,
+                        compactColumns = 1,
+                        expandedColumns = 3,
+                        horizontalSpacing = 10.dp,
+                        verticalSpacing = 10.dp,
+                    ) { modifier, index ->
+                        when (index) {
+                            0 -> MiniInsightCard(
+                                icon = Icons.Default.Bolt,
+                                label = AppText.t("stats_peak_time"),
+                                value = "${timelineState.data.peakHourLabel} · ${formatDuration(timelineState.data.peakHourMillis)}",
+                                visualRatio = (timelineState.data.peakHourMillis.toFloat() / (2 * 60 * 60_000L).toFloat()).coerceIn(0f, 1f),
+                                compact = true,
+                                modifier = modifier,
+                            )
+                            1 -> MiniInsightCard(
+                                icon = Icons.AutoMirrored.Filled.CallSplit,
+                                label = AppText.t("stats_over_2h"),
+                                value = "${timelineState.data.peakTwoHourLabel} · ${formatDuration(timelineState.data.peakTwoHourMillis)}",
+                                visualRatio = (timelineState.data.peakTwoHourMillis.toFloat() / (4 * 60 * 60_000L).toFloat()).coerceIn(0f, 1f),
+                                compact = true,
+                                modifier = modifier,
+                            )
+                            else -> MiniInsightCard(
+                                icon = Icons.Default.NightsStay,
+                                label = AppText.t("stats_night_use"),
+                                value = formatDuration(timelineState.data.nightUsageMillis),
+                                visualRatio = (timelineState.data.nightUsageMillis.toFloat() / (3 * 60 * 60_000L).toFloat()).coerceIn(0f, 1f),
+                                compact = true,
+                                modifier = modifier,
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DailyAppsAndAnalysisCard(
+    topAppsState: SectionState<TopAppsSectionData>,
+    behaviorState: SectionState<BehaviorSectionData>,
+    comparisonState: SectionState<ComparisonSectionData>,
+    shareState: SectionState<ShareReportData>,
+    isProActive: Boolean,
+    onShowProUpsell: (ProUpsellSource) -> Unit,
+) {
+    val usageTopApps = (topAppsState as? SectionState.Ready)?.data?.usageTopApps.orEmpty()
+    val appColors = rememberAppChartColors(usageTopApps.map { it.packageName })
+    ReportCard {
+        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            SectionHeader(
+                icon = Icons.Default.BarChart,
+                title = AppText.t("stats_top_10_apps"),
+                subtitle = AppText.t("stats_current_day_top_10_apps_only"),
+            )
+            when (topAppsState) {
+                SectionState.Loading -> {
+                    SkeletonUsageSharePanel()
+                }
+                SectionState.Empty -> {
+                    Text(
+                        text = AppText.t("stats_this_archived_day_does_not_have_enough_usage"),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                is SectionState.Ready -> {
+                    AppUsageShareCard(
+                        items = usageTopApps,
+                        appColors = appColors,
+                    )
+                }
+            }
+            if (isProActive) {
+                DailyAnalysisPanel(
+                    behaviorState = behaviorState,
+                    comparisonState = comparisonState,
+                    shareState = shareState,
+                )
+            } else {
+                CompactLockedAnalysisPanel(
+                    onClick = { onShowProUpsell(ProUpsellSource.ADVANCED_REPORT) },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun DailyAnalysisPanel(
+    behaviorState: SectionState<BehaviorSectionData>,
+    comparisonState: SectionState<ComparisonSectionData>,
+    shareState: SectionState<ShareReportData>,
+) {
+    val insight = (behaviorState as? SectionState.Ready)?.data?.behaviorInsight
+    val comparisons = (comparisonState as? SectionState.Ready)?.data?.comparisons.orEmpty().take(3)
+    Surface(
+        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.66f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.24f)),
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            SectionHeader(
+                icon = Icons.Default.Insights,
+                title = AppText.t("stats_behavior_analysis"),
+                subtitle = AppText.t("stats_compare_current_day_with_previous_archive"),
+            )
+            if (behaviorState == SectionState.Loading || comparisonState == SectionState.Loading) {
+                AdaptiveRowGrid(
+                    itemCount = 4,
+                    compactColumns = 2,
+                    expandedColumns = 2,
+                    horizontalSpacing = 10.dp,
+                    verticalSpacing = 10.dp,
+                ) { modifier, _ ->
+                    SkeletonMetricChip(modifier = modifier)
+                }
+                repeat(2) {
+                    SkeletonBlock(
+                        modifier = Modifier.fillMaxWidth(),
+                        height = 74.dp,
+                        shape = RoundedCornerShape(18.dp),
+                    )
+                }
+            } else if (insight == null && comparisons.isEmpty()) {
+                Text(
+                    text = AppText.t("stats_this_archived_day_does_not_have_enough_behavior"),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                insight?.let {
+                    AdaptiveRowGrid(
+                        itemCount = 4,
+                        compactColumns = 2,
+                        expandedColumns = 2,
+                        horizontalSpacing = 10.dp,
+                        verticalSpacing = 10.dp,
+                    ) { modifier, index ->
+                        when (index) {
+                            0 -> MiniInsightCard(
+                                icon = Icons.Default.Schedule,
+                                label = AppText.t("stats_label_11"),
+                                value = it.longestSession?.let { session ->
+                                    "${session.label} · ${formatDuration(session.value)}"
+                                } ?: AppText.t("stats_none"),
+                                visualRatio = ((it.longestSession?.value ?: 0L).toFloat() / (2 * 60 * 60_000L).toFloat()).coerceIn(0f, 1f),
+                                modifier = modifier,
+                            )
+                            1 -> MiniInsightCard(
+                                icon = Icons.Default.AccessTime,
+                                label = AppText.t("stats_average_session"),
+                                value = formatDuration(it.averageSessionMillis),
+                                visualRatio = (it.averageSessionMillis.toFloat() / (30 * 60_000L).toFloat()).coerceIn(0f, 1f),
+                                modifier = modifier,
+                            )
+                            2 -> MiniInsightCard(
+                                icon = Icons.Default.Timeline,
+                                label = AppText.t("stats_peak_time"),
+                                value = "${it.peakHourLabel} · ${formatDuration(it.peakHourMillis)}",
+                                visualRatio = (it.peakHourMillis.toFloat() / (2 * 60 * 60_000L).toFloat()).coerceIn(0f, 1f),
+                                modifier = modifier,
+                            )
+                            else -> MiniInsightCard(
+                                icon = Icons.Default.TouchApp,
+                                label = AppText.t("stats_launch_intensity"),
+                                value = String.format(Locale.CHINA, AppText.t("stats_launches_per_active_hour_format"), it.reopenIntensity),
+                                visualRatio = (it.reopenIntensity / 6f).coerceIn(0f, 1f),
+                                modifier = modifier,
+                            )
+                        }
+                    }
+                }
+                if (comparisons.isEmpty()) {
+                    Text(
+                        text = AppText.t("stats_not_enough_earlier_archive_samples"),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                } else {
+                    comparisons.forEachIndexed { index, item ->
+                        ComparisonRow(
+                            item = item,
+                            delayMillis = 700 + index * 40,
+                            averageBarLabel = AppText.t("stats_seven_day"),
+                            showChips = false,
+                        )
+                    }
+                }
+            }
+            CompactShareReportRow(shareState = shareState)
+        }
+    }
+}
+
+@Composable
+private fun CompactLockedAnalysisPanel(
+    onClick: () -> Unit,
+) {
+    Surface(
+        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.66f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.24f)),
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            SectionHeader(
+                icon = Icons.Default.Insights,
+                title = AppText.t("pro_report_locked_title"),
+                subtitle = AppText.t("pro_upsell_advanced_report"),
+            )
+            AdaptiveRowGrid(
+                itemCount = 4,
+                compactColumns = 2,
+                expandedColumns = 2,
+                horizontalSpacing = 10.dp,
+                verticalSpacing = 10.dp,
+            ) { modifier, index ->
+                MiniInsightCard(
+                    icon = when (index) {
+                        0 -> Icons.Default.Schedule
+                        1 -> Icons.Default.Timeline
+                        2 -> Icons.Default.TouchApp
+                        else -> Icons.AutoMirrored.Filled.CompareArrows
+                    },
+                    label = AppText.t("pro_report_preview_label_${index + 1}"),
+                    value = AppText.t("pro_report_preview_value"),
+                    visualRatio = 0.32f + index * 0.12f,
+                    modifier = modifier.graphicsLayer { alpha = 0.52f },
+                )
+            }
+            Button(
+                onClick = onClick,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(AppText.t("pro_view_benefits"))
             }
         }
     }
@@ -3624,6 +4198,7 @@ private fun UsageGoalChart(
     usageMillis: Long,
     capMillis: Long,
     goalLabel: String?,
+    metricLabel: String? = AppText.t("stats_device_usage"),
     modifier: Modifier = Modifier,
 ) {
     val stagedUsageMillis = rememberDelayedLongTarget(usageMillis, 40)
@@ -3645,8 +4220,8 @@ private fun UsageGoalChart(
     Surface(
         modifier = modifier,
         shape = RoundedCornerShape(24.dp),
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.76f),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.22f)),
+        color = primary.copy(alpha = 0.08f),
+        border = BorderStroke(1.dp, primary.copy(alpha = 0.12f)),
     ) {
         Column(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
@@ -3658,11 +4233,13 @@ private fun UsageGoalChart(
                 verticalAlignment = Alignment.Bottom,
             ) {
                 Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(
-                        text = AppText.t("group_total_usage"),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
+                    metricLabel?.let {
+                        Text(
+                            text = it,
+                            style = MaterialTheme.typography.labelMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
                     Text(
                         text = formatDuration(animatedUsageMillis),
                         style = MaterialTheme.typography.headlineMedium,
@@ -3796,6 +4373,7 @@ private fun AdaptiveRowGrid(
 @Composable
 private fun DailyFocusCard(
     focusState: SectionState<DailyFocusSectionData>,
+    compactLayout: Boolean = false,
 ) {
     when (focusState) {
         SectionState.Empty -> Unit
@@ -3826,12 +4404,14 @@ private fun DailyFocusCard(
                     DailyModeSummaryCard(
                         summary = focusState.data.control,
                         icon = Icons.Default.Bolt,
+                        compact = compactLayout,
                         modifier = modifier,
                     )
                 } else {
                     DailyModeSummaryCard(
                         summary = focusState.data.encourage,
                         icon = Icons.Default.RocketLaunch,
+                        compact = compactLayout,
                         modifier = modifier,
                     )
                 }
@@ -4101,54 +4681,15 @@ private fun ShareReportCard(
         }
     }
     previewBitmap?.let { bitmap ->
-        AlertDialog(
-            onDismissRequest = { previewBitmap = null },
-            title = {
-                Text(AppText.t("stats_share_preview"), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
-            },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Surface(
-                        shape = RoundedCornerShape(20.dp),
-                        color = MaterialTheme.colorScheme.surfaceContainerLow,
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
-                    ) {
-                        Image(
-                            bitmap = bitmap.asImageBitmap(),
-                            contentDescription = AppText.t("stats_report_poster_preview"),
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(520.dp)
-                                .padding(8.dp)
-                                .clip(RoundedCornerShape(16.dp)),
-                            contentScale = ContentScale.Fit,
-                        )
-                    }
-                }
-            },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        runCatching {
-                            shareReportBitmap(context = context, bitmap = bitmap)
-                        }.onFailure { error ->
-                            Toast.makeText(context, error.message ?: AppText.t("stats_failed_to_generate_share_image"), Toast.LENGTH_SHORT).show()
-                        }
-                    },
-                ) {
-                    Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(AppText.t("group_share"))
-                }
-            },
-            dismissButton = {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextButton(onClick = { generatePreview() }) {
-                        Text(AppText.t("stats_regenerate"))
-                    }
-                    TextButton(onClick = { previewBitmap = null }) {
-                        Text(AppText.t("group_close"))
-                    }
+        SharePreviewDialog(
+            bitmap = bitmap,
+            onDismiss = { previewBitmap = null },
+            onRegenerate = { generatePreview() },
+            onShare = {
+                runCatching {
+                    shareReportBitmap(context = context, bitmap = bitmap)
+                }.onFailure { error ->
+                    Toast.makeText(context, error.message ?: AppText.t("stats_failed_to_generate_share_image"), Toast.LENGTH_SHORT).show()
                 }
             },
         )
@@ -4156,9 +4697,211 @@ private fun ShareReportCard(
 }
 
 @Composable
+private fun CompactShareReportRow(
+    shareState: SectionState<ShareReportData>,
+) {
+    val context = LocalContext.current
+    val reportColors = LocalReportColors.current
+    val primary = MaterialTheme.colorScheme.primary
+    val surface = MaterialTheme.colorScheme.surface
+    val onSurface = MaterialTheme.colorScheme.onSurface
+    val onSurfaceVariant = MaterialTheme.colorScheme.onSurfaceVariant
+    val data = (shareState as? SectionState.Ready)?.data
+    var previewBitmap by remember(data) { mutableStateOf<Bitmap?>(null) }
+
+    fun generatePreview() {
+        val readyData = data ?: return
+        runCatching {
+            renderShareReportBitmapV2(
+                context = context,
+                data = readyData,
+                primary = primary,
+                surface = surface,
+                onSurface = onSurface,
+                onSurfaceVariant = onSurfaceVariant,
+                palette = reportColors.appChartPalette,
+            )
+        }.onSuccess { bitmap ->
+            previewBitmap = bitmap
+        }.onFailure { error ->
+            Toast.makeText(
+                context,
+                error.message ?: AppText.t("stats_failed_to_generate_share_image"),
+                Toast.LENGTH_SHORT,
+            ).show()
+        }
+    }
+
+    Surface(
+        shape = RoundedCornerShape(20.dp),
+        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.28f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f)),
+    ) {
+        if (shareState == SectionState.Loading) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                SkeletonCircle(18.dp)
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    SkeletonLine(width = 96.dp, height = 12.dp)
+                    SkeletonLine(fill = true, height = 10.dp)
+                }
+                SkeletonPill(width = 74.dp)
+            }
+        } else {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Surface(
+                    modifier = Modifier.size(38.dp),
+                    shape = RoundedCornerShape(14.dp),
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Default.Share,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(18.dp),
+                        )
+                    }
+                }
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(
+                        text = AppText.t("stats_share_report"),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Text(
+                        text = data?.insight ?: AppText.t("stats_preview_the_poster_then_share_it_with_friends"),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                Button(
+                    onClick = { generatePreview() },
+                    enabled = data != null,
+                ) {
+                    Text(AppText.t("stats_preview_share_poster"))
+                }
+            }
+        }
+    }
+
+    previewBitmap?.let { bitmap ->
+        SharePreviewDialog(
+            bitmap = bitmap,
+            onDismiss = { previewBitmap = null },
+            onRegenerate = { generatePreview() },
+            onShare = {
+                runCatching {
+                    shareReportBitmap(context = context, bitmap = bitmap)
+                }.onFailure { error ->
+                    Toast.makeText(
+                        context,
+                        error.message ?: AppText.t("stats_failed_to_generate_share_image"),
+                        Toast.LENGTH_SHORT,
+                    ).show()
+                }
+            },
+        )
+    }
+}
+
+@Composable
+private fun SharePreviewDialog(
+    bitmap: Bitmap,
+    onDismiss: () -> Unit,
+    onRegenerate: () -> Unit,
+    onShare: () -> Unit,
+) {
+    val scrollState = rememberScrollState()
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight(0.94f)
+                .padding(16.dp),
+            shape = RoundedCornerShape(28.dp),
+            color = MaterialTheme.colorScheme.surface,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.28f)),
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = AppText.t("stats_share_preview"),
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    TextButton(onClick = onDismiss) { Text(AppText.t("group_close")) }
+                }
+                Surface(
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(22.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerLow,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)),
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .verticalScroll(scrollState)
+                            .padding(8.dp),
+                    ) {
+                        Image(
+                            bitmap = bitmap.asImageBitmap(),
+                            contentDescription = AppText.t("stats_report_poster_preview"),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(18.dp)),
+                            contentScale = ContentScale.FillWidth,
+                        )
+                    }
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    TextButton(onClick = onRegenerate) {
+                        Text(AppText.t("stats_regenerate"))
+                    }
+                    Spacer(modifier = Modifier.weight(1f))
+                    OutlinedButton(onClick = onDismiss) {
+                        Text(AppText.t("group_close"))
+                    }
+                    Button(onClick = onShare) {
+                        Text(AppText.t("group_share"))
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun DailyModeSummaryCard(
     summary: DailyModeSummary,
     icon: ImageVector,
+    compact: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val reportColors = LocalReportColors.current
@@ -4181,16 +4924,19 @@ private fun DailyModeSummaryCard(
         shadowElevation = 0.dp,
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 14.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            modifier = Modifier.padding(
+                horizontal = if (compact) 12.dp else 14.dp,
+                vertical = if (compact) 12.dp else 14.dp,
+            ),
+            verticalArrangement = Arrangement.spacedBy(if (compact) 8.dp else 10.dp),
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                horizontalArrangement = Arrangement.spacedBy(if (compact) 8.dp else 10.dp),
             ) {
                 Surface(
-                    modifier = Modifier.size(36.dp),
+                    modifier = Modifier.size(if (compact) 32.dp else 36.dp),
                     shape = RoundedCornerShape(12.dp),
                     color = accent.copy(alpha = 0.16f),
                 ) {
@@ -4199,14 +4945,14 @@ private fun DailyModeSummaryCard(
                             imageVector = icon,
                             contentDescription = null,
                             tint = accent,
-                            modifier = Modifier.size(19.dp),
+                            modifier = Modifier.size(if (compact) 17.dp else 19.dp),
                         )
                     }
                 }
                 Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
                     Text(
                         text = summary.title,
-                        style = MaterialTheme.typography.titleMedium,
+                        style = if (compact) MaterialTheme.typography.titleSmall else MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -4215,7 +4961,7 @@ private fun DailyModeSummaryCard(
                         text = summary.description,
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 2,
+                        maxLines = if (compact) 1 else 2,
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
@@ -4228,7 +4974,7 @@ private fun DailyModeSummaryCard(
                 )
                 Text(
                     text = animatedPrimaryValue,
-                    style = MaterialTheme.typography.headlineSmall,
+                    style = if (compact) MaterialTheme.typography.titleLarge else MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.Bold,
                     color = accent,
                     maxLines = 1,
@@ -4236,15 +4982,18 @@ private fun DailyModeSummaryCard(
                 )
             }
             BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-                val metricSize = ((maxWidth - 10.dp) / 2).coerceIn(64.dp, 82.dp)
+                val metricSize = ((maxWidth - 10.dp) / 2).coerceIn(
+                    if (compact) 58.dp else 64.dp,
+                    if (compact) 74.dp else 82.dp,
+                )
                 Column(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(if (compact) 8.dp else 10.dp),
                 ) {
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        horizontalArrangement = Arrangement.spacedBy(if (compact) 8.dp else 10.dp),
                     ) {
                         FocusProgressRing(
                             progress = summary.progress,
@@ -4264,7 +5013,7 @@ private fun DailyModeSummaryCard(
                         } ?: Spacer(modifier = Modifier.size(metricSize))
                     }
                     Row(
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        horizontalArrangement = Arrangement.spacedBy(if (compact) 8.dp else 10.dp),
                     ) {
                         summary.metrics.drop(1).take(2).forEachIndexed { index, metric ->
                             FocusMetricPill(
@@ -5086,17 +5835,17 @@ private fun TopUsageBarRow(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 10.dp, vertical = 10.dp),
+                .padding(horizontal = 10.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Surface(
-                modifier = Modifier.width(28.dp),
+                modifier = Modifier.width(26.dp),
                 shape = RoundedCornerShape(999.dp),
                 color = color.copy(alpha = if (isTopRank) 0.22f else 0.14f),
             ) {
                 Box(
-                    modifier = Modifier.padding(vertical = 6.dp),
+                    modifier = Modifier.padding(vertical = 5.dp),
                     contentAlignment = Alignment.Center,
                 ) {
                     Text(
@@ -5108,7 +5857,7 @@ private fun TopUsageBarRow(
                 }
             }
             AppIconCircle(item.packageName)
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(
                     text = item.label,
                     style = MaterialTheme.typography.bodyMedium,
@@ -5122,7 +5871,7 @@ private fun TopUsageBarRow(
                     delayMillis = delayMillis,
                 )
             }
-            Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(1.dp)) {
                 Text(
                     text = formatDuration(animatedDuration),
                     style = MaterialTheme.typography.titleSmall,
@@ -5409,6 +6158,7 @@ private fun MiniInsightCard(
     label: String,
     value: String,
     visualRatio: Float? = null,
+    compact: Boolean = false,
     delayMillis: Int = when (icon) {
         Icons.Default.Schedule -> 460
         Icons.Default.AccessTime -> 500
@@ -5429,24 +6179,66 @@ private fun MiniInsightCard(
         shape = RoundedCornerShape(18.dp),
         color = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.56f),
     ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(16.dp),
-            )
-            Text(text = label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(text = animatedValue, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-            if (visualRatio != null) {
-                GradientProgressBar(
-                    progress = visualRatio.coerceIn(0f, 1f),
-                    color = accent,
-                    delayMillis = delayMillis,
+        if (compact) {
+            Column(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(7.dp),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(16.dp),
+                    )
+                    Text(
+                        text = label,
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        text = animatedValue,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                if (visualRatio != null) {
+                    GradientProgressBar(
+                        progress = visualRatio.coerceIn(0f, 1f),
+                        color = accent,
+                        delayMillis = delayMillis,
+                    )
+                }
+            }
+        } else {
+            Column(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(16.dp),
                 )
+                Text(text = label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(text = animatedValue, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                if (visualRatio != null) {
+                    GradientProgressBar(
+                        progress = visualRatio.coerceIn(0f, 1f),
+                        color = accent,
+                        delayMillis = delayMillis,
+                    )
+                }
             }
         }
     }
@@ -5742,6 +6534,8 @@ private fun ComparisonCard(
 private fun ComparisonRow(
     item: ComparisonMetric,
     delayMillis: Int = 0,
+    averageBarLabel: String = AppText.t("stats_average"),
+    showChips: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     val animatedTodayValue = animateMetricDisplayText(
@@ -5768,17 +6562,23 @@ private fun ComparisonRow(
                 Text(text = animatedTodayValue, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
             }
             item.chartData?.let { data ->
-                ComparisonMiniBars(data = data, delayMillis = delayMillis)
+                ComparisonMiniBars(
+                    data = data,
+                    delayMillis = delayMillis,
+                    averageLabel = averageBarLabel,
+                )
             }
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                item.yesterdayDelta?.let {
-                    ComparisonChip(text = it)
-                }
-                item.averageDelta?.let {
-                    ComparisonChip(text = it)
+            if (showChips) {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    item.yesterdayDelta?.let {
+                        ComparisonChip(text = it)
+                    }
+                    item.averageDelta?.let {
+                        ComparisonChip(text = it)
+                    }
                 }
             }
         }
@@ -5789,6 +6589,7 @@ private fun ComparisonRow(
 private fun ComparisonMiniBars(
     data: ComparisonChartData,
     delayMillis: Int,
+    averageLabel: String = AppText.t("stats_average"),
 ) {
     val values = listOfNotNull(data.previousValue, data.averageValue, data.currentValue)
     val maxValue = values.maxOrNull()?.coerceAtLeast(1L) ?: 1L
@@ -5796,7 +6597,7 @@ private fun ComparisonMiniBars(
     val bars =
         listOf(
             Triple(AppText.t("stats_previous"), data.previousValue, data.previousLabel),
-            Triple(AppText.t("stats_average"), data.averageValue, data.averageLabel),
+            Triple(averageLabel, data.averageValue, data.averageLabel),
             Triple(AppText.t("stats_current"), data.currentValue, data.currentLabel),
         )
     Column(
@@ -6004,7 +6805,7 @@ private fun renderShareReportBitmapV2(
     palette: List<Color>,
 ): Bitmap {
     val width = 1080
-    val height = 1920
+    val height = 2320
     val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
     val canvas = android.graphics.Canvas(bitmap)
     val primaryArgb = primary.toArgb()
@@ -6036,7 +6837,7 @@ private fun renderShareReportBitmapV2(
     }
     val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
         color = mutedArgb
-        textSize = 27f
+        textSize = 26f
         typeface = bodyTypeface
     }
     val bodyPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -6044,176 +6845,415 @@ private fun renderShareReportBitmapV2(
         textSize = 30f
         typeface = bodyTypeface
     }
+    val sectionTitlePaint = Paint(titlePaint).apply { textSize = 36f }
 
     drawSharePosterIcon(context, canvas, context.packageName, "T", 104f, 106f, 82f, primaryArgb)
     canvas.drawText(data.title, 208f, 142f, titlePaint)
     canvas.drawText(data.subtitle, 208f, 190f, subtitlePaint)
-    drawShareStatusPill(canvas, RectF(width - 276f, 120f, width - 104f, 176f), positiveArgb, AppText.t("stats_label_4"))
-
-    val heroRect = RectF(104f, 232f, width - 104f, 560f)
-    canvas.drawRoundRect(
-        heroRect,
-        42f,
-        42f,
-        Paint(Paint.ANTI_ALIAS_FLAG).apply { color = primary.copy(alpha = 0.08f).toArgb() },
+    drawShareStatusPill(
+        canvas,
+        RectF(width - 320f, 116f, width - 104f, 176f),
+        positiveArgb,
+        when (data.tab) {
+            ReportTab.DAY -> AppText.t("stats_daily_report")
+            ReportTab.WEEK -> AppText.t("stats_weekly_report")
+            ReportTab.MONTH -> AppText.t("stats_monthly_report")
+            ReportTab.YEAR -> AppText.t("stats_yearly_report")
+        },
     )
-    drawShareTransparentAppIcon(context, canvas, heroRect.right - 420f, heroRect.top - 54f, 500f, 28)
-    canvas.drawCircle(154f, heroRect.top + 52f, 11f, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = positiveArgb })
+    val sloganRect = RectF(104f, 214f, 620f, 274f)
+    canvas.drawRoundRect(
+        sloganRect,
+        30f,
+        30f,
+        Paint(Paint.ANTI_ALIAS_FLAG).apply { color = primary.copy(alpha = 0.1f).toArgb() },
+    )
     canvas.drawText(
-        AppText.t("stats_today_status"),
-        178f,
-        heroRect.top + 64f,
+        data.slogan,
+        sloganRect.left + 24f,
+        sloganRect.centerY() + 10f,
         Paint(bodyPaint).apply {
-            color = positiveArgb
-            textSize = 30f
+            color = primaryArgb
+            textSize = 28f
             typeface = titleTypeface
         },
     )
-    canvas.drawText(data.statusTitle, 148f, heroRect.top + 132f, Paint(titlePaint).apply { textSize = 44f })
+
+    val heroRect = RectF(88f, 320f, width - 88f, 660f)
+    val softPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = primary.copy(alpha = 0.08f).toArgb() }
+    canvas.drawRoundRect(heroRect, 44f, 44f, softPaint)
+    canvas.drawRoundRect(
+        heroRect,
+        44f,
+        44f,
+        Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = primary.copy(alpha = 0.16f).toArgb()
+            style = Paint.Style.STROKE
+            strokeWidth = 2f
+        },
+    )
+    drawShareTransparentAppIcon(context, canvas, heroRect.right - 360f, heroRect.top + 8f, 360f, 22)
+    canvas.drawCircle(132f, heroRect.top + 50f, 11f, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = positiveArgb })
+    canvas.drawText(
+        AppText.t("stats_today_status"),
+        156f,
+        heroRect.top + 60f,
+        Paint(bodyPaint).apply {
+            color = positiveArgb
+            textSize = 28f
+            typeface = titleTypeface
+        },
+    )
+    canvas.drawText(data.statusTitle, 126f, heroRect.top + 124f, Paint(titlePaint).apply { textSize = 42f })
     canvas.drawText(
         data.primaryValue,
-        148f,
-        heroRect.top + 250f,
+        126f,
+        heroRect.top + 242f,
         Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = palette.getOrElse(0) { primary }.copy(alpha = 0.78f).toArgb()
-            textSize = 106f
+            color = palette.getOrElse(0) { primary }.copy(alpha = 0.8f).toArgb()
+            textSize = 98f
             typeface = displayTypeface
         },
     )
+    canvas.drawText(data.primaryLabel, 126f, heroRect.top + 286f, labelPaint)
     val goalDelta = data.goalMillis - data.totalUsageMillis
-    val goalText =
+    val reviewText =
         if (data.goalMillis > 0L) {
             if (goalDelta >= 0L) AppText.t("stats_remaining_value", formatDuration(goalDelta)) else AppText.t("stats_over_by_value", formatDuration(-goalDelta))
         } else {
             data.comparisonLabel
         }
-    val goalColor = if (data.goalMillis > 0L && goalDelta < 0L) warningArgb else positiveArgb
-    canvas.drawText(goalText, 148f, heroRect.top + 298f, Paint(bodyPaint).apply {
-        color = goalColor
-        textSize = 31f
-        typeface = titleTypeface
-    })
-
-    val progressLeft = 604f
-    val progressTop = heroRect.top + 208f
-    val progressWidth = 330f
-    val progressHeight = 28f
-    val goalBase = data.goalMillis.takeIf { it > 0L } ?: max(data.totalUsageMillis, 1L)
-    val progress = (data.totalUsageMillis.toFloat() / goalBase.toFloat()).coerceIn(0f, 1.18f)
-    canvas.drawRoundRect(
-        RectF(progressLeft, progressTop, progressLeft + progressWidth, progressTop + progressHeight),
-        18f,
-        18f,
-        Paint(Paint.ANTI_ALIAS_FLAG).apply { color = android.graphics.Color.argb(42, 126, 142, 158) },
-    )
-    val progressPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        shader =
-            android.graphics.LinearGradient(
-                progressLeft,
-                progressTop,
-                progressLeft + progressWidth,
-                progressTop,
-                intArrayOf(android.graphics.Color.argb(180, 174, 184, 198), warningArgb),
-                null,
-                android.graphics.Shader.TileMode.CLAMP,
-            )
-    }
-    canvas.drawRoundRect(
-        RectF(progressLeft, progressTop, progressLeft + progressWidth * progress.coerceIn(0f, 1f), progressTop + progressHeight),
-        18f,
-        18f,
-        progressPaint,
-    )
-    canvas.drawLine(
-        progressLeft + progressWidth,
-        progressTop - 10f,
-        progressLeft + progressWidth,
-        progressTop + progressHeight + 10f,
-        Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = warningArgb
-            strokeWidth = 4f
-        },
-    )
     canvas.drawText(
-        if (data.goalMillis > 0L) AppText.t("stats_target_value", formatDuration(data.goalMillis)) else AppText.t("stats_usage_progress"),
-        progressLeft,
-        progressTop + 68f,
-        Paint(labelPaint).apply { typeface = titleTypeface },
-    )
-    canvas.drawText(
-        "${(progress * 100f).roundToInt()}%",
-        progressLeft + 236f,
-        progressTop + 68f,
+        reviewText,
+        126f,
+        heroRect.top + 334f,
         Paint(bodyPaint).apply {
-            color = warningArgb
-            textSize = 34f
-            typeface = displayTypeface
+            color = if (data.goalMillis > 0L && goalDelta < 0L) warningArgb else positiveArgb
+            textSize = 30f
+            typeface = titleTypeface
         },
+    )
+    drawShareHeroMetric(
+        canvas = canvas,
+        rect = RectF(heroRect.right - 292f, heroRect.top + 58f, heroRect.right - 38f, heroRect.top + 144f),
+        label = data.metrics.getOrNull(0)?.label ?: AppText.t("stats_label_5"),
+        value = data.metrics.getOrNull(0)?.value ?: AppText.t("stats_none"),
+        accent = primaryArgb,
+        textArgb = textArgb,
+        mutedArgb = mutedArgb,
+    )
+    drawShareHeroMetric(
+        canvas = canvas,
+        rect = RectF(heroRect.right - 292f, heroRect.top + 160f, heroRect.right - 38f, heroRect.top + 246f),
+        label = data.metrics.getOrNull(1)?.label ?: AppText.t("stats_net_points"),
+        value = data.metrics.getOrNull(1)?.value ?: AppText.t("stats_none"),
+        accent = warningArgb,
+        textArgb = textArgb,
+        mutedArgb = mutedArgb,
+    )
+    drawShareHeroMetric(
+        canvas = canvas,
+        rect = RectF(heroRect.right - 292f, heroRect.top + 262f, heroRect.right - 38f, heroRect.top + 348f),
+        label = AppText.t("stats_top_apps"),
+        value = data.topApps.firstOrNull()?.label ?: AppText.t("stats_none"),
+        accent = positiveArgb,
+        textArgb = textArgb,
+        mutedArgb = mutedArgb,
     )
 
     drawShareFocusCards(
         canvas = canvas,
         data = data,
-        left = 104f,
-        top = 584f,
-        width = width - 208f,
+        left = 88f,
+        top = 716f,
+        width = width - 176f,
         primaryArgb = primaryArgb,
         positiveArgb = positiveArgb,
         warningArgb = warningArgb,
         textArgb = textArgb,
         mutedArgb = mutedArgb,
-        surfaceArgb = android.graphics.Color.argb(222, 255, 255, 255),
+        surfaceArgb = android.graphics.Color.argb(226, 255, 255, 255),
     )
-
-    drawShareAppConsumption(context, canvas, data.topApps, 308f, 1054f, 164f, palette, textArgb, mutedArgb, primary)
-    drawShareWeeklyTrend(
+    drawShareTimelineSection(
         canvas = canvas,
-        values = data.trendUsageMillis,
-        rect = RectF(104f, 1256f, width - 104f, 1546f),
+        rect = RectF(88f, 994f, width - 88f, 1388f),
+        data = data,
+        primary = primary,
+        warningArgb = warningArgb,
         textArgb = textArgb,
         mutedArgb = mutedArgb,
-        positiveArgb = positiveArgb,
-        warningArgb = warningArgb,
-        comparisonLabel = data.comparisonLabel,
     )
-
-    val insightRect = RectF(104f, 1572f, width - 104f, 1738f)
-    canvas.drawRoundRect(
-        insightRect,
-        32f,
-        32f,
-        Paint(Paint.ANTI_ALIAS_FLAG).apply { color = primary.copy(alpha = 0.08f).toArgb() },
+    drawShareTopAppsSection(
+        context = context,
+        canvas = canvas,
+        rect = RectF(88f, 1424f, width - 88f, 1900f),
+        apps = data.topApps,
+        palette = palette,
+        primary = primary,
+        textArgb = textArgb,
+        mutedArgb = mutedArgb,
     )
+    val summaryRect = RectF(88f, 1940f, width - 88f, 2188f)
+    canvas.drawRoundRect(summaryRect, 36f, 36f, softPaint)
+    canvas.drawText(AppText.t("stats_share_review_sentence"), 124f, summaryRect.top + 58f, sectionTitlePaint)
     canvas.drawText(
-        AppText.t("stats_share_review_sentence"),
-        136f,
-        insightRect.top + 54f,
-        Paint(titlePaint).apply {
-            textSize = 32f
-            color = textArgb
-        },
+        data.subtitle,
+        124f,
+        summaryRect.top + 100f,
+        Paint(subtitlePaint).apply { textSize = 26f },
     )
     drawMultilineText(
         canvas,
         buildSharePosterInsight(data),
-        136f,
-        insightRect.top + 106f,
-        insightRect.width() - 64f,
-        Paint(bodyPaint).apply { textSize = 28f },
-        38f,
-        2,
+        124f,
+        summaryRect.top + 154f,
+        summaryRect.width() - 72f,
+        Paint(bodyPaint).apply { textSize = 30f },
+        40f,
+        3,
     )
-    canvas.drawText(
-        AppText.t("stats_share_footer"),
-        104f,
-        height - 92f,
+    canvas.drawText(AppText.t("stats_share_footer"), 104f, height - 100f, Paint(subtitlePaint).apply { textSize = 28f })
+    return bitmap
+}
+
+private fun drawShareHeroMetric(
+    canvas: android.graphics.Canvas,
+    rect: RectF,
+    label: String,
+    value: String,
+    accent: Int,
+    textArgb: Int,
+    mutedArgb: Int,
+) {
+    canvas.drawRoundRect(
+        rect,
+        24f,
+        24f,
         Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = mutedArgb
-            textSize = 30f
-            typeface = titleTypeface
+            color = android.graphics.Color.argb(
+                24,
+                android.graphics.Color.red(accent),
+                android.graphics.Color.green(accent),
+                android.graphics.Color.blue(accent),
+            )
         },
     )
-    return bitmap
+    val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = mutedArgb
+        textSize = 22f
+        typeface = android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.NORMAL)
+    }
+    val valuePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = textArgb
+        textSize = 26f
+        typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.BOLD)
+    }
+    canvas.drawText(label, rect.left + 18f, rect.top + 30f, labelPaint)
+    drawEllipsizedText(canvas, value, rect.left + 18f, rect.top + 66f, rect.width() - 36f, valuePaint)
+}
+
+private fun drawShareTimelineSection(
+    canvas: android.graphics.Canvas,
+    rect: RectF,
+    data: ShareReportData,
+    primary: Color,
+    warningArgb: Int,
+    textArgb: Int,
+    mutedArgb: Int,
+) {
+    canvas.drawRoundRect(
+        rect,
+        40f,
+        40f,
+        Paint(Paint.ANTI_ALIAS_FLAG).apply { color = primary.copy(alpha = 0.08f).toArgb() },
+    )
+    val titlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = textArgb
+        textSize = 34f
+        typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.BOLD)
+    }
+    val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = mutedArgb
+        textSize = 22f
+        typeface = android.graphics.Typeface.create("sans-serif", android.graphics.Typeface.NORMAL)
+    }
+    canvas.drawText(
+        if (data.tab == ReportTab.DAY) AppText.t("stats_24_hour_distribution") else AppText.t("stats_archive_trend"),
+        rect.left + 36f,
+        rect.top + 54f,
+        titlePaint,
+    )
+    canvas.drawText(data.comparisonLabel, rect.left + 36f, rect.top + 88f, labelPaint)
+
+    val chartLeft = rect.left + 36f
+    val chartTop = rect.top + 126f
+    val chartRight = rect.right - 36f
+    val chartBottom = rect.top + 286f
+    val values =
+        when {
+            data.tab == ReportTab.DAY && data.hourlyUsageMillis.isNotEmpty() -> data.hourlyUsageMillis.take(24)
+            data.hourlyUsageMillis.isNotEmpty() -> data.hourlyUsageMillis
+            else -> data.trendUsageMillis
+        }.ifEmpty { listOf(0L, 0L, 0L, 0L) }
+    val maxValue = maxOf(values.maxOrNull() ?: 0L, data.targetMillisPerBucket ?: 0L, 1L)
+    val slotWidth = (chartRight - chartLeft) / values.size.toFloat()
+    val barWidth = slotWidth * 0.54f
+    val chartHeight = chartBottom - chartTop
+    val gridPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = android.graphics.Color.argb(28, android.graphics.Color.red(textArgb), android.graphics.Color.green(textArgb), android.graphics.Color.blue(textArgb))
+        strokeWidth = 2f
+    }
+    repeat(4) { index ->
+        val y = chartBottom - chartHeight * (index / 3f)
+        canvas.drawLine(chartLeft, y, chartRight, y, gridPaint)
+    }
+    values.forEachIndexed { index, value ->
+        val left = chartLeft + slotWidth * index + (slotWidth - barWidth) / 2f
+        val heightRatio = (value.toFloat() / maxValue.toFloat()).coerceIn(0f, 1f)
+        val top = chartBottom - chartHeight * heightRatio
+        canvas.drawRoundRect(
+            RectF(left, top, left + barWidth, chartBottom),
+            barWidth / 2f,
+            barWidth / 2f,
+            Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                shader = android.graphics.LinearGradient(
+                    left,
+                    top,
+                    left,
+                    chartBottom,
+                    primary.copy(alpha = 0.55f).toArgb(),
+                    primary.toArgb(),
+                    android.graphics.Shader.TileMode.CLAMP,
+                )
+            },
+        )
+    }
+    data.targetMillisPerBucket?.takeIf { data.tab == ReportTab.DAY && it > 0L }?.let { target ->
+        val y = chartBottom - chartHeight * (target.toFloat() / maxValue.toFloat()).coerceIn(0f, 1f)
+        canvas.drawLine(chartLeft, y, chartRight, y, Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = warningArgb
+            strokeWidth = 3f
+        })
+    }
+    val footerLabels =
+        if (data.tab == ReportTab.DAY) {
+            listOf("00:00", "06:00", "12:00", "18:00", "24:00")
+        } else {
+            buildShareTimelineLabels(data.timelineLabels.ifEmpty { data.trendUsageMillis.indices.map { (it + 1).toString() } })
+        }
+    footerLabels.forEachIndexed { index, label ->
+        val x = chartLeft + (chartRight - chartLeft) * (index / (footerLabels.size - 1).toFloat())
+        val widthHalf = Paint(labelPaint).measureText(label) / 2f
+        canvas.drawText(label, x - widthHalf, chartBottom + 34f, labelPaint)
+    }
+    val summaryTop = rect.bottom - 72f
+    val metricPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = textArgb
+        textSize = 24f
+        typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.BOLD)
+    }
+    val thirds = (rect.width() - 72f) / 3f
+    val items = listOf(
+        AppText.t("stats_peak_time") to buildSharePeakValue(data),
+        AppText.t("stats_night_use") to formatDuration(data.nightUsageMillis),
+        AppText.t("stats_target_complete") to buildShareGoalValue(data),
+    )
+    items.forEachIndexed { index, (label, value) ->
+        val startX = rect.left + 24f + thirds * index
+        canvas.drawText(label, startX, summaryTop, labelPaint)
+        drawEllipsizedText(canvas, value, startX, summaryTop + 34f, thirds - 16f, metricPaint)
+    }
+}
+
+private fun buildShareTimelineLabels(labels: List<String>): List<String> {
+    if (labels.isEmpty()) return listOf("1", "2", "3", "4")
+    if (labels.size <= 4) return labels
+    val indexes = listOf(0, labels.lastIndex / 3, (labels.lastIndex * 2) / 3, labels.lastIndex).distinct()
+    return indexes.map { labels[it] }
+}
+
+private fun buildSharePeakValue(data: ShareReportData): String {
+    if (data.hourlyUsageMillis.isEmpty()) return AppText.t("stats_none")
+    val index = data.hourlyUsageMillis.indices.maxByOrNull { data.hourlyUsageMillis[it] } ?: return AppText.t("stats_none")
+    val label = data.timelineLabels.getOrNull(index) ?: if (data.tab == ReportTab.DAY) dayHourLabel(index) else (index + 1).toString()
+    return "$label · ${formatDuration(data.hourlyUsageMillis.getOrElse(index) { 0L })}"
+}
+
+private fun buildShareGoalValue(data: ShareReportData): String {
+    return if (data.goalProgress != null) {
+        "${(data.goalProgress.coerceIn(0f, 1f) * 100f).roundToInt()}%"
+    } else {
+        data.comparisonLabel
+    }
+}
+
+private fun drawShareTopAppsSection(
+    context: Context,
+    canvas: android.graphics.Canvas,
+    rect: RectF,
+    apps: List<AppDisplayItem>,
+    palette: List<Color>,
+    primary: Color,
+    textArgb: Int,
+    mutedArgb: Int,
+) {
+    canvas.drawRoundRect(
+        rect,
+        40f,
+        40f,
+        Paint(Paint.ANTI_ALIAS_FLAG).apply { color = primary.copy(alpha = 0.08f).toArgb() },
+    )
+    val titlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = textArgb
+        textSize = 34f
+        typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.BOLD)
+    }
+    val bodyPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = textArgb
+        textSize = 26f
+        typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.BOLD)
+    }
+    val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = mutedArgb
+        textSize = 22f
+    }
+    canvas.drawText(AppText.t("stats_top_10_apps"), rect.left + 36f, rect.top + 54f, titlePaint)
+    canvas.drawText(AppText.t("stats_current_day_top_10_apps_only"), rect.left + 36f, rect.top + 88f, labelPaint)
+    val displayApps = apps.take(4)
+    val maxUsage = displayApps.maxOfOrNull { it.value }?.coerceAtLeast(1L) ?: 1L
+    displayApps.forEachIndexed { index, app ->
+        val rowTop = rect.top + 126f + index * 82f
+        val fallbackColor = palette.getOrNull(index) ?: primary
+        val appColor = extractAppChartColor(context, app.packageName, fallbackColor)
+        drawSharePosterIcon(context, canvas, app.packageName, app.label.take(1), rect.left + 36f, rowTop, 46f, appColor.toArgb())
+        canvas.drawText("${index + 1}", rect.left + 6f, rowTop + 28f, Paint(labelPaint).apply {
+            this.color = appColor.toArgb()
+            textSize = 24f
+            typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.BOLD)
+        })
+        drawEllipsizedText(canvas, app.label, rect.left + 96f, rowTop + 24f, 360f, bodyPaint)
+        canvas.drawText(formatDuration(app.value), rect.right - 40f, rowTop + 24f, Paint(bodyPaint).apply {
+            textAlign = Paint.Align.RIGHT
+        })
+        val barTop = rowTop + 42f
+        canvas.drawRoundRect(
+            RectF(rect.left + 96f, barTop, rect.right - 40f, barTop + 12f),
+            8f,
+            8f,
+            Paint(Paint.ANTI_ALIAS_FLAG).apply { color = appColor.copy(alpha = 0.14f).toArgb() },
+        )
+        canvas.drawRoundRect(
+            RectF(
+                rect.left + 96f,
+                barTop,
+                rect.left + 96f + (rect.right - rect.left - 136f) * (app.value.toFloat() / maxUsage.toFloat()).coerceIn(0.06f, 1f),
+                barTop + 12f,
+            ),
+            8f,
+            8f,
+            Paint(Paint.ANTI_ALIAS_FLAG).apply { color = appColor.toArgb() },
+        )
+    }
 }
 
 private fun drawSharePosterBackgroundV2(

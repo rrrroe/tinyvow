@@ -301,7 +301,13 @@
     <string name="home_well_done_yesterday_your_strong_will_saved_this">Well done. Yesterday, your strong will saved this much time in controlled apps:</string>
     <string name="home_yesterday_s_report">Yesterday\'s report</string>
     <string name="lab_laboratory_debug_tools">Laboratory (debug tools)</string>
+    <string name="lab_add_pro_days">+%1$d days</string>
+    <string name="lab_clear_debug_pro">Clear debug Pro</string>
+    <string name="lab_debug_pro_cleared">Debug Pro cleared</string>
+    <string name="lab_debug_pro_extended">Debug Pro extended by %1$d days</string>
     <string name="lab_points_simulation">Points simulation</string>
+    <string name="lab_pro_debug">Pro debug</string>
+    <string name="lab_pro_debug_description">Debug builds only. Adds local Pro time for any channel without changing real Google Play or activation records.</string>
     <string name="lab_report_test">Report test</string>
     <string name="lab_reset_report_state_clear_today_s_record">Reset report state (clear today\'s record)</string>
     <string name="lab_tip_after_resetting_restart_the_app_to_verify">Tip: after resetting, restart the app to verify yesterday\'s report again.</string>
@@ -519,6 +525,7 @@
     <string name="stats_preview_share_poster">Preview share poster</string>
     <string name="stats_preview_the_poster_then_share_it_with_friends">Preview the poster, then share it with friends or keep it as a record.</string>
     <string name="stats_previous">Previous</string>
+    <string name="stats_seven_day">7d</string>
     <string name="stats_reading_archived_daily_reports">Reading archived daily reports</string>
     <string name="stats_redemption">Redeem</string>
     <string name="stats_reference_value">Reference %1$s</string>
@@ -530,6 +537,7 @@
     <string name="stats_share">Share</string>
     <string name="stats_share_preview">Share preview</string>
     <string name="stats_share_report">Share report</string>
+    <string name="stats_share_slogan">One archived day, one clearer rhythm.</string>
     <string name="stats_shows_only_the_10_most_used_apps_in">Shows only the 10 most-used apps in the current archive window.</string>
     <string name="stats_spring">Spring</string>
     <string name="stats_summer">Summer</string>

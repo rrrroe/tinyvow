@@ -36,6 +36,9 @@ fun LaboratoryScreen(
     onAddPoints: (Double) -> Unit,
     onResetSummary: () -> Unit,
     onTriggerSummary: () -> Unit,
+    showDebugProControls: Boolean,
+    onExtendDebugPro: (Int) -> Unit,
+    onClearDebugPro: () -> Unit,
     onBack: () -> Unit,
 ) {
     Scaffold(
@@ -62,6 +65,35 @@ fun LaboratoryScreen(
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = { onAddPoints(10.0) }, modifier = Modifier.weight(1f)) { Text("+10") }
                 Button(onClick = { onAddPoints(100.0) }, modifier = Modifier.weight(1f)) { Text("+100") }
+            }
+
+            if (showDebugProControls) {
+                HorizontalDivider()
+
+                Text(AppText.t("lab_pro_debug"), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Text(
+                    AppText.t("lab_pro_debug_description"),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = { onExtendDebugPro(1) }, modifier = Modifier.weight(1f)) {
+                        Text(AppText.t("lab_add_pro_days", 1))
+                    }
+                    Button(onClick = { onExtendDebugPro(7) }, modifier = Modifier.weight(1f)) {
+                        Text(AppText.t("lab_add_pro_days", 7))
+                    }
+                    Button(onClick = { onExtendDebugPro(30) }, modifier = Modifier.weight(1f)) {
+                        Text(AppText.t("lab_add_pro_days", 30))
+                    }
+                }
+                Button(
+                    onClick = onClearDebugPro,
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary),
+                ) {
+                    Text(AppText.t("lab_clear_debug_pro"))
+                }
             }
 
             HorizontalDivider()

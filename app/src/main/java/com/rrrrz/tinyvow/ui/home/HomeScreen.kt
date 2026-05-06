@@ -87,6 +87,7 @@ import com.rrrrz.tinyvow.data.activation.LocalActivationSubscriptionRepository
 import com.rrrrz.tinyvow.data.auth.LocalAuthRepository
 import com.rrrrz.tinyvow.data.billing.NoopSubscriptionRepository
 import com.rrrrz.tinyvow.data.billing.PlayBillingSubscriptionRepository
+import com.rrrrz.tinyvow.data.billing.ProEntitlementState
 import com.rrrrz.tinyvow.data.billing.SubscriptionRepository
 import com.rrrrz.tinyvow.data.accessibility.AccessibilityServiceStateChecker
 import com.rrrrz.tinyvow.data.apps.InstalledAppRepository
@@ -125,6 +126,7 @@ import com.rrrrz.tinyvow.data.db.RedemptionEntity
 import com.rrrrz.tinyvow.data.db.RedemptionHistoryEntity
 import com.rrrrz.tinyvow.ui.rewards.RedeemScreen
 import com.rrrrz.tinyvow.ui.rewards.AchievementScreen
+import com.rrrrz.tinyvow.ui.rewards.AchievementBadge
 import com.rrrrz.tinyvow.ui.rewards.RedemptionHistoryScreen
 import com.rrrrz.tinyvow.ui.theme.DefaultThemeSeed
 import com.rrrrz.tinyvow.ui.theme.LocalThemeColors
@@ -315,8 +317,22 @@ fun HomeRoute(
     val usageAccessDisclosureAccepted by preferences.usageAccessDisclosureAccepted.collectAsState(initial = false)
     val accessibilityDisclosureAccepted by preferences.accessibilityDisclosureAccepted.collectAsState(initial = false)
     val userSession by authRepository.session.collectAsState(initial = null)
-    val proEntitlement by subscriptionRepository.entitlement.collectAsState()
+    val subscriptionEntitlement by subscriptionRepository.entitlement.collectAsState()
     val subscriptionOffers by subscriptionRepository.offers.collectAsState()
+    val debugProExpiresAtMillis by preferences.debugProExpiresAtMillis.collectAsState(initial = null)
+    val proEntitlement = remember(subscriptionEntitlement, debugProExpiresAtMillis) {
+        val now = System.currentTimeMillis()
+        val debugExpiresAt = debugProExpiresAtMillis
+        if (BuildConfig.DEBUG && debugExpiresAt != null && now <= debugExpiresAt) {
+            ProEntitlementState.active(
+                purchaseToken = "debug:lab",
+                expiresAtMillis = debugExpiresAt,
+                source = "debug_lab",
+            )
+        } else {
+            subscriptionEntitlement
+        }
+    }
 
     var currentScreen by remember { mutableStateOf(Screen.HOME) }
     var rewardsSection by remember { mutableStateOf(RewardsSection.STORE) }
@@ -941,6 +957,19 @@ fun HomeRoute(
                         },
                         onResetSummary = { coroutineScope.launch { preferences.setLastSummaryShownDate("reset") } },
                         onTriggerSummary = { showYesterdaySummary = true },
+                        showDebugProControls = BuildConfig.DEBUG,
+                        onExtendDebugPro = { days ->
+                            coroutineScope.launch {
+                                preferences.extendDebugPro(days, proEntitlement.expiresAtMillis)
+                                snackbarHostState.showSnackbar(AppText.t("lab_debug_pro_extended", days))
+                            }
+                        },
+                        onClearDebugPro = {
+                            coroutineScope.launch {
+                                preferences.clearDebugPro()
+                                snackbarHostState.showSnackbar(AppText.t("lab_debug_pro_cleared"))
+                            }
+                        },
                         onBack = { currentScreen = Screen.ME }
                     )
                 }
@@ -1195,38 +1224,18 @@ fun AchievementNotificationBanner(achievement: AchievementEntity) {
                 modifier = Modifier.padding(16.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // 等级徽章
-                Box(
-                    modifier = Modifier
-                        .size(56.dp)
-                        .background(
-                            Brush.sweepGradient(tierGradient),
-                            CircleShape
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    // 内圈
-                    Box(
-                        modifier = Modifier
-                            .size(50.dp)
-                            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.8f), CircleShape),
-                    )
-                    Text(
-                        text = achievement.iconEmoji,
-                        fontSize = 28.sp,
-                        modifier = Modifier.graphicsLayer {
-                            scaleX = pulse
-                            scaleY = pulse
-                        }
-                    )
-                }
+                AchievementBadge(
+                    achievement = achievement,
+                    modifier = Modifier.size(56.dp),
+                    animated = true,
+                )
                 Spacer(modifier = Modifier.width(16.dp))
                 Column {
                     Text(
                         tierLabel,
                         style = MaterialTheme.typography.labelLarge,
                         fontWeight = FontWeight.ExtraBold,
-                        color = Brush.linearGradient(tierGradient).let { Color.Unspecified } // 占位
+                        color = tierGradient.first()
                     )
                     Text(
                         achievement.localizedAchievementTitle(),
