@@ -11,6 +11,21 @@ interface RedemptionHistoryDao {
     @Query("SELECT * FROM redemption_history ORDER BY redeemed_at DESC")
     fun getAllHistory(): Flow<List<RedemptionHistoryEntity>>
 
+    @Query(
+        """
+        SELECT COUNT(*)
+        FROM redemption_history
+        WHERE reward_builtin_key = :builtinKey
+            AND redeemed_at >= :startInclusive
+            AND redeemed_at < :endExclusive
+        """
+    )
+    suspend fun countBuiltinPurchasesInRange(
+        builtinKey: String,
+        startInclusive: Long,
+        endExclusive: Long,
+    ): Int
+
     @Query("SELECT COUNT(*) FROM redemption_history WHERE redeemed_at >= :startInclusive AND redeemed_at < :endExclusive")
     suspend fun countInRange(startInclusive: Long, endExclusive: Long): Int
 

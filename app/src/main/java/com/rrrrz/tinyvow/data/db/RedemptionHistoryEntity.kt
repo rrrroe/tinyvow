@@ -21,6 +21,9 @@ data class RedemptionHistoryEntity(
     @ColumnInfo(name = "bonus_minutes")
     val bonusMinutes: Int = 0,
 
+    @ColumnInfo(name = "payload_json")
+    val payloadJson: String? = null,
+
     @ColumnInfo(name = "target_group_name")
     val targetGroupName: String? = null,
 

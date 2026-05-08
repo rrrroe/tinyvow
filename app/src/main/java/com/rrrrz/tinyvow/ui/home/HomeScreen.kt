@@ -1,4 +1,4 @@
-package com.rrrrz.tinyvow.ui.home
+﻿package com.rrrrz.tinyvow.ui.home
 
 import com.rrrrz.tinyvow.i18n.AppText
 
@@ -25,6 +25,7 @@ import androidx.compose.animation.core.*
 import androidx.compose.ui.unit.sp
 import androidx.compose.animation.*
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -38,6 +39,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -77,6 +79,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Popup
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -101,9 +104,13 @@ import com.rrrrz.tinyvow.data.repository.AppLimitRepository
 import com.rrrrz.tinyvow.data.repository.AchievementProgress
 import com.rrrrz.tinyvow.data.repository.DailyArchiveRepository
 import com.rrrrz.tinyvow.data.repository.PointsRepository
-import com.rrrrz.tinyvow.data.repository.RedeemRewardResult
+import com.rrrrz.tinyvow.data.repository.InventoryRewardItem
+import com.rrrrz.tinyvow.data.repository.PendingStreakShieldItem
+import com.rrrrz.tinyvow.data.repository.PurchaseRewardResult
+import com.rrrrz.tinyvow.data.repository.RewardStoreItem
 import com.rrrrz.tinyvow.data.repository.RewardSaveResult
 import com.rrrrz.tinyvow.data.repository.RewardSaveValidationError
+import com.rrrrz.tinyvow.data.repository.UseRewardResult
 import com.rrrrz.tinyvow.data.settings.ManagedAppPreferences
 import com.rrrrz.tinyvow.data.usage.UsageAccessStateChecker
 import com.rrrrz.tinyvow.data.usage.UsageAccessStatus
@@ -124,15 +131,16 @@ import com.rrrrz.tinyvow.data.db.AchievementEntity
 import com.rrrrz.tinyvow.data.db.AchievementTier
 import com.rrrrz.tinyvow.data.db.RedemptionEntity
 import com.rrrrz.tinyvow.data.db.RedemptionHistoryEntity
+import com.rrrrz.tinyvow.data.db.RewardUseHistoryEntity
 import com.rrrrz.tinyvow.ui.rewards.RedeemScreen
 import com.rrrrz.tinyvow.ui.rewards.AchievementScreen
 import com.rrrrz.tinyvow.ui.rewards.AchievementBadge
-import com.rrrrz.tinyvow.ui.rewards.RedemptionHistoryScreen
+import com.rrrrz.tinyvow.ui.rewards.RewardInventoryScreen
 import com.rrrrz.tinyvow.ui.theme.DefaultThemeSeed
 import com.rrrrz.tinyvow.ui.theme.LocalThemeColors
 
 enum class Screen { HOME, REWARDS, STATS, ME, LABORATORY, HISTORY, THEME, HELP_FEEDBACK, CONTACT_US }
-enum class RewardsSection { STORE, ACHIEVEMENTS, HISTORY }
+enum class RewardsSection { STORE, INVENTORY, ACHIEVEMENTS }
 
 private const val CONTACT_EMAIL = "rrrr.zhao@gmail.com"
 
@@ -157,10 +165,15 @@ fun RewardsHome(
     userPoints: Double,
     achievements: List<AchievementEntity>,
     achievementProgress: AchievementProgress,
-    rewards: List<RedemptionEntity>,
+    storeItems: List<RewardStoreItem>,
+    inventoryItems: List<InventoryRewardItem>,
+    pendingShieldItems: List<PendingStreakShieldItem>,
     groups: List<AppGroupWithApps>,
     redemptionHistory: List<RedemptionHistoryEntity>,
-    onRedeem: (RedemptionEntity, String?) -> Unit,
+    rewardUseHistory: List<RewardUseHistoryEntity>,
+    onPurchaseReward: (RedemptionEntity) -> Unit,
+    onUseInventoryReward: (RedemptionEntity, String?) -> Unit,
+    onResolvePendingShield: (String, Boolean) -> Unit,
     onAddReward: (String, Int, Int, String) -> Unit,
     onUpdateReward: (RedemptionEntity) -> Unit,
     onArchiveReward: (RedemptionEntity) -> Unit,
@@ -170,85 +183,132 @@ fun RewardsHome(
     onSectionChange: (RewardsSection) -> Unit,
 ) {
     Column(modifier = Modifier.fillMaxSize()) {
+        RewardsPrimarySwitcher(
+            currentSection = currentSection,
+            onSectionChange = onSectionChange,
+        )
         when (currentSection) {
             RewardsSection.STORE -> {
                 RedeemScreen(
                     userPoints = userPoints,
-                    rewards = rewards,
+                    storeItems = storeItems,
                     groups = groups,
-                    redemptionHistory = redemptionHistory,
-                    onRedeem = onRedeem,
+                    onPurchase = onPurchaseReward,
                     onAddReward = onAddReward,
                     onUpdateReward = onUpdateReward,
                     onArchiveReward = onArchiveReward,
                     isProActive = isProActive,
                     onShowProUpsell = onShowProUpsell,
-                    onOpenAchievements = { onSectionChange(RewardsSection.ACHIEVEMENTS) },
-                    onOpenHistory = { onSectionChange(RewardsSection.HISTORY) },
+                )
+            }
+            RewardsSection.INVENTORY -> {
+                RewardInventoryScreen(
+                    inventoryItems = inventoryItems,
+                    pendingItems = pendingShieldItems,
+                    groups = groups,
+                    redemptionHistory = redemptionHistory,
+                    rewardUseHistory = rewardUseHistory,
+                    onUseReward = onUseInventoryReward,
+                    onResolvePending = onResolvePendingShield,
                 )
             }
             RewardsSection.ACHIEVEMENTS -> {
-                RewardsSecondaryPage(
-                    title = AppText.t("home_achievements"),
-                    onBack = { onSectionChange(RewardsSection.STORE) },
-                ) {
-                    AchievementScreen(
-                        achievements = achievements,
-                        achievementProgress = achievementProgress,
-                        onBack = { onSectionChange(RewardsSection.STORE) },
-                    )
-                }
-            }
-            RewardsSection.HISTORY -> {
-                RewardsSecondaryPage(
-                    title = AppText.t("redeem_recent_redemptions"),
-                    onBack = { onSectionChange(RewardsSection.STORE) },
-                ) {
-                    RedemptionHistoryScreen(
-                        redemptionHistory = redemptionHistory,
-                    )
-                }
+                AchievementScreen(
+                    achievements = achievements,
+                    achievementProgress = achievementProgress,
+                    onBack = {},
+                )
             }
         }
     }
 }
 
 @Composable
-private fun RewardsSecondaryPage(
-    title: String,
-    onBack: () -> Unit,
-    content: @Composable () -> Unit,
+private fun RewardsPrimarySwitcher(
+    currentSection: RewardsSection,
+    onSectionChange: (RewardsSection) -> Unit,
 ) {
-    Column(modifier = Modifier.fillMaxSize()) {
-        Row(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 8.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 8.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        RewardsSwitchButton(
+            selected = currentSection == RewardsSection.STORE,
+            title = AppText.t("redeem_store_title"),
+            onClick = { onSectionChange(RewardsSection.STORE) },
+            modifier = Modifier.weight(1f),
+        )
+        RewardsSwitchButton(
+            selected = currentSection == RewardsSection.INVENTORY,
+            title = AppText.t("redeem_inventory_title"),
+            onClick = { onSectionChange(RewardsSection.INVENTORY) },
+            modifier = Modifier.weight(1f),
+        )
+        RewardsSwitchButton(
+            selected = currentSection == RewardsSection.ACHIEVEMENTS,
+            title = AppText.t("home_achievements"),
+            onClick = { onSectionChange(RewardsSection.ACHIEVEMENTS) },
+            modifier = Modifier.weight(1f),
+        )
+    }
+}
+
+@Composable
+private fun RewardsSwitchButton(
+    selected: Boolean,
+    title: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier.clickable(onClick = onClick),
+        shape = RoundedCornerShape(16.dp),
+        color =
+            if (selected) MaterialTheme.colorScheme.primaryContainer
+            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.44f),
+    ) {
+        Box(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            contentAlignment = Alignment.Center,
         ) {
-            IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = AppText.t("group_back"))
-            }
             Text(
                 text = title,
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold,
+                color =
+                    if (selected) MaterialTheme.colorScheme.onPrimaryContainer
+                    else MaterialTheme.colorScheme.onSurfaceVariant,
             )
-        }
-        Box(modifier = Modifier.weight(1f)) {
-            content()
         }
     }
 }
 
-private fun redeemResultMessage(result: RedeemRewardResult): String =
+private fun purchaseRewardResultMessage(result: PurchaseRewardResult): String =
     when (result) {
-        is RedeemRewardResult.Success -> result.message
-        RedeemRewardResult.InsufficientPoints -> AppText.t("redeem_error_insufficient_points")
-        RedeemRewardResult.OutOfStock -> AppText.t("redeem_error_out_of_stock")
-        RedeemRewardResult.MissingTargetGroup -> AppText.t("redeem_error_missing_target_group")
-        RedeemRewardResult.InvalidReward -> AppText.t("redeem_error_invalid_reward")
+        is PurchaseRewardResult.Success ->
+            AppText.t("redeem_purchase_success", result.rewardTitle, result.pointCost)
+        PurchaseRewardResult.InsufficientPoints -> AppText.t("redeem_error_insufficient_points")
+        PurchaseRewardResult.OutOfStock -> AppText.t("redeem_error_out_of_stock")
+        PurchaseRewardResult.DailyLimitReached -> AppText.t("redeem_error_daily_limit_reached")
+        PurchaseRewardResult.InvalidReward -> AppText.t("redeem_error_invalid_reward")
+    }
+
+private fun useRewardResultMessage(result: UseRewardResult): String =
+    when (result) {
+        is UseRewardResult.Success ->
+            if (result.messageArgs.isEmpty()) {
+                AppText.t(result.messageKey)
+            } else {
+                AppText.t(result.messageKey, *result.messageArgs.toTypedArray())
+            }
+        UseRewardResult.NotOwned -> AppText.t("redeem_error_not_owned")
+        UseRewardResult.InvalidTargetGroup -> AppText.t("redeem_error_missing_target_group")
+        UseRewardResult.AlreadyActive -> AppText.t("redeem_error_already_active")
+        UseRewardResult.AlreadyCompleted -> AppText.t("redeem_error_already_completed")
+        UseRewardResult.InvalidReward -> AppText.t("redeem_error_invalid_reward")
     }
 
 private fun rewardSaveResultMessage(result: RewardSaveResult): String? =
@@ -309,10 +369,13 @@ fun HomeRoute(
     val selectedThemeId by preferences.selectedThemeId.collectAsState(initial = DefaultThemeSeed.id)
     val customThemes by preferences.customThemes.collectAsState(initial = emptyList())
     val selectedAppLanguage by preferences.selectedAppLanguage.collectAsState(initial = com.rrrrz.tinyvow.i18n.AppLanguage.SYSTEM)
-    val rewards by appLimitRepository.getAllRewards().collectAsState(initial = emptyList())
+    val storeRewardItems by appLimitRepository.observeStoreRewardsWithInventory().collectAsState(initial = emptyList())
+    val inventoryRewardItems by appLimitRepository.observeInventoryRewards().collectAsState(initial = emptyList())
+    val pendingShieldItems by appLimitRepository.observePendingStreakShields().collectAsState(initial = emptyList())
     val achievements by appLimitRepository.getAllAchievements().collectAsState(initial = emptyList())
     val achievementProgress by appLimitRepository.observeAchievementProgress().collectAsState(initial = AchievementProgress())
     val redemptionHistory by appLimitRepository.getRedemptionHistory().collectAsState(initial = emptyList())
+    val rewardUseHistory by appLimitRepository.observeRewardUseHistory().collectAsState(initial = emptyList())
     val dismissedPermissionPrompts by preferences.dismissedPermissionPrompts.collectAsState(initial = emptySet())
     val usageAccessDisclosureAccepted by preferences.usageAccessDisclosureAccepted.collectAsState(initial = false)
     val accessibilityDisclosureAccepted by preferences.accessibilityDisclosureAccepted.collectAsState(initial = false)
@@ -382,7 +445,7 @@ fun HomeRoute(
         appLimitRepository.clearExpiredBonusTime(System.currentTimeMillis())
         dailyArchiveRepository.ensureArchivesUpToYesterday()
         
-        // 每日总结逻辑
+        // 姣忔棩鎬荤粨閫昏緫
         val today = LocalDate.now().toString()
         val lastShownFlow = preferences.lastSummaryShownDate
         val lastShown = lastShownFlow.first()
@@ -429,19 +492,26 @@ fun HomeRoute(
         }
     }
 
-    // 仅在应用首次启动时检查一次成就，避免每次积分变化都触发高代价 DB 扫描
+    // 浠呭湪搴旂敤棣栨鍚姩鏃舵鏌ヤ竴娆℃垚灏憋紝閬垮厤姣忔绉垎鍙樺寲閮借Е鍙戦珮浠ｄ环 DB 鎵弿
     LaunchedEffect(Unit) {
-        appLimitRepository.syncBuiltinRewards()
+        appLimitRepository.syncBuiltinRewardsV2()
         appLimitRepository.syncAchievementDefinitions()
         appLimitRepository.checkAchievements()
     }
 
     var newlyUnlockedAchievement by remember { mutableStateOf<AchievementEntity?>(null) }
+    val presentAchievementBanner: (AchievementEntity) -> Unit = { achievement ->
+        coroutineScope.launch {
+            newlyUnlockedAchievement = achievement
+            kotlinx.coroutines.delay(5000)
+            if (newlyUnlockedAchievement?.id == achievement.id) {
+                newlyUnlockedAchievement = null
+            }
+        }
+    }
     LaunchedEffect(Unit) {
         appLimitRepository.newAchievementsAction.collectLatest { achievement ->
-            newlyUnlockedAchievement = achievement
-            kotlinx.coroutines.delay(5000) // 显示 5 秒
-            newlyUnlockedAchievement = null
+            presentAchievementBanner(achievement)
         }
     }
 
@@ -605,13 +675,30 @@ fun HomeRoute(
                         userPoints = userPoints,
                         achievements = achievements,
                         achievementProgress = achievementProgress,
-                        rewards = rewards,
-                        groups = groupsWithApps,
-                        redemptionHistory = redemptionHistory,
-                        onRedeem = { reward, gId -> 
+                        storeItems = storeRewardItems,
+                        inventoryItems = inventoryRewardItems,
+                            pendingShieldItems = pendingShieldItems,
+                            groups = groupsWithApps,
+                            redemptionHistory = redemptionHistory,
+                            rewardUseHistory = rewardUseHistory,
+                            onPurchaseReward = { reward ->
                             coroutineScope.launch {
                                 snackbarHostState.showSnackbar(
-                                    redeemResultMessage(appLimitRepository.redeemReward(reward, gId))
+                                    purchaseRewardResultMessage(appLimitRepository.purchaseReward(reward.id))
+                                )
+                            }
+                        },
+                        onUseInventoryReward = { reward, groupId ->
+                            coroutineScope.launch {
+                                snackbarHostState.showSnackbar(
+                                    useRewardResultMessage(appLimitRepository.useInventoryReward(reward.id, groupId))
+                                )
+                            }
+                        },
+                        onResolvePendingShield = { pendingId, useShield ->
+                            coroutineScope.launch {
+                                snackbarHostState.showSnackbar(
+                                    useRewardResultMessage(appLimitRepository.resolvePendingStreakShield(pendingId, useShield))
                                 )
                             }
                         },
@@ -955,6 +1042,24 @@ fun HomeRoute(
                                 pointsRepository.recordManualAdjustment(pts, "Laboratory adjustment")
                             }
                         },
+                        onTriggerAchievementPopupTest = {
+                            coroutineScope.launch {
+                                val sampleAchievement =
+                                    achievements.firstOrNull { it.id == "DIAMOND_POINTS" }
+                                        ?: achievements.firstOrNull { it.tier == AchievementTier.DIAMOND }
+                                        ?: achievements.firstOrNull()
+                                if (sampleAchievement == null) {
+                                    snackbarHostState.showSnackbar(AppText.t("lab_achievement_test_unavailable"))
+                                    return@launch
+                                }
+                                presentAchievementBanner(
+                                    sampleAchievement.copy(
+                                        isUnlocked = true,
+                                        unlockedAt = System.currentTimeMillis(),
+                                    )
+                                )
+                            }
+                        },
                         onResetSummary = { coroutineScope.launch { preferences.setLastSummaryShownDate("reset") } },
                         onTriggerSummary = { showYesterdaySummary = true },
                         showDebugProControls = BuildConfig.DEBUG,
@@ -1034,19 +1139,21 @@ fun HomeRoute(
         )
     }
 
-    // ──────── 成就解锁通知横幅 ────────
-    AnimatedVisibility(
-        visible = newlyUnlockedAchievement != null,
-        enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
-        exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut(),
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        newlyUnlockedAchievement?.let { achievement ->
-            AchievementNotificationBanner(achievement)
+        // 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ 鎴愬氨瑙ｉ攣閫氱煡妯箙 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+        AnimatedVisibility(
+            visible = newlyUnlockedAchievement != null,
+            enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
+            exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut(),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            newlyUnlockedAchievement?.let { achievement ->
+                Popup(alignment = Alignment.TopCenter) {
+                    AchievementNotificationBanner(achievement)
+                }
+            }
         }
-    }
 
-    pendingSensitiveDisclosure?.let { disclosure ->
+        pendingSensitiveDisclosure?.let { disclosure ->
         SensitivePermissionDisclosureDialog(
             disclosure = disclosure,
             onDismiss = { pendingSensitiveDisclosure = null },
@@ -1194,7 +1301,8 @@ fun AchievementNotificationBanner(achievement: AchievementEntity) {
     Surface(
         modifier = Modifier
             .padding(16.dp)
-            .fillMaxWidth()
+            .fillMaxWidth(0.94f)
+            .wrapContentHeight()
             .padding(top = 24.dp)
             .graphicsLayer { 
                 scaleX = bounceScale * (if (achievement.tier >= AchievementTier.GOLD) pulse else 1f)
@@ -1205,9 +1313,14 @@ fun AchievementNotificationBanner(achievement: AchievementEntity) {
         tonalElevation = 8.dp,
         shadowElevation = 12.dp
     ) {
-        Box(modifier = Modifier.fillMaxWidth().clip(RoundedCornerShape(20.dp))) {
-            // 光泽扫光效果
-            Canvas(modifier = Modifier.fillMaxSize()) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .wrapContentHeight()
+                .clip(RoundedCornerShape(20.dp))
+        ) {
+            // 鍏夋辰鎵厜鏁堟灉
+            Canvas(modifier = Modifier.matchParentSize()) {
                 if (achievement.tier >= AchievementTier.GOLD) {
                     drawRect(
                         brush = Brush.linearGradient(
@@ -1348,7 +1461,7 @@ fun HomeScreen(
     val coroutineScope = rememberCoroutineScope()
     var usageMap by remember { mutableStateOf<Map<String, Long>>(emptyMap()) }
     
-    // 定时刷新各分组用量：批量查询一次 UsageStats，过滤分组汇总。这样可将 N 次 IPC 降为 1 次
+    // 瀹氭椂鍒锋柊鍚勫垎缁勭敤閲忥細鎵归噺鏌ヨ涓€娆?UsageStats锛岃繃婊ゅ垎缁勬眹鎬汇€傝繖鏍峰彲灏?N 娆?IPC 闄嶄负 1 娆?
     LaunchedEffect(groupsWithApps, usageAccessStatus) {
         if (usageAccessStatus != UsageAccessStatus.GRANTED) {
             usageMap = emptyMap()
@@ -1358,7 +1471,7 @@ fun HomeScreen(
         while (true) {
             val todayStart = java.time.LocalDate.now(java.time.ZoneId.systemDefault())
                 .atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
-            // 一次性获得所有包名的用量 Map
+            // 涓€娆℃€ц幏寰楁墍鏈夊寘鍚嶇殑鐢ㄩ噺 Map
             val allUsage = usageRepo.getUsageStats(todayStart, System.currentTimeMillis())
             val newMap = mutableMapOf<String, Long>()
             groupsWithApps.forEach { groupWithApps ->
@@ -1366,7 +1479,7 @@ fun HomeScreen(
                     groupWithApps.packageNames.sumOf { allUsage[it] ?: 0L }
             }
             usageMap = newMap
-            kotlinx.coroutines.delay(5000L) // 5秒刷新一次
+            kotlinx.coroutines.delay(5000L) // 5绉掑埛鏂颁竴娆?
         }
     }
     val usageAccessGranted = usageAccessStatus == UsageAccessStatus.GRANTED
@@ -1415,7 +1528,7 @@ fun HomeScreen(
                     .padding(horizontal = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                // 计算今日进度
+                // 璁＄畻浠婃棩杩涘害
                 val controlGroups = groupsWithApps.filter { it.group.type == GroupType.CONTROL }
                 val encourageGroups = groupsWithApps.filter { it.group.type == GroupType.ENCOURAGE }
                 
@@ -1440,7 +1553,7 @@ fun HomeScreen(
                 }
                 val displayTodayPoints = liveTodayPoints
 
-                // 积分与今日概览
+                // 绉垎涓庝粖鏃ユ瑙?
                 if (usageAccessGranted) {
                     ElevatedCard(
                         modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
@@ -1573,7 +1686,6 @@ fun HomeScreen(
                     onShowProUpsell = onShowProUpsell,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .weight(1f)
                         .padding(start = 16.dp, end = 16.dp, top = 8.dp)
                 )
             } else {
@@ -1633,9 +1745,9 @@ fun HomeScreen(
 
                     Spacer(modifier = Modifier.height(48.dp))
                 }
-            }
         }
     }
+}
 }
 
 @Composable

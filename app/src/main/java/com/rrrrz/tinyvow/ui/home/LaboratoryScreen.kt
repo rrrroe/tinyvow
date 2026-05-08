@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.dp
 @Composable
 fun LaboratoryScreen(
     onAddPoints: (Double) -> Unit,
+    onTriggerAchievementPopupTest: () -> Unit,
     onResetSummary: () -> Unit,
     onTriggerSummary: () -> Unit,
     showDebugProControls: Boolean,
@@ -65,6 +66,21 @@ fun LaboratoryScreen(
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = { onAddPoints(10.0) }, modifier = Modifier.weight(1f)) { Text("+10") }
                 Button(onClick = { onAddPoints(100.0) }, modifier = Modifier.weight(1f)) { Text("+100") }
+            }
+
+            HorizontalDivider()
+
+            Text(AppText.t("lab_achievement_test"), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text(
+                AppText.t("lab_achievement_test_description"),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Button(
+                onClick = onTriggerAchievementPopupTest,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(AppText.t("lab_trigger_achievement_popup"))
             }
 
             if (showDebugProControls) {

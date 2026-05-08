@@ -50,6 +50,14 @@ data class DailyGroupArchiveEntity(
     val earnedPoints: Double = 0.0,
     @ColumnInfo(name = "spent_points")
     val spentPoints: Double = 0.0,
+    @ColumnInfo(name = "reward_exempted")
+    val rewardExempted: Boolean = false,
+    @ColumnInfo(name = "reward_exempt_type")
+    val rewardExemptType: String? = null,
+    @ColumnInfo(name = "reward_bonus_points")
+    val rewardBonusPoints: Double = 0.0,
+    @ColumnInfo(name = "reward_effect_snapshot_json")
+    val rewardEffectSnapshotJson: String? = null,
     val completed: Boolean = false,
     @ColumnInfo(name = "sort_order")
     val sortOrder: Int = 0,

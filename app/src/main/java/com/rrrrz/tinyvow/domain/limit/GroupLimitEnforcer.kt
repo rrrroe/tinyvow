@@ -6,6 +6,8 @@ import com.rrrrz.tinyvow.data.db.AppDatabase
 import com.rrrrz.tinyvow.data.db.AppGroupEntity
 import com.rrrrz.tinyvow.data.db.GroupType
 import com.rrrrz.tinyvow.data.db.LimitPeriod
+import com.rrrrz.tinyvow.data.db.RewardType
+import com.rrrrz.tinyvow.data.repository.parseRewardPayload
 import com.rrrrz.tinyvow.data.usage.UsageStatsUsageRepository
 
 /**
@@ -17,6 +19,7 @@ class GroupLimitEnforcer(context: Context) {
     private val crossRefDao = database.crossRefDao()
     private val groupDao = database.appGroupDao()
     private val bonusTimeDao = database.bonusTimeDao()
+    private val activeRewardEffectDao = database.activeRewardEffectDao()
     private val usageRepository = UsageStatsUsageRepository(context)
 
     private data class ConfigCacheEntry(val groupIds: List<String>, val fetchedAt: Long)
@@ -36,9 +39,16 @@ class GroupLimitEnforcer(context: Context) {
         val groups = groupDao.getGroupsByIdsSync(groupIds)
 
         for (group in groups) {
-            // 基础限额 + 加时包
+            val activeEffects = activeRewardEffectDao.getActiveForGroup(group.id, currentTimeMillis)
+            if (activeEffects.any { it.effectType == RewardType.PERIOD_PASS }) {
+                continue
+            }
+            val effectBonusMillis =
+                activeEffects
+                    .filter { it.effectType == RewardType.TIME_ADD || it.effectType == RewardType.EMERGENCY_UNLOCK }
+                    .sumOf { parseRewardPayload(it.payloadJson).minutes * 60_000L }
             val baseLimitMillis = group.limitMinutes * 60_000L
-            val bonusMillis = getSyncBonusTimeMillis(group.id, currentTimeMillis)
+            val bonusMillis = getSyncBonusTimeMillis(group.id, currentTimeMillis) + effectBonusMillis
             val totalLimitMillis = baseLimitMillis + bonusMillis
 
             // 统计周期内的历史用量

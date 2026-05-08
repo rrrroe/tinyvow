@@ -8,6 +8,9 @@ interface RedemptionDao {
     @Query("SELECT * FROM redemptions WHERE is_active = 1 ORDER BY created_at DESC")
     fun getAllActiveRedemptions(): Flow<List<RedemptionEntity>>
 
+    @Query("SELECT * FROM redemptions WHERE is_active = 1 ORDER BY created_at DESC")
+    suspend fun getAllActiveRedemptionsSync(): List<RedemptionEntity>
+
     @Query("SELECT * FROM redemptions WHERE builtin_key = :builtinKey LIMIT 1")
     suspend fun getRedemptionByBuiltinKey(builtinKey: String): RedemptionEntity?
 

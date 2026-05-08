@@ -6,12 +6,20 @@ import androidx.room.Index
 import androidx.room.PrimaryKey
 
 enum class RewardType {
-    TIME_PACK,
+    TIME_ADD,
+    PERIOD_PASS,
+    EMERGENCY_UNLOCK,
+    STREAK_SHIELD,
+    DOUBLE_POINTS_DAY,
     CUSTOM
 }
 
 enum class RedemptionHistoryType {
-    TIME_PACK,
+    TIME_ADD,
+    PERIOD_PASS,
+    EMERGENCY_UNLOCK,
+    STREAK_SHIELD,
+    DOUBLE_POINTS_DAY,
     CUSTOM
 }
 
@@ -39,7 +47,10 @@ data class RedemptionEntity(
     val rewardType: RewardType,
     
     @ColumnInfo(name = "bonus_minutes")
-    val bonusMinutes: Int = 0, // 仅针对 TIME_PACK
+    val bonusMinutes: Int = 0,
+
+    @ColumnInfo(name = "payload_json")
+    val payloadJson: String? = null,
     
     @ColumnInfo(name = "is_active")
     val isActive: Boolean = true,

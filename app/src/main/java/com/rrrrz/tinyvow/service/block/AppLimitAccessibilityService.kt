@@ -13,10 +13,14 @@ import com.rrrrz.tinyvow.data.db.AppDatabase
 import com.rrrrz.tinyvow.data.db.AppGroupEntity
 import com.rrrrz.tinyvow.data.db.BlockEventEntity
 import com.rrrrz.tinyvow.data.db.GroupType
+import com.rrrrz.tinyvow.data.db.RewardType
+import com.rrrrz.tinyvow.data.repository.AppLimitRepository
 import com.rrrrz.tinyvow.data.repository.ArchiveDateUtils
 import com.rrrrz.tinyvow.data.repository.PointsRepository
+import com.rrrrz.tinyvow.data.repository.UseRewardResult
 import com.rrrrz.tinyvow.data.repository.calculateTargetBonusPoints
 import com.rrrrz.tinyvow.data.repository.calculateUsageEarnedPoints
+import com.rrrrz.tinyvow.data.repository.parseRewardPayload
 import com.rrrrz.tinyvow.data.settings.ManagedAppPreferences
 import com.rrrrz.tinyvow.data.usage.UsageAccessStateChecker
 import com.rrrrz.tinyvow.data.usage.UsageAccessStatus
@@ -42,6 +46,7 @@ class AppLimitAccessibilityService : AccessibilityService() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
     private lateinit var enforcer: GroupLimitEnforcer
     private lateinit var pointsRepository: PointsRepository
+    private lateinit var appLimitRepository: AppLimitRepository
     private val database by lazy { AppDatabase.getDatabase(applicationContext) }
     private val usageAccessStateChecker by lazy { UsageAccessStateChecker(applicationContext) }
     private val usageRepository by lazy { UsageStatsUsageRepository(applicationContext) }
@@ -66,11 +71,14 @@ class AppLimitAccessibilityService : AccessibilityService() {
         val packages: List<String>
     )
     private var encourageAppsCache: List<EncourageGroupCache> = emptyList()
+    private var overlayPackageName: String? = null
+    private var emergencyUnlockConsumedPackage: String? = null
 
     override fun onServiceConnected() {
         super.onServiceConnected()
         enforcer = GroupLimitEnforcer(applicationContext)
         pointsRepository = PointsRepository(applicationContext, database)
+        appLimitRepository = AppLimitRepository(applicationContext, database)
 
         serviceScope.launch {
             AppText.setLanguage(preferences.getSelectedAppLanguageOnce(), this@AppLimitAccessibilityService)
@@ -196,11 +204,21 @@ class AppLimitAccessibilityService : AccessibilityService() {
         } catch (e: Exception) {
             Log.e(TAG, "Failed to list ENCOURAGE apps", e)
         }
+        val hasEmergencyUnlock =
+            database.rewardInventoryDao().sumQuantityByRewardType(RewardType.EMERGENCY_UNLOCK) > 0 &&
+                emergencyUnlockConsumedPackage != packageName
 
         withContext(Dispatchers.Main) {
             // 防止瞬态切换导致错误弹窗
             if (lastCheckedPackage == packageName) {
-                showBlockOverlay(packageName, result.groupName, result.exceededMillis, encourageAppsCache)
+                showBlockOverlay(
+                    packageName = packageName,
+                    groupId = result.groupId,
+                    groupName = result.groupName,
+                    exceededMillis = result.exceededMillis,
+                    encourageGroups = encourageAppsCache,
+                    canUseEmergencyUnlock = hasEmergencyUnlock,
+                )
             }
         }
     }
@@ -227,6 +245,9 @@ class AppLimitAccessibilityService : AccessibilityService() {
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         val packageName = event?.packageName?.toString() ?: return
+        if (overlayPackageName != null && overlayPackageName != packageName) {
+            emergencyUnlockConsumedPackage = null
+        }
 
         // Tiny Vow 自身不赚积分，但需要触发上一个应用结算
         val isOwnPackage = packageName == this.packageName
@@ -247,7 +268,14 @@ class AppLimitAccessibilityService : AccessibilityService() {
         // 0. 零延迟（Fast-Path）阻断拦截，消除后台热启动时的白屏/闪透
         val fastBlock = fastBlockCache[packageName]
         if (fastBlock != null && now - fastBlock.second < 15_000L) {
-            showBlockOverlay(packageName, fastBlock.first.groupName, fastBlock.first.exceededMillis, encourageAppsCache)
+            showBlockOverlay(
+                packageName = packageName,
+                groupId = fastBlock.first.groupId,
+                groupName = fastBlock.first.groupName,
+                exceededMillis = fastBlock.first.exceededMillis,
+                encourageGroups = encourageAppsCache,
+                canUseEmergencyUnlock = emergencyUnlockConsumedPackage != packageName,
+            )
         }
 
         // 1. 积分累加逻辑：当包切换时，结算上个包的积分
@@ -311,21 +339,23 @@ class AppLimitAccessibilityService : AccessibilityService() {
     private fun creditPoints(packageName: String, durationMs: Long) {
         serviceScope.launch(Dispatchers.IO) {
             val groupIds = database.crossRefDao().getGroupIdsForPackageSync(packageName)
+            val nowMillis = System.currentTimeMillis()
             for (gid in groupIds) {
                 val group = database.appGroupDao().getGroupByIdSync(gid) ?: continue
                 if (group.type == GroupType.ENCOURAGE && group.pointsPerMinute > 0) {
+                    val pointsMultiplier = currentEncouragePointsMultiplier(group.id, nowMillis)
                     // 基础每分钟积分
-                    val pointsEarned = calculateUsageEarnedPoints(durationMs, group.pointsPerMinute)
+                    val pointsEarned = calculateUsageEarnedPoints(durationMs, group.pointsPerMinute) * pointsMultiplier
                     pointsRepository.recordUsageEarn(group, pointsEarned)
                     
                     // 检查是否达成今日目标大奖
-                    checkAndGrantBonus(group)
+                    checkAndGrantBonus(group, pointsMultiplier)
                 }
             }
         }
     }
 
-    private suspend fun checkAndGrantBonus(group: AppGroupEntity) {
+    private suspend fun checkAndGrantBonus(group: AppGroupEntity, pointsMultiplier: Double) {
         val nowMillis = System.currentTimeMillis()
         val todayStart = getStartOfDay(nowMillis)
         
@@ -344,7 +374,7 @@ class AppLimitAccessibilityService : AccessibilityService() {
         val targetMs = group.limitMinutes * 60_000L
         if (totalTodayUsageMs >= targetMs) {
             // 达成目标！发放奖励：目标分钟 * 鼓励金比例
-            val bonusPoints = calculateTargetBonusPoints(group.limitMinutes, group.pointsPerMinute)
+            val bonusPoints = calculateTargetBonusPoints(group.limitMinutes, group.pointsPerMinute) * pointsMultiplier
             pointsRepository.recordTargetBonusEarn(group, bonusPoints)
             
             // 更新数据库标记
@@ -352,6 +382,16 @@ class AppLimitAccessibilityService : AccessibilityService() {
             
             Log.i(TAG, "Group ${group.name} reached daily target! Bonus $bonusPoints pts granted.")
         }
+    }
+
+    private suspend fun currentEncouragePointsMultiplier(groupId: String, nowMillis: Long): Double {
+        val effect =
+            database
+                .activeRewardEffectDao()
+                .getActiveForGroup(groupId, nowMillis)
+                .firstOrNull { it.effectType == RewardType.DOUBLE_POINTS_DAY }
+                ?: return 1.0
+        return parseRewardPayload(effect.payloadJson).pointsMultiplier.coerceAtLeast(1.0)
     }
 
     private fun getStartOfDay(millis: Long): Long {
@@ -447,8 +487,16 @@ class AppLimitAccessibilityService : AccessibilityService() {
     }
 
     @SuppressLint("SetTextI18n")
-    private fun showBlockOverlay(packageName: String, groupName: String, exceededMillis: Long, encourageGroups: List<EncourageGroupCache>) {
+    private fun showBlockOverlay(
+        packageName: String,
+        groupId: String,
+        groupName: String,
+        exceededMillis: Long,
+        encourageGroups: List<EncourageGroupCache>,
+        canUseEmergencyUnlock: Boolean,
+    ) {
         if (blockView != null) return
+        overlayPackageName = packageName
 
         val palette = overlayPalette
         val windowManager = getSystemService(WINDOW_SERVICE) as android.view.WindowManager
@@ -530,6 +578,54 @@ class AppLimitAccessibilityService : AccessibilityService() {
         }
 
         val btnPrimaryBg = roundedBackground(palette.secondary, 18)
+        val btnUnlock = android.widget.Button(this).apply {
+            text = AppText.t("redeem_overlay_use_emergency_unlock")
+            background = roundedBackground(palette.surface, 18, palette.outline, 1)
+            setTextColor(palette.onSurface)
+            isAllCaps = false
+            textSize = 15f
+            minHeight = 0
+            minWidth = 0
+            visibility = if (canUseEmergencyUnlock) android.view.View.VISIBLE else android.view.View.GONE
+            layoutParams = android.widget.FrameLayout.LayoutParams(
+                android.widget.FrameLayout.LayoutParams.MATCH_PARENT,
+                dp(48)
+            ).apply {
+                gravity = android.view.Gravity.BOTTOM
+                leftMargin = dp(20)
+                rightMargin = dp(20)
+                bottomMargin = dp(84)
+            }
+            setOnClickListener {
+                isEnabled = false
+                serviceScope.launch {
+                    when (appLimitRepository.consumeEmergencyUnlockForBlockedGroup(groupId)) {
+                        is UseRewardResult.Success -> {
+                            emergencyUnlockConsumedPackage = packageName
+                            val reevaluated = enforcer.evaluate(packageName)
+                            withContext(Dispatchers.Main) {
+                                removeBlockOverlay()
+                                if (reevaluated != null) {
+                                    showBlockOverlay(
+                                        packageName = packageName,
+                                        groupId = reevaluated.groupId,
+                                        groupName = reevaluated.groupName,
+                                        exceededMillis = reevaluated.exceededMillis,
+                                        encourageGroups = encourageAppsCache,
+                                        canUseEmergencyUnlock = false,
+                                    )
+                                }
+                            }
+                        }
+                        else -> {
+                            withContext(Dispatchers.Main) {
+                                isEnabled = true
+                            }
+                        }
+                    }
+                }
+            }
+        }
         val btnGoHome = android.widget.Button(this).apply {
             text = getString(com.rrrrz.tinyvow.R.string.block_overlay_go_home)
             background = btnPrimaryBg
@@ -617,6 +713,7 @@ class AppLimitAccessibilityService : AccessibilityService() {
 
         scrollView.addView(content)
         layout.addView(scrollView)
+        layout.addView(btnUnlock)
         layout.addView(btnGoHome)
 
         try {
@@ -799,6 +896,7 @@ class AppLimitAccessibilityService : AccessibilityService() {
                 // Ignore
             }
             blockView = null
+            overlayPackageName = null
         }
     }
 

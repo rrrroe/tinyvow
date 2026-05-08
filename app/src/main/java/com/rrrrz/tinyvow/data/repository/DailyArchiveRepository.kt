@@ -2,6 +2,7 @@ package com.rrrrz.tinyvow.data.repository
 
 import android.content.Context
 import androidx.room.withTransaction
+import com.rrrrz.tinyvow.data.db.ActiveRewardEffectStatus
 import com.rrrrz.tinyvow.data.db.AppDatabase
 import com.rrrrz.tinyvow.data.db.DailyAppArchiveEntity
 import com.rrrrz.tinyvow.data.db.AppGroupEntity
@@ -13,6 +14,7 @@ import com.rrrrz.tinyvow.data.db.GroupType
 import com.rrrrz.tinyvow.data.db.LimitPeriod
 import com.rrrrz.tinyvow.data.db.PointLedgerEntity
 import com.rrrrz.tinyvow.data.db.PointLedgerEntryType
+import com.rrrrz.tinyvow.data.db.RewardType
 import com.rrrrz.tinyvow.data.db.TopAppArchiveSummary
 import com.rrrrz.tinyvow.data.settings.ManagedAppPreferences
 import com.rrrrz.tinyvow.data.usage.UsageRepository
@@ -24,6 +26,7 @@ import java.util.UUID
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
+import org.json.JSONObject
 import kotlin.math.max
 
 class DailyArchiveRepository(
@@ -41,6 +44,7 @@ class DailyArchiveRepository(
     private val groupDao = database.appGroupDao()
     private val crossRefDao = database.crossRefDao()
     private val bonusTimeDao = database.bonusTimeDao()
+    private val activeRewardEffectDao = database.activeRewardEffectDao()
     private val redemptionHistoryDao = database.redemptionHistoryDao()
     private val dailyArchiveDao = database.dailyArchiveDao()
     private val dailyGroupArchiveDao = database.dailyGroupArchiveDao()
@@ -99,6 +103,7 @@ class DailyArchiveRepository(
                 "Only completed days can be refreshed."
             }
             archiveDate(targetDate)
+            AppLimitRepository(context, database).refreshStreakShieldPending()
             checkAchievementsAfterArchive()
         }
     }
@@ -118,6 +123,7 @@ class DailyArchiveRepository(
                 )
                 stateDao.upsert(state)
                 repairArchivesMissingAppSnapshots()
+                AppLimitRepository(context, database).refreshStreakShieldPending()
                 checkAchievementsAfterArchive()
                 return@withContext
             }
@@ -125,6 +131,7 @@ class DailyArchiveRepository(
             val archiveStartDate = LocalDate.parse(state.archiveStartDate)
             if (!today.isAfter(archiveStartDate)) {
                 repairArchivesMissingAppSnapshots()
+                AppLimitRepository(context, database).refreshStreakShieldPending()
                 checkAchievementsAfterArchive()
                 return@withContext
             }
@@ -134,6 +141,7 @@ class DailyArchiveRepository(
                 state.lastArchivedDate?.let { LocalDate.parse(it).plusDays(1) } ?: archiveStartDate
             if (nextDate.isAfter(endDate)) {
                 repairArchivesMissingAppSnapshots()
+                AppLimitRepository(context, database).refreshStreakShieldPending()
                 checkAchievementsAfterArchive()
                 return@withContext
             }
@@ -161,6 +169,7 @@ class DailyArchiveRepository(
                     date = date.plusDays(1)
                 }
                 repairArchivesMissingAppSnapshots()
+                AppLimitRepository(context, database).refreshStreakShieldPending()
                 checkAchievementsAfterArchive()
             } catch (error: Exception) {
                 stateDao.upsert(
@@ -277,7 +286,9 @@ class DailyArchiveRepository(
                     date = date,
                     archiveDate = archiveDate,
                     group = group,
+                    dayStart = dayStart,
                     dayEnd = dayEnd,
+                    nextDayStart = nextDayStart,
                     archiveTime = archiveTime,
                     sortOrder = index,
                     dailyUsageByPackage = dailyUsageByPackage,
@@ -289,6 +300,7 @@ class DailyArchiveRepository(
                         periodUsageBeforeDayByStart[
                             ArchiveDateUtils.periodStart(date, group.limitPeriod)
                         ].orEmpty(),
+                    sessionsByPackage = sessionsByPackage,
                     blockEventCount = blockEventDao.countByDateAndGroup(archiveDate, group.id),
                 )
             }
@@ -365,7 +377,6 @@ class DailyArchiveRepository(
                         null
                     }
                 }
-
         val pointsEarned =
             groupSnapshots.sumOf { it.earnedPoints } +
                 pointLedgerDao.sumUngroupedEarnedByDate(archiveDate)
@@ -489,26 +500,42 @@ class DailyArchiveRepository(
         date: LocalDate,
         archiveDate: String,
         group: ArchiveGroupConfig,
+        dayStart: Long,
         dayEnd: Long,
+        nextDayStart: Long,
         archiveTime: Long,
         sortOrder: Int,
         dailyUsageByPackage: Map<String, Long>,
         periodUsageByPackage: Map<String, Long>,
         periodUsageBeforeDayByPackage: Map<String, Long>,
+        sessionsByPackage: Map<String, List<com.rrrrz.tinyvow.data.usage.AppSession>>,
         blockEventCount: Int,
     ): GroupArchiveBuildResult {
-        val dayStart = ArchiveDateUtils.startOfDayMillis(date, zoneId)
         val packageNames = group.packageNames
         val dailyUsageMillis = packageNames.sumOf { packageName -> dailyUsageByPackage[packageName] ?: 0L }
         val periodUsageMillisAtClose = packageNames.sumOf { packageName -> periodUsageByPackage[packageName] ?: 0L }
         val periodUsageMillisBeforeDay = packageNames.sumOf { packageName -> periodUsageBeforeDayByPackage[packageName] ?: 0L }
+        val archiveEffects = activeRewardEffectDao.getEffectsForGroupOnDate(group.id, archiveDate)
         val bonusMinutes = group.bonusMinutes
-        val effectiveLimitMillisAtClose = (group.limitMinutes + bonusMinutes) * 60_000L
+        val rewardExtraMinutes =
+            archiveEffects
+                .filter { it.effectType == RewardType.TIME_ADD || it.effectType == RewardType.EMERGENCY_UNLOCK }
+                .sumOf { parseRewardPayload(it.payloadJson).minutes }
+        val hasPeriodPass = archiveEffects.any { it.effectType == RewardType.PERIOD_PASS }
+        val activeDoublePointsEffect =
+            archiveEffects.firstOrNull {
+                it.effectType == RewardType.DOUBLE_POINTS_DAY &&
+                    it.status == ActiveRewardEffectStatus.ACTIVE
+            }
+        val pointsMultiplier = parseRewardPayload(activeDoublePointsEffect?.payloadJson).pointsMultiplier.coerceAtLeast(1.0)
+        val effectiveLimitMillisAtClose = (group.limitMinutes + bonusMinutes + rewardExtraMinutes) * 60_000L
         val remainingMillisAtClose = max(effectiveLimitMillisAtClose - periodUsageMillisAtClose, 0L)
         val exceededMillisAtClose = max(periodUsageMillisAtClose - effectiveLimitMillisAtClose, 0L)
+        val controlCompleted =
+            !hasPeriodPass && !isControlTimeoutForStats(exceededMillisAtClose)
         val completed =
             when (group.type) {
-                GroupType.CONTROL -> !isControlTimeoutForStats(exceededMillisAtClose)
+                GroupType.CONTROL -> controlCompleted
                 GroupType.ENCOURAGE -> periodUsageMillisAtClose >= effectiveLimitMillisAtClose
             }
         val targetMillis = group.limitMinutes * 60_000L
@@ -516,16 +543,60 @@ class DailyArchiveRepository(
             group.type == GroupType.ENCOURAGE &&
                 periodUsageMillisBeforeDay < targetMillis &&
                 periodUsageMillisAtClose >= targetMillis
+        val doubledUsageMillis =
+            if (group.type == GroupType.ENCOURAGE && activeDoublePointsEffect != null && pointsMultiplier > 1.0) {
+                sumSessionUsageInRange(
+                    packageNames = packageNames,
+                    sessionsByPackage = sessionsByPackage,
+                    rangeStart = activeDoublePointsEffect.startAt.coerceAtLeast(dayStart),
+                    rangeEnd = nextDayStart,
+                )
+            } else {
+                0L
+            }
+        val normalUsageMillis = (dailyUsageMillis - doubledUsageMillis).coerceAtLeast(0L)
+        val dailyUsageBeforeDouble =
+            if (group.type == GroupType.ENCOURAGE && activeDoublePointsEffect != null) {
+                sumSessionUsageInRange(
+                    packageNames = packageNames,
+                    sessionsByPackage = sessionsByPackage,
+                    rangeStart = dayStart,
+                    rangeEnd = activeDoublePointsEffect.startAt.coerceAtLeast(dayStart),
+                )
+            } else {
+                dailyUsageMillis
+            }
+        val targetReachedAfterDoubleActivation =
+            group.type == GroupType.ENCOURAGE &&
+                targetReachedDuringDay &&
+                activeDoublePointsEffect != null &&
+                (periodUsageMillisBeforeDay + dailyUsageBeforeDouble) < targetMillis
+        val rewardBonusPoints =
+            if (group.type == GroupType.ENCOURAGE && pointsMultiplier > 1.0) {
+                val doubledUsagePoints =
+                    calculateUsageEarnedPoints(doubledUsageMillis, group.pointsPerMinute) * (pointsMultiplier - 1.0)
+                val doubledTargetBonusPoints =
+                    if (targetReachedAfterDoubleActivation) {
+                        calculateTargetBonusPoints(group.limitMinutes, group.pointsPerMinute) * (pointsMultiplier - 1.0)
+                    } else {
+                        0.0
+                    }
+                doubledUsagePoints + doubledTargetBonusPoints
+            } else {
+                0.0
+            }
         val earnedPoints =
             when (group.type) {
                 GroupType.CONTROL -> pointLedgerDao.sumEarnedByDateAndGroup(archiveDate, group.id)
                 GroupType.ENCOURAGE ->
-                    calculateEncourageEarnedPoints(
-                        usageMillis = dailyUsageMillis,
-                        targetMinutes = group.limitMinutes,
-                        pointsPerMinute = group.pointsPerMinute,
-                        targetReachedDuringWindow = targetReachedDuringDay,
-                    )
+                    calculateUsageEarnedPoints(normalUsageMillis, group.pointsPerMinute) +
+                        calculateUsageEarnedPoints(doubledUsageMillis, group.pointsPerMinute) * pointsMultiplier +
+                        if (targetReachedDuringDay) {
+                            calculateTargetBonusPoints(group.limitMinutes, group.pointsPerMinute) *
+                                if (targetReachedAfterDoubleActivation) pointsMultiplier else 1.0
+                        } else {
+                            0.0
+                        }
             }
 
         return GroupArchiveBuildResult(
@@ -549,6 +620,20 @@ class DailyArchiveRepository(
                     blockEventCount = blockEventCount,
                     earnedPoints = earnedPoints,
                     spentPoints = 0.0,
+                    rewardExempted = hasPeriodPass,
+                    rewardExemptType = if (hasPeriodPass) RewardType.PERIOD_PASS.name else null,
+                    rewardBonusPoints = rewardBonusPoints,
+                    rewardEffectSnapshotJson =
+                        if (archiveEffects.isEmpty()) {
+                            null
+                        } else {
+                            JSONObject()
+                                .put("effectTypes", archiveEffects.joinToString(",") { it.effectType.name })
+                                .put("extraMinutes", rewardExtraMinutes)
+                                .put("pointsMultiplier", pointsMultiplier)
+                                .put("bonusPoints", rewardBonusPoints)
+                                .toString()
+                        },
                     completed = completed,
                     sortOrder =
                         when (group.type) {
@@ -559,6 +644,7 @@ class DailyArchiveRepository(
                     updatedAt = archiveTime,
                 ),
             packageNames = packageNames,
+            rewardBonusPoints = rewardBonusPoints,
         )
     }
 
@@ -628,9 +714,28 @@ class DailyArchiveRepository(
             ).toString().takeIf { it.isNotBlank() } ?: packageName
         }.getOrDefault(packageName)
 
+    private fun sumSessionUsageInRange(
+        packageNames: List<String>,
+        sessionsByPackage: Map<String, List<com.rrrrz.tinyvow.data.usage.AppSession>>,
+        rangeStart: Long,
+        rangeEnd: Long,
+    ): Long {
+        if (rangeEnd <= rangeStart) return 0L
+        return packageNames.sumOf { packageName ->
+            sessionsByPackage[packageName]
+                .orEmpty()
+                .sumOf { session ->
+                    val overlapStart = maxOf(session.startTime, rangeStart)
+                    val overlapEnd = minOf(session.endTime, rangeEnd)
+                    (overlapEnd - overlapStart).coerceAtLeast(0L)
+                }
+        }
+    }
+
     private data class GroupArchiveBuildResult(
         val archive: DailyGroupArchiveEntity,
         val packageNames: List<String>,
+        val rewardBonusPoints: Double = 0.0,
     )
 
     private data class ArchiveGroupConfig(

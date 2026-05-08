@@ -131,6 +131,7 @@ import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.ZoneId
+import java.time.temporal.IsoFields
 import java.time.temporal.TemporalAdjusters
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -330,14 +331,6 @@ private data class YearScopeSummary(
     val pointsNet: String,
 )
 
-private enum class PeriodTone {
-    PRIMARY,
-    POSITIVE,
-    WARNING,
-    SECONDARY,
-    NEUTRAL,
-}
-
 private data class PeriodHeroData(
     val eyebrow: String,
     val title: String,
@@ -367,6 +360,14 @@ private data class TrendSectionData(
     val summary: List<DailyFocusMetric>,
 )
 
+private enum class PeriodTone {
+    PRIMARY,
+    POSITIVE,
+    WARNING,
+    SECONDARY,
+    NEUTRAL,
+}
+
 private data class ScatterPointData(
     val label: String,
     val xValue: Float,
@@ -393,6 +394,7 @@ private data class PeriodHeatmapData(
     val subtitle: String,
     val columns: Int,
     val cells: List<HeatmapDayData>,
+    val showLabels: Boolean = true,
 )
 
 private data class AppFocusInsight(
@@ -440,7 +442,6 @@ private data class PeriodReportData(
     val tab: ReportTab,
     val hero: PeriodHeroData,
     val trend: TrendSectionData,
-    val scatter: ScatterSectionData,
     val heatmap: PeriodHeatmapData? = null,
     val appFocus: AppFocusSectionData,
     val windowFocus: WindowFocusSectionData,
@@ -1199,48 +1200,13 @@ private fun buildWeeklyReportData(
                     ),
                 ),
         )
-    val scatter =
-        ScatterSectionData(
-            title = AppText.t("stats_weekly_scatter"),
-            subtitle = AppText.t("stats_weekly_scatter_description"),
-            xLabel = AppText.t("stats_launches"),
-            yLabel = AppText.t("stats_usage_duration"),
-            sizeLabel = AppText.t("stats_night_use"),
-            points =
-                daySummaries.map { summary ->
-                    ScatterPointData(
-                        label = summary.date.format(DateTimeFormatter.ofPattern("M/d", Locale.getDefault())),
-                        xValue = summary.openCount.toFloat(),
-                        yValue = summary.usageMillis.toFloat(),
-                        sizeValue = summary.nightUsageMillis.toFloat(),
-                        xDisplay = AppText.t("stats_value_times_12", summary.openCount),
-                        yDisplay = formatDuration(summary.usageMillis),
-                        detail = AppText.t("stats_night_value", formatDuration(summary.nightUsageMillis)),
-                        tone =
-                            when {
-                                summary.exceeded || summary.blockCount > 0 -> PeriodTone.WARNING
-                                summary.savedMillis > 0L -> PeriodTone.POSITIVE
-                                else -> PeriodTone.PRIMARY
-                            },
-                    )
-                },
-            summary =
-                listOf(
-                    DailyFocusMetric(AppText.t("stats_active_days"), AppText.t("stats_value_days_2", activeDays)),
-                    DailyFocusMetric(AppText.t("stats_night_use"), formatDuration(totalNight)),
-                    DailyFocusMetric(
-                        AppText.t("stats_most_intense_day"),
-                        bestDay?.let { "${it.date.format(DateTimeFormatter.ofPattern("M/d", Locale.getDefault()))} · ${AppText.t("stats_value_times_12", it.openCount)}" } ?: AppText.t("stats_none"),
-                    ),
-                ),
-        )
     return PeriodReportData(
         tab = ReportTab.WEEK,
         hero =
             PeriodHeroData(
                 eyebrow = AppText.t("stats_weekly_report"),
                 title = AppText.t("stats_weekly_battle_title"),
-                rangeLabel = periodRangeLabel(bounds.startDate, bounds.endDate),
+                rangeLabel = periodWeekLabel(bounds.startDate),
                 primaryValue = formatDuration(totalUsage),
                 message = AppText.t("stats_weekly_battle_message"),
                 comparisonValue = comparison?.comparisons?.firstOrNull()?.yesterdayDelta ?: AppText.t("stats_not_enough_samples"),
@@ -1255,7 +1221,6 @@ private fun buildWeeklyReportData(
                     ),
             ),
         trend = trend,
-        scatter = scatter,
         appFocus = buildAppFocusSectionData(ReportTab.WEEK, topApps, snapshots, totalUsage),
         windowFocus = windowFocus,
         behavior = behavior,
@@ -1288,24 +1253,6 @@ private fun buildMonthlyReportData(
                 label = summary.date.dayOfMonth.toString(),
                 totalUsageMillis = cumulative,
                 secondaryValue = averageDaily * (index + 1L),
-            )
-        }
-    val scatterPoints =
-        daySummaries.map { summary ->
-            ScatterPointData(
-                label = summary.date.dayOfMonth.toString(),
-                xValue = summary.openCount.toFloat(),
-                yValue = summary.usageMillis.toFloat(),
-                sizeValue = summary.nightUsageMillis.toFloat(),
-                xDisplay = AppText.t("stats_value_times_12", summary.openCount),
-                yDisplay = formatDuration(summary.usageMillis),
-                detail = formatDuration(summary.savedMillis),
-                tone =
-                    when {
-                        summary.exceeded || summary.blockCount > 0 -> PeriodTone.WARNING
-                        summary.savedMillis > 0L -> PeriodTone.POSITIVE
-                        else -> PeriodTone.PRIMARY
-                    },
             )
         }
     val monthWeeks = buildMonthlyWeekSummaries(bounds.startDate, bounds.endDate, daySummaries)
@@ -1341,21 +1288,6 @@ private fun buildMonthlyReportData(
                         DailyFocusMetric(AppText.t("stats_highest_day"), bestDay?.let { "${it.date.dayOfMonth} · ${formatDuration(it.usageMillis)}" } ?: AppText.t("stats_none")),
                         DailyFocusMetric(AppText.t("stats_night_use"), formatDuration(totalNight)),
                         DailyFocusMetric(AppText.t("stats_time_saved"), formatDuration(totalSaved)),
-                    ),
-            ),
-        scatter =
-            ScatterSectionData(
-                title = AppText.t("stats_monthly_scatter"),
-                subtitle = AppText.t("stats_monthly_scatter_description"),
-                xLabel = AppText.t("stats_launches"),
-                yLabel = AppText.t("stats_usage_duration"),
-                sizeLabel = AppText.t("stats_night_use"),
-                points = scatterPoints,
-                summary =
-                    listOf(
-                        DailyFocusMetric(AppText.t("stats_active_days"), AppText.t("stats_value_days_2", activeDays)),
-                        DailyFocusMetric(AppText.t("stats_over_limit"), AppText.t("stats_value_times_12", overLimitDays)),
-                        DailyFocusMetric(AppText.t("stats_label_11"), formatDuration(daySummaries.maxOfOrNull { it.longestSessionMillis } ?: 0L)),
                     ),
             ),
         heatmap =
@@ -1419,38 +1351,6 @@ private fun buildYearlyReportData(
                     DailyFocusMetric(AppText.t("stats_time_saved"), formatDuration(totalSaved)),
                 ),
         )
-    val scatter =
-        ScatterSectionData(
-            title = AppText.t("stats_yearly_scatter"),
-            subtitle = AppText.t("stats_yearly_scatter_description"),
-            xLabel = AppText.t("stats_time_saved"),
-            yLabel = AppText.t("stats_usage_duration"),
-            sizeLabel = AppText.t("stats_active_days"),
-            points =
-                monthSummaries.map { month ->
-                    ScatterPointData(
-                        label = month.label,
-                        xValue = month.savedMillis.toFloat(),
-                        yValue = month.usageMillis.toFloat(),
-                        sizeValue = month.activeDays.toFloat(),
-                        xDisplay = formatDuration(month.savedMillis),
-                        yDisplay = formatDuration(month.usageMillis),
-                        detail = AppText.t("stats_value_days_2", month.activeDays),
-                        tone =
-                            when {
-                                month.exceededMonths -> PeriodTone.WARNING
-                                month.pointsNet >= 0.0 && month.savedMillis > 0L -> PeriodTone.POSITIVE
-                                else -> PeriodTone.PRIMARY
-                            },
-                    )
-                },
-            summary =
-                listOf(
-                    DailyFocusMetric(AppText.t("stats_active_months"), AppText.t("stats_value_times_12", activeMonths)),
-                    DailyFocusMetric(AppText.t("stats_net_points"), formatSignedPointsLocal(archives.sumOf { it.pointsNet })),
-                    DailyFocusMetric(AppText.t("stats_over_limit"), AppText.t("stats_value_times_12", daySummaries.count { it.exceeded })),
-                ),
-        )
     return PeriodReportData(
         tab = ReportTab.YEAR,
         hero =
@@ -1472,21 +1372,18 @@ private fun buildYearlyReportData(
                     ),
             ),
         trend = trend,
-        scatter = scatter,
         heatmap =
             PeriodHeatmapData(
                 title = AppText.t("stats_year_month_heatmap"),
                 subtitle = AppText.t("stats_year_month_heatmap_description"),
-                columns = 4,
+                columns = 7,
                 cells =
-                    monthSummaries.map { month ->
-                        HeatmapDayData(
-                            label = month.label,
-                            valueMillis = month.usageMillis,
-                            exceeded = month.exceededMonths,
-                            selected = month == bestMonth,
-                        )
-                    },
+                    buildYearHeatmapCells(
+                        startDate = bounds.startDate,
+                        endDate = bounds.endDate,
+                        summaries = daySummaries,
+                    ),
+                showLabels = false,
             ),
         appFocus = buildAppFocusSectionData(ReportTab.YEAR, topApps, snapshots, totalUsage),
         windowFocus = windowFocus,
@@ -1515,7 +1412,37 @@ private fun generateDateSequence(startDate: LocalDate, endDate: LocalDate): List
 private fun periodRangeLabel(startDate: LocalDate, endDate: LocalDate): String =
     "${startDate.format(DateTimeFormatter.ofPattern("M/d", Locale.getDefault()))} - ${endDate.format(DateTimeFormatter.ofPattern("M/d", Locale.getDefault()))}"
 
+private fun isoWeekLabel(weekStart: LocalDate): String {
+    val weekYear = weekStart.get(IsoFields.WEEK_BASED_YEAR)
+    val weekNumber = weekStart.get(IsoFields.WEEK_OF_WEEK_BASED_YEAR)
+    return "$weekYear-W${weekNumber.toString().padStart(2, '0')}"
+}
+
+private fun periodWeekLabel(weekStart: LocalDate): String =
+    "${isoWeekLabel(weekStart)} · ${periodRangeLabel(weekStart, weekStart.plusDays(6))}"
+
 private fun buildMonthHeatmapCells(
+    startDate: LocalDate,
+    endDate: LocalDate,
+    summaries: List<PeriodDaySummary>,
+): List<HeatmapDayData> {
+    val summaryByDate = summaries.associateBy { it.date }
+    val leadingBlankDays = (startDate.dayOfWeek.value + 6) % 7
+    val cells = MutableList(leadingBlankDays) { HeatmapDayData("", 0L, exceeded = false, selected = false) }
+    val maxUsage = summaries.maxOfOrNull { it.usageMillis } ?: 0L
+    generateDateSequence(startDate, endDate).forEach { date ->
+        val summary = summaryByDate[date]
+        cells += HeatmapDayData(
+            label = date.dayOfMonth.toString(),
+            valueMillis = summary?.usageMillis ?: 0L,
+            exceeded = summary?.exceeded == true,
+            selected = summary != null && summary.usageMillis == maxUsage && maxUsage > 0L,
+        )
+    }
+    return cells
+}
+
+private fun buildYearHeatmapCells(
     startDate: LocalDate,
     endDate: LocalDate,
     summaries: List<PeriodDaySummary>,
@@ -3378,7 +3305,7 @@ private fun PeriodNavigator(
     var showDialog by remember(selectedTab) { mutableStateOf(false) }
     val title =
         when (selectedTab) {
-            ReportTab.WEEK -> selectedWeekStart?.let { periodRangeLabel(it, it.plusDays(6)) } ?: AppText.t("stats_choose_period")
+            ReportTab.WEEK -> selectedWeekStart?.let(::periodWeekLabel) ?: AppText.t("stats_choose_period")
             ReportTab.MONTH -> selectedMonth?.format(DateTimeFormatter.ofPattern(AppText.t("stats_mmmm_yyyy"), Locale.getDefault())) ?: AppText.t("stats_choose_period")
             ReportTab.YEAR -> selectedYear?.toString() ?: AppText.t("stats_choose_period")
             ReportTab.DAY -> ""
@@ -3539,7 +3466,7 @@ private fun PeriodWeekPickerDialog(
                         color = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.32f),
                     ) {
                         Text(
-                            text = periodRangeLabel(weekStart, weekStart.plusDays(6)),
+                            text = periodWeekLabel(weekStart),
                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
@@ -3651,17 +3578,16 @@ private fun PeriodReportScreen(
         is SectionState.Ready -> {
             val data = periodState.data
             PeriodHeroCard(hero = data.hero)
+            PeriodFocusCard(data.windowFocus)
             when (data.tab) {
                 ReportTab.WEEK -> {
                     PeriodTrendCard(data.trend)
-                    PeriodScatterCard(data.scatter)
                     PeriodAppFocusCard(data.appFocus)
                     PeriodInsightSection(data = data)
                 }
                 ReportTab.MONTH -> {
                     data.heatmap?.let { PeriodHeatmapCard(it) }
                     PeriodTrendCard(data.trend)
-                    PeriodScatterCard(data.scatter)
                     data.monthStructure?.let { PeriodMonthStructureCard(it) }
                     PeriodAppFocusCard(data.appFocus)
                     PeriodInsightSection(data = data)
@@ -3669,12 +3595,34 @@ private fun PeriodReportScreen(
                 ReportTab.YEAR -> {
                     data.heatmap?.let { PeriodHeatmapCard(it) }
                     PeriodTrendCard(data.trend)
-                    PeriodScatterCard(data.scatter)
                     data.quarterSection?.let { PeriodQuarterBreakdownCard(it) }
                     PeriodAppFocusCard(data.appFocus)
                     PeriodInsightSection(data = data)
                 }
                 ReportTab.DAY -> Unit
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun PeriodFocusCard(data: WindowFocusSectionData) {
+    ReportCard {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            AdaptiveRowGrid(
+                itemCount = 2,
+                compactColumns = 1,
+                expandedColumns = 2,
+                horizontalSpacing = 10.dp,
+                verticalSpacing = 10.dp,
+            ) { modifier, index ->
+                DailyModeSummaryCard(
+                    summary = if (index == 0) data.control else data.encourage,
+                    icon = if (index == 0) Icons.Default.Bolt else Icons.Default.RocketLaunch,
+                    compact = true,
+                    modifier = modifier,
+                )
             }
         }
     }
@@ -3892,88 +3840,24 @@ private fun TrendLineChart(
 }
 
 @Composable
-private fun PeriodScatterCard(data: ScatterSectionData) {
-    ReportCard {
-        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            SectionHeader(icon = Icons.Default.Insights, title = data.title, subtitle = data.subtitle)
-            ScatterPlotChart(data = data)
-            AdaptiveRowGrid(
-                itemCount = data.summary.size,
-                compactColumns = 1,
-                expandedColumns = 3,
-                horizontalSpacing = 8.dp,
-                verticalSpacing = 8.dp,
-            ) { modifier, index ->
-                MetricTileCompact(metric = data.summary[index], modifier = modifier)
-            }
-        }
-    }
-}
-
-@Composable
-private fun ScatterPlotChart(
-    data: ScatterSectionData,
-) {
-    val reportColors = LocalReportColors.current
-    val colorScheme = MaterialTheme.colorScheme
-    val gridColor = colorScheme.outlineVariant.copy(alpha = 0.22f)
-    val maxX = (data.points.maxOfOrNull { it.xValue } ?: 1f).coerceAtLeast(1f)
-    val maxY = (data.points.maxOfOrNull { it.yValue } ?: 1f).coerceAtLeast(1f)
-    val maxSize = (data.points.maxOfOrNull { it.sizeValue } ?: 1f).coerceAtLeast(1f)
-    Canvas(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(188.dp),
-    ) {
-        repeat(4) { index ->
-            val x = size.width * (index / 3f)
-            val y = size.height - size.height * (index / 3f)
-            drawLine(gridColor, Offset(x, 0f), Offset(x, size.height), 2f)
-            drawLine(gridColor, Offset(0f, y), Offset(size.width, y), 2f)
-        }
-        data.points.forEach { point ->
-            drawCircle(
-                color = periodToneColor(
-                    tone = point.tone,
-                    primary = colorScheme.primary,
-                    secondary = colorScheme.secondary,
-                    muted = colorScheme.outline,
-                    reportColors = reportColors,
-                ).copy(alpha = 0.72f),
-                radius = 10f + 18f * (point.sizeValue / maxSize).coerceIn(0f, 1f),
-                center = Offset(
-                    x = (point.xValue / maxX).coerceIn(0f, 1f) * size.width,
-                    y = size.height - (point.yValue / maxY).coerceIn(0f, 1f) * size.height,
-                ),
-            )
-        }
-    }
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.SpaceBetween,
-    ) {
-        Text(data.xLabel, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Text(data.yLabel, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    }
-}
-
-@Composable
 private fun PeriodHeatmapCard(data: PeriodHeatmapData) {
     val maxValue = data.cells.maxOfOrNull { it.valueMillis }?.coerceAtLeast(1L) ?: 1L
+    val cellHeight = if (data.showLabels) 40.dp else 14.dp
+    val rowSpacing = if (data.showLabels) 6.dp else 3.dp
     ReportCard {
         Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
             SectionHeader(icon = Icons.Default.CalendarMonth, title = data.title, subtitle = data.subtitle)
             data.cells.chunked(data.columns).forEach { row ->
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(rowSpacing),
                 ) {
                     row.forEach { cell ->
                         val intensity = if (cell.valueMillis > 0L) cell.valueMillis.toFloat() / maxValue.toFloat() else 0f
                         Box(
                             modifier = Modifier
                                 .weight(1f)
-                                .height(40.dp)
+                                .height(cellHeight)
                                 .clip(RoundedCornerShape(12.dp))
                                 .background(
                                     when {
@@ -3984,7 +3868,7 @@ private fun PeriodHeatmapCard(data: PeriodHeatmapData) {
                                 ),
                             contentAlignment = Alignment.Center,
                         ) {
-                            if (cell.label.isNotBlank()) {
+                            if (data.showLabels && cell.label.isNotBlank()) {
                                 Text(
                                     text = cell.label,
                                     style = MaterialTheme.typography.labelMedium,
@@ -3995,7 +3879,7 @@ private fun PeriodHeatmapCard(data: PeriodHeatmapData) {
                         }
                     }
                     repeat((data.columns - row.size).coerceAtLeast(0)) {
-                        Spacer(modifier = Modifier.weight(1f).height(40.dp))
+                        Spacer(modifier = Modifier.weight(1f).height(cellHeight))
                     }
                 }
             }
@@ -4113,20 +3997,6 @@ private fun PeriodInsightSection(data: PeriodReportData) {
                 title = AppText.t("stats_pattern_summary"),
                 subtitle = AppText.t("stats_pattern_summary_description"),
             )
-            AdaptiveRowGrid(
-                itemCount = 2,
-                compactColumns = 1,
-                expandedColumns = 2,
-                horizontalSpacing = 10.dp,
-                verticalSpacing = 10.dp,
-            ) { modifier, index ->
-                DailyModeSummaryCard(
-                    summary = if (index == 0) data.windowFocus.control else data.windowFocus.encourage,
-                    icon = if (index == 0) Icons.Default.Bolt else Icons.Default.EmojiEvents,
-                    compact = true,
-                    modifier = modifier,
-                )
-            }
             data.behavior?.behaviorInsight?.let { insight ->
                 AdaptiveRowGrid(
                     itemCount = 3,
@@ -4430,41 +4300,6 @@ private fun DailyBattleHeroCard(
                     ) {
                         summary.tags.forEach { tag ->
                             SummaryTagChip(tag)
-                        }
-                    }
-                    overview.topApp?.let { topApp ->
-                        Box(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(20.dp))
-                                .background(MaterialTheme.colorScheme.secondary.copy(alpha = 0.1f)),
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            ) {
-                                AppIconCircle(topApp.packageName)
-                                Column(modifier = Modifier.weight(1f)) {
-                                    Text(
-                                        text = AppText.t("stats_top_app_of_the_day"),
-                                        style = MaterialTheme.typography.labelMedium,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                    Text(
-                                        text = topApp.label,
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.Bold,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                    )
-                                }
-                                Text(
-                                    text = formatDuration(topApp.value),
-                                    style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = FontWeight.Bold,
-                                )
-                            }
                         }
                     }
                 }

@@ -21,8 +21,12 @@ import androidx.sqlite.db.SupportSQLiteDatabase
         PointLedgerEntity::class,
         DailyArchiveStateEntity::class,
         BlockEventEntity::class,
+        RewardInventoryEntity::class,
+        ActiveRewardEffectEntity::class,
+        StreakShieldPendingEntity::class,
+        RewardUseHistoryEntity::class,
     ],
-    version = 16,
+    version = 18,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -38,6 +42,10 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun pointLedgerDao(): PointLedgerDao
     abstract fun dailyArchiveStateDao(): DailyArchiveStateDao
     abstract fun blockEventDao(): BlockEventDao
+    abstract fun rewardInventoryDao(): RewardInventoryDao
+    abstract fun activeRewardEffectDao(): ActiveRewardEffectDao
+    abstract fun streakShieldPendingDao(): StreakShieldPendingDao
+    abstract fun rewardUseHistoryDao(): RewardUseHistoryDao
 
     companion object {
         private const val DEFAULT_DATABASE_NAME = "tinyvow_database"
@@ -494,6 +502,238 @@ abstract class AppDatabase : RoomDatabase() {
                 }
             }
 
+        val MIGRATION_16_17 =
+            object : Migration(16, 17) {
+                override fun migrate(db: SupportSQLiteDatabase) {
+                    db.execSQL("ALTER TABLE `redemptions` ADD COLUMN `payload_json` TEXT")
+                    db.execSQL("ALTER TABLE `redemption_history` ADD COLUMN `payload_json` TEXT")
+                    db.execSQL("ALTER TABLE `daily_group_archives` ADD COLUMN `reward_exempted` INTEGER NOT NULL DEFAULT 0")
+                    db.execSQL("ALTER TABLE `daily_group_archives` ADD COLUMN `reward_exempt_type` TEXT")
+                    db.execSQL("ALTER TABLE `daily_group_archives` ADD COLUMN `reward_bonus_points` REAL NOT NULL DEFAULT 0")
+                    db.execSQL("ALTER TABLE `daily_group_archives` ADD COLUMN `reward_effect_snapshot_json` TEXT")
+                    db.execSQL("UPDATE `redemptions` SET `reward_type` = 'TIME_ADD' WHERE `reward_type` = 'TIME_PACK'")
+                    db.execSQL("UPDATE `redemption_history` SET `history_type` = 'TIME_ADD' WHERE `history_type` = 'TIME_PACK'")
+                    db.execSQL(
+                        """
+                        CREATE TABLE IF NOT EXISTS `reward_inventory` (
+                            `id` TEXT NOT NULL,
+                            `reward_id` TEXT NOT NULL,
+                            `reward_builtin_key` TEXT,
+                            `quantity` INTEGER NOT NULL,
+                            `created_at` INTEGER NOT NULL,
+                            `updated_at` INTEGER NOT NULL,
+                            PRIMARY KEY(`id`)
+                        )
+                        """.trimIndent()
+                    )
+                    db.execSQL(
+                        "CREATE UNIQUE INDEX IF NOT EXISTS `index_reward_inventory_reward_id` ON `reward_inventory` (`reward_id`)"
+                    )
+                    db.execSQL(
+                        "CREATE UNIQUE INDEX IF NOT EXISTS `index_reward_inventory_reward_builtin_key` ON `reward_inventory` (`reward_builtin_key`)"
+                    )
+                    db.execSQL(
+                        """
+                        CREATE TABLE IF NOT EXISTS `active_reward_effects` (
+                            `id` TEXT NOT NULL,
+                            `effect_type` TEXT NOT NULL,
+                            `source_reward_id` TEXT NOT NULL,
+                            `source_builtin_key` TEXT,
+                            `target_group_id` TEXT,
+                            `target_group_type` TEXT,
+                            `start_at` INTEGER NOT NULL,
+                            `expire_at` INTEGER NOT NULL,
+                            `period_start_date` TEXT,
+                            `period_end_date` TEXT,
+                            `status` TEXT NOT NULL,
+                            `payload_json` TEXT,
+                            `created_at` INTEGER NOT NULL,
+                            `consumed_at` INTEGER,
+                            PRIMARY KEY(`id`)
+                        )
+                        """.trimIndent()
+                    )
+                    db.execSQL(
+                        "CREATE INDEX IF NOT EXISTS `index_active_reward_effects_target_group_id_status_expire_at` ON `active_reward_effects` (`target_group_id`, `status`, `expire_at`)"
+                    )
+                    db.execSQL(
+                        "CREATE INDEX IF NOT EXISTS `index_active_reward_effects_effect_type_status_expire_at` ON `active_reward_effects` (`effect_type`, `status`, `expire_at`)"
+                    )
+                    db.execSQL(
+                        "CREATE INDEX IF NOT EXISTS `index_active_reward_effects_source_reward_id` ON `active_reward_effects` (`source_reward_id`)"
+                    )
+                    db.execSQL(
+                        """
+                        CREATE TABLE IF NOT EXISTS `streak_shield_pending` (
+                            `id` TEXT NOT NULL,
+                            `archive_date` TEXT NOT NULL,
+                            `shield_target` TEXT NOT NULL,
+                            `status` TEXT NOT NULL,
+                            `created_at` INTEGER NOT NULL,
+                            `resolved_at` INTEGER,
+                            PRIMARY KEY(`id`)
+                        )
+                        """.trimIndent()
+                    )
+                    db.execSQL(
+                        "CREATE UNIQUE INDEX IF NOT EXISTS `index_streak_shield_pending_archive_date_shield_target` ON `streak_shield_pending` (`archive_date`, `shield_target`)"
+                    )
+                    db.execSQL(
+                        "CREATE INDEX IF NOT EXISTS `index_streak_shield_pending_status_created_at` ON `streak_shield_pending` (`status`, `created_at`)"
+                    )
+                }
+            }
+
+        val MIGRATION_17_18 =
+            object : Migration(17, 18) {
+                override fun migrate(db: SupportSQLiteDatabase) {
+                    db.execSQL(
+                        """
+                        CREATE TABLE IF NOT EXISTS `reward_use_history` (
+                            `id` TEXT NOT NULL,
+                            `reward_id` TEXT NOT NULL,
+                            `reward_title` TEXT NOT NULL,
+                            `reward_type` TEXT NOT NULL,
+                            `reward_builtin_key` TEXT,
+                            `target_group_name` TEXT,
+                            `payload_json` TEXT,
+                            `used_at` INTEGER NOT NULL,
+                            PRIMARY KEY(`id`)
+                        )
+                        """.trimIndent()
+                    )
+                    db.execSQL(
+                        "CREATE INDEX IF NOT EXISTS `index_reward_use_history_used_at` ON `reward_use_history` (`used_at`)"
+                    )
+                    db.execSQL(
+                        "CREATE INDEX IF NOT EXISTS `index_reward_use_history_reward_id` ON `reward_use_history` (`reward_id`)"
+                    )
+
+                    db.execSQL("UPDATE `redemptions` SET `reward_type` = 'DOUBLE_POINTS_DAY' WHERE `reward_type` = 'BONUS_TARGET'")
+                    db.execSQL("UPDATE `redemption_history` SET `history_type` = 'DOUBLE_POINTS_DAY' WHERE `history_type` = 'BONUS_TARGET'")
+                    db.execSQL("UPDATE `active_reward_effects` SET `effect_type` = 'DOUBLE_POINTS_DAY' WHERE `effect_type` = 'BONUS_TARGET'")
+                    db.execSQL(
+                        """
+                        UPDATE `active_reward_effects`
+                        SET `source_builtin_key` = 'reward_double_points_day'
+                        WHERE `source_builtin_key` IN ('reward_bonus_target_30', 'reward_bonus_target_50')
+                        """.trimIndent()
+                    )
+
+                    db.execSQL(
+                        """
+                        UPDATE `redemptions`
+                        SET
+                            `builtin_key` = 'reward_double_points_day',
+                            `point_cost` = 10,
+                            `bonus_minutes` = 0,
+                            `updated_at` = `updated_at`
+                        WHERE `builtin_key` = 'reward_bonus_target_30'
+                        """.trimIndent()
+                    )
+                    db.execSQL(
+                        """
+                        UPDATE `redemptions`
+                        SET
+                            `builtin_key` = 'reward_double_points_day',
+                            `point_cost` = 10,
+                            `bonus_minutes` = 0,
+                            `updated_at` = `updated_at`
+                        WHERE `builtin_key` = 'reward_bonus_target_50'
+                            AND NOT EXISTS (
+                                SELECT 1 FROM `redemptions` WHERE `builtin_key` = 'reward_double_points_day'
+                            )
+                        """.trimIndent()
+                    )
+
+                    db.execSQL(
+                        """
+                        INSERT OR REPLACE INTO `reward_inventory` (
+                            `id`,
+                            `reward_id`,
+                            `reward_builtin_key`,
+                            `quantity`,
+                            `created_at`,
+                            `updated_at`
+                        )
+                        SELECT
+                            COALESCE(
+                                (SELECT `id` FROM `reward_inventory` WHERE `reward_id` = keep_reward.`id` LIMIT 1),
+                                (SELECT `id` FROM `reward_inventory` WHERE `reward_id` = duplicate_reward.`id` LIMIT 1),
+                                'inventory:' || keep_reward.`id`
+                            ),
+                            keep_reward.`id`,
+                            'reward_double_points_day',
+                            COALESCE(
+                                (SELECT SUM(`quantity`) FROM `reward_inventory` WHERE `reward_id` IN (keep_reward.`id`, duplicate_reward.`id`)),
+                                0
+                            ),
+                            COALESCE(
+                                (SELECT MIN(`created_at`) FROM `reward_inventory` WHERE `reward_id` IN (keep_reward.`id`, duplicate_reward.`id`)),
+                                CAST(strftime('%s','now') AS INTEGER) * 1000
+                            ),
+                            COALESCE(
+                                (SELECT MAX(`updated_at`) FROM `reward_inventory` WHERE `reward_id` IN (keep_reward.`id`, duplicate_reward.`id`)),
+                                CAST(strftime('%s','now') AS INTEGER) * 1000
+                            )
+                        FROM `redemptions` AS keep_reward, `redemptions` AS duplicate_reward
+                        WHERE keep_reward.`builtin_key` = 'reward_double_points_day'
+                            AND duplicate_reward.`builtin_key` = 'reward_bonus_target_50'
+                        """.trimIndent()
+                    )
+                    db.execSQL(
+                        """
+                        UPDATE `reward_inventory`
+                        SET `reward_builtin_key` = 'reward_double_points_day'
+                        WHERE `reward_id` IN (
+                            SELECT `id` FROM `redemptions`
+                            WHERE `builtin_key` = 'reward_double_points_day'
+                        )
+                        """.trimIndent()
+                    )
+                    db.execSQL(
+                        """
+                        UPDATE `active_reward_effects`
+                        SET
+                            `source_reward_id` = (
+                                SELECT `id` FROM `redemptions` WHERE `builtin_key` = 'reward_double_points_day' LIMIT 1
+                            ),
+                            `source_builtin_key` = 'reward_double_points_day'
+                        WHERE `source_reward_id` IN (
+                            SELECT `id` FROM `redemptions` WHERE `builtin_key` = 'reward_bonus_target_50'
+                        )
+                        """.trimIndent()
+                    )
+                    db.execSQL(
+                        """
+                        UPDATE `redemption_history`
+                        SET `reward_builtin_key` = 'reward_double_points_day'
+                        WHERE `reward_builtin_key` IN ('reward_bonus_target_30', 'reward_bonus_target_50')
+                        """.trimIndent()
+                    )
+                    db.execSQL(
+                        """
+                        UPDATE `point_ledger`
+                        SET `reward_id` = (
+                            SELECT `id` FROM `redemptions` WHERE `builtin_key` = 'reward_double_points_day' LIMIT 1
+                        )
+                        WHERE `reward_id` IN (
+                            SELECT `id` FROM `redemptions` WHERE `builtin_key` = 'reward_bonus_target_50'
+                        )
+                        """.trimIndent()
+                    )
+                    db.execSQL(
+                        """
+                        DELETE FROM `reward_inventory`
+                        WHERE `reward_id` IN (
+                            SELECT `id` FROM `redemptions` WHERE `builtin_key` = 'reward_bonus_target_50'
+                        )
+                        """.trimIndent()
+                    )
+                    db.execSQL("DELETE FROM `redemptions` WHERE `builtin_key` = 'reward_bonus_target_50'")
+                }
+            }
+
         @Volatile
         private var INSTANCE: AppDatabase? = null
         @Volatile
@@ -522,6 +762,8 @@ abstract class AppDatabase : RoomDatabase() {
                             MIGRATION_13_14,
                             MIGRATION_14_15,
                             MIGRATION_15_16,
+                            MIGRATION_16_17,
+                            MIGRATION_17_18,
                         )
                         .build()
                 INSTANCE = instance
