@@ -113,7 +113,7 @@ fun RedeemScreen(
                     controlGroupCount = controlGroups,
                     encourageGroupCount = encourageGroups,
                     onPurchase = { onPurchase(item.reward) },
-                    onEdit = null,
+                    onEdit = { editingReward = item.reward },
                     onArchive = null,
                 )
             }
@@ -128,7 +128,7 @@ fun RedeemScreen(
                     controlGroupCount = controlGroups,
                     encourageGroupCount = encourageGroups,
                     onPurchase = { onPurchase(item.reward) },
-                    onEdit = null,
+                    onEdit = { editingReward = item.reward },
                     onArchive = null,
                 )
             }
@@ -143,7 +143,7 @@ fun RedeemScreen(
                     controlGroupCount = controlGroups,
                     encourageGroupCount = encourageGroups,
                     onPurchase = { onPurchase(item.reward) },
-                    onEdit = null,
+                    onEdit = { editingReward = item.reward },
                     onArchive = null,
                 )
             }
@@ -206,12 +206,16 @@ fun RedeemScreen(
             onDismiss = { editingReward = null },
             onConfirm = { name, cost, stock, desc ->
                 onUpdateReward(
-                    reward.copy(
-                        title = name,
-                        pointCost = cost,
-                        stock = stock,
-                        description = desc,
-                    ),
+                    if (reward.builtinKey != null) {
+                        reward.copy(pointCost = cost)
+                    } else {
+                        reward.copy(
+                            title = name,
+                            pointCost = cost,
+                            stock = stock,
+                            description = desc,
+                        )
+                    },
                 )
                 editingReward = null
             },
@@ -556,13 +560,25 @@ private fun StoreRewardItemCard(
                         color = MaterialTheme.colorScheme.primary,
                     )
                 }
-                if (onEdit != null && onArchive != null) {
+                if (onEdit != null || onArchive != null) {
                     Row {
-                        IconButton(onClick = onEdit) {
-                            Icon(Icons.Default.Edit, contentDescription = AppText.t("redeem_edit_reward"))
+                        onEdit?.let {
+                            IconButton(onClick = it) {
+                                Icon(
+                                    Icons.Default.Edit,
+                                    contentDescription =
+                                        if (reward.builtinKey != null) AppText.t("redeem_edit_builtin_reward_cost")
+                                        else AppText.t("redeem_edit_reward"),
+                                )
+                            }
                         }
-                        IconButton(onClick = onArchive) {
-                            Icon(Icons.Default.DeleteOutline, contentDescription = AppText.t("redeem_archive_custom_reward"))
+                        onArchive?.let {
+                            IconButton(onClick = it) {
+                                Icon(
+                                    Icons.Default.DeleteOutline,
+                                    contentDescription = AppText.t("redeem_archive_custom_reward"),
+                                )
+                            }
                         }
                     }
                 }
@@ -810,6 +826,7 @@ fun RewardEditDialog(
     onDismiss: () -> Unit,
     onConfirm: (String, Int, Int, String) -> Unit,
 ) {
+    val builtinCostOnly = reward?.builtinKey != null
     var title by remember { mutableStateOf(reward?.title ?: "") }
     var cost by remember { mutableStateOf(reward?.pointCost?.toString() ?: "100") }
     var stock by remember { mutableStateOf(reward?.stock?.takeIf { it > 0 }?.toString() ?: "1") }
@@ -819,25 +836,51 @@ fun RewardEditDialog(
 
     val costValue = cost.toIntOrNull() ?: 0
     val stockValue = if (isInfinite) -1 else stock.toIntOrNull() ?: 0
-    val validationError = validateCustomRewardInput(title = title, pointCost = costValue, stock = stockValue)
-    val titleError = showErrors && title.isBlank()
+    val validationError =
+        if (builtinCostOnly) {
+            if (costValue <= 0) RewardSaveValidationError.POINT_COST_INVALID else null
+        } else {
+            validateCustomRewardInput(title = title, pointCost = costValue, stock = stockValue)
+        }
+    val titleError = showErrors && !builtinCostOnly && title.isBlank()
     val costError = showErrors && validationError == RewardSaveValidationError.POINT_COST_INVALID
-    val stockError = showErrors && validationError == RewardSaveValidationError.STOCK_INVALID
+    val stockError = showErrors && !builtinCostOnly && validationError == RewardSaveValidationError.STOCK_INVALID
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(if (reward == null) AppText.t("redeem_add_custom_reward") else AppText.t("redeem_edit_reward")) },
+        title = {
+            Text(
+                when {
+                    reward == null -> AppText.t("redeem_add_custom_reward")
+                    builtinCostOnly -> AppText.t("redeem_edit_builtin_reward_cost")
+                    else -> AppText.t("redeem_edit_reward")
+                },
+            )
+        },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedTextField(
-                    value = title,
-                    onValueChange = { title = it },
-                    label = { Text(AppText.t("redeem_item_name")) },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    isError = titleError,
-                    supportingText = { if (titleError) Text(AppText.t("redeem_error_title_required")) },
-                )
+                if (builtinCostOnly) {
+                    Text(
+                        text = reward?.localizedTitle().orEmpty(),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        text = AppText.t("redeem_builtin_reward_cost_hint"),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                } else {
+                    OutlinedTextField(
+                        value = title,
+                        onValueChange = { title = it },
+                        label = { Text(AppText.t("redeem_item_name")) },
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(12.dp),
+                        isError = titleError,
+                        supportingText = { if (titleError) Text(AppText.t("redeem_error_title_required")) },
+                    )
+                }
                 OutlinedTextField(
                     value = cost,
                     onValueChange = { cost = it },
@@ -848,30 +891,32 @@ fun RewardEditDialog(
                     isError = costError,
                     supportingText = { if (costError) Text(AppText.t("redeem_error_point_cost_invalid")) },
                 )
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Checkbox(checked = isInfinite, onCheckedChange = { isInfinite = it })
-                    Text(AppText.t("redeem_unlimited_stock"), style = MaterialTheme.typography.bodyMedium)
-                }
-                if (!isInfinite) {
+                if (!builtinCostOnly) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Checkbox(checked = isInfinite, onCheckedChange = { isInfinite = it })
+                        Text(AppText.t("redeem_unlimited_stock"), style = MaterialTheme.typography.bodyMedium)
+                    }
+                    if (!isInfinite) {
+                        OutlinedTextField(
+                            value = stock,
+                            onValueChange = { stock = it },
+                            label = { Text(AppText.t("redeem_stock_quantity")) },
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(12.dp),
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            isError = stockError,
+                            supportingText = { if (stockError) Text(AppText.t("redeem_error_stock_invalid")) },
+                        )
+                    }
                     OutlinedTextField(
-                        value = stock,
-                        onValueChange = { stock = it },
-                        label = { Text(AppText.t("redeem_stock_quantity")) },
+                        value = description,
+                        onValueChange = { description = it },
+                        label = { Text(AppText.t("redeem_description_optional")) },
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(12.dp),
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        isError = stockError,
-                        supportingText = { if (stockError) Text(AppText.t("redeem_error_stock_invalid")) },
+                        minLines = 2,
                     )
                 }
-                OutlinedTextField(
-                    value = description,
-                    onValueChange = { description = it },
-                    label = { Text(AppText.t("redeem_description_optional")) },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    minLines = 2,
-                )
             }
         },
         confirmButton = {

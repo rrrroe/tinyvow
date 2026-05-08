@@ -406,6 +406,8 @@
     <string name="redeem_daily_time_pack_groups">每日分组</string>
     <string name="redeem_description_optional">描述 (可选)</string>
     <string name="redeem_edit_reward">编辑奖励</string>
+    <string name="redeem_edit_builtin_reward_cost">修改积分价格</string>
+    <string name="redeem_builtin_reward_cost_hint">这里只能改积分消耗。</string>
     <string name="redeem_error_insufficient_points">当前积分不足，无法兑换这个奖励。</string>
     <string name="redeem_error_invalid_reward">这个奖励当前不可用。</string>
     <string name="redeem_error_missing_target_group">兑换这个加时包前，请先选择一个限制分组。</string>

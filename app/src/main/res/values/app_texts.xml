@@ -406,6 +406,8 @@
     <string name="redeem_daily_time_pack_groups">Daily groups</string>
     <string name="redeem_description_optional">Description (optional)</string>
     <string name="redeem_edit_reward">Edit reward</string>
+    <string name="redeem_edit_builtin_reward_cost">Edit point cost</string>
+    <string name="redeem_builtin_reward_cost_hint">Only the point cost can be changed.</string>
     <string name="redeem_error_insufficient_points">Not enough points for this reward.</string>
     <string name="redeem_error_invalid_reward">This reward is no longer available.</string>
     <string name="redeem_error_missing_target_group">Choose a control group before redeeming this time pack.</string>

@@ -1100,7 +1100,18 @@ class AppLimitRepository(
 
     suspend fun updateReward(reward: RedemptionEntity): RewardSaveResult {
         if (reward.builtinKey != null) {
-            return RewardSaveResult.Invalid(RewardSaveValidationError.REWARD_NOT_EDITABLE)
+            if (reward.pointCost <= 0) {
+                return RewardSaveResult.Invalid(RewardSaveValidationError.POINT_COST_INVALID)
+            }
+            withContext(Dispatchers.IO) {
+                redemptionDao.insertRedemption(
+                    reward.copy(
+                        pointCost = reward.pointCost,
+                        updatedAt = System.currentTimeMillis(),
+                    ),
+                )
+            }
+            return RewardSaveResult.Success
         }
         val validation = validateCustomRewardInput(reward.title, reward.pointCost, reward.stock)
         if (validation != null) return RewardSaveResult.Invalid(validation)
