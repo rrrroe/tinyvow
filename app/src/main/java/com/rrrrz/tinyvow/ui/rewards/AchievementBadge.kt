@@ -64,44 +64,49 @@ fun AchievementBadge(
     locked: Boolean = false,
     animated: Boolean = false,
 ) {
-    val transition = rememberInfiniteTransition(label = "badge_$achievementId")
-    val twinkle by transition.animateFloat(
-        initialValue = 0.18f,
-        targetValue = 0.95f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1900, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse,
-        ),
-        label = "badge_twinkle"
-    )
-    val drift by transition.animateFloat(
-        initialValue = -0.35f,
-        targetValue = 1.25f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(3200, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart,
-        ),
-        label = "badge_drift"
-    )
-    val spin by transition.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(
-                durationMillis = when (tier) {
-                    AchievementTier.BRONZE -> 16000
-                    AchievementTier.SILVER -> 13000
-                    AchievementTier.GOLD -> 18000
-                    AchievementTier.DIAMOND -> 20000
-                    AchievementTier.LEGENDARY -> 24000
-                    else -> 18000
-                },
-                easing = LinearEasing,
+    val (twinkle, drift, spin) = if (animated) {
+        val transition = rememberInfiniteTransition(label = "badge_$achievementId")
+        val animatedTwinkle by transition.animateFloat(
+            initialValue = 0.18f,
+            targetValue = 0.95f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(1900, easing = FastOutSlowInEasing),
+                repeatMode = RepeatMode.Reverse,
             ),
-            repeatMode = RepeatMode.Restart,
-        ),
-        label = "badge_spin"
-    )
+            label = "badge_twinkle"
+        )
+        val animatedDrift by transition.animateFloat(
+            initialValue = -0.35f,
+            targetValue = 1.25f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(3200, easing = LinearEasing),
+                repeatMode = RepeatMode.Restart,
+            ),
+            label = "badge_drift"
+        )
+        val animatedSpin by transition.animateFloat(
+            initialValue = 0f,
+            targetValue = 360f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(
+                    durationMillis = when (tier) {
+                        AchievementTier.BRONZE -> 16000
+                        AchievementTier.SILVER -> 13000
+                        AchievementTier.GOLD -> 18000
+                        AchievementTier.DIAMOND -> 20000
+                        AchievementTier.LEGENDARY -> 24000
+                        else -> 18000
+                    },
+                    easing = LinearEasing,
+                ),
+                repeatMode = RepeatMode.Restart,
+            ),
+            label = "badge_spin"
+        )
+        Triple(animatedTwinkle, animatedDrift, animatedSpin)
+    } else {
+        Triple(0.55f, 0f, 0f)
+    }
 
     val imageRes = achievementBadgeResId(achievementId)
     val effectStyle = effectStyleForTier(tier)

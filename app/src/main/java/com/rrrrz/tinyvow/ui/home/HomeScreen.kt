@@ -69,6 +69,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -112,16 +113,26 @@ import com.rrrrz.tinyvow.data.repository.RewardSaveResult
 import com.rrrrz.tinyvow.data.repository.RewardSaveValidationError
 import com.rrrrz.tinyvow.data.repository.UseRewardResult
 import com.rrrrz.tinyvow.data.settings.ManagedAppPreferences
+import com.rrrrz.tinyvow.data.supermode.GuardedAction
+import com.rrrrz.tinyvow.data.supermode.SuperModeController
+import com.rrrrz.tinyvow.data.supermode.SuperModeEnterResult
+import com.rrrrz.tinyvow.data.supermode.SuperModeExitReason
+import com.rrrrz.tinyvow.data.supermode.SuperModeRecoveryResult
+import com.rrrrz.tinyvow.data.supermode.SuperModeStatus
+import com.rrrrz.tinyvow.data.supermode.SuperModeStoredState
+import com.rrrrz.tinyvow.data.supermode.SuperModeWindowUpdateResult
 import com.rrrrz.tinyvow.data.usage.UsageAccessStateChecker
 import com.rrrrz.tinyvow.data.usage.UsageAccessStatus
 import com.rrrrz.tinyvow.service.block.AppLimitAccessibilityService
 import com.rrrrz.tinyvow.ui.theme.TinyVowTheme
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.first
 import androidx.compose.animation.*
 import androidx.compose.foundation.BorderStroke
 import java.time.LocalDate
+import java.time.ZoneId
 import com.rrrrz.tinyvow.data.usage.UsageStatsUsageRepository
 import com.rrrrz.tinyvow.data.usage.UsageRepository
 
@@ -143,6 +154,11 @@ enum class Screen { HOME, REWARDS, STATS, ME, LABORATORY, HISTORY, THEME, HELP_F
 enum class RewardsSection { STORE, INVENTORY, ACHIEVEMENTS }
 
 private const val CONTACT_EMAIL = "rrrr.zhao@gmail.com"
+
+private data class PendingSuperModeRequest(
+    val message: String,
+    val onAllowed: (() -> Unit)?,
+)
 
 private object PermissionPromptIds {
     const val USAGE_ACCESS = "usage_access"
@@ -179,6 +195,7 @@ fun RewardsHome(
     onArchiveReward: (RedemptionEntity) -> Unit,
     isProActive: Boolean,
     onShowProUpsell: (ProUpsellSource) -> Unit,
+    onGuardAction: (GuardedAction, () -> Unit) -> Unit,
     currentSection: RewardsSection,
     onSectionChange: (RewardsSection) -> Unit,
 ) {
@@ -199,6 +216,7 @@ fun RewardsHome(
                     onArchiveReward = onArchiveReward,
                     isProActive = isProActive,
                     onShowProUpsell = onShowProUpsell,
+                    onGuardAction = onGuardAction,
                 )
             }
             RewardsSection.INVENTORY -> {
@@ -323,6 +341,18 @@ private fun rewardSaveResultMessage(result: RewardSaveResult): String? =
             }
     }
 
+private fun guardedActionLabel(action: GuardedAction): String =
+    when (action) {
+        GuardedAction.EDIT_GROUP -> AppText.t("super_mode_action_edit_group")
+        GuardedAction.DELETE_GROUP -> AppText.t("super_mode_action_delete_group")
+        GuardedAction.ADD_CUSTOM_REWARD -> AppText.t("super_mode_action_add_custom_reward")
+        GuardedAction.EDIT_CUSTOM_REWARD -> AppText.t("super_mode_action_edit_custom_reward")
+        GuardedAction.EDIT_REWARD_PRICE -> AppText.t("super_mode_action_edit_reward_price")
+        GuardedAction.PURCHASE_TIME_ADD -> AppText.t("super_mode_action_purchase_time_add")
+        GuardedAction.PURCHASE_PERIOD_PASS -> AppText.t("super_mode_action_purchase_period_pass")
+        GuardedAction.PURCHASE_EMERGENCY_UNLOCK -> AppText.t("super_mode_action_purchase_emergency_unlock")
+    }
+
 @Composable
 fun HomeRoute(
     modifier: Modifier = Modifier,
@@ -362,6 +392,13 @@ fun HomeRoute(
     val localDataManager = remember(database, context, preferences) {
         LocalDataManager(context, database, preferences)
     }
+    val superModeController = remember(preferences) { SuperModeController(preferences) }
+    val currentTimeMillis by produceState(initialValue = System.currentTimeMillis()) {
+        while (true) {
+            value = System.currentTimeMillis()
+            delay(1000L)
+        }
+    }
     
     val groupsWithApps by appLimitRepository.getAllGroupsWithApps().collectAsState(initial = emptyList())
     val userPoints by preferences.userPoints.collectAsState(initial = 0.0)
@@ -381,6 +418,7 @@ fun HomeRoute(
     val dismissedPermissionPrompts by preferences.dismissedPermissionPrompts.collectAsState(initial = emptySet())
     val usageAccessDisclosureAccepted by preferences.usageAccessDisclosureAccepted.collectAsState(initial = false)
     val accessibilityDisclosureAccepted by preferences.accessibilityDisclosureAccepted.collectAsState(initial = false)
+    val superModeStoredState by preferences.superModeState.collectAsState(initial = SuperModeStoredState())
     val userSession by authRepository.session.collectAsState(initial = null)
     val subscriptionEntitlement by subscriptionRepository.entitlement.collectAsState()
     val subscriptionOffers by subscriptionRepository.offers.collectAsState()
@@ -397,6 +435,17 @@ fun HomeRoute(
         } else {
             subscriptionEntitlement
         }
+    }
+    val superModeStatus = remember(superModeStoredState, proEntitlement.isProActive, currentTimeMillis) {
+        superModeController.buildStatus(
+            storedState = superModeStoredState,
+            isProActive = proEntitlement.isProActive,
+            nowMillis = currentTimeMillis,
+        )
+    }
+    val currentTimeLabel = remember(currentTimeMillis) {
+        val localTime = java.time.Instant.ofEpochMilli(currentTimeMillis).atZone(ZoneId.systemDefault()).toLocalTime()
+        superModeController.formatTime(localTime.hour * 60 + localTime.minute)
     }
 
     var currentScreen by remember { mutableStateOf(Screen.HOME) }
@@ -417,8 +466,88 @@ fun HomeRoute(
 
     var showYesterdaySummary by remember { mutableStateOf(false) }
     var yesterdaySavedMinutes by remember { mutableIntStateOf(0) }
+    var showSuperModeSettings by remember { mutableStateOf(false) }
+    var showSuperModeCredentialDialog by remember { mutableStateOf(false) }
+    var isEditingSuperModeCredentials by remember { mutableStateOf(false) }
+    var showSuperModePasswordDialog by remember { mutableStateOf(false) }
+    var showSuperModeUnavailableDialog by remember { mutableStateOf(false) }
+    var showSuperModeSetupDialog by remember { mutableStateOf(false) }
+    var showSuperModeRecoveryDialog by remember { mutableStateOf(false) }
+    var showSuperModeWindowDialog by remember { mutableStateOf(false) }
+    var showSuperModeDisableDialog by remember { mutableStateOf(false) }
+    var superModePasswordError by remember { mutableStateOf<String?>(null) }
+    var superModeRecoveryError by remember { mutableStateOf<String?>(null) }
+    var superModeWindowError by remember { mutableStateOf<String?>(null) }
+    var setupRequiredActionLabel by remember { mutableStateOf(AppText.t("super_mode_title")) }
+    var pendingSuperModeRequest by remember { mutableStateOf<PendingSuperModeRequest?>(null) }
 
     val isAutoStartDismissed by preferences.isAutoStartDismissed.collectAsState(initial = false)
+
+    fun clearPendingSuperModeRequest() {
+        pendingSuperModeRequest = null
+        superModePasswordError = null
+    }
+
+    fun requestSuperModeSession(
+        message: String,
+        onAllowed: (() -> Unit)? = null,
+    ) {
+        if (!superModeStatus.isConfigured) {
+            clearPendingSuperModeRequest()
+            setupRequiredActionLabel = AppText.t("super_mode_title")
+            showSuperModeSetupDialog = true
+            return
+        }
+        if (superModeStatus.isActive) {
+            onAllowed?.invoke()
+            return
+        }
+        if (!superModeStatus.isAvailableNow) {
+            clearPendingSuperModeRequest()
+            showSuperModeUnavailableDialog = true
+            return
+        }
+        pendingSuperModeRequest = PendingSuperModeRequest(message = message, onAllowed = onAllowed)
+        superModePasswordError = null
+        showSuperModePasswordDialog = true
+    }
+
+    fun runWithSuperModeGuard(
+        action: GuardedAction,
+        onAllowed: () -> Unit,
+    ) {
+        if (!superModeStatus.isConfigured) {
+            clearPendingSuperModeRequest()
+            setupRequiredActionLabel = guardedActionLabel(action)
+            showSuperModeSetupDialog = true
+            return
+        }
+        if (superModeStatus.isActive) {
+            onAllowed()
+            return
+        }
+        if (!superModeStatus.isAvailableNow) {
+            clearPendingSuperModeRequest()
+            showSuperModeUnavailableDialog = true
+            return
+        }
+        pendingSuperModeRequest =
+            PendingSuperModeRequest(
+                message = AppText.t("super_mode_enter_for_action", guardedActionLabel(action)),
+                onAllowed = onAllowed,
+            )
+        superModePasswordError = null
+        showSuperModePasswordDialog = true
+    }
+
+    fun openSuperModeSettings(configureImmediately: Boolean = false) {
+        currentScreen = Screen.ME
+        showSuperModeSettings = true
+        if (configureImmediately) {
+            isEditingSuperModeCredentials = false
+            showSuperModeCredentialDialog = true
+        }
+    }
 
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission(),
@@ -426,7 +555,7 @@ fun HomeRoute(
         notificationPermissionGranted = notificationPermissionChecker.isGranted()
     }
 
-    DisposableEffect(lifecycleOwner, checker) {
+    DisposableEffect(lifecycleOwner, checker, superModeStoredState.isActive) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 usageAccessStatus = checker.getStatus()
@@ -437,10 +566,26 @@ fun HomeRoute(
                 coroutineScope.launch {
                     subscriptionRepository.refresh()
                 }
+            } else if (event == Lifecycle.Event.ON_STOP && superModeStoredState.isActive) {
+                coroutineScope.launch {
+                    superModeController.exit(SuperModeExitReason.BACKGROUND)
+                }
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    LaunchedEffect(superModeStoredState.isActive, superModeStatus.isActive, superModeStatus.isAvailableNow) {
+        if (superModeStoredState.isActive && !superModeStatus.isActive) {
+            val reason =
+                if (!superModeStatus.isAvailableNow) {
+                    SuperModeExitReason.OUTSIDE_ALLOWED_WINDOW
+                } else {
+                    SuperModeExitReason.IDLE_TIMEOUT
+                }
+            superModeController.exit(reason)
+        }
     }
 
     LaunchedEffect(Unit) {
@@ -607,6 +752,7 @@ fun HomeRoute(
                         userPoints = userPoints,
                         todayPoints = todayPoints,
                         isLoadingApps = isLoadingApps,
+                        superModeStatus = superModeStatus,
                         onNavigateToRedeem = {
                             rewardsSection = RewardsSection.STORE
                             currentScreen = Screen.REWARDS
@@ -614,6 +760,13 @@ fun HomeRoute(
                         onNavigateToAchievements = {
                             rewardsSection = RewardsSection.ACHIEVEMENTS
                             currentScreen = Screen.REWARDS
+                        },
+                        onOpenSuperModeEntry = {
+                            when {
+                                !superModeStatus.isConfigured -> openSuperModeSettings(configureImmediately = true)
+                                superModeStatus.isActive -> showSuperModeSettings = true
+                                else -> requestSuperModeSession(AppText.t("super_mode_enter_from_home"))
+                            }
                         },
                         onOpenUsageAccessSettings = {
                             if (usageAccessDisclosureAccepted) {
@@ -660,11 +813,18 @@ fun HomeRoute(
                             coroutineScope.launch {
                                 val groupId = appLimitRepository.createOrUpdateGroup(id, name, limit, type, period, pts)
                                 appLimitRepository.updateGroupApps(groupId, pkgs)
+                                if (id != null) {
+                                    superModeController.touch(proEntitlement.isProActive)
+                                }
                             }
                         },
                         onDeleteGroup = { id ->
-                            coroutineScope.launch { appLimitRepository.deleteGroup(id) }
+                            coroutineScope.launch {
+                                appLimitRepository.deleteGroup(id)
+                                superModeController.touch(proEntitlement.isProActive)
+                            }
                         },
+                        onGuardAction = ::runWithSuperModeGuard,
                         appLimitRepository = appLimitRepository,
                         archiveRepository = dailyArchiveRepository,
                         isProActive = proEntitlement.isProActive,
@@ -684,12 +844,16 @@ fun HomeRoute(
                             redemptionHistory = redemptionHistory,
                             rewardUseHistory = rewardUseHistory,
                             onPurchaseReward = { reward ->
-                            coroutineScope.launch {
-                                snackbarHostState.showSnackbar(
-                                    purchaseRewardResultMessage(appLimitRepository.purchaseReward(reward.id))
-                                )
-                            }
-                        },
+                                coroutineScope.launch {
+                                    val result = appLimitRepository.purchaseReward(reward.id)
+                                    if (result is PurchaseRewardResult.Success && GuardedAction.fromRewardType(reward.rewardType) != null) {
+                                        superModeController.touch(proEntitlement.isProActive)
+                                    }
+                                    snackbarHostState.showSnackbar(
+                                        purchaseRewardResultMessage(result)
+                                    )
+                                }
+                            },
                         onUseInventoryReward = { reward, groupId ->
                             coroutineScope.launch {
                                 snackbarHostState.showSnackbar(
@@ -706,7 +870,7 @@ fun HomeRoute(
                         },
                         onAddReward = { name, cost, stock, desc ->
                             coroutineScope.launch {
-                                rewardSaveResultMessage(
+                                val result =
                                     appLimitRepository.addReward(
                                         name,
                                         cost,
@@ -714,12 +878,19 @@ fun HomeRoute(
                                         stock,
                                         desc,
                                     )
-                                )?.let { snackbarHostState.showSnackbar(it) }
+                                if (result == RewardSaveResult.Success) {
+                                    superModeController.touch(proEntitlement.isProActive)
+                                }
+                                rewardSaveResultMessage(result)?.let { snackbarHostState.showSnackbar(it) }
                             }
                         },
                         onUpdateReward = { reward ->
                             coroutineScope.launch {
-                                rewardSaveResultMessage(appLimitRepository.updateReward(reward))
+                                val result = appLimitRepository.updateReward(reward)
+                                if (result == RewardSaveResult.Success) {
+                                    superModeController.touch(proEntitlement.isProActive)
+                                }
+                                rewardSaveResultMessage(result)
                                     ?.let { snackbarHostState.showSnackbar(it) }
                             }
                         },
@@ -731,6 +902,7 @@ fun HomeRoute(
                         },
                         isProActive = proEntitlement.isProActive,
                         onShowProUpsell = { proUpsellSource = it },
+                        onGuardAction = ::runWithSuperModeGuard,
                         currentSection = rewardsSection,
                         onSectionChange = { rewardsSection = it },
                     )
@@ -770,6 +942,7 @@ fun HomeRoute(
                         selectedThemeId = selectedThemeId,
                         customThemes = customThemes,
                         isProActive = proEntitlement.isProActive,
+                        superModeStatus = superModeStatus,
                         isDebugBuild = BuildConfig.DEBUG,
                         selectedAppLanguage = selectedAppLanguage,
                         usageAccessGranted = effectiveUsageAccessStatus == UsageAccessStatus.GRANTED,
@@ -814,6 +987,7 @@ fun HomeRoute(
                             }
                         },
                         onShowProUpsell = { proUpsellSource = it },
+                        onOpenSuperModeSettings = { showSuperModeSettings = true },
                         onOpenUsageAccessSettings = {
                             if (usageAccessDisclosureAccepted) {
                                 val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
@@ -1100,6 +1274,211 @@ fun HomeRoute(
                 }
             }
         }
+    }
+
+    if (showSuperModeSettings) {
+        SuperModeSettingsSheet(
+            status = superModeStatus,
+            isProActive = proEntitlement.isProActive,
+            currentTimeLabel = currentTimeLabel,
+            recoveryQuestion = superModeStoredState.recoveryQuestion,
+            onDismiss = { showSuperModeSettings = false },
+            onConfigure = {
+                isEditingSuperModeCredentials = false
+                showSuperModeCredentialDialog = true
+            },
+            onEnter = {
+                requestSuperModeSession(AppText.t("super_mode_enter_for_settings"))
+            },
+            onExit = {
+                coroutineScope.launch {
+                    superModeController.exit(SuperModeExitReason.MANUAL)
+                    snackbarHostState.showSnackbar(AppText.t("super_mode_exit_success"))
+                }
+            },
+            onEditCredentials = {
+                requestSuperModeSession(AppText.t("super_mode_enter_to_edit_credentials")) {
+                    isEditingSuperModeCredentials = true
+                    showSuperModeCredentialDialog = true
+                }
+            },
+            onEditWindow = {
+                if (!proEntitlement.isProActive) {
+                    coroutineScope.launch {
+                        snackbarHostState.showSnackbar(AppText.t("super_mode_window_pro_only"))
+                    }
+                } else {
+                    requestSuperModeSession(AppText.t("super_mode_enter_to_edit_window")) {
+                        superModeWindowError = null
+                        showSuperModeWindowDialog = true
+                    }
+                }
+            },
+            onRecoveryReset = {
+                superModeRecoveryError = null
+                showSuperModeRecoveryDialog = true
+            },
+            onDisable = {
+                requestSuperModeSession(AppText.t("super_mode_enter_to_disable")) {
+                    showSuperModeDisableDialog = true
+                }
+            },
+        )
+    }
+
+    if (showSuperModeCredentialDialog) {
+        SuperModeCredentialDialog(
+            initialQuestion = superModeStoredState.recoveryQuestion.orEmpty(),
+            isEditing = isEditingSuperModeCredentials,
+            onDismiss = { showSuperModeCredentialDialog = false },
+            onConfirm = { password, question, answer ->
+                coroutineScope.launch {
+                    superModeController.updateCredentials(password, question, answer)
+                    showSuperModeCredentialDialog = false
+                    snackbarHostState.showSnackbar(
+                        if (isEditingSuperModeCredentials) {
+                            AppText.t("super_mode_edit_credentials_success")
+                        } else {
+                            AppText.t("super_mode_configured_success")
+                        }
+                    )
+                }
+            },
+        )
+    }
+
+    if (showSuperModePasswordDialog) {
+        SuperModePasswordDialog(
+            title = AppText.t("super_mode_enter_title"),
+            message = pendingSuperModeRequest?.message ?: AppText.t("super_mode_enter_hint"),
+            errorMessage = superModePasswordError,
+            onDismiss = {
+                showSuperModePasswordDialog = false
+                clearPendingSuperModeRequest()
+            },
+            onConfirm = { password ->
+                coroutineScope.launch {
+                    when (val result = superModeController.enter(password, proEntitlement.isProActive)) {
+                        is SuperModeEnterResult.Success -> {
+                            showSuperModePasswordDialog = false
+                            val nextAction = pendingSuperModeRequest?.onAllowed
+                            clearPendingSuperModeRequest()
+                            snackbarHostState.showSnackbar(AppText.t("super_mode_enter_success"))
+                            nextAction?.invoke()
+                        }
+                        SuperModeEnterResult.IncorrectPassword -> {
+                            superModePasswordError = AppText.t("super_mode_password_incorrect")
+                        }
+                        SuperModeEnterResult.OutsideAllowedWindow -> {
+                            showSuperModePasswordDialog = false
+                            clearPendingSuperModeRequest()
+                            showSuperModeUnavailableDialog = true
+                        }
+                        SuperModeEnterResult.NotConfigured -> {
+                            showSuperModePasswordDialog = false
+                            clearPendingSuperModeRequest()
+                            openSuperModeSettings(configureImmediately = true)
+                        }
+                    }
+                }
+            },
+        )
+    }
+
+    if (showSuperModeUnavailableDialog) {
+        SuperModeUnavailableDialog(
+            currentTimeLabel = currentTimeLabel,
+            windowLabel = superModeStatus.windowLabel,
+            onDismiss = { showSuperModeUnavailableDialog = false },
+        )
+    }
+
+    if (showSuperModeSetupDialog) {
+        SuperModeSetupRequiredDialog(
+            actionLabel = setupRequiredActionLabel,
+            onDismiss = { showSuperModeSetupDialog = false },
+            onOpenSettings = {
+                showSuperModeSetupDialog = false
+                openSuperModeSettings(configureImmediately = true)
+            },
+        )
+    }
+
+    if (showSuperModeRecoveryDialog) {
+        SuperModeRecoveryResetDialog(
+            question = superModeStoredState.recoveryQuestion.orEmpty(),
+            errorMessage = superModeRecoveryError,
+            onDismiss = { showSuperModeRecoveryDialog = false },
+            onConfirm = { answer ->
+                coroutineScope.launch {
+                    when (superModeController.resetWithRecovery(answer)) {
+                        SuperModeRecoveryResult.Success -> {
+                            showSuperModeRecoveryDialog = false
+                            showSuperModeSettings = false
+                            snackbarHostState.showSnackbar(AppText.t("super_mode_reset_success"))
+                        }
+                        SuperModeRecoveryResult.IncorrectAnswer -> {
+                            superModeRecoveryError = AppText.t("super_mode_recovery_answer_incorrect")
+                        }
+                        SuperModeRecoveryResult.NotConfigured -> {
+                            showSuperModeRecoveryDialog = false
+                        }
+                    }
+                }
+            },
+        )
+    }
+
+    if (showSuperModeWindowDialog) {
+        SuperModeWindowDialog(
+            initialStartMinutes = superModeStatus.windowStartMinutes,
+            initialEndMinutes = superModeStatus.windowEndMinutes,
+            errorMessage = superModeWindowError,
+            onDismiss = { showSuperModeWindowDialog = false },
+            onConfirm = { startMinutes, endMinutes ->
+                coroutineScope.launch {
+                    when (superModeController.updateWindow(startMinutes, endMinutes, proEntitlement.isProActive)) {
+                        SuperModeWindowUpdateResult.Success -> {
+                            showSuperModeWindowDialog = false
+                            snackbarHostState.showSnackbar(AppText.t("super_mode_window_saved"))
+                        }
+                        SuperModeWindowUpdateResult.InvalidWindow -> {
+                            superModeWindowError = AppText.t("super_mode_window_invalid")
+                        }
+                        SuperModeWindowUpdateResult.ProRequired -> {
+                            superModeWindowError = AppText.t("super_mode_window_pro_only")
+                        }
+                    }
+                }
+            },
+        )
+    }
+
+    if (showSuperModeDisableDialog) {
+        AlertDialog(
+            onDismissRequest = { showSuperModeDisableDialog = false },
+            title = { Text(AppText.t("super_mode_disable_confirm_title")) },
+            text = { Text(AppText.t("super_mode_disable_confirm_body")) },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        coroutineScope.launch {
+                            superModeController.clearConfiguration()
+                            showSuperModeDisableDialog = false
+                            showSuperModeSettings = false
+                            snackbarHostState.showSnackbar(AppText.t("super_mode_disabled_success"))
+                        }
+                    },
+                ) {
+                    Text(AppText.t("super_mode_disable_action"))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showSuperModeDisableDialog = false }) {
+                    Text(AppText.t("group_cancel"))
+                }
+            },
+        )
     }
 
     proUpsellSource?.let { source ->
@@ -1458,8 +1837,10 @@ fun HomeScreen(
     userPoints: Double,
     todayPoints: Double,
     isLoadingApps: Boolean,
+    superModeStatus: com.rrrrz.tinyvow.data.supermode.SuperModeStatus,
     onNavigateToRedeem: () -> Unit,
     onNavigateToAchievements: () -> Unit,
+    onOpenSuperModeEntry: () -> Unit,
     onOpenUsageAccessSettings: () -> Unit,
     onOpenAccessibilitySettings: () -> Unit,
     onRequestNotificationPermission: () -> Unit,
@@ -1471,6 +1852,7 @@ fun HomeScreen(
     onDismissPermissionPrompts: (List<String>) -> Unit,
     onSaveGroup: (id: String?, name: String, limit: Int, type: GroupType, period: LimitPeriod, pts: Double, pkgs: List<String>) -> Unit,
     onDeleteGroup: (id: String) -> Unit,
+    onGuardAction: (GuardedAction, () -> Unit) -> Unit,
     appLimitRepository: AppLimitRepository? = null,
     archiveRepository: DailyArchiveRepository? = null,
     isProActive: Boolean,
@@ -1598,7 +1980,11 @@ fun HomeScreen(
                                 horizontalArrangement = Arrangement.SpaceBetween,
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Row(
+                                    modifier = Modifier.weight(1f),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
                                     Text(
                                         text = currentDate,
                                         style = MaterialTheme.typography.titleMedium,
@@ -1613,7 +1999,7 @@ fun HomeScreen(
                                         maxLines = 1,
                                     )
                                 }
-                                
+
                                 Column(horizontalAlignment = Alignment.End) {
                                     Text(
                                         text = AppText.t("home_current_total"),
@@ -1704,6 +2090,7 @@ fun HomeScreen(
                     archiveRepository = archiveRepository,
                     isProActive = isProActive,
                     onShowProUpsell = onShowProUpsell,
+                    onGuardAction = onGuardAction,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(start = 16.dp, end = 16.dp, top = 8.dp)
@@ -2303,12 +2690,14 @@ private fun HomeScreenPreviewDenied() {
             userPoints = 120.5,
             todayPoints = 10.0,
             isLoadingApps = false,
+            superModeStatus = SuperModeStatus(false, false, false, "06:00 - 10:00", 360, 600, null, 0L),
             notificationPermissionGranted = false,
             isIgnoringBattery = false,
             isAutoStartDismissed = false,
             dismissedPermissionPrompts = emptySet(),
             onNavigateToRedeem = {},
             onNavigateToAchievements = {},
+            onOpenSuperModeEntry = {},
             onOpenUsageAccessSettings = {},
             onOpenAccessibilitySettings = {},
             onRequestNotificationPermission = {},
@@ -2318,6 +2707,7 @@ private fun HomeScreenPreviewDenied() {
             onDismissPermissionPrompts = {},
             onSaveGroup = { _, _, _, _, _, _, _ -> },
             onDeleteGroup = {},
+            onGuardAction = { _, block -> block() },
             isProActive = false,
             onShowProUpsell = {},
         )
@@ -2341,12 +2731,14 @@ private fun HomeScreenPreviewGranted() {
             userPoints = 450.0,
             todayPoints = 25.0,
             isLoadingApps = false,
+            superModeStatus = SuperModeStatus(true, true, true, "06:00 - 10:00", 360, 600, System.currentTimeMillis() + 300_000L, 300_000L),
             notificationPermissionGranted = true,
             isIgnoringBattery = true,
             isAutoStartDismissed = false,
             dismissedPermissionPrompts = emptySet(),
             onNavigateToRedeem = {},
             onNavigateToAchievements = {},
+            onOpenSuperModeEntry = {},
             onOpenUsageAccessSettings = {},
             onOpenAccessibilitySettings = {},
             onRequestNotificationPermission = {},
@@ -2356,6 +2748,7 @@ private fun HomeScreenPreviewGranted() {
             onDismissPermissionPrompts = {},
             onSaveGroup = { _, _, _, _, _, _, _ -> },
             onDeleteGroup = {},
+            onGuardAction = { _, block -> block() },
             isProActive = true,
             onShowProUpsell = {},
         )

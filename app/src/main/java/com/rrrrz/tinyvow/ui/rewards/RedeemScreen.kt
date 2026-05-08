@@ -10,6 +10,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.EmojiEvents
@@ -57,6 +58,7 @@ import com.rrrrz.tinyvow.data.repository.RewardSaveValidationError
 import com.rrrrz.tinyvow.data.repository.RewardStoreItem
 import com.rrrrz.tinyvow.data.repository.parseRewardPayload
 import com.rrrrz.tinyvow.data.repository.validateCustomRewardInput
+import com.rrrrz.tinyvow.data.supermode.GuardedAction
 import com.rrrrz.tinyvow.i18n.AppText
 import com.rrrrz.tinyvow.ui.home.ProUpsellSource
 import java.text.SimpleDateFormat
@@ -80,7 +82,9 @@ fun RedeemScreen(
     onArchiveReward: (RedemptionEntity) -> Unit,
     isProActive: Boolean,
     onShowProUpsell: (ProUpsellSource) -> Unit,
+    onGuardAction: (GuardedAction, () -> Unit) -> Unit,
 ) {
+    var showConfigPage by remember { mutableStateOf(false) }
     var showAddDialog by remember { mutableStateOf(false) }
     var editingReward by remember { mutableStateOf<RedemptionEntity?>(null) }
     var archivingReward by remember { mutableStateOf<RedemptionEntity?>(null) }
@@ -97,95 +101,124 @@ fun RedeemScreen(
     val streakItems = remember(storeItems) { storeItems.filter { it.reward.rewardType == RewardType.STREAK_SHIELD } }
     val pointItems = remember(storeItems) { storeItems.filter { it.reward.rewardType == RewardType.DOUBLE_POINTS_DAY } }
 
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
-    ) {
-        item { CompactPointsSummaryCard(userPoints = userPoints) }
-
-        if (primaryItems.isNotEmpty()) {
-            item { RewardSectionTitle(title = AppText.t("redeem_store_group_more_time")) }
-            items(primaryItems, key = { it.reward.id }) { item ->
-                StoreRewardItemCard(
-                    item = item,
-                    userPoints = userPoints,
-                    controlGroupCount = controlGroups,
-                    encourageGroupCount = encourageGroups,
-                    onPurchase = { onPurchase(item.reward) },
-                    onEdit = { editingReward = item.reward },
-                    onArchive = null,
-                )
-            }
-        }
-
-        if (streakItems.isNotEmpty()) {
-            item { RewardSectionTitle(title = AppText.t("redeem_store_group_keep_progress")) }
-            items(streakItems, key = { it.reward.id }) { item ->
-                StoreRewardItemCard(
-                    item = item,
-                    userPoints = userPoints,
-                    controlGroupCount = controlGroups,
-                    encourageGroupCount = encourageGroups,
-                    onPurchase = { onPurchase(item.reward) },
-                    onEdit = { editingReward = item.reward },
-                    onArchive = null,
-                )
-            }
-        }
-
-        if (pointItems.isNotEmpty()) {
-            item { RewardSectionTitle(title = AppText.t("redeem_store_group_more_points")) }
-            items(pointItems, key = { it.reward.id }) { item ->
-                StoreRewardItemCard(
-                    item = item,
-                    userPoints = userPoints,
-                    controlGroupCount = controlGroups,
-                    encourageGroupCount = encourageGroups,
-                    onPurchase = { onPurchase(item.reward) },
-                    onEdit = { editingReward = item.reward },
-                    onArchive = null,
-                )
-            }
-        }
-
-        item { RewardSectionTitle(title = AppText.t("redeem_custom_rewards")) }
-        if (customRewards.isEmpty()) {
-            item { EmptyRewardsCard(text = AppText.t("redeem_custom_rewards_empty")) }
-        } else {
-            items(customRewards, key = { it.reward.id }) { item ->
-                val customIndex = customRewards.indexOfFirst { it.reward.id == item.reward.id }
-                StoreRewardItemCard(
-                    item = item,
-                    userPoints = userPoints,
-                    controlGroupCount = controlGroups,
-                    encourageGroupCount = encourageGroups,
-                    onPurchase = { onPurchase(item.reward) },
-                    onEdit = {
-                        if (!ProFeatureGate.canEditCustomReward(isProActive, customIndex)) {
-                            onShowProUpsell(ProUpsellSource.CUSTOM_REWARD)
-                        } else {
-                            editingReward = item.reward
-                        }
-                    },
-                    onArchive = { archivingReward = item.reward },
-                )
-            }
-        }
-
-        item {
-            OutlinedButton(
-                onClick = {
-                    if (ProFeatureGate.canAddCustomReward(isProActive, customRewards.size)) {
+    if (showConfigPage) {
+        RewardConfigScreen(
+            storeItems = storeItems,
+            customRewards = customRewards,
+            isProActive = isProActive,
+            onBack = { showConfigPage = false },
+            onAddCustomReward = {
+                if (ProFeatureGate.canAddCustomReward(isProActive, customRewards.size)) {
+                    onGuardAction(GuardedAction.ADD_CUSTOM_REWARD) {
                         showAddDialog = true
-                    } else {
-                        onShowProUpsell(ProUpsellSource.CUSTOM_REWARD)
                     }
-                },
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-            ) {
-                Text(AppText.t("redeem_add_custom_reward"))
+                } else {
+                    onShowProUpsell(ProUpsellSource.CUSTOM_REWARD)
+                }
+            },
+            onEditReward = { reward ->
+                if (reward.builtinKey == null) {
+                    val customIndex = customRewards.indexOfFirst { it.reward.id == reward.id }
+                    if (!ProFeatureGate.canEditCustomReward(isProActive, customIndex)) {
+                        onShowProUpsell(ProUpsellSource.CUSTOM_REWARD)
+                    } else {
+                        onGuardAction(GuardedAction.EDIT_CUSTOM_REWARD) {
+                            editingReward = reward
+                        }
+                    }
+                } else {
+                    onGuardAction(GuardedAction.EDIT_REWARD_PRICE) {
+                        editingReward = reward
+                    }
+                }
+            },
+            onArchiveReward = { archivingReward = it },
+        )
+    } else {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            item { CompactPointsSummaryCard(userPoints = userPoints) }
+
+            if (primaryItems.isNotEmpty()) {
+                item { RewardSectionTitle(title = AppText.t("redeem_store_group_more_time")) }
+                items(primaryItems, key = { it.reward.id }) { item ->
+                    StoreRewardItemCard(
+                        item = item,
+                        userPoints = userPoints,
+                        controlGroupCount = controlGroups,
+                        encourageGroupCount = encourageGroups,
+                        onPurchase = {
+                            val action = GuardedAction.fromRewardType(item.reward.rewardType)
+                            if (action == null) {
+                                onPurchase(item.reward)
+                            } else {
+                                onGuardAction(action) { onPurchase(item.reward) }
+                            }
+                        },
+                        onEdit = null,
+                        onArchive = null,
+                    )
+                }
+            }
+
+            if (streakItems.isNotEmpty()) {
+                item { RewardSectionTitle(title = AppText.t("redeem_store_group_keep_progress")) }
+                items(streakItems, key = { it.reward.id }) { item ->
+                    StoreRewardItemCard(
+                        item = item,
+                        userPoints = userPoints,
+                        controlGroupCount = controlGroups,
+                        encourageGroupCount = encourageGroups,
+                        onPurchase = { onPurchase(item.reward) },
+                        onEdit = null,
+                        onArchive = null,
+                    )
+                }
+            }
+
+            if (pointItems.isNotEmpty()) {
+                item { RewardSectionTitle(title = AppText.t("redeem_store_group_more_points")) }
+                items(pointItems, key = { it.reward.id }) { item ->
+                    StoreRewardItemCard(
+                        item = item,
+                        userPoints = userPoints,
+                        controlGroupCount = controlGroups,
+                        encourageGroupCount = encourageGroups,
+                        onPurchase = { onPurchase(item.reward) },
+                        onEdit = null,
+                        onArchive = null,
+                    )
+                }
+            }
+
+            item { RewardSectionTitle(title = AppText.t("redeem_custom_rewards")) }
+            if (customRewards.isEmpty()) {
+                item { EmptyRewardsCard(text = AppText.t("redeem_custom_rewards_empty")) }
+            } else {
+                items(customRewards, key = { it.reward.id }) { item ->
+                    StoreRewardItemCard(
+                        item = item,
+                        userPoints = userPoints,
+                        controlGroupCount = controlGroups,
+                        encourageGroupCount = encourageGroups,
+                        onPurchase = { onPurchase(item.reward) },
+                        onEdit = null,
+                        onArchive = null,
+                    )
+                }
+            }
+
+            item {
+                OutlinedButton(
+                    onClick = { showConfigPage = true },
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                ) {
+                    Text(AppText.t("redeem_custom_config"))
+                }
             }
         }
     }
@@ -194,8 +227,10 @@ fun RedeemScreen(
         RewardEditDialog(
             onDismiss = { showAddDialog = false },
             onConfirm = { name, cost, stock, desc ->
-                onAddReward(name, cost, stock, desc)
-                showAddDialog = false
+                onGuardAction(GuardedAction.ADD_CUSTOM_REWARD) {
+                    onAddReward(name, cost, stock, desc)
+                    showAddDialog = false
+                }
             },
         )
     }
@@ -205,7 +240,7 @@ fun RedeemScreen(
             reward = reward,
             onDismiss = { editingReward = null },
             onConfirm = { name, cost, stock, desc ->
-                onUpdateReward(
+                val updatedReward =
                     if (reward.builtinKey != null) {
                         reward.copy(pointCost = cost)
                     } else {
@@ -215,9 +250,18 @@ fun RedeemScreen(
                             stock = stock,
                             description = desc,
                         )
-                    },
-                )
-                editingReward = null
+                    }
+                val action =
+                    if (reward.builtinKey == null) {
+                        GuardedAction.EDIT_CUSTOM_REWARD
+                    } else {
+                        GuardedAction.EDIT_REWARD_PRICE
+                    }
+                val saveBlock = {
+                    onUpdateReward(updatedReward)
+                    editingReward = null
+                }
+                onGuardAction(action, saveBlock)
             },
         )
     }
@@ -243,6 +287,92 @@ fun RedeemScreen(
                 }
             },
         )
+    }
+}
+
+@Composable
+private fun RewardConfigScreen(
+    storeItems: List<RewardStoreItem>,
+    customRewards: List<RewardStoreItem>,
+    isProActive: Boolean,
+    onBack: () -> Unit,
+    onAddCustomReward: () -> Unit,
+    onEditReward: (RedemptionEntity) -> Unit,
+    onArchiveReward: (RedemptionEntity) -> Unit,
+) {
+    val builtinItems = remember(storeItems) { storeItems.filter { it.reward.builtinKey != null } }
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        item {
+            Surface(
+                shape = RoundedCornerShape(18.dp),
+                color = MaterialTheme.colorScheme.surface,
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = AppText.t("group_back"))
+                    }
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = AppText.t("redeem_custom_config_title"),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                        )
+                        Text(
+                            text = AppText.t("redeem_custom_config_hint"),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+        }
+
+        item { RewardSectionTitle(title = AppText.t("redeem_builtin_reward_prices")) }
+        items(builtinItems, key = { it.reward.id }) { item ->
+            RewardConfigItemCard(
+                reward = item.reward,
+                subtitle = AppText.t("redeem_config_builtin_subtitle", item.reward.pointCost),
+                primaryActionLabel = AppText.t("redeem_edit_builtin_reward_cost"),
+                onPrimaryAction = { onEditReward(item.reward) },
+            )
+        }
+
+        item { RewardSectionTitle(title = AppText.t("redeem_custom_rewards")) }
+        item {
+            OutlinedButton(
+                onClick = onAddCustomReward,
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(16.dp),
+            ) {
+                Text(AppText.t("redeem_add_custom_reward"))
+            }
+        }
+        if (customRewards.isEmpty()) {
+            item { EmptyRewardsCard(text = AppText.t("redeem_custom_rewards_empty")) }
+        } else {
+            items(customRewards, key = { it.reward.id }) { item ->
+                val customIndex = customRewards.indexOfFirst { it.reward.id == item.reward.id }
+                val canEdit = ProFeatureGate.canEditCustomReward(isProActive, customIndex)
+                RewardConfigItemCard(
+                    reward = item.reward,
+                    subtitle = AppText.t("redeem_config_custom_subtitle", item.reward.pointCost),
+                    primaryActionLabel = AppText.t("redeem_edit_reward"),
+                    onPrimaryAction = { onEditReward(item.reward) },
+                    primaryEnabled = canEdit,
+                    secondaryActionLabel = AppText.t("redeem_archive_custom_reward"),
+                    onSecondaryAction = { onArchiveReward(item.reward) },
+                )
+            }
+        }
     }
 }
 
@@ -617,6 +747,65 @@ private fun StoreRewardItemCard(
                 shape = RoundedCornerShape(14.dp),
             ) {
                 Text(AppText.t("redeem_store_purchase", reward.pointCost))
+            }
+        }
+    }
+}
+
+@Composable
+private fun RewardConfigItemCard(
+    reward: RedemptionEntity,
+    subtitle: String,
+    primaryActionLabel: String,
+    onPrimaryAction: () -> Unit,
+    primaryEnabled: Boolean = true,
+    secondaryActionLabel: String? = null,
+    onSecondaryAction: (() -> Unit)? = null,
+) {
+    ElevatedCard(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            RewardIcon(reward = reward, size = 34.dp)
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                Text(
+                    text = reward.localizedTitle(),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                )
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                TextButton(
+                    onClick = onPrimaryAction,
+                    enabled = primaryEnabled,
+                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                ) {
+                    Text(primaryActionLabel)
+                }
+                if (secondaryActionLabel != null && onSecondaryAction != null) {
+                    TextButton(
+                        onClick = onSecondaryAction,
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                    ) {
+                        Text(secondaryActionLabel)
+                    }
+                }
             }
         }
     }

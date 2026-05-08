@@ -102,6 +102,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -134,6 +135,7 @@ import java.time.ZoneId
 import java.time.temporal.IsoFields
 import java.time.temporal.TemporalAdjusters
 import java.time.format.DateTimeFormatter
+import java.time.format.TextStyle
 import java.util.Locale
 import java.io.File
 import java.io.FileOutputStream
@@ -403,12 +405,18 @@ private data class AppFocusInsight(
     val detail: String,
 )
 
+private data class WeeklyTopAppsRow(
+    val dayCode: String,
+    val packages: List<String>,
+)
+
 private data class AppFocusSectionData(
     val title: String,
     val subtitle: String,
     val totalUsageLabel: String,
     val topApps: List<AppDisplayItem>,
     val insights: List<AppFocusInsight>,
+    val weeklyTopAppRows: List<WeeklyTopAppsRow> = emptyList(),
 )
 
 private data class MonthlyWeekSummary(
@@ -1221,7 +1229,10 @@ private fun buildWeeklyReportData(
                     ),
             ),
         trend = trend,
-        appFocus = buildAppFocusSectionData(ReportTab.WEEK, topApps, snapshots, totalUsage),
+        appFocus =
+            buildAppFocusSectionData(ReportTab.WEEK, topApps, snapshots, totalUsage).copy(
+                weeklyTopAppRows = buildWeeklyTopAppRows(bounds.startDate, snapshots),
+            ),
         windowFocus = windowFocus,
         behavior = behavior,
         comparison = comparison,
@@ -1597,6 +1608,24 @@ private fun buildAppFocusSectionData(
                 ),
             ),
     )
+}
+
+private fun buildWeeklyTopAppRows(
+    startDate: LocalDate,
+    snapshots: List<ArchivedAppSnapshot>,
+): List<WeeklyTopAppsRow> {
+    val snapshotsByDate = snapshots.groupBy { LocalDate.parse(it.archiveDate) }
+    return generateDateSequence(startDate, startDate.plusDays(6)).map { date ->
+        WeeklyTopAppsRow(
+            dayCode = date.dayOfWeek.getDisplayName(TextStyle.NARROW, Locale.getDefault()),
+            packages =
+                snapshotsByDate[date]
+                    .orEmpty()
+                    .sortedByDescending { it.usageMillis }
+                    .take(7)
+                    .map { it.packageName },
+        )
+    }
 }
 
 private fun buildDailyFocusSectionData(
@@ -3612,10 +3641,10 @@ private fun PeriodFocusCard(data: WindowFocusSectionData) {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             AdaptiveRowGrid(
                 itemCount = 2,
-                compactColumns = 1,
+                compactColumns = 2,
                 expandedColumns = 2,
-                horizontalSpacing = 10.dp,
-                verticalSpacing = 10.dp,
+                horizontalSpacing = 12.dp,
+                verticalSpacing = 12.dp,
             ) { modifier, index ->
                 DailyModeSummaryCard(
                     summary = if (index == 0) data.control else data.encourage,
@@ -3890,6 +3919,7 @@ private fun PeriodHeatmapCard(data: PeriodHeatmapData) {
 @Composable
 private fun PeriodAppFocusCard(data: AppFocusSectionData) {
     val palette = LocalReportColors.current.appChartPalette
+    val appColors = rememberAppChartColors(data.topApps.map { it.packageName })
     val maxUsage = data.topApps.maxOfOrNull { it.value }?.coerceAtLeast(1L) ?: 1L
     ReportCard {
         Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -3899,8 +3929,11 @@ private fun PeriodAppFocusCard(data: AppFocusSectionData) {
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            if (data.weeklyTopAppRows.isNotEmpty()) {
+                WeeklyTopAppsMatrix(rows = data.weeklyTopAppRows)
+            }
             data.topApps.take(6).forEachIndexed { index, app ->
-                val accent = palette.getOrElse(index) { MaterialTheme.colorScheme.primary }
+                val accent = appColors[app.packageName] ?: palette.getOrElse(index) { MaterialTheme.colorScheme.primary }
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
@@ -3985,6 +4018,81 @@ private fun PeriodAppFocusCard(data: AppFocusSectionData) {
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun WeeklyTopAppsMatrix(rows: List<WeeklyTopAppsRow>) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        rows.forEach { day ->
+            Column(
+                modifier = Modifier.weight(1f),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Text(
+                    text = day.dayCode,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                repeat(7) { rank ->
+                    val pkg = day.packages.getOrNull(rank)
+                    if (pkg != null) {
+                        MatrixAppIcon(pkg = pkg)
+                    } else {
+                        MatrixPlaceholder()
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MatrixAppIcon(pkg: String) {
+    val context = LocalContext.current
+    val icon = remember(pkg) {
+        try {
+            context.packageManager.getApplicationIcon(pkg)
+        } catch (_: Exception) {
+            null
+        }
+    }
+    Box(
+        modifier = Modifier.size(40.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (icon != null) {
+            AsyncImage(
+                model = icon,
+                contentDescription = null,
+                modifier = Modifier.size(36.dp),
+            )
+        } else {
+            MatrixPlaceholder()
+        }
+    }
+}
+
+@Composable
+private fun MatrixPlaceholder() {
+    Box(
+        modifier = Modifier
+            .size(40.dp)
+            .clip(RoundedCornerShape(10.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f)),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(
+            text = "·",
+            style = MaterialTheme.typography.titleMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            fontWeight = FontWeight.Bold,
+        )
     }
 }
 
@@ -8414,7 +8522,12 @@ private fun ReportCard(
 }
 
 @Composable
-fun AppIconCircle(pkg: String) {
+fun AppIconCircle(
+    pkg: String,
+    modifier: Modifier = Modifier,
+    size: Dp = 34.dp,
+    iconPadding: Dp = 6.dp,
+) {
     val context = LocalContext.current
     val icon = remember(pkg) {
         try {
@@ -8424,7 +8537,7 @@ fun AppIconCircle(pkg: String) {
         }
     }
     Surface(
-        modifier = Modifier.size(34.dp),
+        modifier = modifier.size(size),
         shape = CircleShape,
         color = MaterialTheme.colorScheme.surfaceVariant,
     ) {
@@ -8432,7 +8545,7 @@ fun AppIconCircle(pkg: String) {
             AsyncImage(
                 model = icon,
                 contentDescription = null,
-                modifier = Modifier.padding(6.dp),
+                modifier = Modifier.padding(iconPadding),
             )
         }
     }

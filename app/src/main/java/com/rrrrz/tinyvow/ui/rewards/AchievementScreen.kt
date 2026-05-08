@@ -2,16 +2,11 @@ package com.rrrrz.tinyvow.ui.rewards
 
 import com.rrrrz.tinyvow.i18n.AppText
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.*
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.scaleIn
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -22,15 +17,11 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.*
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.runtime.*
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.lerp
-import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -182,7 +173,7 @@ fun AchievementScreen(
                                 achievementId = representativeAchievementIdForTier(tab.tier),
                                 tier = tab.tier,
                                 modifier = Modifier.size(22.dp),
-                                animated = true,
+                                animated = false,
                             )
                             Text(
                                 text = tab.label,
@@ -258,10 +249,12 @@ private fun TierPage(
                     subdued = false,
                 )
             }
-            itemsIndexed(unlockedList) { index, achievement ->
+            items(
+                items = unlockedList,
+                key = { it.id }
+            ) { achievement ->
                 AchievementCard(
                     achievement = achievement,
-                    animationDelay = index * 80,
                     achievementProgress = achievementProgress
                 )
             }
@@ -277,10 +270,12 @@ private fun TierPage(
                     subdued = true,
                 )
             }
-            itemsIndexed(lockedList) { index, achievement ->
+            items(
+                items = lockedList,
+                key = { it.id }
+            ) { achievement ->
                 AchievementCard(
                     achievement = achievement,
-                    animationDelay = index * 80,
                     achievementProgress = achievementProgress
                 )
             }
@@ -338,11 +333,6 @@ private fun AchievementSectionHeader(
 @Composable
 private fun TierHeader(tab: TierTab, unlocked: Int, total: Int) {
     val progress = if (total > 0) unlocked.toFloat() / total else 0f
-    val animatedProgress by animateFloatAsState(
-        targetValue = progress,
-        animationSpec = tween(800, easing = FastOutSlowInEasing),
-        label = "tierProgress"
-    )
 
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -361,7 +351,7 @@ private fun TierHeader(tab: TierTab, unlocked: Int, total: Int) {
                     achievementId = representativeAchievementIdForTier(tab.tier),
                     tier = tab.tier,
                     modifier = Modifier.size(50.dp),
-                    animated = true,
+                    animated = false,
                 )
 
             Column(modifier = Modifier.weight(1f)) {
@@ -387,7 +377,7 @@ private fun TierHeader(tab: TierTab, unlocked: Int, total: Int) {
                 Spacer(modifier = Modifier.height(8.dp))
 
                 TierProgressBar(
-                    progress = animatedProgress,
+                    progress = progress,
                     palette = tab.palette,
                     modifier = Modifier
                         .fillMaxWidth()
@@ -410,55 +400,20 @@ private fun TierProgressBar(
     palette: TierPalette,
     modifier: Modifier = Modifier,
 ) {
-    val sheenTransition = rememberInfiniteTransition(label = "achievement_progress_sheen")
-    val sheen by sheenTransition.animateFloat(
-        initialValue = -0.4f,
-        targetValue = 1.3f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(3000, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "achievement_progress_sheen_value"
-    )
-    BoxWithConstraints(
+    Box(
         modifier = modifier
-            .clip(RoundedCornerShape(999.dp))
             .background(palette.track)
             .border(1.dp, palette.border.copy(alpha = 0.24f), RoundedCornerShape(999.dp))
     ) {
-        val progressWidth = maxWidth * progress.coerceIn(0f, 1f)
-        val sheenStart = maxWidth.value * sheen
         Box(
             modifier = Modifier
                 .fillMaxHeight()
-                .width(progressWidth)
+                .fillMaxWidth(progress.coerceIn(0f, 1f))
                 .clip(RoundedCornerShape(999.dp))
                 .background(
-                    Brush.horizontalGradient(
-                        colors = listOf(
-                            palette.accentStrong,
-                            lerp(palette.accent, Color.White, 0.18f),
-                            palette.accent,
-                        )
-                    )
+                    color = palette.accentStrong
                 )
-        ) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .background(
-                        Brush.linearGradient(
-                            colors = listOf(
-                                Color.Transparent,
-                                Color.White.copy(alpha = 0.22f),
-                                Color.Transparent,
-                            ),
-                            start = Offset(sheenStart, 0f),
-                            end = Offset(sheenStart + 90f, 200f),
-                        )
-                    )
-            )
-        }
+        )
     }
 }
 
@@ -468,30 +423,15 @@ private fun TierProgressBar(
 @Composable
 private fun AchievementCard(
     achievement: AchievementEntity,
-    animationDelay: Int = 0,
     achievementProgress: AchievementProgress,
 ) {
-    var visible by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) {
-        kotlinx.coroutines.delay(animationDelay.toLong())
-        visible = true
-    }
-
-    AnimatedVisibility(
-        visible = visible,
-        enter = fadeIn(tween(400)) + scaleIn(
-            initialScale = 0.92f,
-            animationSpec = tween(400, easing = FastOutSlowInEasing)
+    if (achievement.isUnlocked) {
+        UnlockedAchievementCard(achievement)
+    } else {
+        LockedAchievementCard(
+            achievement = achievement,
+            achievementProgress = achievementProgress,
         )
-    ) {
-        if (achievement.isUnlocked) {
-            UnlockedAchievementCard(achievement)
-        } else {
-            LockedAchievementCard(
-                achievement = achievement,
-                achievementProgress = achievementProgress,
-            )
-        }
     }
 }
 
@@ -500,35 +440,6 @@ private fun AchievementCard(
 @Composable
 private fun UnlockedAchievementCard(achievement: AchievementEntity) {
     val palette = remember(achievement.tier) { tierPaletteFor(achievement.tier) }
-    val infiniteTransition = rememberInfiniteTransition(label = "unlocked_${achievement.id}")
-
-    val shimmerOffset by infiniteTransition.animateFloat(
-        initialValue = -300f,
-        targetValue = 800f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(
-                durationMillis = when (achievement.tier) {
-                    AchievementTier.LEGENDARY -> 2600
-                    AchievementTier.DIAMOND -> 3200
-                    AchievementTier.GOLD -> 3600
-                    else -> 4200
-                },
-                easing = LinearEasing
-            ),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "shimmer"
-    )
-
-    val sparkleAlpha by infiniteTransition.animateFloat(
-        initialValue = 0.2f,
-        targetValue = 0.9f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(1800, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "sparkle"
-    )
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(22.dp),
@@ -537,99 +448,66 @@ private fun UnlockedAchievementCard(achievement: AchievementEntity) {
         tonalElevation = 0.dp,
         shadowElevation = 0.dp
     ) {
-        Box(Modifier.fillMaxSize()) {
-            Canvas(modifier = Modifier.fillMaxSize()) {
-                drawRect(
-                    brush = Brush.linearGradient(
-                        colors = listOf(
-                            palette.pageGlow.copy(alpha = 0.06f),
-                            Color.Transparent,
-                            palette.accentStrong.copy(alpha = 0.08f + sparkleAlpha * 0.05f),
-                        ),
-                        start = Offset(0f, 0f),
-                        end = Offset(size.width, size.height)
-                    )
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 13.dp),
+            verticalAlignment = Alignment.Top,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            AchievementBadge(
+                achievement = achievement,
+                modifier = Modifier.size(54.dp),
+                animated = false,
+            )
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = achievement.localizedTitle(),
+                    fontSize = 18.sp,
+                    lineHeight = 22.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = palette.accent
                 )
-                drawRect(
-                    brush = Brush.linearGradient(
-                        colors = listOf(
-                            Color.Transparent,
-                            Color.White.copy(alpha = 0.12f),
-                            Color.Transparent,
-                        ),
-                        start = Offset(shimmerOffset, 0f),
-                        end = Offset(shimmerOffset + 180f, size.height)
-                    )
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = achievement.localizedDescription(),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = palette.muted,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    fontWeight = FontWeight.Medium
                 )
             }
 
-            Row(
-                modifier = Modifier.padding(horizontal = 14.dp, vertical = 13.dp),
-                verticalAlignment = Alignment.Top,
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            Column(
+                modifier = Modifier.widthIn(min = 78.dp),
+                horizontalAlignment = Alignment.End
             ) {
-                AchievementBadge(
-                    achievement = achievement,
-                    modifier = Modifier.size(54.dp),
-                    animated = true,
-                )
-
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = achievement.localizedTitle(),
-                        fontSize = 18.sp,
-                        lineHeight = 22.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = palette.accent
-                    )
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = achievement.localizedDescription(),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = palette.muted,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                        fontWeight = FontWeight.Medium
+                Surface(
+                    shape = RoundedCornerShape(999.dp),
+                    color = palette.accent.copy(alpha = 0.12f),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, palette.accentStrong.copy(alpha = 0.24f))
+                ) {
+                    Icon(
+                        Icons.Default.CheckCircle,
+                        contentDescription = AppText.t("me_unlocked"),
+                        tint = palette.accentStrong,
+                        modifier = Modifier
+                            .padding(8.dp)
+                            .size(20.dp)
                     )
                 }
-
-                Column(
-                    modifier = Modifier.widthIn(min = 78.dp),
-                    horizontalAlignment = Alignment.End
-                ) {
-                    Surface(
-                        shape = RoundedCornerShape(999.dp),
-                        color = palette.accent.copy(alpha = 0.12f),
-                        border = androidx.compose.foundation.BorderStroke(1.dp, palette.accentStrong.copy(alpha = 0.24f))
-                    ) {
-                        Icon(
-                            Icons.Default.CheckCircle,
-                            contentDescription = AppText.t("me_unlocked"),
-                            tint = palette.accentStrong,
-                            modifier = Modifier
-                                .padding(8.dp)
-                                .size(20.dp)
-                                .graphicsLayer {
-                                    if (achievement.tier == AchievementTier.LEGENDARY) {
-                                        scaleX = 1f + (sparkleAlpha - 0.5f) * 0.12f
-                                        scaleY = scaleX
-                                    }
-                                }
-                        )
-                    }
-                    achievement.unlockedAt?.let { millis ->
-                        Spacer(modifier = Modifier.height(7.dp))
-                        Text(
-                            text = remember(millis) {
-                                SimpleDateFormat("yyyy/MM/dd HH:mm", Locale.getDefault()).format(Date(millis))
-                            },
-                            style = MaterialTheme.typography.labelSmall,
-                            color = palette.muted,
-                            fontWeight = FontWeight.SemiBold,
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
+                achievement.unlockedAt?.let { millis ->
+                    Spacer(modifier = Modifier.height(7.dp))
+                    Text(
+                        text = remember(millis) {
+                            SimpleDateFormat("yyyy/MM/dd HH:mm", Locale.getDefault()).format(Date(millis))
+                        },
+                        style = MaterialTheme.typography.labelSmall,
+                        color = palette.muted,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
             }
         }
@@ -668,18 +546,10 @@ private fun LockedAchievementCard(
     }
 
     val progressRatio = (currentValue / targetValue).toFloat().coerceIn(0f, 1f)
-    
-    // 进度条动画
-    val animatedProgress by animateFloatAsState(
-        targetValue = progressRatio,
-        animationSpec = tween(1000, easing = FastOutSlowInEasing),
-        label = "locked_progress"
-    )
 
     Surface(
         modifier = Modifier
-            .fillMaxWidth()
-            .graphicsLayer { alpha = 0.96f },
+            .fillMaxWidth(),
         shape = RoundedCornerShape(22.dp),
         color = palette.surface.copy(alpha = 0.88f),
         border = androidx.compose.foundation.BorderStroke(1.dp, palette.border.copy(alpha = 0.3f)),
@@ -697,10 +567,9 @@ private fun LockedAchievementCard(
                 AchievementBadge(
                     achievement = achievement,
                     modifier = Modifier
-                        .fillMaxSize()
-                        .blur(1.dp),
+                        .fillMaxSize(),
                     locked = true,
-                    animated = true,
+                    animated = false,
                 )
             }
 
@@ -722,7 +591,7 @@ private fun LockedAchievementCard(
                 )
                 Spacer(modifier = Modifier.height(6.dp))
                 TierProgressBar(
-                    progress = animatedProgress,
+                    progress = progressRatio,
                     palette = palette,
                     modifier = Modifier
                         .fillMaxWidth()

@@ -25,6 +25,7 @@ import kotlinx.coroutines.flow.map
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        AppText.attach(this)
         enableEdgeToEdge()
         TinyVowNotifier(this).ensureChannel()
         setContent {

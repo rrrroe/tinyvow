@@ -11,6 +11,7 @@ import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.rrrrz.tinyvow.data.supermode.SuperModeStoredState
 import com.rrrrz.tinyvow.ui.theme.DefaultThemeSeed
 import com.rrrrz.tinyvow.i18n.AppLanguage
 import com.rrrrz.tinyvow.ui.theme.ThemeSeed
@@ -45,6 +46,16 @@ class ManagedAppPreferences(
         val profileDisplayName = stringPreferencesKey("profile_display_name")
         val profileAvatarUri = stringPreferencesKey("profile_avatar_uri")
         val debugProExpiresAtMillis = longPreferencesKey("debug_pro_expires_at_millis")
+        val superModeEnabled = booleanPreferencesKey("super_mode_enabled")
+        val superModePasswordHash = stringPreferencesKey("super_mode_password_hash")
+        val superModePasswordSalt = stringPreferencesKey("super_mode_password_salt")
+        val superModeRecoveryQuestion = stringPreferencesKey("super_mode_recovery_question")
+        val superModeRecoveryAnswerHash = stringPreferencesKey("super_mode_recovery_answer_hash")
+        val superModeRecoveryAnswerSalt = stringPreferencesKey("super_mode_recovery_answer_salt")
+        val superModeActive = booleanPreferencesKey("super_mode_active")
+        val superModeLastActiveAtMillis = longPreferencesKey("super_mode_last_active_at_millis")
+        val superModeWindowStartMinutes = intPreferencesKey("super_mode_window_start_minutes")
+        val superModeWindowEndMinutes = intPreferencesKey("super_mode_window_end_minutes")
     }
 
     val selectedPackageName: Flow<String?> = context.managedAppDataStore.data.map { preferences ->
@@ -128,6 +139,21 @@ class ManagedAppPreferences(
 
     val debugProExpiresAtMillis: Flow<Long?> = context.managedAppDataStore.data.map { preferences ->
         preferences[Keys.debugProExpiresAtMillis]
+    }
+
+    val superModeState: Flow<SuperModeStoredState> = context.managedAppDataStore.data.map { preferences ->
+        SuperModeStoredState(
+            enabled = preferences[Keys.superModeEnabled] ?: false,
+            passwordHash = preferences[Keys.superModePasswordHash]?.takeIf { it.isNotBlank() },
+            passwordSalt = preferences[Keys.superModePasswordSalt]?.takeIf { it.isNotBlank() },
+            recoveryQuestion = preferences[Keys.superModeRecoveryQuestion]?.takeIf { it.isNotBlank() },
+            recoveryAnswerHash = preferences[Keys.superModeRecoveryAnswerHash]?.takeIf { it.isNotBlank() },
+            recoveryAnswerSalt = preferences[Keys.superModeRecoveryAnswerSalt]?.takeIf { it.isNotBlank() },
+            isActive = preferences[Keys.superModeActive] ?: false,
+            lastActiveAtMillis = preferences[Keys.superModeLastActiveAtMillis],
+            customWindowStartMinutes = preferences[Keys.superModeWindowStartMinutes],
+            customWindowEndMinutes = preferences[Keys.superModeWindowEndMinutes],
+        )
     }
 
     suspend fun addUserPoints(points: Double) {
@@ -290,6 +316,71 @@ class ManagedAppPreferences(
         }
     }
 
+    suspend fun saveSuperModeCredentials(
+        passwordHash: String,
+        passwordSalt: String,
+        recoveryQuestion: String,
+        recoveryAnswerHash: String,
+        recoveryAnswerSalt: String,
+    ) {
+        context.managedAppDataStore.edit { preferences ->
+            preferences[Keys.superModeEnabled] = true
+            preferences[Keys.superModePasswordHash] = passwordHash
+            preferences[Keys.superModePasswordSalt] = passwordSalt
+            preferences[Keys.superModeRecoveryQuestion] = recoveryQuestion
+            preferences[Keys.superModeRecoveryAnswerHash] = recoveryAnswerHash
+            preferences[Keys.superModeRecoveryAnswerSalt] = recoveryAnswerSalt
+            preferences[Keys.superModeActive] = false
+            preferences.remove(Keys.superModeLastActiveAtMillis)
+        }
+    }
+
+    suspend fun setSuperModeActive(
+        active: Boolean,
+        lastActiveAtMillis: Long?,
+    ) {
+        context.managedAppDataStore.edit { preferences ->
+            preferences[Keys.superModeActive] = active
+            if (lastActiveAtMillis == null) {
+                preferences.remove(Keys.superModeLastActiveAtMillis)
+            } else {
+                preferences[Keys.superModeLastActiveAtMillis] = lastActiveAtMillis
+            }
+        }
+    }
+
+    suspend fun touchSuperMode(lastActiveAtMillis: Long) {
+        context.managedAppDataStore.edit { preferences ->
+            preferences[Keys.superModeActive] = true
+            preferences[Keys.superModeLastActiveAtMillis] = lastActiveAtMillis
+        }
+    }
+
+    suspend fun setSuperModeWindow(
+        startMinutes: Int,
+        endMinutes: Int,
+    ) {
+        context.managedAppDataStore.edit { preferences ->
+            preferences[Keys.superModeWindowStartMinutes] = startMinutes
+            preferences[Keys.superModeWindowEndMinutes] = endMinutes
+        }
+    }
+
+    suspend fun clearSuperMode() {
+        context.managedAppDataStore.edit { preferences ->
+            preferences[Keys.superModeEnabled] = false
+            preferences[Keys.superModeActive] = false
+            preferences.remove(Keys.superModePasswordHash)
+            preferences.remove(Keys.superModePasswordSalt)
+            preferences.remove(Keys.superModeRecoveryQuestion)
+            preferences.remove(Keys.superModeRecoveryAnswerHash)
+            preferences.remove(Keys.superModeRecoveryAnswerSalt)
+            preferences.remove(Keys.superModeLastActiveAtMillis)
+            preferences.remove(Keys.superModeWindowStartMinutes)
+            preferences.remove(Keys.superModeWindowEndMinutes)
+        }
+    }
+
     suspend fun setDailyLimitMinutes(packageName: String, minutes: Int) {
         context.managedAppDataStore.edit { preferences ->
             preferences[intPreferencesKey("daily_limit_minutes_$packageName")] = minutes
@@ -308,6 +399,10 @@ class ManagedAppPreferences(
 
     suspend fun getSelectedAppLanguageOnce(): AppLanguage {
         return selectedAppLanguage.first()
+    }
+
+    suspend fun getSuperModeStateOnce(): SuperModeStoredState {
+        return superModeState.first()
     }
 
     suspend fun getDailyLimitMinutesOnce(packageName: String): Int? {

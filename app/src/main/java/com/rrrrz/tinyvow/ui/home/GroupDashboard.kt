@@ -114,6 +114,7 @@ import com.rrrrz.tinyvow.data.db.LimitPeriod
 import com.rrrrz.tinyvow.data.repository.AppGroupWithApps
 import com.rrrrz.tinyvow.data.repository.DailyArchiveRepository
 import com.rrrrz.tinyvow.data.pro.ProFeatureGate
+import com.rrrrz.tinyvow.data.supermode.GuardedAction
 import com.rrrrz.tinyvow.data.usage.UsageStatsUsageRepository
 import com.rrrrz.tinyvow.ui.theme.LocalThemeColors
 import java.io.File
@@ -147,6 +148,7 @@ fun GroupDashboard(
     archiveRepository: DailyArchiveRepository?,
     isProActive: Boolean,
     onShowProUpsell: (ProUpsellSource) -> Unit,
+    onGuardAction: (GuardedAction, () -> Unit) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val themeColors = LocalThemeColors.current
@@ -192,9 +194,11 @@ fun GroupDashboard(
                 onEdit = {
                     val index = controlGroups.indexOfFirst { group -> group.group.id == it.group.id }
                     if (ProFeatureGate.canEditGroup(isProActive, index)) {
-                        editingGroup = it
-                        forcedType = it.group.type
-                        showDialog = true
+                        onGuardAction(GuardedAction.EDIT_GROUP) {
+                            editingGroup = it
+                            forcedType = it.group.type
+                            showDialog = true
+                        }
                     } else {
                         onShowProUpsell(ProUpsellSource.GROUP_LIMIT)
                     }
@@ -222,9 +226,11 @@ fun GroupDashboard(
                 onEdit = {
                     val index = encourageGroups.indexOfFirst { group -> group.group.id == it.group.id }
                     if (ProFeatureGate.canEditGroup(isProActive, index)) {
-                        editingGroup = it
-                        forcedType = it.group.type
-                        showDialog = true
+                        onGuardAction(GuardedAction.EDIT_GROUP) {
+                            editingGroup = it
+                            forcedType = it.group.type
+                            showDialog = true
+                        }
                     } else {
                         onShowProUpsell(ProUpsellSource.GROUP_LIMIT)
                     }
@@ -254,12 +260,22 @@ fun GroupDashboard(
             onShowProUpsell = onShowProUpsell,
             onDismiss = { showDialog = false },
             onSave = { name, limit, type, period, points, packages ->
-                onSaveGroup(editingGroup?.group?.id, name, limit, type, period, points, packages)
-                showDialog = false
+                val saveAction = editingGroup?.let { GuardedAction.EDIT_GROUP }
+                val saveBlock = {
+                    onSaveGroup(editingGroup?.group?.id, name, limit, type, period, points, packages)
+                    showDialog = false
+                }
+                if (saveAction == null) {
+                    saveBlock()
+                } else {
+                    onGuardAction(saveAction, saveBlock)
+                }
             },
             onDelete = {
-                editingGroup?.group?.id?.let(onDeleteGroup)
-                showDialog = false
+                onGuardAction(GuardedAction.DELETE_GROUP) {
+                    editingGroup?.group?.id?.let(onDeleteGroup)
+                    showDialog = false
+                }
             }
         )
     }

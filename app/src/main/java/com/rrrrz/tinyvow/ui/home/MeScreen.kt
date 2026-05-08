@@ -40,6 +40,7 @@ import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Science
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -85,6 +86,8 @@ import com.rrrrz.tinyvow.data.auth.UserSession
 import com.rrrrz.tinyvow.data.billing.ProEntitlementState
 import com.rrrrz.tinyvow.data.billing.ProEntitlementStatus
 import com.rrrrz.tinyvow.data.billing.SubscriptionOffer
+import com.rrrrz.tinyvow.data.pro.ProFeatureGate
+import com.rrrrz.tinyvow.data.supermode.SuperModeStatus
 import com.rrrrz.tinyvow.i18n.AppLanguage
 import com.rrrrz.tinyvow.ui.theme.LocalThemeColors
 import com.rrrrz.tinyvow.ui.theme.ThemePresets
@@ -109,6 +112,7 @@ fun MeScreen(
     selectedThemeId: String,
     customThemes: List<ThemeSeed>,
     isProActive: Boolean,
+    superModeStatus: SuperModeStatus,
     isDebugBuild: Boolean,
     selectedAppLanguage: AppLanguage,
     usageAccessGranted: Boolean,
@@ -125,6 +129,7 @@ fun MeScreen(
     onSaveCustomTheme: (ThemeSeed) -> Unit,
     onDeleteCustomTheme: (String) -> Unit,
     onShowProUpsell: (ProUpsellSource) -> Unit,
+    onOpenSuperModeSettings: () -> Unit,
     onOpenUsageAccessSettings: () -> Unit,
     onOpenAccessibilitySettings: () -> Unit,
     onOpenAutoStartSettings: () -> Unit,
@@ -382,6 +387,12 @@ fun MeScreen(
                         icon = Icons.Default.Person,
                         title = "${AppText.t("selected_language_title")} · ${selectedAppLanguage.displayName()}",
                         onClick = { showLanguageSettings = true },
+                    )
+                    SettingsDivider()
+                    MeMenuItem(
+                        icon = Icons.Default.VerifiedUser,
+                        title = "${AppText.t("super_mode_title")} · ${describeSuperModeStatus(superModeStatus)}",
+                        onClick = onOpenSuperModeSettings,
                     )
                     SettingsDivider()
                     MeMenuItem(
@@ -1176,6 +1187,7 @@ private fun SubscriptionStatusPanel(
     val isActive = entitlement.status == ProEntitlementStatus.ACTIVE
     val isPending = entitlement.status == ProEntitlementStatus.PENDING
     var showActivationDialog by remember { mutableStateOf(false) }
+    var showBenefitsDialog by remember { mutableStateOf(false) }
 
     Column(
         modifier = Modifier
@@ -1184,7 +1196,11 @@ private fun SubscriptionStatusPanel(
         verticalArrangement = Arrangement.spacedBy(10.dp),
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth(),
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(16.dp))
+                .clickable(onClick = { showBenefitsDialog = true })
+                .padding(vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
@@ -1200,30 +1216,22 @@ private fun SubscriptionStatusPanel(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            Text(
-                text = subscriptionPriceSummary(offers, isActive),
-                style = MaterialTheme.typography.labelLarge,
-                color = if (isActive) LocalThemeColors.current.encourage else MaterialTheme.colorScheme.primary,
-                fontWeight = FontWeight.Bold,
-            )
-        }
-
-        Text(
-            text = if (isPlayBillingEnabled) {
-                AppText.t("me_core_features_remain_free_pro_is_reserved_for")
-            } else {
-                AppText.t("me_china_pro_activation_description")
-            },
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-
-        if (isPlayBillingEnabled) {
-            Text(
-                text = AppText.t("pro_upsell_common_benefits"),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Text(
+                    text = subscriptionPriceSummary(offers, isActive),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = if (isActive) LocalThemeColors.current.encourage else MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold,
+                )
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    contentDescription = AppText.t("pro_view_benefits"),
+                    tint = MaterialTheme.colorScheme.outline,
+                )
+            }
         }
 
         if (isLocalActivationEnabled) {
@@ -1275,6 +1283,12 @@ private fun SubscriptionStatusPanel(
             }
         }
     }
+
+    if (showBenefitsDialog) {
+        ProBenefitsComparisonDialog(
+            onDismiss = { showBenefitsDialog = false },
+        )
+    }
 }
 
 private fun subscriptionPriceSummary(offers: List<SubscriptionOffer>, isActive: Boolean): String =
@@ -1294,6 +1308,150 @@ private fun entitlementStatusText(entitlement: ProEntitlementState): String =
         ProEntitlementStatus.UNAVAILABLE -> entitlement.message ?: AppText.t("billing_play_billing_is_temporarily_unavailable")
         ProEntitlementStatus.FREE -> AppText.t("me_free_version")
     }
+
+@Composable
+private fun ProBenefitsComparisonDialog(
+    onDismiss: () -> Unit,
+) {
+    val freeLimits = ProFeatureGate.limits(false)
+    val proLimits = ProFeatureGate.limits(true)
+    val rows = listOf(
+        Triple(
+            AppText.t("pro_compare_control_groups"),
+            freeLimits.controlGroupLimit.toString(),
+            AppText.t("pro_compare_unlimited"),
+        ),
+        Triple(
+            AppText.t("pro_compare_encourage_groups"),
+            freeLimits.encourageGroupLimit.toString(),
+            AppText.t("pro_compare_unlimited"),
+        ),
+        Triple(
+            AppText.t("pro_compare_apps_per_group"),
+            freeLimits.appsPerGroupLimit.toString(),
+            proLimits.appsPerGroupLimit.toString(),
+        ),
+        Triple(
+            AppText.t("pro_compare_custom_rewards"),
+            freeLimits.customRewardLimit.toString(),
+            AppText.t("pro_compare_unlimited"),
+        ),
+        Triple(
+            AppText.t("pro_compare_custom_themes"),
+            freeLimits.customThemeLimit.toString(),
+            proLimits.customThemeLimit.toString(),
+        ),
+        Triple(
+            AppText.t("pro_compare_member_themes"),
+            AppText.t("pro_compare_not_included"),
+            AppText.t("pro_compare_included"),
+        ),
+        Triple(
+            AppText.t("pro_compare_advanced_reports"),
+            AppText.t("pro_compare_basic_reports"),
+            AppText.t("pro_compare_full_reports"),
+        ),
+        Triple(
+            AppText.t("pro_compare_super_mode_window"),
+            AppText.t("pro_compare_fixed_window"),
+            AppText.t("pro_compare_custom_window"),
+        ),
+    )
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(AppText.t("pro_compare_title")) },
+        text = {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                ProCompareHeaderRow()
+                rows.forEach { (feature, freeValue, proValue) ->
+                    ProCompareValueRow(
+                        feature = feature,
+                        freeValue = freeValue,
+                        proValue = proValue,
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(AppText.t("group_close"))
+            }
+        },
+    )
+}
+
+@Composable
+private fun ProCompareHeaderRow() {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = AppText.t("pro_compare_feature"),
+            modifier = Modifier.weight(1.4f),
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Bold,
+        )
+        Text(
+            text = AppText.t("pro_compare_free"),
+            modifier = Modifier.weight(0.8f),
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Bold,
+        )
+        Text(
+            text = AppText.t("pro_compare_pro"),
+            modifier = Modifier.weight(0.8f),
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Bold,
+            color = MaterialTheme.colorScheme.primary,
+        )
+    }
+}
+
+@Composable
+private fun ProCompareValueRow(
+    feature: String,
+    freeValue: String,
+    proValue: String,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerLow,
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = feature,
+                modifier = Modifier.weight(1.4f),
+                style = MaterialTheme.typography.bodyMedium,
+            )
+            Text(
+                text = freeValue,
+                modifier = Modifier.weight(0.8f),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                text = proValue,
+                modifier = Modifier.weight(0.8f),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
+    }
+}
 
 @Composable
 private fun ActivationCodeDialog(
