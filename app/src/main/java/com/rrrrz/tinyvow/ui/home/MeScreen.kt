@@ -2,6 +2,7 @@ package com.rrrrz.tinyvow.ui.home
 
 import com.rrrrz.tinyvow.i18n.AppText
 
+import android.content.Intent
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -13,6 +14,7 @@ import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -35,6 +37,7 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Science
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
@@ -51,6 +54,8 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -61,10 +66,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.AnnotatedString
@@ -72,6 +79,7 @@ import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import coil.compose.AsyncImage
 import com.rrrrz.tinyvow.R
 import com.rrrrz.tinyvow.data.auth.UserSession
 import com.rrrrz.tinyvow.data.billing.ProEntitlementState
@@ -96,9 +104,12 @@ fun MeScreen(
     proEntitlement: ProEntitlementState,
     subscriptionOffers: List<SubscriptionOffer>,
     userPoints: Double,
+    profileDisplayName: String?,
+    profileAvatarUri: String?,
     selectedThemeId: String,
     customThemes: List<ThemeSeed>,
     isProActive: Boolean,
+    isDebugBuild: Boolean,
     selectedAppLanguage: AppLanguage,
     usageAccessGranted: Boolean,
     accessibilityServiceEnabled: Boolean,
@@ -107,6 +118,9 @@ fun MeScreen(
     notificationPermissionGranted: Boolean,
     dismissedPermissionPrompts: Set<String>,
     onSelectAppLanguage: (AppLanguage) -> Unit,
+    onUpdateProfileName: (String?) -> Unit,
+    onUpdateProfileAvatar: (String) -> Unit,
+    onClearProfileAvatar: () -> Unit,
     onSelectTheme: (String) -> Unit,
     onSaveCustomTheme: (ThemeSeed) -> Unit,
     onDeleteCustomTheme: (String) -> Unit,
@@ -134,11 +148,51 @@ fun MeScreen(
     onManageSubscription: () -> Unit,
     onActivateProCode: (String) -> Unit,
 ) {
+    val context = LocalContext.current
+    val clipboard = LocalClipboardManager.current
     val themeColors = LocalThemeColors.current
+    val avatarPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        uri ?: return@rememberLauncherForActivityResult
+        runCatching {
+            context.contentResolver.takePersistableUriPermission(
+                uri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION,
+            )
+        }
+        onUpdateProfileAvatar(uri.toString())
+    }
+
     var showPermissionSettings by remember { mutableStateOf(false) }
     var showDataPrivacy by remember { mutableStateOf(false) }
     var showLanguageSettings by remember { mutableStateOf(false) }
     var showDeleteAccountConfirm by remember { mutableStateOf(false) }
+    var showProfileEditor by remember { mutableStateOf(false) }
+
+    val effectiveAvatar = profileAvatarUri ?: userSession?.avatarUrl
+    val canTapToSignIn = isGoogleSignInEnabled && userSession == null && isGoogleSignInConfigured
+    val displayName =
+        profileDisplayName
+            ?: userSession?.displayName
+            ?: if (isLocalActivationEnabled) {
+                AppText.t("me_local_account_default_name")
+            } else {
+                AppText.t("me_not_signed_in")
+            }
+    val subtitle =
+        when {
+            !userSession?.email.isNullOrBlank() -> userSession?.email.orEmpty()
+            isLocalActivationEnabled -> AppText.t("me_local_account_subtitle")
+            isGoogleSignInEnabled -> AppText.t("me_sign_in_to_restore_subscriptions_and_prepare_for")
+            else -> AppText.t("me_china_local_mode_subtitle")
+        }
+    val badgeText =
+        when {
+            isLocalActivationEnabled -> AppText.t("me_local_account_badge")
+            userSession != null -> AppText.t("me_google_account_badge")
+            else -> null
+        }
 
     Column(
         modifier = Modifier
@@ -154,43 +208,103 @@ fun MeScreen(
                     Brush.verticalGradient(
                         colors = listOf(
                             themeColors.base,
-                            themeColors.base.copy(alpha = 0.76f),
+                            themeColors.base.copy(alpha = 0.82f),
                         )
                     )
                 )
                 .padding(24.dp)
         ) {
-            Row(
+            Column(
                 modifier = Modifier.align(Alignment.CenterStart),
-                verticalAlignment = Alignment.CenterVertically,
+                verticalArrangement = Arrangement.spacedBy(16.dp),
             ) {
-                Surface(
-                    modifier = Modifier.size(64.dp),
-                    shape = CircleShape,
-                    color = themeColors.onBase.copy(alpha = 0.14f),
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(20.dp))
+                        .clickable(enabled = canTapToSignIn, onClick = onSignInWithGoogle)
+                        .padding(vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
                 ) {
-                    Image(
-                        painter = painterResource(R.mipmap.ic_launcher_foreground),
-                        contentDescription = "App Icon",
-                        modifier = Modifier
-                            .padding(4.dp)
-                            .clip(CircleShape),
+                    ProfileAvatar(
+                        avatar = effectiveAvatar,
+                        contentDescription = AppText.t("me_profile_avatar"),
+                        size = 72.dp,
                     )
+                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        if (badgeText != null) {
+                            ProfileBadge(
+                                text = badgeText,
+                                backgroundColor = themeColors.onBase.copy(alpha = 0.14f),
+                                contentColor = themeColors.onBase,
+                            )
+                        }
+                        Text(
+                            text = displayName,
+                            style = MaterialTheme.typography.titleLarge,
+                            color = themeColors.onBase,
+                            fontWeight = FontWeight.Bold,
+                        )
+                        Text(
+                            text = subtitle,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = themeColors.onBase.copy(alpha = 0.78f),
+                        )
+                    }
+                    IconButton(onClick = { showProfileEditor = true }) {
+                        Icon(
+                            imageVector = Icons.Default.Edit,
+                            contentDescription = AppText.t("me_edit_profile"),
+                            tint = themeColors.onBase,
+                        )
+                    }
                 }
-                Spacer(Modifier.width(16.dp))
-                Column {
+                when {
+                    isLocalActivationEnabled && !userSession?.userId.isNullOrBlank() -> {
+                        OutlinedButton(
+                            onClick = {
+                                clipboard.setText(AnnotatedString(userSession?.userId.orEmpty()))
+                            },
+                        ) {
+                            Text(AppText.t("activation_copy_user_id"), color = themeColors.onBase)
+                        }
+                    }
+                    isGoogleSignInEnabled && userSession != null -> {
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            OutlinedButton(onClick = onSignOut) {
+                                Text(AppText.t("me_sign_out"), color = themeColors.onBase)
+                            }
+                            TextButton(onClick = { showDeleteAccountConfirm = true }) {
+                                Text(
+                                    AppText.t("me_delete_account"),
+                                    color = themeColors.onBase,
+                                )
+                            }
+                        }
+                    }
+                }
+                if (isLocalActivationEnabled) {
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(
+                            text = AppText.t("me_china_local_mode_body"),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = themeColors.onBase.copy(alpha = 0.78f),
+                        )
+                        if (!userSession?.userId.isNullOrBlank()) {
+                            Text(
+                                text = AppText.t("activation_user_id_label", userSession?.userId.orEmpty()),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = themeColors.onBase.copy(alpha = 0.78f),
+                            )
+                        }
+                    }
+                } else if (!isGoogleSignInConfigured && userSession == null) {
                     Text(
-                        userSession?.displayName ?: AppText.t("me_not_signed_in"),
-                        style = MaterialTheme.typography.titleLarge,
-                        color = themeColors.onBase,
-                        fontWeight = FontWeight.Bold,
-                    )
-                    Text(
-                        userSession?.email ?: if (isGoogleSignInEnabled) {
-                            AppText.t("me_sign_in_to_restore_subscriptions_and_prepare_for")
-                        } else {
-                            AppText.t("me_china_local_mode_subtitle")
-                        },
+                        text = AppText.t("me_google_sign_in_is_not_configured"),
                         style = MaterialTheme.typography.bodySmall,
                         color = themeColors.onBase.copy(alpha = 0.78f),
                     )
@@ -233,28 +347,12 @@ fun MeScreen(
                 }
             }
 
-            MeMenuSection(AppText.t("me_account")) {
-                if (!isGoogleSignInEnabled) {
-                    LocalModeInfoPanel(userId = userSession?.userId)
-                } else if (userSession == null) {
-                    MeMenuItem(
-                        icon = Icons.Default.Settings,
-                        title = if (isGoogleSignInConfigured) AppText.t("me_usage_google_sign_in") else AppText.t("me_google_sign_in_is_not_configured"),
-                        onClick = onSignInWithGoogle,
-                        color = if (isGoogleSignInConfigured) themeColors.base else MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                } else {
-                    MeMenuItem(icon = Icons.Default.Settings, title = AppText.t("me_sign_out"), onClick = onSignOut)
-                    MeMenuItem(
-                        icon = Icons.Default.Delete,
-                        title = AppText.t("me_delete_account"),
-                        onClick = { showDeleteAccountConfirm = true },
-                        color = MaterialTheme.colorScheme.error,
-                    )
-                }
-            }
-
-            MeMenuSection(AppText.t("me_subscription")) {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(24.dp),
+                color = MaterialTheme.colorScheme.surface,
+                shadowElevation = 1.dp,
+            ) {
                 SubscriptionStatusPanel(
                     entitlement = proEntitlement,
                     offers = subscriptionOffers,
@@ -268,43 +366,63 @@ fun MeScreen(
                 )
             }
 
-            MeMenuSection(AppText.t("me_data_and_privacy")) {
-                MeMenuItem(icon = Icons.Default.Settings, title = AppText.t("me_local_data_management"), onClick = { showDataPrivacy = true })
-                MeMenuItem(icon = Icons.AutoMirrored.Filled.HelpOutline, title = AppText.t("me_privacy_policy"), onClick = onOpenPrivacyPolicy)
-            }
-
-            MeMenuSection(AppText.t("me_permission_settings")) {
-                MeMenuItem(icon = Icons.Default.Settings, title = AppText.t("me_permission_settings"), onClick = { showPermissionSettings = true })
-            }
-
-            MeMenuSection(AppText.t("selected_language_title")) {
-                MeMenuItem(
-                    icon = Icons.Default.Settings,
-                    title = "${AppText.t("selected_language_title")}: ${selectedAppLanguage.displayName()}",
-                    onClick = { showLanguageSettings = true },
-                )
-            }
-
-            MeMenuSection(AppText.t("me_appearance_theme")) {
-                MeMenuItem(icon = Icons.Default.Palette, title = AppText.t("me_theme_management"), onClick = onNavigateToThemeSettings)
-            }
-
-            MeMenuSection(AppText.t("me_usage_records")) {
-                MeMenuItem(icon = Icons.Default.History, title = AppText.t("me_usage_history"), onClick = onNavigateToHistory)
-            }
-
-            MeMenuSection(AppText.t("me_help_and_contact")) {
-                MeMenuItem(icon = Icons.AutoMirrored.Filled.HelpOutline, title = AppText.t("me_help_and_feedback"), onClick = onNavigateToHelpFeedback)
-                MeMenuItem(icon = Icons.Default.Email, title = AppText.t("me_contact_us"), onClick = onNavigateToContactUs)
-            }
-
-            MeMenuSection(AppText.t("me_label")) {
-                MeMenuItem(
-                    icon = Icons.Default.Science,
-                    title = AppText.t("lab_laboratory_debug_tools"),
-                    onClick = onNavigateToLaboratory,
-                    color = themeColors.base,
-                )
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(24.dp),
+                color = MaterialTheme.colorScheme.surface,
+            ) {
+                Column {
+                    MeMenuItem(
+                        icon = Icons.Default.Settings,
+                        title = AppText.t("me_permission_settings"),
+                        onClick = { showPermissionSettings = true },
+                    )
+                    SettingsDivider()
+                    MeMenuItem(
+                        icon = Icons.Default.Person,
+                        title = "${AppText.t("selected_language_title")} · ${selectedAppLanguage.displayName()}",
+                        onClick = { showLanguageSettings = true },
+                    )
+                    SettingsDivider()
+                    MeMenuItem(
+                        icon = Icons.Default.Palette,
+                        title = AppText.t("me_theme_management"),
+                        onClick = onNavigateToThemeSettings,
+                    )
+                    SettingsDivider()
+                    MeMenuItem(
+                        icon = Icons.Default.History,
+                        title = AppText.t("me_usage_history"),
+                        onClick = onNavigateToHistory,
+                    )
+                    SettingsDivider()
+                    MeMenuItem(
+                        icon = Icons.Default.Settings,
+                        title = AppText.t("me_local_data_management"),
+                        onClick = { showDataPrivacy = true },
+                    )
+                    SettingsDivider()
+                    MeMenuItem(
+                        icon = Icons.AutoMirrored.Filled.HelpOutline,
+                        title = AppText.t("me_help_and_feedback"),
+                        onClick = onNavigateToHelpFeedback,
+                    )
+                    SettingsDivider()
+                    MeMenuItem(
+                        icon = Icons.Default.Email,
+                        title = AppText.t("me_contact_us"),
+                        onClick = onNavigateToContactUs,
+                    )
+                    if (isDebugBuild) {
+                        SettingsDivider()
+                        MeMenuItem(
+                            icon = Icons.Default.Science,
+                            title = AppText.t("me_advanced_center"),
+                            onClick = onNavigateToLaboratory,
+                            color = themeColors.base,
+                        )
+                    }
+                }
             }
         }
     }
@@ -382,6 +500,20 @@ fun MeScreen(
             },
         )
     }
+
+    if (showProfileEditor) {
+        ProfileEditorDialog(
+            initialDisplayName = profileDisplayName ?: userSession?.displayName.orEmpty(),
+            avatar = effectiveAvatar,
+            onPickAvatar = { avatarPickerLauncher.launch(arrayOf("image/*")) },
+            onClearAvatar = onClearProfileAvatar,
+            onSave = {
+                onUpdateProfileName(it)
+                showProfileEditor = false
+            },
+            onDismiss = { showProfileEditor = false },
+        )
+    }
 }
 
 private fun AppLanguage.displayName(): String =
@@ -390,6 +522,137 @@ private fun AppLanguage.displayName(): String =
         AppLanguage.ZH_CN -> AppText.t("selected_language_zh_cn")
         AppLanguage.EN -> AppText.t("selected_language_en")
     }
+
+@Composable
+private fun SettingsDivider() {
+    HorizontalDivider(
+        modifier = Modifier.padding(horizontal = 16.dp),
+        color = MaterialTheme.colorScheme.outlineVariant,
+    )
+}
+
+@Composable
+private fun ProfileAvatar(
+    avatar: String?,
+    contentDescription: String,
+    size: androidx.compose.ui.unit.Dp,
+) {
+    Surface(
+        modifier = Modifier.size(size),
+        shape = CircleShape,
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+    ) {
+        if (avatar.isNullOrBlank()) {
+            Image(
+                painter = painterResource(R.mipmap.ic_launcher_foreground),
+                contentDescription = contentDescription,
+                modifier = Modifier
+                    .padding(4.dp)
+                    .clip(CircleShape),
+            )
+        } else {
+            AsyncImage(
+                model = avatar,
+                contentDescription = contentDescription,
+                modifier = Modifier.fillMaxSize(),
+                contentScale = ContentScale.Crop,
+                fallback = painterResource(R.mipmap.ic_launcher_foreground),
+                error = painterResource(R.mipmap.ic_launcher_foreground),
+            )
+        }
+    }
+}
+
+@Composable
+private fun ProfileBadge(
+    text: String,
+    backgroundColor: Color,
+    contentColor: Color,
+) {
+    Surface(
+        shape = RoundedCornerShape(999.dp),
+        color = backgroundColor,
+    ) {
+        Text(
+            text = text,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+            style = MaterialTheme.typography.labelMedium,
+            color = contentColor,
+            fontWeight = FontWeight.SemiBold,
+        )
+    }
+}
+
+@Composable
+private fun ProfileEditorDialog(
+    initialDisplayName: String,
+    avatar: String?,
+    onPickAvatar: () -> Unit,
+    onClearAvatar: () -> Unit,
+    onSave: (String?) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var displayName by remember(initialDisplayName) { mutableStateOf(initialDisplayName) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(AppText.t("me_edit_profile"), fontWeight = FontWeight.Bold) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                ) {
+                    ProfileAvatar(
+                        avatar = avatar,
+                        contentDescription = AppText.t("me_profile_avatar"),
+                        size = 72.dp,
+                    )
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        OutlinedButton(
+                            onClick = onPickAvatar,
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text(AppText.t("me_profile_choose_avatar"))
+                        }
+                        if (!avatar.isNullOrBlank()) {
+                            TextButton(
+                                onClick = onClearAvatar,
+                                modifier = Modifier.fillMaxWidth(),
+                            ) {
+                                Text(
+                                    AppText.t("me_profile_remove_avatar"),
+                                    color = MaterialTheme.colorScheme.error,
+                                )
+                            }
+                        }
+                    }
+                }
+                OutlinedTextField(
+                    value = displayName,
+                    onValueChange = { displayName = it },
+                    modifier = Modifier.fillMaxWidth(),
+                    singleLine = true,
+                    label = { Text(AppText.t("me_profile_name")) },
+                    placeholder = { Text(AppText.t("me_profile_name_placeholder")) },
+                )
+            }
+        },
+        confirmButton = {
+            Button(onClick = { onSave(displayName) }) {
+                Text(AppText.t("group_save"))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(AppText.t("group_cancel"))
+            }
+        },
+    )
+}
 
 @Composable
 private fun LanguageSettingsDialog(

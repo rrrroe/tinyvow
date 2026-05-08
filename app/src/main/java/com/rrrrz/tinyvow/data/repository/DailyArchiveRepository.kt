@@ -532,7 +532,7 @@ class DailyArchiveRepository(
         val remainingMillisAtClose = max(effectiveLimitMillisAtClose - periodUsageMillisAtClose, 0L)
         val exceededMillisAtClose = max(periodUsageMillisAtClose - effectiveLimitMillisAtClose, 0L)
         val controlCompleted =
-            !hasPeriodPass && !isControlTimeoutForStats(exceededMillisAtClose)
+            hasPeriodPass || !isControlTimeoutForStats(exceededMillisAtClose)
         val completed =
             when (group.type) {
                 GroupType.CONTROL -> controlCompleted

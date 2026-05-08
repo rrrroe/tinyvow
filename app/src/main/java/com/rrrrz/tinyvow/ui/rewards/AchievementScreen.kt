@@ -19,7 +19,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material3.*
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.runtime.*
@@ -566,7 +565,7 @@ private fun UnlockedAchievementCard(achievement: AchievementEntity) {
 
             Row(
                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 13.dp),
-                verticalAlignment = Alignment.CenterVertically,
+                verticalAlignment = Alignment.Top,
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 AchievementBadge(
@@ -592,57 +591,45 @@ private fun UnlockedAchievementCard(achievement: AchievementEntity) {
                         overflow = TextOverflow.Ellipsis,
                         fontWeight = FontWeight.Medium
                     )
-                    achievement.unlockedAt?.let { millis ->
-                        Spacer(modifier = Modifier.height(6.dp))
-                        val dateStr = remember(millis) {
-                            SimpleDateFormat("yyyy/MM/dd HH:mm", Locale.getDefault()).format(Date(millis))
-                        }
-                        Surface(
-                            shape = RoundedCornerShape(999.dp),
-                            color = palette.surfaceRaised.copy(alpha = 0.92f),
-                            border = androidx.compose.foundation.BorderStroke(1.dp, palette.border.copy(alpha = 0.28f))
-                        ) {
-                            Row(
-                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                Icon(
-                                    Icons.Default.Schedule,
-                                    contentDescription = null,
-                                    tint = palette.accentStrong,
-                                    modifier = Modifier.size(12.dp)
-                                )
-                                Text(
-                                    text = dateStr,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = palette.muted,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                            }
-                        }
-                    }
                 }
 
-                Surface(
-                    shape = RoundedCornerShape(999.dp),
-                    color = palette.accent.copy(alpha = 0.12f),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, palette.accentStrong.copy(alpha = 0.24f))
+                Column(
+                    modifier = Modifier.widthIn(min = 78.dp),
+                    horizontalAlignment = Alignment.End
                 ) {
-                    Icon(
-                        Icons.Default.CheckCircle,
-                        contentDescription = AppText.t("me_unlocked"),
-                        tint = palette.accentStrong,
-                        modifier = Modifier
-                            .padding(8.dp)
-                            .size(20.dp)
-                            .graphicsLayer {
-                                if (achievement.tier == AchievementTier.LEGENDARY) {
-                                    scaleX = 1f + (sparkleAlpha - 0.5f) * 0.12f
-                                    scaleY = scaleX
+                    Surface(
+                        shape = RoundedCornerShape(999.dp),
+                        color = palette.accent.copy(alpha = 0.12f),
+                        border = androidx.compose.foundation.BorderStroke(1.dp, palette.accentStrong.copy(alpha = 0.24f))
+                    ) {
+                        Icon(
+                            Icons.Default.CheckCircle,
+                            contentDescription = AppText.t("me_unlocked"),
+                            tint = palette.accentStrong,
+                            modifier = Modifier
+                                .padding(8.dp)
+                                .size(20.dp)
+                                .graphicsLayer {
+                                    if (achievement.tier == AchievementTier.LEGENDARY) {
+                                        scaleX = 1f + (sparkleAlpha - 0.5f) * 0.12f
+                                        scaleY = scaleX
+                                    }
                                 }
-                            }
-                    )
+                        )
+                    }
+                    achievement.unlockedAt?.let { millis ->
+                        Spacer(modifier = Modifier.height(7.dp))
+                        Text(
+                            text = remember(millis) {
+                                SimpleDateFormat("yyyy/MM/dd HH:mm", Locale.getDefault()).format(Date(millis))
+                            },
+                            style = MaterialTheme.typography.labelSmall,
+                            color = palette.muted,
+                            fontWeight = FontWeight.SemiBold,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
             }
         }
@@ -700,7 +687,7 @@ private fun LockedAchievementCard(
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 13.dp),
-            verticalAlignment = Alignment.CenterVertically,
+            verticalAlignment = Alignment.Top,
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Box(
@@ -733,25 +720,6 @@ private fun LockedAchievementCard(
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
-                
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End
-                ) {
-                    Surface(
-                        shape = RoundedCornerShape(999.dp),
-                        color = palette.surfaceRaised,
-                        border = androidx.compose.foundation.BorderStroke(1.dp, palette.border.copy(alpha = 0.24f))
-                    ) {
-                        Text(
-                            text = "${formatAchievementValue(currentValue)} / ${formatAchievementValue(targetValue)}",
-                            modifier = Modifier.padding(horizontal = 9.dp, vertical = 3.dp),
-                            style = MaterialTheme.typography.labelSmall,
-                            color = palette.accent,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-                }
                 Spacer(modifier = Modifier.height(6.dp))
                 TierProgressBar(
                     progress = animatedProgress,
@@ -762,18 +730,32 @@ private fun LockedAchievementCard(
                 )
             }
 
-            Surface(
-                shape = RoundedCornerShape(999.dp),
-                color = palette.surfaceRaised.copy(alpha = 0.9f),
-                border = androidx.compose.foundation.BorderStroke(1.dp, palette.border.copy(alpha = 0.22f))
+            Column(
+                modifier = Modifier.widthIn(min = 78.dp),
+                horizontalAlignment = Alignment.End
             ) {
-                Icon(
-                    Icons.Default.Lock,
-                    contentDescription = AppText.t("achievement_locked_2"),
-                    tint = palette.muted.copy(alpha = 0.88f),
-                    modifier = Modifier
-                        .padding(8.dp)
-                        .size(18.dp)
+                Surface(
+                    shape = RoundedCornerShape(999.dp),
+                    color = palette.surfaceRaised.copy(alpha = 0.9f),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, palette.border.copy(alpha = 0.22f))
+                ) {
+                    Icon(
+                        Icons.Default.Lock,
+                        contentDescription = AppText.t("achievement_locked_2"),
+                        tint = palette.muted.copy(alpha = 0.88f),
+                        modifier = Modifier
+                            .padding(8.dp)
+                            .size(18.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.height(7.dp))
+                Text(
+                    text = "${formatAchievementValue(currentValue)} / ${formatAchievementValue(targetValue)}",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = palette.accent,
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
         }

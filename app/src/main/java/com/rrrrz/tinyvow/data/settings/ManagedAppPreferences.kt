@@ -42,6 +42,8 @@ class ManagedAppPreferences(
         val usageAccessDisclosureAccepted = booleanPreferencesKey("usage_access_disclosure_accepted")
         val accessibilityDisclosureAccepted = booleanPreferencesKey("accessibility_disclosure_accepted")
         val selectedAppLanguage = stringPreferencesKey("selected_app_language")
+        val profileDisplayName = stringPreferencesKey("profile_display_name")
+        val profileAvatarUri = stringPreferencesKey("profile_avatar_uri")
         val debugProExpiresAtMillis = longPreferencesKey("debug_pro_expires_at_millis")
     }
 
@@ -114,6 +116,14 @@ class ManagedAppPreferences(
 
     val selectedAppLanguage: Flow<AppLanguage> = context.managedAppDataStore.data.map { preferences ->
         AppLanguage.fromStorageValue(preferences[Keys.selectedAppLanguage])
+    }
+
+    val profileDisplayName: Flow<String?> = context.managedAppDataStore.data.map { preferences ->
+        preferences[Keys.profileDisplayName]?.takeIf { it.isNotBlank() }
+    }
+
+    val profileAvatarUri: Flow<String?> = context.managedAppDataStore.data.map { preferences ->
+        preferences[Keys.profileAvatarUri]?.takeIf { it.isNotBlank() }
     }
 
     val debugProExpiresAtMillis: Flow<Long?> = context.managedAppDataStore.data.map { preferences ->
@@ -239,6 +249,28 @@ class ManagedAppPreferences(
     suspend fun setSelectedAppLanguage(language: AppLanguage) {
         context.managedAppDataStore.edit { preferences ->
             preferences[Keys.selectedAppLanguage] = language.storageValue
+        }
+    }
+
+    suspend fun setProfileDisplayName(displayName: String?) {
+        context.managedAppDataStore.edit { preferences ->
+            val normalized = displayName?.trim().orEmpty()
+            if (normalized.isBlank()) {
+                preferences.remove(Keys.profileDisplayName)
+            } else {
+                preferences[Keys.profileDisplayName] = normalized
+            }
+        }
+    }
+
+    suspend fun setProfileAvatarUri(uri: String?) {
+        context.managedAppDataStore.edit { preferences ->
+            val normalized = uri?.trim().orEmpty()
+            if (normalized.isBlank()) {
+                preferences.remove(Keys.profileAvatarUri)
+            } else {
+                preferences[Keys.profileAvatarUri] = normalized
+            }
         }
     }
 

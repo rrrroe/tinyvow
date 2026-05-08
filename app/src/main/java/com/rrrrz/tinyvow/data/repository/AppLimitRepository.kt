@@ -207,6 +207,16 @@ internal fun calculateAchievementProgress(
     }
     val groupedByDate = groupArchives.groupBy { it.archiveDate }
     val usedPendings = shieldPendings.filter { it.status == StreakShieldPendingStatus.USED }
+    val controlCompletedDates =
+        completionDatesForGroupType(
+            groupedByDate = groupedByDate,
+            groupType = GroupType.CONTROL,
+        )
+    val encourageCompletedDates =
+        completionDatesForGroupType(
+            groupedByDate = groupedByDate,
+            groupType = GroupType.ENCOURAGE,
+        )
     val controlSignal =
         buildCompletionSignal(
             groupedByDate = groupedByDate,
@@ -224,9 +234,9 @@ internal fun calculateAchievementProgress(
     return AchievementProgress(
         earnedPointsTotal = earnedPointsTotal,
         redeemedPointsTotal = redeemedPointsTotal,
-        controlDaysTotal = sortedArchives.count { it.controlCompletedGroupCount > 0 },
+        controlDaysTotal = controlCompletedDates.size,
         controlStreak = calculateCompletedArchiveStreak(sortedArchives, controlSignal),
-        encourageDaysTotal = sortedArchives.count { it.encourageCompletedGroupCount > 0 },
+        encourageDaysTotal = encourageCompletedDates.size,
         encourageStreak = calculateCompletedArchiveStreak(sortedArchives, encourageSignal),
     )
 }
@@ -267,7 +277,7 @@ private val BUILTIN_REWARD_DEFINITIONS =
             title = "Extra 15 minutes",
             description = "Buy now, use from inventory on one control group.",
             rewardType = RewardType.TIME_ADD,
-            pointCost = 40,
+            pointCost = 15,
             stock = -1,
             payload = RewardPayload(minutes = 15),
         ),
@@ -276,7 +286,7 @@ private val BUILTIN_REWARD_DEFINITIONS =
             title = "Extra 30 minutes",
             description = "Buy now, use from inventory on one control group.",
             rewardType = RewardType.TIME_ADD,
-            pointCost = 70,
+            pointCost = 30,
             stock = -1,
             payload = RewardPayload(minutes = 30),
         ),
@@ -285,7 +295,7 @@ private val BUILTIN_REWARD_DEFINITIONS =
             title = "Extra 60 minutes",
             description = "Buy now, use from inventory on one control group.",
             rewardType = RewardType.TIME_ADD,
-            pointCost = 120,
+            pointCost = 60,
             stock = -1,
             payload = RewardPayload(minutes = 60),
         ),
@@ -294,7 +304,7 @@ private val BUILTIN_REWARD_DEFINITIONS =
             title = "Current period free pass",
             description = "Use on one control group to skip blocking for the active window.",
             rewardType = RewardType.PERIOD_PASS,
-            pointCost = 220,
+            pointCost = 200,
             stock = -1,
         ),
         BuiltinRewardDefinition(
@@ -302,7 +312,7 @@ private val BUILTIN_REWARD_DEFINITIONS =
             title = "Emergency unlock 10 min",
             description = "Buy from the store first. Use only from the blocking overlay.",
             rewardType = RewardType.EMERGENCY_UNLOCK,
-            pointCost = 60,
+            pointCost = 1,
             stock = -1,
             payload = RewardPayload(minutes = 10),
         ),
@@ -311,7 +321,7 @@ private val BUILTIN_REWARD_DEFINITIONS =
             title = "Control streak shield",
             description = "Protect one control streak break after archive review.",
             rewardType = RewardType.STREAK_SHIELD,
-            pointCost = 150,
+            pointCost = 100,
             stock = -1,
             payload = RewardPayload(shieldTarget = StreakShieldTarget.CONTROL_STREAK),
         ),
@@ -320,7 +330,7 @@ private val BUILTIN_REWARD_DEFINITIONS =
             title = "Encourage streak shield",
             description = "Protect one encourage streak break after archive review.",
             rewardType = RewardType.STREAK_SHIELD,
-            pointCost = 120,
+            pointCost = 100,
             stock = -1,
             payload = RewardPayload(shieldTarget = StreakShieldTarget.ENCOURAGE_STREAK),
         ),
@@ -341,12 +351,7 @@ private fun buildCompletionSignal(
     shieldTarget: StreakShieldTarget,
     usedPendings: List<StreakShieldPendingEntity>,
 ): CompletionSignal {
-    val completedDates =
-        groupedByDate
-            .filterValues { archives -> archives.any { it.groupType == groupType && it.completed } }
-            .keys
-            .mapNotNull { runCatching { LocalDate.parse(it) }.getOrNull() }
-            .toSet()
+    val completedDates = completionDatesForGroupType(groupedByDate = groupedByDate, groupType = groupType)
     val shieldedDates =
         usedPendings
             .filter { it.shieldTarget == shieldTarget }
@@ -354,6 +359,28 @@ private fun buildCompletionSignal(
             .toSet()
     return CompletionSignal(completedDates = completedDates, shieldedDates = shieldedDates)
 }
+
+private fun completionDatesForGroupType(
+    groupedByDate: Map<String, List<DailyGroupArchiveEntity>>,
+    groupType: GroupType,
+): Set<LocalDate> =
+    groupedByDate
+        .mapNotNull { (archiveDate, archives) ->
+            val sameTypeArchives = archives.filter { it.groupType == groupType }
+            if (sameTypeArchives.isEmpty()) {
+                return@mapNotNull null
+            }
+            val isCompleted =
+                when (groupType) {
+                    GroupType.CONTROL -> sameTypeArchives.all { it.completed }
+                    GroupType.ENCOURAGE -> sameTypeArchives.any { it.completed }
+                }
+            if (!isCompleted) {
+                return@mapNotNull null
+            }
+            runCatching { LocalDate.parse(archiveDate) }.getOrNull()
+        }
+        .toSet()
 
 private fun calculateCompletedArchiveStreak(
     sortedArchives: List<DailyArchiveEntity>,
@@ -1170,10 +1197,10 @@ class AppLimitRepository(
         val archiveDates = groupArchives.mapNotNull { runCatching { LocalDate.parse(it.archiveDate) }.getOrNull() }.distinct().sorted()
         val latestDate = runCatching { LocalDate.parse(latestArchiveDate) }.getOrNull() ?: return
         val completedDates =
-            groupArchives
-                .filter { it.groupType == groupType && it.completed }
-                .mapNotNull { runCatching { LocalDate.parse(it.archiveDate) }.getOrNull() }
-                .toSet()
+            completionDatesForGroupType(
+                groupedByDate = groupArchives.groupBy { it.archiveDate },
+                groupType = groupType,
+            )
         if (latestDate in completedDates) return
         val previousStreak = calculateHistoricalStreakBeforeDate(archiveDates, latestDate, completedDates)
         if (previousStreak <= 0) return
@@ -1384,36 +1411,36 @@ class AppLimitRepository(
 
         seed("BRONZE_POINTS", "Starlet Gatherer", "Earn 1,000 points", """{"type":"points","value":1000}""", AchievementTier.BRONZE, "🌱")
         seed("BRONZE_REDEEM", "First Keepsake", "Spend 1,000 points", """{"type":"redeem_points","value":1000}""", AchievementTier.BRONZE, "🍬")
-        seed("BRONZE_CTRL_DAYS", "Grain of Promise", "Stay within commitment limits for 10 total days", """{"type":"control_days","value":10}""", AchievementTier.BRONZE, "🤝")
-        seed("BRONZE_CTRL_STREAK", "Three Dawns", "Stay within commitment limits for 3 days in a row", """{"type":"control_streak","value":3}""", AchievementTier.BRONZE, "🪨")
+        seed("BRONZE_CTRL_DAYS", "Grain of Promise", "Complete every control group for 10 total days", """{"type":"control_days","value":10}""", AchievementTier.BRONZE, "🤝")
+        seed("BRONZE_CTRL_STREAK", "Three Dawns", "Complete every control group for 3 days in a row", """{"type":"control_streak","value":3}""", AchievementTier.BRONZE, "🪨")
         seed("BRONZE_ENC_DAYS", "Sprout of Sun", "Meet encouragement goals for 10 total days", """{"type":"encourage_days","value":10}""", AchievementTier.BRONZE, "🌻")
         seed("BRONZE_ENC_STREAK", "Threefold Gleam", "Meet encouragement goals for 3 days in a row", """{"type":"encourage_streak","value":3}""", AchievementTier.BRONZE, "🕯️")
 
         seed("SILVER_POINTS", "Moonlight Seeker", "Earn 3,000 points", """{"type":"points","value":3000}""", AchievementTier.SILVER, "🌊")
         seed("SILVER_REDEEM", "Silver Wish", "Spend 3,000 points", """{"type":"redeem_points","value":3000}""", AchievementTier.SILVER, "🛒")
-        seed("SILVER_CTRL_DAYS", "Verdant Stone", "Stay within commitment limits for 30 total days", """{"type":"control_days","value":30}""", AchievementTier.SILVER, "⛰️")
-        seed("SILVER_CTRL_STREAK", "Tenfold Dawn", "Stay within commitment limits for 10 days in a row", """{"type":"control_streak","value":10}""", AchievementTier.SILVER, "🌓")
+        seed("SILVER_CTRL_DAYS", "Verdant Stone", "Complete every control group for 30 total days", """{"type":"control_days","value":30}""", AchievementTier.SILVER, "⛰️")
+        seed("SILVER_CTRL_STREAK", "Tenfold Dawn", "Complete every control group for 10 days in a row", """{"type":"control_streak","value":10}""", AchievementTier.SILVER, "🌓")
         seed("SILVER_ENC_DAYS", "Dewlit Branch", "Meet encouragement goals for 30 total days", """{"type":"encourage_days","value":30}""", AchievementTier.SILVER, "📖")
         seed("SILVER_ENC_STREAK", "Ten Rays Aligned", "Meet encouragement goals for 10 days in a row", """{"type":"encourage_streak","value":10}""", AchievementTier.SILVER, "🌿")
 
         seed("GOLD_POINTS", "Solar Chaser", "Earn 10,000 points", """{"type":"points","value":10000}""", AchievementTier.GOLD, "👑")
         seed("GOLD_REDEEM", "Golden Seal", "Spend 10,000 points", """{"type":"redeem_points","value":10000}""", AchievementTier.GOLD, "🎯")
-        seed("GOLD_CTRL_DAYS", "Rampart Builder", "Stay within commitment limits for 100 total days", """{"type":"control_days","value":100}""", AchievementTier.GOLD, "🛡️")
-        seed("GOLD_CTRL_STREAK", "Balanced Moon", "Stay within commitment limits for 30 days in a row", """{"type":"control_streak","value":30}""", AchievementTier.GOLD, "🌙")
+        seed("GOLD_CTRL_DAYS", "Rampart Builder", "Complete every control group for 100 total days", """{"type":"control_days","value":100}""", AchievementTier.GOLD, "🛡️")
+        seed("GOLD_CTRL_STREAK", "Balanced Moon", "Complete every control group for 30 days in a row", """{"type":"control_streak","value":30}""", AchievementTier.GOLD, "🌙")
         seed("GOLD_ENC_DAYS", "Field in Bloom", "Meet encouragement goals for 100 total days", """{"type":"encourage_days","value":100}""", AchievementTier.GOLD, "🔥")
         seed("GOLD_ENC_STREAK", "Unfading Moonlight", "Meet encouragement goals for 30 days in a row", """{"type":"encourage_streak","value":30}""", AchievementTier.GOLD, "🎍")
 
         seed("DIAMOND_POINTS", "River of Stars", "Earn 30,000 points", """{"type":"points","value":30000}""", AchievementTier.DIAMOND, "💫")
         seed("DIAMOND_REDEEM", "Crystal Keybearer", "Spend 30,000 points", """{"type":"redeem_points","value":30000}""", AchievementTier.DIAMOND, "🏛️")
-        seed("DIAMOND_CTRL_DAYS", "Crystal Citadel", "Stay within commitment limits for 365 total days", """{"type":"control_days","value":365}""", AchievementTier.DIAMOND, "🏰")
-        seed("DIAMOND_CTRL_STREAK", "Hundred Days True", "Stay within commitment limits for 100 days in a row", """{"type":"control_streak","value":100}""", AchievementTier.DIAMOND, "⚡")
+        seed("DIAMOND_CTRL_DAYS", "Crystal Citadel", "Complete every control group for 365 total days", """{"type":"control_days","value":365}""", AchievementTier.DIAMOND, "🏰")
+        seed("DIAMOND_CTRL_STREAK", "Hundred Days True", "Complete every control group for 100 days in a row", """{"type":"control_streak","value":100}""", AchievementTier.DIAMOND, "⚡")
         seed("DIAMOND_ENC_DAYS", "Canopy of Green", "Meet encouragement goals for 365 total days", """{"type":"encourage_days","value":365}""", AchievementTier.DIAMOND, "⚔️")
         seed("DIAMOND_ENC_STREAK", "Crown of Hundred Rays", "Meet encouragement goals for 100 days in a row", """{"type":"encourage_streak","value":100}""", AchievementTier.DIAMOND, "🗡️")
 
         seed("LEGEND_POINTS", "Celestial Ascendant", "Earn 100,000 points", """{"type":"points","value":100000}""", AchievementTier.LEGENDARY, "🐉")
         seed("LEGEND_REDEEM", "Vault of Wonders", "Spend 100,000 points", """{"type":"redeem_points","value":100000}""", AchievementTier.LEGENDARY, "💰")
-        seed("LEGEND_CTRL_DAYS", "Eternal Peak", "Stay within commitment limits for 1,000 total days", """{"type":"control_days","value":1000}""", AchievementTier.LEGENDARY, "⭐")
-        seed("LEGEND_CTRL_STREAK", "Yearbound Oath", "Stay within commitment limits for 365 days in a row", """{"type":"control_streak","value":365}""", AchievementTier.LEGENDARY, "🔱")
+        seed("LEGEND_CTRL_DAYS", "Eternal Peak", "Complete every control group for 1,000 total days", """{"type":"control_days","value":1000}""", AchievementTier.LEGENDARY, "⭐")
+        seed("LEGEND_CTRL_STREAK", "Yearbound Oath", "Complete every control group for 365 days in a row", """{"type":"control_streak","value":365}""", AchievementTier.LEGENDARY, "🔱")
         seed("LEGEND_ENC_DAYS", "Sunlit Courtyard", "Meet encouragement goals for 1,000 total days", """{"type":"encourage_days","value":1000}""", AchievementTier.LEGENDARY, "🌈")
         seed("LEGEND_ENC_STREAK", "Everlasting Radiance", "Meet encouragement goals for 365 days in a row", """{"type":"encourage_streak","value":365}""", AchievementTier.LEGENDARY, "⏳")
     }

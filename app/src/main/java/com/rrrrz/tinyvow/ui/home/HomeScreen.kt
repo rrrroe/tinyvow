@@ -369,6 +369,8 @@ fun HomeRoute(
     val selectedThemeId by preferences.selectedThemeId.collectAsState(initial = DefaultThemeSeed.id)
     val customThemes by preferences.customThemes.collectAsState(initial = emptyList())
     val selectedAppLanguage by preferences.selectedAppLanguage.collectAsState(initial = com.rrrrz.tinyvow.i18n.AppLanguage.SYSTEM)
+    val profileDisplayName by preferences.profileDisplayName.collectAsState(initial = null)
+    val profileAvatarUri by preferences.profileAvatarUri.collectAsState(initial = null)
     val storeRewardItems by appLimitRepository.observeStoreRewardsWithInventory().collectAsState(initial = emptyList())
     val inventoryRewardItems by appLimitRepository.observeInventoryRewards().collectAsState(initial = emptyList())
     val pendingShieldItems by appLimitRepository.observePendingStreakShields().collectAsState(initial = emptyList())
@@ -763,9 +765,12 @@ fun HomeRoute(
                         proEntitlement = proEntitlement,
                         subscriptionOffers = subscriptionOffers,
                         userPoints = userPoints,
+                        profileDisplayName = profileDisplayName,
+                        profileAvatarUri = profileAvatarUri,
                         selectedThemeId = selectedThemeId,
                         customThemes = customThemes,
                         isProActive = proEntitlement.isProActive,
+                        isDebugBuild = BuildConfig.DEBUG,
                         selectedAppLanguage = selectedAppLanguage,
                         usageAccessGranted = effectiveUsageAccessStatus == UsageAccessStatus.GRANTED,
                         accessibilityServiceEnabled = effectiveAccessibilityServiceEnabled,
@@ -776,6 +781,21 @@ fun HomeRoute(
                         onSelectAppLanguage = { language ->
                             coroutineScope.launch {
                                 preferences.setSelectedAppLanguage(language)
+                            }
+                        },
+                        onUpdateProfileName = { displayName ->
+                            coroutineScope.launch {
+                                preferences.setProfileDisplayName(displayName)
+                            }
+                        },
+                        onUpdateProfileAvatar = { avatarUri ->
+                            coroutineScope.launch {
+                                preferences.setProfileAvatarUri(avatarUri)
+                            }
+                        },
+                        onClearProfileAvatar = {
+                            coroutineScope.launch {
+                                preferences.setProfileAvatarUri(null)
                             }
                         },
                         onSelectTheme = { themeId ->

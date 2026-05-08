@@ -114,7 +114,7 @@ fun AchievementBadge(
     ) {
         if (animated) {
             Canvas(modifier = Modifier.fillMaxSize()) {
-                drawBadgeMotion(tier, effectStyle, twinkle, drift, spin, locked)
+                drawBadgeAura(tier, effectStyle, twinkle, drift, locked)
             }
         }
 
@@ -130,6 +130,12 @@ fun AchievementBadge(
         } else {
             Canvas(modifier = Modifier.fillMaxSize()) {
                 drawFallbackBadge(tier, effectStyle, locked)
+            }
+        }
+
+        if (animated) {
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                drawBadgeMotion(tier, effectStyle, twinkle, drift, spin, locked)
             }
         }
     }
@@ -357,6 +363,55 @@ private fun DrawScope.drawBadgeMotion(
                 color = style.line.copy(alpha = strength * (0.35f + twinkle * 0.2f))
             )
         }
+    }
+}
+
+private fun DrawScope.drawBadgeAura(
+    tier: Int,
+    style: BadgeEffectStyle,
+    twinkle: Float,
+    drift: Float,
+    locked: Boolean,
+) {
+    val strength = if (locked) 0.42f else 1f
+    val auraAlpha = when (tier) {
+        AchievementTier.BRONZE -> 0.12f
+        AchievementTier.SILVER -> 0.13f
+        AchievementTier.GOLD -> 0.16f
+        AchievementTier.DIAMOND -> 0.18f
+        AchievementTier.LEGENDARY -> 0.2f
+        else -> 0.12f
+    } * strength
+    drawCircle(
+        brush = Brush.radialGradient(
+            colors = listOf(
+                style.glow.copy(alpha = auraAlpha * (0.8f + twinkle * 0.25f)),
+                style.glow.copy(alpha = auraAlpha * 0.32f),
+                Color.Transparent,
+            ),
+            center = center(),
+            radius = size.minDimension * 0.64f,
+        ),
+        radius = size.minDimension * 0.64f,
+        center = center(),
+    )
+    if (tier >= AchievementTier.GOLD) {
+        val shimmerX = size.width * drift
+        drawLine(
+            brush = Brush.linearGradient(
+                colors = listOf(
+                    Color.Transparent,
+                    style.glow.copy(alpha = auraAlpha * 0.8f),
+                    Color.Transparent,
+                ),
+                start = Offset(shimmerX - size.minDimension * 0.4f, 0f),
+                end = Offset(shimmerX + size.minDimension * 0.4f, size.height),
+            ),
+            start = Offset(shimmerX - size.minDimension * 0.18f, size.height * 0.08f),
+            end = Offset(shimmerX + size.minDimension * 0.18f, size.height * 0.92f),
+            strokeWidth = size.minDimension * 0.14f,
+            cap = StrokeCap.Round,
+        )
     }
 }
 
