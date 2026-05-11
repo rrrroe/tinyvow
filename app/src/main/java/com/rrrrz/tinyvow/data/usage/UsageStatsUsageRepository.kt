@@ -16,23 +16,12 @@ class UsageStatsUsageRepository(
         getUsageInPeriod(packageName, LimitPeriod.DAILY)
 
     override suspend fun getUsageInPeriod(packageName: String, period: LimitPeriod): Long =
-        withContext(Dispatchers.Default) {
-            val usageStatsManager =
-                context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
-            val zoneId = ZoneId.systemDefault()
-            val now = LocalDate.now(zoneId)
-            
-            val startMillis = when (period) {
-                LimitPeriod.DAILY -> now.atStartOfDay(zoneId).toInstant().toEpochMilli()
-                LimitPeriod.WEEKLY -> now.minusDays(6)
-                    .atStartOfDay(zoneId).toInstant().toEpochMilli()
-                LimitPeriod.MONTHLY -> now.with(TemporalAdjusters.firstDayOfMonth())
-                    .atStartOfDay(zoneId).toInstant().toEpochMilli()
-            }
-            
-            val endMillis = System.currentTimeMillis()
+        getUsageStatsInPeriod(period)[packageName] ?: 0L
 
-            getUsageMillis(packageName, startMillis, endMillis)
+    override suspend fun getUsageStatsInPeriod(period: LimitPeriod): Map<String, Long> =
+        withContext(Dispatchers.Default) {
+            val bounds = usagePeriodBounds(period)
+            aggregateUsageStats(bounds.startMillis, bounds.endMillis)
         }
 
     override suspend fun getYesterdayUsageMillis(packageName: String): Long =
@@ -112,4 +101,26 @@ class UsageStatsUsageRepository(
             .queryAndAggregateUsageStats(startMillis, endMillis)
             .mapValues { (_, stats) -> stats.totalTimeInForeground }
     }
+}
+
+internal data class UsagePeriodBounds(
+    val startMillis: Long,
+    val endMillis: Long,
+)
+
+internal fun usagePeriodBounds(
+    period: LimitPeriod,
+    zoneId: ZoneId = ZoneId.systemDefault(),
+    currentDate: LocalDate = LocalDate.now(zoneId),
+    nowMillis: Long = System.currentTimeMillis(),
+): UsagePeriodBounds {
+    val startMillis = when (period) {
+        LimitPeriod.DAILY -> currentDate.atStartOfDay(zoneId).toInstant().toEpochMilli()
+        LimitPeriod.WEEKLY -> currentDate.minusDays(6).atStartOfDay(zoneId).toInstant().toEpochMilli()
+        LimitPeriod.MONTHLY -> currentDate.with(TemporalAdjusters.firstDayOfMonth())
+            .atStartOfDay(zoneId)
+            .toInstant()
+            .toEpochMilli()
+    }
+    return UsagePeriodBounds(startMillis = startMillis, endMillis = nowMillis)
 }

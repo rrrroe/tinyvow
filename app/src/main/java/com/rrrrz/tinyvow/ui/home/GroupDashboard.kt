@@ -1,4 +1,4 @@
-package com.rrrrz.tinyvow.ui.home
+﻿package com.rrrrz.tinyvow.ui.home
 
 import com.rrrrz.tinyvow.i18n.AppText
 
@@ -73,7 +73,8 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -410,6 +411,7 @@ private fun GroupCard(
     onLongClick: () -> Unit,
 ) {
     val context = LocalContext.current
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
     val themeColors = LocalThemeColors.current
     val periodLabel = when (groupData.group.limitPeriod) {
         LimitPeriod.DAILY -> AppText.t("group_daily")
@@ -650,6 +652,7 @@ private fun GroupDetailDialog(
     onDismiss: () -> Unit,
 ) {
     val context = LocalContext.current
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
     val themeColors = LocalThemeColors.current
     val zoneId = remember { ZoneId.systemDefault() }
     val today = remember { LocalDate.now(zoneId) }
@@ -659,7 +662,7 @@ private fun GroupDetailDialog(
     val historyItems by (
         archiveRepository
             ?.getGroupArchivesByRange(historyFrom, historyTo)
-            ?.collectAsState(initial = emptyList())
+            ?.collectAsStateWithLifecycle(initialValue = emptyList(), lifecycle = lifecycle)
             ?: remember { mutableStateOf(emptyList<DailyGroupArchiveEntity>()) }
     )
     val groupHistory = remember(historyItems, groupData.group.id) {
@@ -1681,3 +1684,8 @@ private fun trimTrailingZero(value: Double): String {
         value.toString().trimEnd('0').trimEnd('.')
     }
 }
+
+
+
+
+

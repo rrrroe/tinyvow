@@ -95,7 +95,7 @@
 
 - `app/src/main/java/com/rrrrz/tinyvow/MainActivity.kt`：应用入口、主题、语言 context 注入。
 - `app/src/main/java/com/rrrrz/tinyvow/TinyVowApplication.kt`：Application 初始化。
-- `data/db`：Room entity、dao、migration，当前数据库版本是 `15`，schema 导出到 `app/schemas`。
+- `data/db`：Room entity、dao、migration，当前数据库版本是 `18`，schema 导出到 `app/schemas`。
 - `data/repository`：分组、奖励、积分、每日归档等主要业务仓库。
 - `domain/limit`：限额评估策略，尤其是 `GroupLimitEnforcer`。
 - `service/block`：无障碍软阻断服务和 overlay。
@@ -145,7 +145,7 @@
 
 ## Room 和数据迁移
 
-- 数据库定义在 `AppDatabase`，当前 `version = 15`，`exportSchema = true`。
+- 数据库定义在 `AppDatabase`，当前 `version = 18`，`exportSchema = true`。
 - 改 entity/dao/schema 时必须：
   - 增加数据库版本号。
   - 添加从上一版本到新版本的 `Migration`。
@@ -197,16 +197,16 @@
 
 ## 测试和检查
 
-常规代码改动后优先运行：
+常规代码改动后优先运行日常国内 debug 单测：
 
 ```powershell
-.\gradlew.bat testDebugUnitTest
+.\gradlew.bat testChinaDebugUnitTest
 ```
 
-涉及资源、Manifest、Room schema、混淆、构建配置、权限、通知、服务或发布相关改动后运行：
+涉及资源、Manifest、Room schema、混淆、构建配置、权限、通知、服务或发布相关改动后运行日常国内 debug 构建：
 
 ```powershell
-.\gradlew.bat assembleDebug
+.\gradlew.bat assembleDefaultDebug
 ```
 
 多语言相关改动必须覆盖：
@@ -244,8 +244,8 @@
 ## 常用命令
 
 ```powershell
-.\gradlew.bat testDebugUnitTest
-.\gradlew.bat assembleDebug
+.\gradlew.bat testChinaDebugUnitTest
+.\gradlew.bat assembleDefaultDebug
 .\gradlew.bat connectedDebugAndroidTest
 ```
 

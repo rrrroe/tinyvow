@@ -48,7 +48,7 @@ fun LaboratoryScreen(
                 title = { Text(AppText.t("lab_laboratory_debug_tools")) },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = AppText.t("group_back"))
                     }
                 },
             )

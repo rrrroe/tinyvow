@@ -80,7 +80,7 @@ fun BlockOverlayScreen(
             ) {
                 Image(
                     painter = painterResource(id = R.mipmap.ic_launcher),
-                    contentDescription = "Tiny Vow Logo",
+                    contentDescription = AppText.t("block_logo_content_description"),
                     modifier = Modifier.padding(20.dp),
                     contentScale = ContentScale.Fit
                 )

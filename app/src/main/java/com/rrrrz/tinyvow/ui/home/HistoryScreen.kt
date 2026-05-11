@@ -1,4 +1,4 @@
-package com.rrrrz.tinyvow.ui.home
+﻿package com.rrrrz.tinyvow.ui.home
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.animateContentSize
@@ -42,7 +42,8 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -64,6 +65,7 @@ import com.rrrrz.tinyvow.data.db.DailyGroupArchiveEntity
 import com.rrrrz.tinyvow.data.db.GroupType
 import com.rrrrz.tinyvow.data.db.LimitPeriod
 import com.rrrrz.tinyvow.data.repository.DailyArchiveRepository
+import com.rrrrz.tinyvow.i18n.AppText
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -117,15 +119,16 @@ fun HistoryRoute(
     var groupFilter by rememberSaveable { mutableStateOf(HistoryGroupFilter.ALL) }
     var refreshingDate by rememberSaveable { mutableStateOf<String?>(null) }
     var refreshError by rememberSaveable { mutableStateOf<String?>(null) }
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
     val coroutineScope = rememberCoroutineScope()
 
-    val archives by archiveRepository.getRecentArchives().collectAsState(initial = emptyList())
+    val archives by archiveRepository.getRecentArchives().collectAsStateWithLifecycle(initialValue = emptyList(), lifecycle = lifecycle)
     val currentArchive by (selectedDate?.let { archiveRepository.getArchiveByDate(it) })
-        ?.collectAsState(initial = null) ?: remember { mutableStateOf<DailyArchiveEntity?>(null) }
+        ?.collectAsStateWithLifecycle(initialValue = null, lifecycle = lifecycle) ?: remember { mutableStateOf<DailyArchiveEntity?>(null) }
     val groupArchives by (selectedDate?.let { archiveRepository.getGroupArchivesByDate(it) })
-        ?.collectAsState(initial = emptyList()) ?: remember { mutableStateOf(emptyList()) }
+        ?.collectAsStateWithLifecycle(initialValue = emptyList(), lifecycle = lifecycle) ?: remember { mutableStateOf(emptyList()) }
     val appArchives by (selectedDate?.let { archiveRepository.getAppArchivesByDate(it) })
-        ?.collectAsState(initial = emptyList()) ?: remember { mutableStateOf(emptyList()) }
+        ?.collectAsStateWithLifecycle(initialValue = emptyList(), lifecycle = lifecycle) ?: remember { mutableStateOf(emptyList()) }
 
     val archiveDatesDesc = remember(archives) { archives.map { it.archiveDate }.sortedDescending() }
     val selectedIndex = remember(selectedDate, archiveDatesDesc) { archiveDatesDesc.indexOf(selectedDate) }
@@ -627,7 +630,7 @@ private fun DetailDateNavigator(
                 onClick = { previousDate?.let(onSelectDate) },
                 enabled = previousDate != null,
             ) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "\u4e0a\u4e00\u5929")
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = AppText.t("stats_previous_day"))
             }
             Column(
                 modifier = Modifier.weight(1f),
@@ -649,13 +652,13 @@ private fun DetailDateNavigator(
                 onClick = { nextDate?.let(onSelectDate) },
                 enabled = nextDate != null,
             ) {
-                Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "\u4e0b\u4e00\u5929")
+                Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = AppText.t("stats_next_day"))
             }
             IconButton(
                 onClick = { onRefreshDate(currentDate) },
                 enabled = !isRefreshing,
             ) {
-                Icon(Icons.Default.Refresh, contentDescription = "\u5237\u65b0\u5f53\u5929\u5e94\u7528\u8bb0\u5f55")
+                Icon(Icons.Default.Refresh, contentDescription = AppText.t("stats_refresh_day"))
             }
         }
         if (isRefreshing || refreshError != null) {
@@ -1771,3 +1774,8 @@ private fun appHourlyBuckets(appItem: DailyAppArchiveEntity): LongArray {
         appItem.hour23Millis,
     )
 }
+
+
+
+
+

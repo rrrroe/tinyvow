@@ -39,7 +39,9 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentHeight
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -63,7 +65,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
@@ -175,6 +177,33 @@ private enum class SensitivePermissionDisclosure {
     BATTERY_OPTIMIZATION,
     BACKGROUND_START,
 }
+
+private data class HomeOverviewUiState(
+    val dateLabel: String,
+    val tagline: String,
+    val control: HomeControlOverviewUiState,
+    val encourage: HomeEncourageOverviewUiState,
+    val history: HomeHistoryOverviewUiState,
+)
+
+private data class HomeControlOverviewUiState(
+    val todaySavedMinutes: Int,
+    val completedGroups: Int,
+    val totalGroups: Int,
+    val streakDays: Int,
+)
+
+private data class HomeEncourageOverviewUiState(
+    val todayEarnedPoints: Double,
+    val completedGroups: Int,
+    val totalGroups: Int,
+    val streakDays: Int,
+)
+
+private data class HomeHistoryOverviewUiState(
+    val totalSavedMinutes: Long,
+    val extendedLifeMinutes: Long,
+)
 
 @Composable
 fun RewardsHome(
@@ -359,6 +388,7 @@ fun HomeRoute(
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
+    val lifecycle = lifecycleOwner.lifecycle
     val coroutineScope = rememberCoroutineScope()
     
     val accessibilityServiceStateChecker = remember(context) { AccessibilityServiceStateChecker(context) }
@@ -400,29 +430,29 @@ fun HomeRoute(
         }
     }
     
-    val groupsWithApps by appLimitRepository.getAllGroupsWithApps().collectAsState(initial = emptyList())
-    val userPoints by preferences.userPoints.collectAsState(initial = 0.0)
-    val todayPoints by preferences.todayPoints.collectAsState(initial = 0.0)
-    val selectedThemeId by preferences.selectedThemeId.collectAsState(initial = DefaultThemeSeed.id)
-    val customThemes by preferences.customThemes.collectAsState(initial = emptyList())
-    val selectedAppLanguage by preferences.selectedAppLanguage.collectAsState(initial = com.rrrrz.tinyvow.i18n.AppLanguage.SYSTEM)
-    val profileDisplayName by preferences.profileDisplayName.collectAsState(initial = null)
-    val profileAvatarUri by preferences.profileAvatarUri.collectAsState(initial = null)
-    val storeRewardItems by appLimitRepository.observeStoreRewardsWithInventory().collectAsState(initial = emptyList())
-    val inventoryRewardItems by appLimitRepository.observeInventoryRewards().collectAsState(initial = emptyList())
-    val pendingShieldItems by appLimitRepository.observePendingStreakShields().collectAsState(initial = emptyList())
-    val achievements by appLimitRepository.getAllAchievements().collectAsState(initial = emptyList())
-    val achievementProgress by appLimitRepository.observeAchievementProgress().collectAsState(initial = AchievementProgress())
-    val redemptionHistory by appLimitRepository.getRedemptionHistory().collectAsState(initial = emptyList())
-    val rewardUseHistory by appLimitRepository.observeRewardUseHistory().collectAsState(initial = emptyList())
-    val dismissedPermissionPrompts by preferences.dismissedPermissionPrompts.collectAsState(initial = emptySet())
-    val usageAccessDisclosureAccepted by preferences.usageAccessDisclosureAccepted.collectAsState(initial = false)
-    val accessibilityDisclosureAccepted by preferences.accessibilityDisclosureAccepted.collectAsState(initial = false)
-    val superModeStoredState by preferences.superModeState.collectAsState(initial = SuperModeStoredState())
-    val userSession by authRepository.session.collectAsState(initial = null)
-    val subscriptionEntitlement by subscriptionRepository.entitlement.collectAsState()
-    val subscriptionOffers by subscriptionRepository.offers.collectAsState()
-    val debugProExpiresAtMillis by preferences.debugProExpiresAtMillis.collectAsState(initial = null)
+    val groupsWithApps by appLimitRepository.getAllGroupsWithApps().collectAsStateWithLifecycle(initialValue = emptyList(), lifecycle = lifecycle)
+    val userPoints by preferences.userPoints.collectAsStateWithLifecycle(initialValue = 0.0, lifecycle = lifecycle)
+    val todayPoints by preferences.todayPoints.collectAsStateWithLifecycle(initialValue = 0.0, lifecycle = lifecycle)
+    val selectedThemeId by preferences.selectedThemeId.collectAsStateWithLifecycle(initialValue = DefaultThemeSeed.id, lifecycle = lifecycle)
+    val customThemes by preferences.customThemes.collectAsStateWithLifecycle(initialValue = emptyList(), lifecycle = lifecycle)
+    val selectedAppLanguage by preferences.selectedAppLanguage.collectAsStateWithLifecycle(initialValue = com.rrrrz.tinyvow.i18n.AppLanguage.SYSTEM, lifecycle = lifecycle)
+    val profileDisplayName by preferences.profileDisplayName.collectAsStateWithLifecycle(initialValue = null, lifecycle = lifecycle)
+    val profileAvatarUri by preferences.profileAvatarUri.collectAsStateWithLifecycle(initialValue = null, lifecycle = lifecycle)
+    val storeRewardItems by appLimitRepository.observeStoreRewardsWithInventory().collectAsStateWithLifecycle(initialValue = emptyList(), lifecycle = lifecycle)
+    val inventoryRewardItems by appLimitRepository.observeInventoryRewards().collectAsStateWithLifecycle(initialValue = emptyList(), lifecycle = lifecycle)
+    val pendingShieldItems by appLimitRepository.observePendingStreakShields().collectAsStateWithLifecycle(initialValue = emptyList(), lifecycle = lifecycle)
+    val achievements by appLimitRepository.getAllAchievements().collectAsStateWithLifecycle(initialValue = emptyList(), lifecycle = lifecycle)
+    val achievementProgress by appLimitRepository.observeAchievementProgress().collectAsStateWithLifecycle(initialValue = AchievementProgress(), lifecycle = lifecycle)
+    val redemptionHistory by appLimitRepository.getRedemptionHistory().collectAsStateWithLifecycle(initialValue = emptyList(), lifecycle = lifecycle)
+    val rewardUseHistory by appLimitRepository.observeRewardUseHistory().collectAsStateWithLifecycle(initialValue = emptyList(), lifecycle = lifecycle)
+    val dismissedPermissionPrompts by preferences.dismissedPermissionPrompts.collectAsStateWithLifecycle(initialValue = emptySet(), lifecycle = lifecycle)
+    val usageAccessDisclosureAccepted by preferences.usageAccessDisclosureAccepted.collectAsStateWithLifecycle(initialValue = false, lifecycle = lifecycle)
+    val accessibilityDisclosureAccepted by preferences.accessibilityDisclosureAccepted.collectAsStateWithLifecycle(initialValue = false, lifecycle = lifecycle)
+    val superModeStoredState by preferences.superModeState.collectAsStateWithLifecycle(initialValue = SuperModeStoredState(), lifecycle = lifecycle)
+    val userSession by authRepository.session.collectAsStateWithLifecycle(initialValue = null, lifecycle = lifecycle)
+    val subscriptionEntitlement by subscriptionRepository.entitlement.collectAsStateWithLifecycle(lifecycle = lifecycle)
+    val subscriptionOffers by subscriptionRepository.offers.collectAsStateWithLifecycle(lifecycle = lifecycle)
+    val debugProExpiresAtMillis by preferences.debugProExpiresAtMillis.collectAsStateWithLifecycle(initialValue = null, lifecycle = lifecycle)
     val proEntitlement = remember(subscriptionEntitlement, debugProExpiresAtMillis) {
         val now = System.currentTimeMillis()
         val debugExpiresAt = debugProExpiresAtMillis
@@ -481,7 +511,33 @@ fun HomeRoute(
     var setupRequiredActionLabel by remember { mutableStateOf(AppText.t("super_mode_title")) }
     var pendingSuperModeRequest by remember { mutableStateOf<PendingSuperModeRequest?>(null) }
 
-    val isAutoStartDismissed by preferences.isAutoStartDismissed.collectAsState(initial = false)
+    val isAutoStartDismissed by preferences.isAutoStartDismissed.collectAsStateWithLifecycle(initialValue = false, lifecycle = lifecycle)
+
+    fun openUsageAccessSettingsNow() {
+        val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        context.startActivity(intent)
+    }
+
+    fun openAccessibilitySettingsNow() {
+        val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        context.startActivity(intent)
+    }
+
+    fun requestUsageAccessSettings() {
+        if (usageAccessDisclosureAccepted) {
+            openUsageAccessSettingsNow()
+        } else {
+            pendingSensitiveDisclosure = SensitivePermissionDisclosure.USAGE_ACCESS
+        }
+    }
+
+    fun requestAccessibilitySettings() {
+        if (accessibilityDisclosureAccepted) {
+            openAccessibilitySettingsNow()
+        } else {
+            pendingSensitiveDisclosure = SensitivePermissionDisclosure.ACCESSIBILITY
+        }
+    }
 
     fun clearPendingSuperModeRequest() {
         pendingSuperModeRequest = null
@@ -739,7 +795,7 @@ fun HomeRoute(
             }
         }
     ) { innerPadding ->
-        Box(modifier = Modifier.padding(innerPadding)) {
+        Box(modifier = Modifier.fillMaxSize()) {
             when (currentScreen) {
                 Screen.HOME -> {
                     HomeScreen(
@@ -768,21 +824,8 @@ fun HomeRoute(
                                 else -> requestSuperModeSession(AppText.t("super_mode_enter_from_home"))
                             }
                         },
-                        onOpenUsageAccessSettings = {
-                            if (usageAccessDisclosureAccepted) {
-                                val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                context.startActivity(intent)
-                            } else {
-                                pendingSensitiveDisclosure = SensitivePermissionDisclosure.USAGE_ACCESS
-                            }
-                        },
-                        onOpenAccessibilitySettings = {
-                            if (accessibilityDisclosureAccepted) {
-                                context.startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-                            } else {
-                                pendingSensitiveDisclosure = SensitivePermissionDisclosure.ACCESSIBILITY
-                            }
-                        },
+                        onOpenUsageAccessSettings = { requestUsageAccessSettings() },
+                        onOpenAccessibilitySettings = { requestAccessibilitySettings() },
                         onRequestNotificationPermission = {
                             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
                                 pendingSensitiveDisclosure = SensitivePermissionDisclosure.NOTIFICATION
@@ -825,20 +868,26 @@ fun HomeRoute(
                             }
                         },
                         onGuardAction = ::runWithSuperModeGuard,
+                        achievementProgress = achievementProgress,
                         appLimitRepository = appLimitRepository,
                         archiveRepository = dailyArchiveRepository,
                         isProActive = proEntitlement.isProActive,
                         onShowProUpsell = { proUpsellSource = it },
-                        modifier = modifier,
+                        modifier = modifier.padding(bottom = innerPadding.calculateBottomPadding()),
                     )
                 }
                 Screen.REWARDS -> {
-                    RewardsHome(
-                        userPoints = userPoints,
-                        achievements = achievements,
-                        achievementProgress = achievementProgress,
-                        storeItems = storeRewardItems,
-                        inventoryItems = inventoryRewardItems,
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(innerPadding),
+                    ) {
+                        RewardsHome(
+                            userPoints = userPoints,
+                            achievements = achievements,
+                            achievementProgress = achievementProgress,
+                            storeItems = storeRewardItems,
+                            inventoryItems = inventoryRewardItems,
                             pendingShieldItems = pendingShieldItems,
                             groups = groupsWithApps,
                             redemptionHistory = redemptionHistory,
@@ -900,35 +949,40 @@ fun HomeRoute(
                                 snackbarHostState.showSnackbar(AppText.t("redeem_archived_reward"))
                             }
                         },
-                        isProActive = proEntitlement.isProActive,
-                        onShowProUpsell = { proUpsellSource = it },
-                        onGuardAction = ::runWithSuperModeGuard,
-                        currentSection = rewardsSection,
-                        onSectionChange = { rewardsSection = it },
-                    )
+                            isProActive = proEntitlement.isProActive,
+                            onShowProUpsell = { proUpsellSource = it },
+                            onGuardAction = ::runWithSuperModeGuard,
+                            currentSection = rewardsSection,
+                            onSectionChange = { rewardsSection = it },
+                        )
+                    }
                 }
                 Screen.STATS -> {
-                    StatsRoute(
-                        usageAccessStatus = usageAccessStatus,
-                        groupsWithApps = groupsWithApps,
-                        userPoints = userPoints,
-                        todayPoints = todayPoints,
-                        archiveRepository = dailyArchiveRepository,
-                        isProActive = proEntitlement.isProActive,
-                        onShowProUpsell = { proUpsellSource = it },
-                        onRequestUsageAccess = {
-                            if (usageAccessDisclosureAccepted) {
-                                val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                context.startActivity(intent)
-                            } else {
-                                pendingSensitiveDisclosure = SensitivePermissionDisclosure.USAGE_ACCESS
-                            }
-                        },
-                        modifier = Modifier.fillMaxSize(),
-                    )
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(innerPadding),
+                    ) {
+                        StatsRoute(
+                            usageAccessStatus = usageAccessStatus,
+                            groupsWithApps = groupsWithApps,
+                            userPoints = userPoints,
+                            todayPoints = todayPoints,
+                            archiveRepository = dailyArchiveRepository,
+                            isProActive = proEntitlement.isProActive,
+                            onShowProUpsell = { proUpsellSource = it },
+                            onRequestUsageAccess = { requestUsageAccessSettings() },
+                            modifier = Modifier.fillMaxSize(),
+                        )
+                    }
                 }
                 Screen.ME -> {
-                    MeScreen(
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(innerPadding),
+                    ) {
+                        MeScreen(
                         userSession = userSession,
                         isGoogleSignInEnabled = BuildConfig.ENABLE_GOOGLE_LOGIN,
                         isGoogleSignInConfigured = authRepository.isGoogleSignInConfigured,
@@ -988,22 +1042,8 @@ fun HomeRoute(
                         },
                         onShowProUpsell = { proUpsellSource = it },
                         onOpenSuperModeSettings = { showSuperModeSettings = true },
-                        onOpenUsageAccessSettings = {
-                            if (usageAccessDisclosureAccepted) {
-                                val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                context.startActivity(intent)
-                            } else {
-                                pendingSensitiveDisclosure = SensitivePermissionDisclosure.USAGE_ACCESS
-                            }
-                        },
-                        onOpenAccessibilitySettings = {
-                            if (accessibilityDisclosureAccepted) {
-                                val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                context.startActivity(intent)
-                            } else {
-                                pendingSensitiveDisclosure = SensitivePermissionDisclosure.ACCESSIBILITY
-                            }
-                        },
+                        onOpenUsageAccessSettings = { requestUsageAccessSettings() },
+                        onOpenAccessibilitySettings = { requestAccessibilitySettings() },
                         onRequestNotificationPermission = {
                             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                                 pendingSensitiveDisclosure = SensitivePermissionDisclosure.NOTIFICATION
@@ -1163,7 +1203,8 @@ fun HomeRoute(
                                     }
                             }
                         },
-                    )
+                        )
+                    }
                 }
                 Screen.THEME -> {
                     ThemeSettingsScreen(
@@ -1562,15 +1603,12 @@ fun HomeRoute(
                         SensitivePermissionDisclosure.USAGE_ACCESS -> {
                             preferences.setUsageAccessDisclosureAccepted(true)
                             pendingSensitiveDisclosure = null
-                            val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                            context.startActivity(intent)
+                            openUsageAccessSettingsNow()
                         }
                         SensitivePermissionDisclosure.ACCESSIBILITY -> {
                             preferences.setAccessibilityDisclosureAccepted(true)
                             pendingSensitiveDisclosure = null
-                            context.startActivity(
-                                Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                            )
+                            openAccessibilitySettingsNow()
                         }
                         SensitivePermissionDisclosure.NOTIFICATION -> {
                             pendingSensitiveDisclosure = null
@@ -1853,6 +1891,7 @@ fun HomeScreen(
     onSaveGroup: (id: String?, name: String, limit: Int, type: GroupType, period: LimitPeriod, pts: Double, pkgs: List<String>) -> Unit,
     onDeleteGroup: (id: String) -> Unit,
     onGuardAction: (GuardedAction, () -> Unit) -> Unit,
+    achievementProgress: AchievementProgress = AchievementProgress(),
     appLimitRepository: AppLimitRepository? = null,
     archiveRepository: DailyArchiveRepository? = null,
     isProActive: Boolean,
@@ -1860,8 +1899,17 @@ fun HomeScreen(
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
+    val lifecycle = LocalLifecycleOwner.current.lifecycle
     val coroutineScope = rememberCoroutineScope()
     var usageMap by remember { mutableStateOf<Map<String, Long>>(emptyMap()) }
+    val historicalArchives =
+        archiveRepository?.let { repository ->
+            val archives by repository.getRecentArchives(limit = 3650).collectAsStateWithLifecycle(
+                initialValue = emptyList(),
+                lifecycle = lifecycle,
+            )
+            archives
+        } ?: emptyList()
     
     // 瀹氭椂鍒锋柊鍚勫垎缁勭敤閲忥細鎵归噺鏌ヨ涓€娆?UsageStats锛岃繃婊ゅ垎缁勬眹鎬汇€傝繖鏍峰彲灏?N 娆?IPC 闄嶄负 1 娆?
     LaunchedEffect(groupsWithApps, usageAccessStatus) {
@@ -1930,138 +1978,36 @@ fun HomeScreen(
                     .padding(horizontal = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                // 璁＄畻浠婃棩杩涘害
-                val controlGroups = groupsWithApps.filter { it.group.type == GroupType.CONTROL }
-                val encourageGroups = groupsWithApps.filter { it.group.type == GroupType.ENCOURAGE }
-                
-                val safeVows = controlGroups.count { g -> 
-                    val usage = (usageMap[g.group.id] ?: 0L) / 60_000L
-                    usage <= g.group.limitMinutes
-                }
-                val doneEncs = encourageGroups.count { g ->
-                    val usage = (usageMap[g.group.id] ?: 0L) / 60_000L
-                    usage >= g.group.limitMinutes
-                }
-                val controlUsageMinutes = controlGroups.sumOf { (usageMap[it.group.id] ?: 0L) / 60_000L }
-                val liveTodayPoints = encourageGroups.sumOf { group ->
-                    val usageMillis = usageMap[group.group.id] ?: 0L
-                    val usagePoints = usageMillis / 60_000.0 * group.group.pointsPerMinute
-                    val targetBonus = if (usageMillis >= group.group.limitMinutes * 60_000L) {
-                        group.group.limitMinutes * group.group.pointsPerMinute
-                    } else {
-                        0.0
+                val overviewState =
+                    remember(
+                        context,
+                        groupsWithApps,
+                        usageMap,
+                        historicalArchives,
+                        achievementProgress,
+                    ) {
+                        buildHomeOverviewUiState(
+                            context = context,
+                            groupsWithApps = groupsWithApps,
+                            usageMap = usageMap,
+                            historicalArchives = historicalArchives,
+                            achievementProgress = achievementProgress,
+                        )
                     }
-                    usagePoints + targetBonus
-                }
-                val displayTodayPoints = liveTodayPoints
 
-                // 绉垎涓庝粖鏃ユ瑙?
                 if (usageAccessGranted) {
                     ElevatedCard(
-                        modifier = Modifier.fillMaxWidth().padding(top = 6.dp),
-                        shape = RoundedCornerShape(22.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(32.dp),
                         colors = CardDefaults.elevatedCardColors(
-                            containerColor = MaterialTheme.colorScheme.surface
+                            containerColor = Color.Transparent,
                         ),
                         elevation = CardDefaults.elevatedCardElevation(defaultElevation = 1.dp)
                     ) {
-                        Column(
-                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
-                            verticalArrangement = Arrangement.spacedBy(12.dp),
-                        ) {
-                            val currentDate = remember {
-                                val date = java.time.LocalDate.now()
-                                val formatter = java.time.format.DateTimeFormatter.ofPattern(AppText.t("home_mmm_d_eeee"), java.util.Locale.CHINESE)
-                                date.format(formatter)
-                            }
-                            
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Row(
-                                    modifier = Modifier.weight(1f),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                ) {
-                                    Text(
-                                        text = currentDate,
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.onSurface,
-                                        maxLines = 1,
-                                    )
-                                    Text(
-                                        text = AppText.t("home_discipline_is_freedom"),
-                                        style = MaterialTheme.typography.labelLarge,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        maxLines = 1,
-                                    )
-                                }
-
-                                Column(horizontalAlignment = Alignment.End) {
-                                    Text(
-                                        text = AppText.t("home_current_total"),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                    Row(verticalAlignment = Alignment.Bottom) {
-                                        Text(
-                                            text = "%.1f".format(userPoints),
-                                            style = MaterialTheme.typography.headlineSmall,
-                                            fontWeight = FontWeight.ExtraBold,
-                                            color = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.alignByBaseline()
-                                        )
-                                        Text(
-                                            text = AppText.t("home_label"),
-                                            style = MaterialTheme.typography.labelLarge,
-                                            fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.alignByBaseline()
-                                        )
-                                    }
-                                }
-                            }
-
-                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                ) {
-                                    OverviewStatTile(
-                                        label = AppText.t("group_commitment"),
-                                        value = "$safeVows/${controlGroups.size}",
-                                        color = MaterialTheme.colorScheme.secondary,
-                                        modifier = Modifier.weight(1f),
-                                    )
-                                    OverviewStatTile(
-                                        label = AppText.t("group_small_encouragement"),
-                                        value = "$doneEncs/${encourageGroups.size}",
-                                        color = MaterialTheme.colorScheme.tertiary,
-                                        modifier = Modifier.weight(1f),
-                                    )
-                                }
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                ) {
-                                    OverviewStatTile(
-                                        label = AppText.t("home_today_usage_time"),
-                                        value = AppText.t("home_value_min", controlUsageMinutes),
-                                        color = MaterialTheme.colorScheme.secondary,
-                                        modifier = Modifier.weight(1f),
-                                    )
-                                    OverviewStatTile(
-                                        label = AppText.t("home_available_today"),
-                                        value = AppText.t("home_value_pts", displayTodayPoints),
-                                        color = MaterialTheme.colorScheme.tertiary,
-                                        modifier = Modifier.weight(1f),
-                                    )
-                                }
-                            }
-                        }
+                        HomeOverviewCard(
+                            state = overviewState,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
                     }
                 }
                 
@@ -2199,39 +2145,416 @@ private fun CompactPermissionBanner(
 }
 
 @Composable
-private fun OverviewStatTile(
-    label: String,
-    value: String,
-    color: Color,
+private fun HomeOverviewCard(
+    state: HomeOverviewUiState,
     modifier: Modifier = Modifier,
 ) {
-    Surface(
-        modifier = modifier.height(58.dp),
-        shape = RoundedCornerShape(16.dp),
-        color = color.copy(alpha = 0.15f),
-        border = BorderStroke(1.dp, color.copy(alpha = 0.24f)),
+    val themeColors = LocalThemeColors.current
+    Box(
+        modifier =
+            modifier
+                .clip(RoundedCornerShape(32.dp))
+                .background(MaterialTheme.colorScheme.surface)
     ) {
+        Box(
+            modifier =
+                Modifier
+                    .size(260.dp)
+                    .offset(x = (-36).dp, y = (-62).dp)
+                    .clip(CircleShape)
+                    .background(
+                        brush =
+                            Brush.linearGradient(
+                                colors =
+                                    listOf(
+                                        themeColors.baseContainer.copy(alpha = 0.92f),
+                                        themeColors.baseContainer.copy(alpha = 0.62f),
+                                        themeColors.baseContainer.copy(alpha = 0.22f),
+                                    ),
+                                start = Offset(0f, 0f),
+                                end = Offset(360f, 360f),
+                            )
+                    )
+        )
+
         Column(
-            modifier = Modifier.padding(horizontal = 9.dp, vertical = 8.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp),
+            modifier = Modifier.padding(horizontal = 18.dp, vertical = 18.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.9f),
-                maxLines = 1,
-                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            HomeOverviewHeader(
+                dateLabel = state.dateLabel,
+                tagline = state.tagline,
             )
-            Text(
-                text = value,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.ExtraBold,
-                color = color,
-                maxLines = 1,
-                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                HomeEnginePanel(
+                    title = AppText.t("home_commitment_panel"),
+                    headlineLabel = AppText.t("home_saved_today"),
+                    headlineValue = AppText.t("home_value_minutes", state.control.todaySavedMinutes),
+                    accent = MaterialTheme.colorScheme.secondary,
+                    containerColor = themeColors.controlContainer.copy(alpha = 0.86f),
+                    onContainer = themeColors.onControlContainer,
+                    trailingAlignment = false,
+                    tags =
+                        listOf(
+                            AppText.t("home_commitment_progress_value", state.control.completedGroups, state.control.totalGroups),
+                            AppText.t("home_control_streak_value", state.control.streakDays),
+                        ),
+                    modifier = Modifier.weight(1f),
+                )
+                HomeEnginePanel(
+                    title = AppText.t("home_encouragement_panel"),
+                    headlineLabel = AppText.t("home_earned_today"),
+                    headlineValue = AppText.t("home_value_pts", state.encourage.todayEarnedPoints),
+                    accent = MaterialTheme.colorScheme.tertiary,
+                    containerColor = themeColors.encourageContainer.copy(alpha = 0.88f),
+                    onContainer = themeColors.onEncourageContainer,
+                    trailingAlignment = true,
+                    tags =
+                        listOf(
+                            AppText.t("home_encouragement_progress_value", state.encourage.completedGroups, state.encourage.totalGroups),
+                            AppText.t("home_encourage_streak_value", state.encourage.streakDays),
+                        ),
+                    modifier = Modifier.weight(1f),
+                )
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.Top,
+            ) {
+                HomeHistoryMetric(
+                    modifier = Modifier.weight(0.92f),
+                    label = AppText.t("home_total_saved"),
+                    value = AppText.t("home_value_minutes", state.history.totalSavedMinutes),
+                    accent = MaterialTheme.colorScheme.secondary,
+                )
+                HomeHistoryMetric(
+                    modifier = Modifier.weight(1.08f),
+                    label = AppText.t("home_equivalent_live_more"),
+                    value = formatFlexibleDuration(state.history.extendedLifeMinutes),
+                    accent = MaterialTheme.colorScheme.tertiary,
+                    alignEnd = true,
+                    valueMaxLines = 1,
+                )
+            }
         }
     }
+}
+
+@Composable
+private fun HomeOverviewHeader(
+    dateLabel: String,
+    tagline: String,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = dateLabel,
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.ExtraBold,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.weight(1f),
+            maxLines = 1,
+            softWrap = false,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Clip,
+        )
+        Text(
+            text = tagline,
+            style = MaterialTheme.typography.titleMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = androidx.compose.ui.text.style.TextAlign.End,
+            modifier = Modifier.widthIn(max = 132.dp),
+            maxLines = 1,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+        )
+    }
+}
+
+@Composable
+private fun HomeEnginePanel(
+    title: String,
+    headlineLabel: String,
+    headlineValue: String,
+    accent: Color,
+    containerColor: Color,
+    onContainer: Color,
+    trailingAlignment: Boolean,
+    tags: List<String>,
+    modifier: Modifier = Modifier,
+) {
+    val textAlign =
+        if (trailingAlignment) {
+            androidx.compose.ui.text.style.TextAlign.End
+        } else {
+            androidx.compose.ui.text.style.TextAlign.Start
+        }
+    val horizontalAlignment =
+        if (trailingAlignment) {
+            Alignment.End
+        } else {
+            Alignment.Start
+        }
+
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(20.dp),
+        color = containerColor,
+        tonalElevation = 0.dp,
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+            horizontalAlignment = horizontalAlignment,
+        ) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = accent,
+                textAlign = textAlign,
+                modifier = Modifier.fillMaxWidth(),
+            )
+
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+                horizontalAlignment = horizontalAlignment,
+            ) {
+                Text(
+                    text = headlineLabel,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = onContainer.copy(alpha = 0.78f),
+                    textAlign = textAlign,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Text(
+                    text = headlineValue,
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = onContainer,
+                    textAlign = textAlign,
+                    modifier = Modifier.fillMaxWidth(),
+                    maxLines = 2,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                )
+            }
+
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+                horizontalAlignment = horizontalAlignment,
+            ) {
+                HomeOverviewTagLine(
+                    text = tags.firstOrNull().orEmpty(),
+                    accent = accent,
+                    trailingAlignment = trailingAlignment,
+                )
+                HomeOverviewTagLine(
+                    text = tags.getOrNull(1).orEmpty(),
+                    accent = accent,
+                    trailingAlignment = trailingAlignment,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun HomeOverviewTagLine(
+    text: String,
+    accent: Color,
+    trailingAlignment: Boolean,
+) {
+    if (text.isBlank()) return
+    val textAlign =
+        if (trailingAlignment) {
+            androidx.compose.ui.text.style.TextAlign.End
+        } else {
+            androidx.compose.ui.text.style.TextAlign.Start
+        }
+    val horizontalAlignment =
+        if (trailingAlignment) {
+            Alignment.End
+        } else {
+            Alignment.Start
+        }
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalAlignment = horizontalAlignment,
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = accent,
+            textAlign = textAlign,
+            modifier = Modifier.fillMaxWidth(),
+            maxLines = 1,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+        )
+    }
+}
+
+@Composable
+private fun HomeHistoryMetric(
+    label: String,
+    value: String,
+    accent: Color,
+    alignEnd: Boolean = false,
+    valueMaxLines: Int = 3,
+    modifier: Modifier = Modifier,
+) {
+    val textAlign =
+        if (alignEnd) {
+            androidx.compose.ui.text.style.TextAlign.End
+        } else {
+            androidx.compose.ui.text.style.TextAlign.Start
+        }
+    val horizontalAlignment =
+        if (alignEnd) {
+            Alignment.End
+        } else {
+            Alignment.Start
+        }
+
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+        horizontalAlignment = horizontalAlignment,
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium,
+            color = accent,
+            fontWeight = FontWeight.SemiBold,
+            textAlign = textAlign,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.ExtraBold,
+            color = accent,
+            textAlign = textAlign,
+            modifier = Modifier.fillMaxWidth(),
+            maxLines = valueMaxLines,
+            overflow =
+                if (valueMaxLines == 1) {
+                    androidx.compose.ui.text.style.TextOverflow.Clip
+                } else {
+                    androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                },
+        )
+    }
+}
+
+private fun formatFlexibleDuration(totalMinutes: Long): String {
+    if (totalMinutes <= 0L) {
+        return AppText.t("home_value_minutes", 0)
+    }
+    var remaining = totalMinutes
+    val minutesPerYear = 365L * 24L * 60L
+    val minutesPerMonth = 30L * 24L * 60L
+    val minutesPerDay = 24L * 60L
+    val minutesPerHour = 60L
+
+    val years = remaining / minutesPerYear
+    remaining %= minutesPerYear
+    val months = remaining / minutesPerMonth
+    remaining %= minutesPerMonth
+    val days = remaining / minutesPerDay
+    remaining %= minutesPerDay
+    val hours = remaining / minutesPerHour
+    val minutes = remaining % minutesPerHour
+
+    val separator = AppText.t("home_duration_separator")
+    val parts = buildList {
+        if (years > 0) add(AppText.t("home_value_year", years))
+        if (months > 0) add(AppText.t("home_value_month", months))
+        if (days > 0) add(AppText.t("home_value_day", days))
+        if (hours > 0) add(AppText.t("home_value_hour", hours))
+        if (minutes > 0) add(AppText.t("home_value_min", minutes))
+    }
+    return parts.joinToString(separator = separator).ifEmpty { AppText.t("home_value_minutes", 0) }
+}
+
+private fun buildHomeOverviewUiState(
+    context: android.content.Context,
+    groupsWithApps: List<AppGroupWithApps>,
+    usageMap: Map<String, Long>,
+    historicalArchives: List<com.rrrrz.tinyvow.data.db.DailyArchiveEntity>,
+    achievementProgress: AchievementProgress,
+): HomeOverviewUiState {
+    val controlGroups = groupsWithApps.filter { it.group.type == GroupType.CONTROL }
+    val encourageGroups = groupsWithApps.filter { it.group.type == GroupType.ENCOURAGE }
+
+    val controlCompletedGroups =
+        controlGroups.count { group ->
+            val usageMinutes = ((usageMap[group.group.id] ?: 0L) / 60_000L).toInt()
+            usageMinutes <= group.group.limitMinutes
+        }
+    val encourageCompletedGroups =
+        encourageGroups.count { group ->
+            val usageMinutes = ((usageMap[group.group.id] ?: 0L) / 60_000L).toInt()
+            usageMinutes >= group.group.limitMinutes
+        }
+    val controlTodaySavedMinutes =
+        controlGroups.sumOf { group ->
+            val usageMinutes = ((usageMap[group.group.id] ?: 0L) / 60_000L).toInt()
+            (group.group.limitMinutes - usageMinutes).coerceAtLeast(0)
+        }
+    val encourageTodayEarnedPoints =
+        encourageGroups.sumOf { group ->
+            val usageMillis = usageMap[group.group.id] ?: 0L
+            val usagePoints = usageMillis / 60_000.0 * group.group.pointsPerMinute
+            val targetBonus =
+                if (usageMillis >= group.group.limitMinutes * 60_000L) {
+                    group.group.limitMinutes * group.group.pointsPerMinute
+                } else {
+                    0.0
+                }
+            usagePoints + targetBonus
+        }
+    val totalSavedMinutes = historicalArchives.sumOf { it.savedMillis } / 60_000L
+    val extendedLifeMinutes = totalSavedMinutes * 3L
+    val locale = context.resources.configuration.locales[0] ?: java.util.Locale.getDefault()
+    val currentDate =
+        LocalDate.now().format(
+            java.time.format.DateTimeFormatter.ofPattern(AppText.t("home_mmm_d_eeee"), locale),
+        )
+
+    return HomeOverviewUiState(
+        dateLabel = currentDate,
+        tagline = AppText.t("home_give_time_back_to_yourself"),
+        control =
+            HomeControlOverviewUiState(
+                todaySavedMinutes = controlTodaySavedMinutes,
+                completedGroups = controlCompletedGroups,
+                totalGroups = controlGroups.size,
+                streakDays = achievementProgress.controlStreak,
+            ),
+        encourage =
+            HomeEncourageOverviewUiState(
+                todayEarnedPoints = encourageTodayEarnedPoints,
+                completedGroups = encourageCompletedGroups,
+                totalGroups = encourageGroups.size,
+                streakDays = achievementProgress.encourageStreak,
+            ),
+        history =
+            HomeHistoryOverviewUiState(
+                totalSavedMinutes = totalSavedMinutes,
+                extendedLifeMinutes = extendedLifeMinutes,
+            ),
+    )
 }
 
 @Composable

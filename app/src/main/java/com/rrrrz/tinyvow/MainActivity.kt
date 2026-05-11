@@ -1,4 +1,4 @@
-package com.rrrrz.tinyvow
+﻿package com.rrrrz.tinyvow
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
@@ -10,7 +10,8 @@ import com.rrrrz.tinyvow.ui.home.HomeRoute
 import com.rrrrz.tinyvow.ui.theme.TinyVowTheme
 
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
@@ -29,13 +30,14 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         TinyVowNotifier(this).ensureChannel()
         setContent {
+            val lifecycle = LocalLifecycleOwner.current.lifecycle
             val prefs = remember { ManagedAppPreferences(this@MainActivity) }
-            val selectedThemeId by prefs.selectedThemeId.collectAsState(initial = DefaultThemeSeed.id)
-            val customThemes by prefs.customThemes.collectAsState(initial = emptyList())
+            val selectedThemeId by prefs.selectedThemeId.collectAsStateWithLifecycle(initialValue = DefaultThemeSeed.id, lifecycle = lifecycle)
+            val customThemes by prefs.customThemes.collectAsStateWithLifecycle(initialValue = emptyList(), lifecycle = lifecycle)
             val selectedAppLanguageFlow = remember(prefs) {
                 prefs.selectedAppLanguage.map<AppLanguage, AppLanguage?> { it }
             }
-            val loadedAppLanguage by selectedAppLanguageFlow.collectAsState(initial = null)
+            val loadedAppLanguage by selectedAppLanguageFlow.collectAsStateWithLifecycle(initialValue = null, lifecycle = lifecycle)
             val selectedAppLanguage = loadedAppLanguage ?: AppText.currentLanguage()
             val localizedContext = remember(selectedAppLanguage) {
                 AppText.localizedContext(this@MainActivity, selectedAppLanguage)
@@ -63,3 +65,8 @@ class MainActivity : ComponentActivity() {
         }
     }
 }
+
+
+
+
+

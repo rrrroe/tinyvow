@@ -11,6 +11,7 @@ data class AppSession(
 interface UsageRepository {
     suspend fun getTodayUsageMillis(packageName: String): Long
     suspend fun getUsageInPeriod(packageName: String, period: LimitPeriod): Long
+    suspend fun getUsageStatsInPeriod(period: LimitPeriod): Map<String, Long>
     suspend fun getYesterdayUsageMillis(packageName: String): Long
     suspend fun getUsageMillis(packageName: String, startMillis: Long, endMillis: Long): Long
     suspend fun getUsageStats(startMillis: Long, endMillis: Long): Map<String, Long>

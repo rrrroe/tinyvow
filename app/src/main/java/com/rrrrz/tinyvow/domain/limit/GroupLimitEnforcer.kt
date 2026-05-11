@@ -3,7 +3,6 @@ package com.rrrrz.tinyvow.domain.limit
 import android.content.Context
 import android.os.SystemClock
 import com.rrrrz.tinyvow.data.db.AppDatabase
-import com.rrrrz.tinyvow.data.db.AppGroupEntity
 import com.rrrrz.tinyvow.data.db.GroupType
 import com.rrrrz.tinyvow.data.db.LimitPeriod
 import com.rrrrz.tinyvow.data.db.RewardType
@@ -25,8 +24,8 @@ class GroupLimitEnforcer(context: Context) {
     private data class ConfigCacheEntry(val groupIds: List<String>, val fetchedAt: Long)
     private val configCache = mutableMapOf<String, ConfigCacheEntry>()
 
-    private data class UsageCacheEntry(val usedMillis: Long, val fetchedAt: Long)
-    private val usageCache = mutableMapOf<String, UsageCacheEntry>()
+    private data class PeriodUsageCacheEntry(val usageByPackage: Map<String, Long>, val fetchedAt: Long)
+    private val periodUsageCache = mutableMapOf<LimitPeriod, PeriodUsageCacheEntry>()
 
     suspend fun evaluate(packageName: String): GroupExceededResult? {
         val now = SystemClock.elapsedRealtime()
@@ -51,7 +50,6 @@ class GroupLimitEnforcer(context: Context) {
             val bonusMillis = getSyncBonusTimeMillis(group.id, currentTimeMillis) + effectBonusMillis
             val totalLimitMillis = baseLimitMillis + bonusMillis
 
-            // 统计周期内的历史用量
             val totalUsedMillis = getCachedGroupUsage(group.id, group.limitPeriod, now)
 
             val exceededMillis = totalUsedMillis - totalLimitMillis
@@ -67,6 +65,15 @@ class GroupLimitEnforcer(context: Context) {
             }
         }
         return null
+    }
+
+    fun invalidateCaches(packageName: String? = null) {
+        if (packageName == null) {
+            configCache.clear()
+        } else {
+            configCache.remove(packageName)
+        }
+        periodUsageCache.clear()
     }
 
     private fun getSyncBonusTimeMillis(groupId: String, now: Long): Long {
@@ -85,18 +92,15 @@ class GroupLimitEnforcer(context: Context) {
     }
 
     private suspend fun getCachedGroupUsage(groupId: String, period: LimitPeriod, now: Long): Long {
-        val cacheKey = "${groupId}_${period}"
-        val cached = usageCache[cacheKey]
+        val cached = periodUsageCache[period]
         if (cached != null && now - cached.fetchedAt < USAGE_CACHE_TTL_MS) {
-            return cached.usedMillis
+            val packages = crossRefDao.getPackageNamesForGroupSync(groupId)
+            return packages.sumOf { cached.usageByPackage[it] ?: 0L }
         }
+        val fresh = usageRepository.getUsageStatsInPeriod(period)
+        periodUsageCache[period] = PeriodUsageCacheEntry(fresh, now)
         val packages = crossRefDao.getPackageNamesForGroupSync(groupId)
-        var total = 0L
-        for (pkg in packages) {
-            total += usageRepository.getUsageInPeriod(pkg, period)
-        }
-        usageCache[cacheKey] = UsageCacheEntry(total, now)
-        return total
+        return packages.sumOf { fresh[it] ?: 0L }
     }
 
     companion object {
