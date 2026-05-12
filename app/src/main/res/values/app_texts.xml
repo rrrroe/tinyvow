@@ -333,6 +333,9 @@
 <string name="lab_achievement_test_unavailable">No achievement data is available yet.</string>
 <string name="lab_pro_debug">Pro debug</string>
     <string name="lab_pro_debug_description">Debug builds only. Adds local Pro time for any channel without changing real Google Play or activation records.</string>
+    <string name="lab_super_mode_debug">Super Mode debug</string>
+    <string name="lab_super_mode_debug_description">Debug builds only. Activates Super Mode locally from the laboratory and bypasses the normal password and time-window checks for debugging.</string>
+    <string name="lab_super_mode_debug_activate">Activate Super Mode now</string>
     <string name="lab_report_test">Report test</string>
     <string name="lab_reset_report_state_clear_today_s_record">Reset report state (clear today\'s record)</string>
     <string name="lab_tip_after_resetting_restart_the_app_to_verify">Tip: after resetting, restart the app to verify yesterday\'s report again.</string>

@@ -379,9 +379,6 @@ private fun guardedActionLabel(action: GuardedAction): String =
         GuardedAction.ADD_CUSTOM_REWARD -> AppText.t("super_mode_action_add_custom_reward")
         GuardedAction.EDIT_CUSTOM_REWARD -> AppText.t("super_mode_action_edit_custom_reward")
         GuardedAction.EDIT_REWARD_PRICE -> AppText.t("super_mode_action_edit_reward_price")
-        GuardedAction.PURCHASE_TIME_ADD -> AppText.t("super_mode_action_purchase_time_add")
-        GuardedAction.PURCHASE_PERIOD_PASS -> AppText.t("super_mode_action_purchase_period_pass")
-        GuardedAction.PURCHASE_EMERGENCY_UNLOCK -> AppText.t("super_mode_action_purchase_emergency_unlock")
     }
 
 @Composable
@@ -897,9 +894,6 @@ fun HomeRoute(
                             onPurchaseReward = { reward ->
                                 coroutineScope.launch {
                                     val result = appLimitRepository.purchaseReward(reward.id)
-                                    if (result is PurchaseRewardResult.Success && GuardedAction.fromRewardType(reward.rewardType) != null) {
-                                        superModeController.touch(proEntitlement.isProActive)
-                                    }
                                     snackbarHostState.showSnackbar(
                                         purchaseRewardResultMessage(result)
                                     )
@@ -1303,6 +1297,13 @@ fun HomeRoute(
                             coroutineScope.launch {
                                 preferences.clearDebugPro()
                                 snackbarHostState.showSnackbar(AppText.t("lab_debug_pro_cleared"))
+                            }
+                        },
+                        showDebugSuperModeControls = BuildConfig.DEBUG,
+                        onEnterSuperMode = {
+                            coroutineScope.launch {
+                                superModeController.enterForDebug(proEntitlement.isProActive)
+                                snackbarHostState.showSnackbar(AppText.t("super_mode_enter_success"))
                             }
                         },
                         onBack = { currentScreen = Screen.ME }

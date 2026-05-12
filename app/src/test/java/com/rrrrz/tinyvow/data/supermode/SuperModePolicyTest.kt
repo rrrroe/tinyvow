@@ -67,10 +67,29 @@ class SuperModePolicyTest {
     }
 
     @Test
-    fun `guarded action maps only protected rewards`() {
-        assertEquals(GuardedAction.PURCHASE_TIME_ADD, GuardedAction.fromRewardType(RewardType.TIME_ADD))
-        assertEquals(GuardedAction.PURCHASE_PERIOD_PASS, GuardedAction.fromRewardType(RewardType.PERIOD_PASS))
-        assertEquals(GuardedAction.PURCHASE_EMERGENCY_UNLOCK, GuardedAction.fromRewardType(RewardType.EMERGENCY_UNLOCK))
+    fun `build status allows debug bypass outside normal window`() {
+        val lastActiveAt = atMillis(2026, 5, 8, 23, 0)
+        val now = lastActiveAt + 60_000L
+        val state =
+            SuperModeStoredState(
+                enabled = false,
+                debugBypassActive = true,
+                isActive = true,
+                lastActiveAtMillis = lastActiveAt,
+            )
+
+        val status = SuperModePolicy.buildStatus(state, isProActive = false, nowMillis = now, zoneId = zoneId)
+
+        assertTrue(status.isConfigured)
+        assertTrue(status.isAvailableNow)
+        assertTrue(status.isActive)
+    }
+
+    @Test
+    fun `guarded action excludes reward purchases`() {
+        assertEquals(null, GuardedAction.fromRewardType(RewardType.TIME_ADD))
+        assertEquals(null, GuardedAction.fromRewardType(RewardType.PERIOD_PASS))
+        assertEquals(null, GuardedAction.fromRewardType(RewardType.EMERGENCY_UNLOCK))
         assertEquals(null, GuardedAction.fromRewardType(RewardType.STREAK_SHIELD))
         assertEquals(null, GuardedAction.fromRewardType(RewardType.DOUBLE_POINTS_DAY))
         assertEquals(null, GuardedAction.fromRewardType(RewardType.CUSTOM))

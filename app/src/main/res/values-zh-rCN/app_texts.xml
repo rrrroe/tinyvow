@@ -333,6 +333,9 @@
 <string name="lab_achievement_test_unavailable">当前还没有可用的成就数据。</string>
 <string name="lab_pro_debug">Pro 调试</string>
     <string name="lab_pro_debug_description">仅 debug 构建显示。为任意渠道增加本地 Pro 时长，不改真实 Google Play 订阅或激活码记录。</string>
+    <string name="lab_super_mode_debug">超我模式调试</string>
+    <string name="lab_super_mode_debug_description">仅 debug 构建显示。可直接在实验室本地激活超我模式，绕过正常的密码和时间窗校验，方便随时调试。</string>
+    <string name="lab_super_mode_debug_activate">立即激活超我模式</string>
     <string name="lab_report_test">战报测试</string>
     <string name="lab_reset_report_state_clear_today_s_record">重置战报状态（清除今日记录）</string>
     <string name="lab_tip_after_resetting_restart_the_app_to_verify">提示：重置后重启 App 即可重新验证昨日战报。</string>

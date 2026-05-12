@@ -167,14 +167,7 @@ fun RedeemScreen(
                         userPoints = userPoints,
                         controlGroupCount = controlGroups,
                         encourageGroupCount = encourageGroups,
-                        onPurchase = {
-                            val action = GuardedAction.fromRewardType(item.reward.rewardType)
-                            if (action == null) {
-                                onPurchase(item.reward)
-                            } else {
-                                onGuardAction(action) { onPurchase(item.reward) }
-                            }
-                        },
+                        onPurchase = { onPurchase(item.reward) },
                         onEdit = null,
                         onArchive = null,
                     )
@@ -1120,7 +1113,7 @@ fun RewardEditDialog(
                 if (builtinCostOnly) {
                     RewardIconPreview(
                         builtinKey = reward?.builtinKey,
-                        size = 56.dp,
+                        size = 68.dp,
                     )
                     Text(
                         text = reward?.localizedTitle().orEmpty(),
@@ -1160,7 +1153,7 @@ fun RewardEditDialog(
                                 RewardIconPreview(
                                     iconSource = selectedIconSpec?.source,
                                     iconValue = selectedIconSpec?.value,
-                                    size = 56.dp,
+                                    size = 72.dp,
                                 )
                                 Column(
                                     modifier = Modifier.weight(1f),
@@ -1233,7 +1226,7 @@ fun RewardEditDialog(
                                             Surface(
                                                 modifier =
                                                     Modifier
-                                                        .size(56.dp)
+                                                        .size(68.dp)
                                                         .semantics {
                                                             contentDescription =
                                                                 AppText.t(
@@ -1263,7 +1256,7 @@ fun RewardEditDialog(
                                                     RewardIconPreview(
                                                         iconSource = RewardIconSource.PRESET,
                                                         iconValue = key,
-                                                        size = 42.dp,
+                                                        size = 52.dp,
                                                     )
                                                     if (selected) {
                                                         Surface(
@@ -1323,7 +1316,7 @@ fun RewardEditDialog(
                                                 RewardIconPreview(
                                                     iconSource = RewardIconSource.IMPORTED_FILE,
                                                     iconValue = importedPath,
-                                                    size = 36.dp,
+                                                    size = 48.dp,
                                                 )
                                                 Column(
                                                     modifier = Modifier.weight(1f),

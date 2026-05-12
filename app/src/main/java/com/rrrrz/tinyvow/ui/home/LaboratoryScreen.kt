@@ -40,6 +40,8 @@ fun LaboratoryScreen(
     showDebugProControls: Boolean,
     onExtendDebugPro: (Int) -> Unit,
     onClearDebugPro: () -> Unit,
+    showDebugSuperModeControls: Boolean,
+    onEnterSuperMode: () -> Unit,
     onBack: () -> Unit,
 ) {
     Scaffold(
@@ -109,6 +111,23 @@ fun LaboratoryScreen(
                     colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.secondary),
                 ) {
                     Text(AppText.t("lab_clear_debug_pro"))
+                }
+            }
+
+            if (showDebugSuperModeControls) {
+                HorizontalDivider()
+
+                Text(AppText.t("lab_super_mode_debug"), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Text(
+                    AppText.t("lab_super_mode_debug_description"),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Button(
+                    onClick = onEnterSuperMode,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(AppText.t("lab_super_mode_debug_activate"))
                 }
             }
 

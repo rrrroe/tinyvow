@@ -45,6 +45,12 @@ class SuperModeController(
         return SuperModeEnterResult.Success(currentStatus(isProActive))
     }
 
+    suspend fun enterForDebug(isProActive: Boolean): SuperModeStatus {
+        val now = clock()
+        preferences.activateSuperModeDebugBypass(now)
+        return currentStatus(isProActive)
+    }
+
     suspend fun touch(isProActive: Boolean): SuperModeStatus {
         val status = currentStatus(isProActive)
         if (!status.isActive) {
@@ -149,13 +155,21 @@ object SuperModePolicy {
                 DEFAULT_END_MINUTES
             }
         val isConfigured =
-            storedState.enabled &&
-                !storedState.passwordHash.isNullOrBlank() &&
-                !storedState.passwordSalt.isNullOrBlank() &&
-                !storedState.recoveryQuestion.isNullOrBlank() &&
-                !storedState.recoveryAnswerHash.isNullOrBlank() &&
-                !storedState.recoveryAnswerSalt.isNullOrBlank()
-        val isAvailableNow = isWithinWindow(nowMillis, windowStartMinutes, windowEndMinutes, zoneId)
+            storedState.debugBypassActive ||
+                (
+                    storedState.enabled &&
+                        !storedState.passwordHash.isNullOrBlank() &&
+                        !storedState.passwordSalt.isNullOrBlank() &&
+                        !storedState.recoveryQuestion.isNullOrBlank() &&
+                        !storedState.recoveryAnswerHash.isNullOrBlank() &&
+                        !storedState.recoveryAnswerSalt.isNullOrBlank()
+                )
+        val isAvailableNow =
+            if (storedState.debugBypassActive) {
+                true
+            } else {
+                isWithinWindow(nowMillis, windowStartMinutes, windowEndMinutes, zoneId)
+            }
         val expiresAt =
             storedState.lastActiveAtMillis
                 ?.takeIf { storedState.isActive }

@@ -8,17 +8,14 @@ enum class GuardedAction {
     ADD_CUSTOM_REWARD,
     EDIT_CUSTOM_REWARD,
     EDIT_REWARD_PRICE,
-    PURCHASE_TIME_ADD,
-    PURCHASE_PERIOD_PASS,
-    PURCHASE_EMERGENCY_UNLOCK,
     ;
 
     companion object {
         fun fromRewardType(rewardType: RewardType): GuardedAction? =
             when (rewardType) {
-                RewardType.TIME_ADD -> PURCHASE_TIME_ADD
-                RewardType.PERIOD_PASS -> PURCHASE_PERIOD_PASS
-                RewardType.EMERGENCY_UNLOCK -> PURCHASE_EMERGENCY_UNLOCK
+                RewardType.TIME_ADD,
+                RewardType.PERIOD_PASS,
+                RewardType.EMERGENCY_UNLOCK,
                 RewardType.STREAK_SHIELD,
                 RewardType.DOUBLE_POINTS_DAY,
                 RewardType.CUSTOM,
@@ -34,6 +31,7 @@ data class SuperModeStoredState(
     val recoveryQuestion: String? = null,
     val recoveryAnswerHash: String? = null,
     val recoveryAnswerSalt: String? = null,
+    val debugBypassActive: Boolean = false,
     val isActive: Boolean = false,
     val lastActiveAtMillis: Long? = null,
     val customWindowStartMinutes: Int? = null,

@@ -52,6 +52,7 @@ class ManagedAppPreferences(
         val superModeRecoveryQuestion = stringPreferencesKey("super_mode_recovery_question")
         val superModeRecoveryAnswerHash = stringPreferencesKey("super_mode_recovery_answer_hash")
         val superModeRecoveryAnswerSalt = stringPreferencesKey("super_mode_recovery_answer_salt")
+        val superModeDebugBypassActive = booleanPreferencesKey("super_mode_debug_bypass_active")
         val superModeActive = booleanPreferencesKey("super_mode_active")
         val superModeLastActiveAtMillis = longPreferencesKey("super_mode_last_active_at_millis")
         val superModeWindowStartMinutes = intPreferencesKey("super_mode_window_start_minutes")
@@ -149,6 +150,7 @@ class ManagedAppPreferences(
             recoveryQuestion = preferences[Keys.superModeRecoveryQuestion]?.takeIf { it.isNotBlank() },
             recoveryAnswerHash = preferences[Keys.superModeRecoveryAnswerHash]?.takeIf { it.isNotBlank() },
             recoveryAnswerSalt = preferences[Keys.superModeRecoveryAnswerSalt]?.takeIf { it.isNotBlank() },
+            debugBypassActive = preferences[Keys.superModeDebugBypassActive] ?: false,
             isActive = preferences[Keys.superModeActive] ?: false,
             lastActiveAtMillis = preferences[Keys.superModeLastActiveAtMillis],
             customWindowStartMinutes = preferences[Keys.superModeWindowStartMinutes],
@@ -338,9 +340,11 @@ class ManagedAppPreferences(
     suspend fun setSuperModeActive(
         active: Boolean,
         lastActiveAtMillis: Long?,
+        debugBypassActive: Boolean = false,
     ) {
         context.managedAppDataStore.edit { preferences ->
             preferences[Keys.superModeActive] = active
+            preferences[Keys.superModeDebugBypassActive] = debugBypassActive
             if (lastActiveAtMillis == null) {
                 preferences.remove(Keys.superModeLastActiveAtMillis)
             } else {
@@ -352,6 +356,14 @@ class ManagedAppPreferences(
     suspend fun touchSuperMode(lastActiveAtMillis: Long) {
         context.managedAppDataStore.edit { preferences ->
             preferences[Keys.superModeActive] = true
+            preferences[Keys.superModeLastActiveAtMillis] = lastActiveAtMillis
+        }
+    }
+
+    suspend fun activateSuperModeDebugBypass(lastActiveAtMillis: Long) {
+        context.managedAppDataStore.edit { preferences ->
+            preferences[Keys.superModeActive] = true
+            preferences[Keys.superModeDebugBypassActive] = true
             preferences[Keys.superModeLastActiveAtMillis] = lastActiveAtMillis
         }
     }
@@ -375,6 +387,7 @@ class ManagedAppPreferences(
             preferences.remove(Keys.superModeRecoveryQuestion)
             preferences.remove(Keys.superModeRecoveryAnswerHash)
             preferences.remove(Keys.superModeRecoveryAnswerSalt)
+            preferences.remove(Keys.superModeDebugBypassActive)
             preferences.remove(Keys.superModeLastActiveAtMillis)
             preferences.remove(Keys.superModeWindowStartMinutes)
             preferences.remove(Keys.superModeWindowEndMinutes)
