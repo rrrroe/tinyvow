@@ -1,0 +1,1671 @@
+{
+  "formatVersion": 1,
+  "database": {
+    "version": 19,
+    "identityHash": "1e772a204f5a9352766a73d5b25d825b",
+    "entities": [
+      {
+        "tableName": "app_groups",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `type` TEXT NOT NULL, `limit_period` TEXT NOT NULL, `limit_minutes` INTEGER NOT NULL, `points_per_minute` REAL NOT NULL, `created_at` INTEGER NOT NULL, `updated_at` INTEGER NOT NULL, `is_deleted` INTEGER NOT NULL, `last_bonus_at` INTEGER NOT NULL, `sort_order` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "type",
+            "columnName": "type",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "limitPeriod",
+            "columnName": "limit_period",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "limitMinutes",
+            "columnName": "limit_minutes",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "pointsPerMinute",
+            "columnName": "points_per_minute",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "created_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updated_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isDeleted",
+            "columnName": "is_deleted",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastBonusAt",
+            "columnName": "last_bonus_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sortOrder",
+            "columnName": "sort_order",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "group_app_cross_ref",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`package_name` TEXT NOT NULL, `group_id` TEXT NOT NULL, `updated_at` INTEGER NOT NULL, `is_deleted` INTEGER NOT NULL, PRIMARY KEY(`package_name`, `group_id`))",
+        "fields": [
+          {
+            "fieldPath": "packageName",
+            "columnName": "package_name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "groupId",
+            "columnName": "group_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updated_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isDeleted",
+            "columnName": "is_deleted",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "package_name",
+            "group_id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_group_app_cross_ref_group_id",
+            "unique": false,
+            "columnNames": [
+              "group_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_group_app_cross_ref_group_id` ON `${TABLE_NAME}` (`group_id`)"
+          }
+        ]
+      },
+      {
+        "tableName": "redemptions",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `title` TEXT NOT NULL, `description` TEXT NOT NULL, `builtin_key` TEXT, `point_cost` INTEGER NOT NULL, `reward_type` TEXT NOT NULL, `bonus_minutes` INTEGER NOT NULL, `payload_json` TEXT, `icon_source` TEXT, `icon_value` TEXT, `is_active` INTEGER NOT NULL, `stock` INTEGER NOT NULL, `created_at` INTEGER NOT NULL, `updated_at` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "title",
+            "columnName": "title",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "description",
+            "columnName": "description",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "builtinKey",
+            "columnName": "builtin_key",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "pointCost",
+            "columnName": "point_cost",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "rewardType",
+            "columnName": "reward_type",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "bonusMinutes",
+            "columnName": "bonus_minutes",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "payloadJson",
+            "columnName": "payload_json",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "iconSource",
+            "columnName": "icon_source",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "iconValue",
+            "columnName": "icon_value",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "isActive",
+            "columnName": "is_active",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "stock",
+            "columnName": "stock",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "created_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updated_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_redemptions_builtin_key",
+            "unique": true,
+            "columnNames": [
+              "builtin_key"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_redemptions_builtin_key` ON `${TABLE_NAME}` (`builtin_key`)"
+          }
+        ]
+      },
+      {
+        "tableName": "bonus_times",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `target_group_id` TEXT NOT NULL, `extra_minutes` INTEGER NOT NULL, `expiry_time` INTEGER NOT NULL, `created_at` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "targetGroupId",
+            "columnName": "target_group_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "extraMinutes",
+            "columnName": "extra_minutes",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "expiryTime",
+            "columnName": "expiry_time",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "created_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "achievements",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `title` TEXT NOT NULL, `description` TEXT NOT NULL, `requirement` TEXT NOT NULL, `tier` INTEGER NOT NULL, `icon_emoji` TEXT NOT NULL, `is_unlocked` INTEGER NOT NULL, `unlocked_at` INTEGER, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "title",
+            "columnName": "title",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "description",
+            "columnName": "description",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "requirement",
+            "columnName": "requirement",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "tier",
+            "columnName": "tier",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "iconEmoji",
+            "columnName": "icon_emoji",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isUnlocked",
+            "columnName": "is_unlocked",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "unlockedAt",
+            "columnName": "unlocked_at",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "redemption_history",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `reward_title` TEXT NOT NULL, `point_cost` INTEGER NOT NULL, `history_type` TEXT NOT NULL, `bonus_minutes` INTEGER NOT NULL, `payload_json` TEXT, `target_group_name` TEXT, `reward_builtin_key` TEXT, `redeemed_at` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "rewardTitle",
+            "columnName": "reward_title",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "pointCost",
+            "columnName": "point_cost",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "historyType",
+            "columnName": "history_type",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "bonusMinutes",
+            "columnName": "bonus_minutes",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "payloadJson",
+            "columnName": "payload_json",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "targetGroupName",
+            "columnName": "target_group_name",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "rewardBuiltinKey",
+            "columnName": "reward_builtin_key",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "redeemedAt",
+            "columnName": "redeemed_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "daily_archives",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `archive_date` TEXT NOT NULL, `day_start_at` INTEGER NOT NULL, `day_end_at` INTEGER NOT NULL, `control_usage_millis` INTEGER NOT NULL, `encourage_usage_millis` INTEGER NOT NULL, `total_usage_millis` INTEGER NOT NULL, `saved_millis` INTEGER NOT NULL, `control_exceeded_group_count` INTEGER NOT NULL, `control_block_event_count` INTEGER NOT NULL, `control_completed_group_count` INTEGER NOT NULL, `encourage_completed_group_count` INTEGER NOT NULL, `points_earned` REAL NOT NULL, `points_spent` REAL NOT NULL, `points_net` REAL NOT NULL, `redemption_count` INTEGER NOT NULL, `archive_version` INTEGER NOT NULL, `created_at` INTEGER NOT NULL, `updated_at` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "archiveDate",
+            "columnName": "archive_date",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "dayStartAt",
+            "columnName": "day_start_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "dayEndAt",
+            "columnName": "day_end_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "controlUsageMillis",
+            "columnName": "control_usage_millis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "encourageUsageMillis",
+            "columnName": "encourage_usage_millis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "totalUsageMillis",
+            "columnName": "total_usage_millis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "savedMillis",
+            "columnName": "saved_millis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "controlExceededGroupCount",
+            "columnName": "control_exceeded_group_count",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "controlBlockEventCount",
+            "columnName": "control_block_event_count",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "controlCompletedGroupCount",
+            "columnName": "control_completed_group_count",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "encourageCompletedGroupCount",
+            "columnName": "encourage_completed_group_count",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "pointsEarned",
+            "columnName": "points_earned",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "pointsSpent",
+            "columnName": "points_spent",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "pointsNet",
+            "columnName": "points_net",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "redemptionCount",
+            "columnName": "redemption_count",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "archiveVersion",
+            "columnName": "archive_version",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "created_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updated_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_daily_archives_archive_date",
+            "unique": true,
+            "columnNames": [
+              "archive_date"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_daily_archives_archive_date` ON `${TABLE_NAME}` (`archive_date`)"
+          }
+        ]
+      },
+      {
+        "tableName": "daily_group_archives",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `archive_date` TEXT NOT NULL, `group_id` TEXT NOT NULL, `group_name` TEXT NOT NULL, `group_type` TEXT NOT NULL, `limit_period` TEXT NOT NULL, `limit_minutes` INTEGER NOT NULL, `bonus_minutes` INTEGER NOT NULL, `points_per_minute` REAL NOT NULL, `package_count` INTEGER NOT NULL, `daily_usage_millis` INTEGER NOT NULL, `period_usage_millis_at_close` INTEGER NOT NULL, `effective_limit_millis_at_close` INTEGER NOT NULL, `remaining_millis_at_close` INTEGER NOT NULL, `exceeded_millis_at_close` INTEGER NOT NULL, `block_event_count` INTEGER NOT NULL, `earned_points` REAL NOT NULL, `spent_points` REAL NOT NULL, `reward_exempted` INTEGER NOT NULL, `reward_exempt_type` TEXT, `reward_bonus_points` REAL NOT NULL, `reward_effect_snapshot_json` TEXT, `completed` INTEGER NOT NULL, `sort_order` INTEGER NOT NULL, `created_at` INTEGER NOT NULL, `updated_at` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "archiveDate",
+            "columnName": "archive_date",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "groupId",
+            "columnName": "group_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "groupName",
+            "columnName": "group_name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "groupType",
+            "columnName": "group_type",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "limitPeriod",
+            "columnName": "limit_period",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "limitMinutes",
+            "columnName": "limit_minutes",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "bonusMinutes",
+            "columnName": "bonus_minutes",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "pointsPerMinute",
+            "columnName": "points_per_minute",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "packageCount",
+            "columnName": "package_count",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "dailyUsageMillis",
+            "columnName": "daily_usage_millis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "periodUsageMillisAtClose",
+            "columnName": "period_usage_millis_at_close",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "effectiveLimitMillisAtClose",
+            "columnName": "effective_limit_millis_at_close",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "remainingMillisAtClose",
+            "columnName": "remaining_millis_at_close",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "exceededMillisAtClose",
+            "columnName": "exceeded_millis_at_close",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "blockEventCount",
+            "columnName": "block_event_count",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "earnedPoints",
+            "columnName": "earned_points",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "spentPoints",
+            "columnName": "spent_points",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "rewardExempted",
+            "columnName": "reward_exempted",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "rewardExemptType",
+            "columnName": "reward_exempt_type",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "rewardBonusPoints",
+            "columnName": "reward_bonus_points",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "rewardEffectSnapshotJson",
+            "columnName": "reward_effect_snapshot_json",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "completed",
+            "columnName": "completed",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sortOrder",
+            "columnName": "sort_order",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "created_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updated_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_daily_group_archives_archive_date_group_id",
+            "unique": true,
+            "columnNames": [
+              "archive_date",
+              "group_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_daily_group_archives_archive_date_group_id` ON `${TABLE_NAME}` (`archive_date`, `group_id`)"
+          },
+          {
+            "name": "index_daily_group_archives_archive_date",
+            "unique": false,
+            "columnNames": [
+              "archive_date"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_daily_group_archives_archive_date` ON `${TABLE_NAME}` (`archive_date`)"
+          },
+          {
+            "name": "index_daily_group_archives_group_type_archive_date",
+            "unique": false,
+            "columnNames": [
+              "group_type",
+              "archive_date"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_daily_group_archives_group_type_archive_date` ON `${TABLE_NAME}` (`group_type`, `archive_date`)"
+          }
+        ]
+      },
+      {
+        "tableName": "daily_app_archives",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `archive_date` TEXT NOT NULL, `package_name` TEXT NOT NULL, `app_label` TEXT NOT NULL, `scope_key` TEXT NOT NULL, `is_grouped` INTEGER NOT NULL, `group_id` TEXT, `group_name` TEXT, `group_type` TEXT, `limit_period` TEXT, `daily_usage_millis` INTEGER NOT NULL, `open_count` INTEGER NOT NULL, `session_count` INTEGER NOT NULL, `longest_session_millis` INTEGER NOT NULL, `night_usage_millis` INTEGER NOT NULL, `earned_points` REAL NOT NULL, `completed` INTEGER NOT NULL, `hour_00_millis` INTEGER NOT NULL, `hour_01_millis` INTEGER NOT NULL, `hour_02_millis` INTEGER NOT NULL, `hour_03_millis` INTEGER NOT NULL, `hour_04_millis` INTEGER NOT NULL, `hour_05_millis` INTEGER NOT NULL, `hour_06_millis` INTEGER NOT NULL, `hour_07_millis` INTEGER NOT NULL, `hour_08_millis` INTEGER NOT NULL, `hour_09_millis` INTEGER NOT NULL, `hour_10_millis` INTEGER NOT NULL, `hour_11_millis` INTEGER NOT NULL, `hour_12_millis` INTEGER NOT NULL, `hour_13_millis` INTEGER NOT NULL, `hour_14_millis` INTEGER NOT NULL, `hour_15_millis` INTEGER NOT NULL, `hour_16_millis` INTEGER NOT NULL, `hour_17_millis` INTEGER NOT NULL, `hour_18_millis` INTEGER NOT NULL, `hour_19_millis` INTEGER NOT NULL, `hour_20_millis` INTEGER NOT NULL, `hour_21_millis` INTEGER NOT NULL, `hour_22_millis` INTEGER NOT NULL, `hour_23_millis` INTEGER NOT NULL, `created_at` INTEGER NOT NULL, `updated_at` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "archiveDate",
+            "columnName": "archive_date",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "packageName",
+            "columnName": "package_name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "appLabel",
+            "columnName": "app_label",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "scopeKey",
+            "columnName": "scope_key",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "isGrouped",
+            "columnName": "is_grouped",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "groupId",
+            "columnName": "group_id",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "groupName",
+            "columnName": "group_name",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "groupType",
+            "columnName": "group_type",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "limitPeriod",
+            "columnName": "limit_period",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "dailyUsageMillis",
+            "columnName": "daily_usage_millis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "openCount",
+            "columnName": "open_count",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sessionCount",
+            "columnName": "session_count",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "longestSessionMillis",
+            "columnName": "longest_session_millis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "nightUsageMillis",
+            "columnName": "night_usage_millis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "earnedPoints",
+            "columnName": "earned_points",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "completed",
+            "columnName": "completed",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "hour00Millis",
+            "columnName": "hour_00_millis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "hour01Millis",
+            "columnName": "hour_01_millis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "hour02Millis",
+            "columnName": "hour_02_millis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "hour03Millis",
+            "columnName": "hour_03_millis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "hour04Millis",
+            "columnName": "hour_04_millis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "hour05Millis",
+            "columnName": "hour_05_millis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "hour06Millis",
+            "columnName": "hour_06_millis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "hour07Millis",
+            "columnName": "hour_07_millis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "hour08Millis",
+            "columnName": "hour_08_millis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "hour09Millis",
+            "columnName": "hour_09_millis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "hour10Millis",
+            "columnName": "hour_10_millis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "hour11Millis",
+            "columnName": "hour_11_millis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "hour12Millis",
+            "columnName": "hour_12_millis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "hour13Millis",
+            "columnName": "hour_13_millis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "hour14Millis",
+            "columnName": "hour_14_millis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "hour15Millis",
+            "columnName": "hour_15_millis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "hour16Millis",
+            "columnName": "hour_16_millis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "hour17Millis",
+            "columnName": "hour_17_millis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "hour18Millis",
+            "columnName": "hour_18_millis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "hour19Millis",
+            "columnName": "hour_19_millis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "hour20Millis",
+            "columnName": "hour_20_millis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "hour21Millis",
+            "columnName": "hour_21_millis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "hour22Millis",
+            "columnName": "hour_22_millis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "hour23Millis",
+            "columnName": "hour_23_millis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "created_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updated_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_daily_app_archives_archive_date_package_name_scope_key",
+            "unique": true,
+            "columnNames": [
+              "archive_date",
+              "package_name",
+              "scope_key"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_daily_app_archives_archive_date_package_name_scope_key` ON `${TABLE_NAME}` (`archive_date`, `package_name`, `scope_key`)"
+          },
+          {
+            "name": "index_daily_app_archives_archive_date",
+            "unique": false,
+            "columnNames": [
+              "archive_date"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_daily_app_archives_archive_date` ON `${TABLE_NAME}` (`archive_date`)"
+          },
+          {
+            "name": "index_daily_app_archives_group_id_archive_date",
+            "unique": false,
+            "columnNames": [
+              "group_id",
+              "archive_date"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_daily_app_archives_group_id_archive_date` ON `${TABLE_NAME}` (`group_id`, `archive_date`)"
+          },
+          {
+            "name": "index_daily_app_archives_package_name_archive_date",
+            "unique": false,
+            "columnNames": [
+              "package_name",
+              "archive_date"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_daily_app_archives_package_name_archive_date` ON `${TABLE_NAME}` (`package_name`, `archive_date`)"
+          },
+          {
+            "name": "index_daily_app_archives_is_grouped_archive_date",
+            "unique": false,
+            "columnNames": [
+              "is_grouped",
+              "archive_date"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_daily_app_archives_is_grouped_archive_date` ON `${TABLE_NAME}` (`is_grouped`, `archive_date`)"
+          }
+        ]
+      },
+      {
+        "tableName": "point_ledger",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `occurred_at` INTEGER NOT NULL, `ledger_date` TEXT NOT NULL, `entry_type` TEXT NOT NULL, `delta_points` REAL NOT NULL, `group_id` TEXT, `group_name_snapshot` TEXT, `reward_id` TEXT, `reward_title_snapshot` TEXT, `source_ref_id` TEXT, `message_key` TEXT, `message_args_json` TEXT, `note` TEXT NOT NULL, `created_at` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "occurredAt",
+            "columnName": "occurred_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "ledgerDate",
+            "columnName": "ledger_date",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "entryType",
+            "columnName": "entry_type",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "deltaPoints",
+            "columnName": "delta_points",
+            "affinity": "REAL",
+            "notNull": true
+          },
+          {
+            "fieldPath": "groupId",
+            "columnName": "group_id",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "groupNameSnapshot",
+            "columnName": "group_name_snapshot",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "rewardId",
+            "columnName": "reward_id",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "rewardTitleSnapshot",
+            "columnName": "reward_title_snapshot",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "sourceRefId",
+            "columnName": "source_ref_id",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "messageKey",
+            "columnName": "message_key",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "messageArgsJson",
+            "columnName": "message_args_json",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "note",
+            "columnName": "note",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "created_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_point_ledger_ledger_date",
+            "unique": false,
+            "columnNames": [
+              "ledger_date"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_point_ledger_ledger_date` ON `${TABLE_NAME}` (`ledger_date`)"
+          },
+          {
+            "name": "index_point_ledger_occurred_at",
+            "unique": false,
+            "columnNames": [
+              "occurred_at"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_point_ledger_occurred_at` ON `${TABLE_NAME}` (`occurred_at`)"
+          },
+          {
+            "name": "index_point_ledger_group_id_ledger_date",
+            "unique": false,
+            "columnNames": [
+              "group_id",
+              "ledger_date"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_point_ledger_group_id_ledger_date` ON `${TABLE_NAME}` (`group_id`, `ledger_date`)"
+          },
+          {
+            "name": "index_point_ledger_source_ref_id",
+            "unique": true,
+            "columnNames": [
+              "source_ref_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_point_ledger_source_ref_id` ON `${TABLE_NAME}` (`source_ref_id`)"
+          }
+        ]
+      },
+      {
+        "tableName": "daily_archive_state",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `archive_start_date` TEXT NOT NULL, `last_archived_date` TEXT, `last_attempted_at` INTEGER NOT NULL, `last_succeeded_at` INTEGER NOT NULL, `last_error_message` TEXT NOT NULL, `created_at` INTEGER NOT NULL, `updated_at` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "archiveStartDate",
+            "columnName": "archive_start_date",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastArchivedDate",
+            "columnName": "last_archived_date",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "lastAttemptedAt",
+            "columnName": "last_attempted_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastSucceededAt",
+            "columnName": "last_succeeded_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "lastErrorMessage",
+            "columnName": "last_error_message",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "created_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updated_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        }
+      },
+      {
+        "tableName": "block_events",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `event_date` TEXT NOT NULL, `occurred_at` INTEGER NOT NULL, `package_name` TEXT NOT NULL, `group_id` TEXT NOT NULL, `group_name_snapshot` TEXT NOT NULL, `exceeded_millis` INTEGER NOT NULL, `created_at` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "eventDate",
+            "columnName": "event_date",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "occurredAt",
+            "columnName": "occurred_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "packageName",
+            "columnName": "package_name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "groupId",
+            "columnName": "group_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "groupNameSnapshot",
+            "columnName": "group_name_snapshot",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "exceededMillis",
+            "columnName": "exceeded_millis",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "created_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_block_events_event_date",
+            "unique": false,
+            "columnNames": [
+              "event_date"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_block_events_event_date` ON `${TABLE_NAME}` (`event_date`)"
+          },
+          {
+            "name": "index_block_events_group_id_event_date",
+            "unique": false,
+            "columnNames": [
+              "group_id",
+              "event_date"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_block_events_group_id_event_date` ON `${TABLE_NAME}` (`group_id`, `event_date`)"
+          },
+          {
+            "name": "index_block_events_package_name_event_date",
+            "unique": false,
+            "columnNames": [
+              "package_name",
+              "event_date"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_block_events_package_name_event_date` ON `${TABLE_NAME}` (`package_name`, `event_date`)"
+          }
+        ]
+      },
+      {
+        "tableName": "reward_inventory",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `reward_id` TEXT NOT NULL, `reward_builtin_key` TEXT, `quantity` INTEGER NOT NULL, `created_at` INTEGER NOT NULL, `updated_at` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "rewardId",
+            "columnName": "reward_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "rewardBuiltinKey",
+            "columnName": "reward_builtin_key",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "quantity",
+            "columnName": "quantity",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "created_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "updatedAt",
+            "columnName": "updated_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_reward_inventory_reward_id",
+            "unique": true,
+            "columnNames": [
+              "reward_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_reward_inventory_reward_id` ON `${TABLE_NAME}` (`reward_id`)"
+          },
+          {
+            "name": "index_reward_inventory_reward_builtin_key",
+            "unique": true,
+            "columnNames": [
+              "reward_builtin_key"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_reward_inventory_reward_builtin_key` ON `${TABLE_NAME}` (`reward_builtin_key`)"
+          }
+        ]
+      },
+      {
+        "tableName": "active_reward_effects",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `effect_type` TEXT NOT NULL, `source_reward_id` TEXT NOT NULL, `source_builtin_key` TEXT, `target_group_id` TEXT, `target_group_type` TEXT, `start_at` INTEGER NOT NULL, `expire_at` INTEGER NOT NULL, `period_start_date` TEXT, `period_end_date` TEXT, `status` TEXT NOT NULL, `payload_json` TEXT, `created_at` INTEGER NOT NULL, `consumed_at` INTEGER, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "effectType",
+            "columnName": "effect_type",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sourceRewardId",
+            "columnName": "source_reward_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "sourceBuiltinKey",
+            "columnName": "source_builtin_key",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "targetGroupId",
+            "columnName": "target_group_id",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "targetGroupType",
+            "columnName": "target_group_type",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "startAt",
+            "columnName": "start_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "expireAt",
+            "columnName": "expire_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "periodStartDate",
+            "columnName": "period_start_date",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "periodEndDate",
+            "columnName": "period_end_date",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "payloadJson",
+            "columnName": "payload_json",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "created_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "consumedAt",
+            "columnName": "consumed_at",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_active_reward_effects_target_group_id_status_expire_at",
+            "unique": false,
+            "columnNames": [
+              "target_group_id",
+              "status",
+              "expire_at"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_active_reward_effects_target_group_id_status_expire_at` ON `${TABLE_NAME}` (`target_group_id`, `status`, `expire_at`)"
+          },
+          {
+            "name": "index_active_reward_effects_effect_type_status_expire_at",
+            "unique": false,
+            "columnNames": [
+              "effect_type",
+              "status",
+              "expire_at"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_active_reward_effects_effect_type_status_expire_at` ON `${TABLE_NAME}` (`effect_type`, `status`, `expire_at`)"
+          },
+          {
+            "name": "index_active_reward_effects_source_reward_id",
+            "unique": false,
+            "columnNames": [
+              "source_reward_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_active_reward_effects_source_reward_id` ON `${TABLE_NAME}` (`source_reward_id`)"
+          }
+        ]
+      },
+      {
+        "tableName": "streak_shield_pending",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `archive_date` TEXT NOT NULL, `shield_target` TEXT NOT NULL, `status` TEXT NOT NULL, `created_at` INTEGER NOT NULL, `resolved_at` INTEGER, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "archiveDate",
+            "columnName": "archive_date",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "shieldTarget",
+            "columnName": "shield_target",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "status",
+            "columnName": "status",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "createdAt",
+            "columnName": "created_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          },
+          {
+            "fieldPath": "resolvedAt",
+            "columnName": "resolved_at",
+            "affinity": "INTEGER"
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_streak_shield_pending_archive_date_shield_target",
+            "unique": true,
+            "columnNames": [
+              "archive_date",
+              "shield_target"
+            ],
+            "orders": [],
+            "createSql": "CREATE UNIQUE INDEX IF NOT EXISTS `index_streak_shield_pending_archive_date_shield_target` ON `${TABLE_NAME}` (`archive_date`, `shield_target`)"
+          },
+          {
+            "name": "index_streak_shield_pending_status_created_at",
+            "unique": false,
+            "columnNames": [
+              "status",
+              "created_at"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_streak_shield_pending_status_created_at` ON `${TABLE_NAME}` (`status`, `created_at`)"
+          }
+        ]
+      },
+      {
+        "tableName": "reward_use_history",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`id` TEXT NOT NULL, `reward_id` TEXT NOT NULL, `reward_title` TEXT NOT NULL, `reward_type` TEXT NOT NULL, `reward_builtin_key` TEXT, `target_group_name` TEXT, `payload_json` TEXT, `used_at` INTEGER NOT NULL, PRIMARY KEY(`id`))",
+        "fields": [
+          {
+            "fieldPath": "id",
+            "columnName": "id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "rewardId",
+            "columnName": "reward_id",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "rewardTitle",
+            "columnName": "reward_title",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "rewardType",
+            "columnName": "reward_type",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "rewardBuiltinKey",
+            "columnName": "reward_builtin_key",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "targetGroupName",
+            "columnName": "target_group_name",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "payloadJson",
+            "columnName": "payload_json",
+            "affinity": "TEXT"
+          },
+          {
+            "fieldPath": "usedAt",
+            "columnName": "used_at",
+            "affinity": "INTEGER",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "id"
+          ]
+        },
+        "indices": [
+          {
+            "name": "index_reward_use_history_used_at",
+            "unique": false,
+            "columnNames": [
+              "used_at"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_reward_use_history_used_at` ON `${TABLE_NAME}` (`used_at`)"
+          },
+          {
+            "name": "index_reward_use_history_reward_id",
+            "unique": false,
+            "columnNames": [
+              "reward_id"
+            ],
+            "orders": [],
+            "createSql": "CREATE INDEX IF NOT EXISTS `index_reward_use_history_reward_id` ON `${TABLE_NAME}` (`reward_id`)"
+          }
+        ]
+      }
+    ],
+    "setupQueries": [
+      "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '1e772a204f5a9352766a73d5b25d825b')"
+    ]
+  }
+}
