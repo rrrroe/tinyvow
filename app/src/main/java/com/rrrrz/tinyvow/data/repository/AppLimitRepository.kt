@@ -26,6 +26,7 @@ import com.rrrrz.tinyvow.data.db.RedemptionEntity
 import com.rrrrz.tinyvow.data.db.RedemptionHistoryDao
 import com.rrrrz.tinyvow.data.db.RedemptionHistoryEntity
 import com.rrrrz.tinyvow.data.db.RedemptionHistoryType
+import com.rrrrz.tinyvow.data.db.RewardIconSource
 import com.rrrrz.tinyvow.data.db.RewardInventoryDao
 import com.rrrrz.tinyvow.data.db.RewardInventoryEntity
 import com.rrrrz.tinyvow.data.db.RewardType
@@ -58,12 +59,43 @@ internal fun validateCustomRewardInput(
     title: String,
     pointCost: Int,
     stock: Int,
+    iconSpec: RewardIconSpec? = null,
 ): RewardSaveValidationError? =
     when {
         title.isBlank() -> RewardSaveValidationError.TITLE_REQUIRED
         pointCost <= 0 -> RewardSaveValidationError.POINT_COST_INVALID
         stock != -1 && stock <= 0 -> RewardSaveValidationError.STOCK_INVALID
+        !isValidRewardIconSpec(iconSpec) -> RewardSaveValidationError.ICON_INVALID
         else -> null
+    }
+
+private fun isValidRewardIconSpec(iconSpec: RewardIconSpec?): Boolean {
+    val source = iconSpec?.source ?: return true
+    val value = iconSpec.value.trim()
+    if (value.isBlank()) return false
+    return when (source) {
+        RewardIconSource.PRESET -> RewardIconCatalog.isValidCustomPresetKey(value)
+        RewardIconSource.IMPORTED_FILE -> value.isNotBlank()
+        RewardIconSource.EMOJI -> RewardEmojiValidator.isValidSingleEmoji(value)
+    }
+}
+
+private fun sanitizeRewardIconSpec(iconSpec: RewardIconSpec?): RewardIconSpec? {
+    val source = iconSpec?.source ?: return null
+    val value = iconSpec.value.trim()
+    if (value.isBlank()) return null
+    return RewardIconSpec(source = source, value = value)
+}
+
+internal fun shouldDeleteImportedRewardIcon(
+    path: String,
+    activeRewards: List<RedemptionEntity>,
+    excludeRewardId: String,
+): Boolean =
+    activeRewards.none {
+        it.id != excludeRewardId &&
+            it.iconSource == RewardIconSource.IMPORTED_FILE &&
+            it.iconValue == path
     }
 
 private fun RedemptionEntity.payload(): RewardPayload =
@@ -80,6 +112,13 @@ private fun localizedRewardTitle(reward: RedemptionEntity): String =
 
 private fun localizedRewardDescription(reward: RedemptionEntity): String =
     reward.builtinKey?.let { AppText.t("${it}_description") } ?: reward.description
+
+private fun RedemptionEntity.iconSpec(): RewardIconSpec? =
+    if (iconSource != null && !iconValue.isNullOrBlank()) {
+        RewardIconSpec(source = iconSource, value = iconValue)
+    } else {
+        null
+    }
 
 private fun rewardHistoryTypeFor(rewardType: RewardType): RedemptionHistoryType =
     when (rewardType) {
@@ -157,6 +196,7 @@ class AppLimitRepository(
     private val bonusTimeDao = database.bonusTimeDao()
     private val preferences = ManagedAppPreferences(context)
     private val usageRepository = UsageStatsUsageRepository(context)
+    private val rewardIconStorage = RewardIconStorage.fromContext(context)
     private val rewardActionMutex = Mutex()
     private val zoneId = ZoneId.systemDefault()
 
@@ -702,6 +742,34 @@ class AppLimitRepository(
         }
     }
 
+    suspend fun addCustomReward(draft: CustomRewardDraft): RewardSaveResult {
+        val iconSpec = sanitizeRewardIconSpec(draft.iconSpec)
+        val validation = validateCustomRewardInput(draft.title, draft.pointCost, draft.stock, iconSpec)
+        if (validation != null) return RewardSaveResult.Invalid(validation)
+        withContext(Dispatchers.IO) {
+            val now = System.currentTimeMillis()
+            redemptionDao.insertRedemption(
+                RedemptionEntity(
+                    id = UUID.randomUUID().toString(),
+                    title = draft.title.trim(),
+                    description = draft.description.trim(),
+                    builtinKey = null,
+                    pointCost = draft.pointCost,
+                    rewardType = RewardType.CUSTOM,
+                    bonusMinutes = 0,
+                    payloadJson = null,
+                    iconSource = iconSpec?.source,
+                    iconValue = iconSpec?.value,
+                    isActive = true,
+                    stock = draft.stock,
+                    createdAt = now,
+                    updatedAt = now,
+                ),
+            )
+        }
+        return RewardSaveResult.Success
+    }
+
     suspend fun addReward(
         title: String,
         cost: Int,
@@ -711,31 +779,17 @@ class AppLimitRepository(
         bonusMinutes: Int = 0,
         builtinKey: String? = null,
     ): RewardSaveResult {
-        val validation = validateCustomRewardInput(title, cost, stock)
-        if (validation != null) return RewardSaveResult.Invalid(validation)
         if (type != RewardType.CUSTOM || builtinKey != null || bonusMinutes != 0) {
             return RewardSaveResult.Invalid(RewardSaveValidationError.REWARD_NOT_EDITABLE)
         }
-        withContext(Dispatchers.IO) {
-            val now = System.currentTimeMillis()
-            redemptionDao.insertRedemption(
-                RedemptionEntity(
-                    id = UUID.randomUUID().toString(),
-                    title = title.trim(),
-                    description = description.trim(),
-                    builtinKey = null,
-                    pointCost = cost,
-                    rewardType = RewardType.CUSTOM,
-                    bonusMinutes = 0,
-                    payloadJson = null,
-                    isActive = true,
-                    stock = stock,
-                    createdAt = now,
-                    updatedAt = now,
-                ),
-            )
-        }
-        return RewardSaveResult.Success
+        return addCustomReward(
+            CustomRewardDraft(
+                title = title,
+                pointCost = cost,
+                stock = stock,
+                description = description,
+            ),
+        )
     }
 
     suspend fun updateReward(reward: RedemptionEntity): RewardSaveResult {
@@ -753,9 +807,11 @@ class AppLimitRepository(
             }
             return RewardSaveResult.Success
         }
-        val validation = validateCustomRewardInput(reward.title, reward.pointCost, reward.stock)
+        val iconSpec = sanitizeRewardIconSpec(reward.iconSpec())
+        val validation = validateCustomRewardInput(reward.title, reward.pointCost, reward.stock, iconSpec)
         if (validation != null) return RewardSaveResult.Invalid(validation)
         withContext(Dispatchers.IO) {
+            val existing = redemptionDao.getRedemptionById(reward.id)
             redemptionDao.insertRedemption(
                 reward.copy(
                     title = reward.title.trim(),
@@ -763,16 +819,21 @@ class AppLimitRepository(
                     rewardType = RewardType.CUSTOM,
                     payloadJson = null,
                     bonusMinutes = 0,
+                    iconSource = iconSpec?.source,
+                    iconValue = iconSpec?.value,
                     updatedAt = System.currentTimeMillis(),
                 ),
             )
+            cleanupReplacedImportedIcon(existing = existing, updated = reward.copy(iconSource = iconSpec?.source, iconValue = iconSpec?.value))
         }
         return RewardSaveResult.Success
     }
 
     suspend fun archiveReward(rewardId: String) {
         withContext(Dispatchers.IO) {
+            val reward = redemptionDao.getRedemptionById(rewardId)
             redemptionDao.deactivateRedemption(rewardId)
+            cleanupArchivedImportedIcon(reward)
         }
     }
 
@@ -953,6 +1014,32 @@ class AppLimitRepository(
         )
     }
 
+    private suspend fun cleanupReplacedImportedIcon(
+        existing: RedemptionEntity?,
+        updated: RedemptionEntity,
+    ) {
+        val previousPath = existing?.takeIf { it.iconSource == RewardIconSource.IMPORTED_FILE }?.iconValue
+        val nextPath = updated.takeIf { it.iconSource == RewardIconSource.IMPORTED_FILE }?.iconValue
+        if (previousPath.isNullOrBlank() || previousPath == nextPath) return
+        deleteImportedIconIfUnreferenced(previousPath, excludeRewardId = updated.id)
+    }
+
+    private suspend fun cleanupArchivedImportedIcon(reward: RedemptionEntity?) {
+        val importedPath = reward?.takeIf { it.iconSource == RewardIconSource.IMPORTED_FILE }?.iconValue ?: return
+        deleteImportedIconIfUnreferenced(importedPath, excludeRewardId = reward.id)
+    }
+
+    private suspend fun deleteImportedIconIfUnreferenced(
+        path: String,
+        excludeRewardId: String,
+    ) {
+        if (!rewardIconStorage.isManagedImportedPath(path)) return
+        val activeRewards = redemptionDao.getAllActiveRedemptionsSync()
+        if (shouldDeleteImportedRewardIcon(path, activeRewards, excludeRewardId)) {
+            rewardIconStorage.deleteImportedIcon(path)
+        }
+    }
+
     private data class RewardEffectWindow(
         val startDate: String,
         val endDate: String,
@@ -1041,6 +1128,8 @@ class AppLimitRepository(
                 rewardType = definition.rewardType,
                 bonusMinutes = definition.payload.minutes,
                 payloadJson = definition.payload.toJson(),
+                iconSource = null,
+                iconValue = null,
                 isActive = true,
                 stock = definition.stock,
                 createdAt = existing?.createdAt ?: now,

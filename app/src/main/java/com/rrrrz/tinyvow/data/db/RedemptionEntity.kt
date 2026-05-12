@@ -14,6 +14,12 @@ enum class RewardType {
     CUSTOM
 }
 
+enum class RewardIconSource {
+    PRESET,
+    IMPORTED_FILE,
+    EMOJI,
+}
+
 enum class RedemptionHistoryType {
     TIME_ADD,
     PERIOD_PASS,
@@ -51,6 +57,12 @@ data class RedemptionEntity(
 
     @ColumnInfo(name = "payload_json")
     val payloadJson: String? = null,
+
+    @ColumnInfo(name = "icon_source")
+    val iconSource: RewardIconSource? = null,
+
+    @ColumnInfo(name = "icon_value")
+    val iconValue: String? = null,
     
     @ColumnInfo(name = "is_active")
     val isActive: Boolean = true,

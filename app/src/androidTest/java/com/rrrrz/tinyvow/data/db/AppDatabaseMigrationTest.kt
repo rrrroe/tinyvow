@@ -82,6 +82,25 @@ class AppDatabaseMigrationTest {
         database.close()
     }
 
+    @Test
+    fun migrate18To19_addsRewardIconColumnsWithoutChangingExistingRewards() {
+        context.deleteDatabase(databaseName)
+        createVersion18Database()
+
+        val database = AppDatabase.getDatabase(context, databaseName)
+        database.openHelper.writableDatabase
+
+        assertEquals(1, tableRowCount("redemptions"))
+        assertTrue(columnExists("redemptions", "icon_source"))
+        assertTrue(columnExists("redemptions", "icon_value"))
+        assertEquals("Tea break", stringValue("SELECT title FROM redemptions WHERE id = 'reward-custom-1'"))
+        assertEquals(50, intValue("SELECT point_cost FROM redemptions WHERE id = 'reward-custom-1'"))
+        assertTrue(isNullValue("SELECT icon_source FROM redemptions WHERE id = 'reward-custom-1'"))
+        assertTrue(isNullValue("SELECT icon_value FROM redemptions WHERE id = 'reward-custom-1'"))
+
+        database.close()
+    }
+
     private fun createVersion9Database() {
         val dbFile = context.getDatabasePath(databaseName)
         dbFile.parentFile?.mkdirs()
@@ -376,6 +395,115 @@ class AppDatabaseMigrationTest {
             "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'legacy-v11')"
         )
         sqliteDatabase.version = 11
+        sqliteDatabase.close()
+    }
+
+    private fun createVersion18Database() {
+        val currentDatabase = AppDatabase.getDatabase(context, databaseName)
+        currentDatabase.openHelper.writableDatabase
+        currentDatabase.close()
+
+        val sqliteDatabase = SQLiteDatabase.openDatabase(context.getDatabasePath(databaseName).path, null, SQLiteDatabase.OPEN_READWRITE)
+        sqliteDatabase.execSQL(
+            """
+            INSERT OR REPLACE INTO redemptions (
+                id,
+                title,
+                description,
+                builtin_key,
+                point_cost,
+                reward_type,
+                bonus_minutes,
+                payload_json,
+                icon_source,
+                icon_value,
+                is_active,
+                stock,
+                created_at,
+                updated_at
+            ) VALUES (
+                'reward-custom-1',
+                'Tea break',
+                'Custom reward',
+                NULL,
+                50,
+                'CUSTOM',
+                0,
+                NULL,
+                NULL,
+                NULL,
+                1,
+                -1,
+                1,
+                1
+            )
+            """.trimIndent()
+        )
+        sqliteDatabase.execSQL(
+            "ALTER TABLE `redemptions` RENAME TO `redemptions_v19`"
+        )
+        sqliteDatabase.execSQL(
+            """
+            CREATE TABLE IF NOT EXISTS `redemptions` (
+                `id` TEXT NOT NULL,
+                `title` TEXT NOT NULL,
+                `description` TEXT NOT NULL,
+                `builtin_key` TEXT,
+                `point_cost` INTEGER NOT NULL,
+                `reward_type` TEXT NOT NULL,
+                `bonus_minutes` INTEGER NOT NULL,
+                `payload_json` TEXT,
+                `is_active` INTEGER NOT NULL,
+                `stock` INTEGER NOT NULL,
+                `created_at` INTEGER NOT NULL,
+                `updated_at` INTEGER NOT NULL,
+                PRIMARY KEY(`id`)
+            )
+            """.trimIndent()
+        )
+        sqliteDatabase.execSQL(
+            """
+            INSERT INTO `redemptions` (
+                id,
+                title,
+                description,
+                builtin_key,
+                point_cost,
+                reward_type,
+                bonus_minutes,
+                payload_json,
+                is_active,
+                stock,
+                created_at,
+                updated_at
+            )
+            SELECT
+                id,
+                title,
+                description,
+                builtin_key,
+                point_cost,
+                reward_type,
+                bonus_minutes,
+                payload_json,
+                is_active,
+                stock,
+                created_at,
+                updated_at
+            FROM `redemptions_v19`
+            """.trimIndent()
+        )
+        sqliteDatabase.execSQL(
+            "CREATE UNIQUE INDEX IF NOT EXISTS `index_redemptions_builtin_key` ON `redemptions` (`builtin_key`)"
+        )
+        sqliteDatabase.execSQL(
+            "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)"
+        )
+        sqliteDatabase.execSQL(
+            "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'legacy-v18')"
+        )
+        sqliteDatabase.execSQL("DROP TABLE `redemptions_v19`")
+        sqliteDatabase.version = 18
         sqliteDatabase.close()
     }
 
@@ -706,6 +834,35 @@ class AppDatabaseMigrationTest {
             val value = it.getInt(0)
             sqliteDatabase.close()
             return value
+        }
+    }
+
+    private fun columnExists(
+        tableName: String,
+        columnName: String,
+    ): Boolean {
+        val sqliteDatabase = SQLiteDatabase.openDatabase(context.getDatabasePath(databaseName).path, null, SQLiteDatabase.OPEN_READONLY)
+        val cursor = sqliteDatabase.rawQuery("PRAGMA table_info(`$tableName`)", null)
+        cursor.use {
+            while (it.moveToNext()) {
+                if (it.getString(1) == columnName) {
+                    sqliteDatabase.close()
+                    return true
+                }
+            }
+            sqliteDatabase.close()
+            return false
+        }
+    }
+
+    private fun isNullValue(query: String): Boolean {
+        val sqliteDatabase = SQLiteDatabase.openDatabase(context.getDatabasePath(databaseName).path, null, SQLiteDatabase.OPEN_READONLY)
+        val cursor = sqliteDatabase.rawQuery(query, null)
+        cursor.use {
+            it.moveToFirst()
+            val isNull = it.isNull(0)
+            sqliteDatabase.close()
+            return isNull
         }
     }
 }

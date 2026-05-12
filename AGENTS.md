@@ -249,10 +249,9 @@
 .\gradlew.bat connectedDebugAndroidTest
 ```
 
-Windows PowerShell 读取中文文档前先设置 UTF-8 输出，避免终端显示乱码：
+如果终端读取中文文档时出现乱码，可显式按 UTF-8 读取：
 
 ```powershell
-[Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 Get-Content -Raw -Encoding UTF8 AGENTS.md
 ```
 

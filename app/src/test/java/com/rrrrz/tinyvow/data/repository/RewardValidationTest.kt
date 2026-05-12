@@ -51,4 +51,66 @@ class RewardValidationTest {
             ),
         )
     }
+
+    @Test
+    fun validPresetIconPassesValidation() {
+        assertNull(
+            validateCustomRewardInput(
+                title = "Tea break",
+                pointCost = 100,
+                stock = 3,
+                iconSpec = RewardIconSpec(source = com.rrrrz.tinyvow.data.db.RewardIconSource.PRESET, value = RewardIconCatalog.customPresetKeys.first()),
+            ),
+        )
+    }
+
+    @Test
+    fun singleEmojiIsAccepted() {
+        assertNull(
+            validateCustomRewardInput(
+                title = "Tea break",
+                pointCost = 100,
+                stock = 3,
+                iconSpec = RewardIconSpec(source = com.rrrrz.tinyvow.data.db.RewardIconSource.EMOJI, value = "🎁"),
+            ),
+        )
+    }
+
+    @Test
+    fun zwjEmojiIsAccepted() {
+        assertNull(
+            validateCustomRewardInput(
+                title = "Tea break",
+                pointCost = 100,
+                stock = 3,
+                iconSpec = RewardIconSpec(source = com.rrrrz.tinyvow.data.db.RewardIconSource.EMOJI, value = "👨‍👩‍👧‍👦"),
+            ),
+        )
+    }
+
+    @Test
+    fun plainTextEmojiIconIsRejected() {
+        assertEquals(
+            RewardSaveValidationError.ICON_INVALID,
+            validateCustomRewardInput(
+                title = "Tea break",
+                pointCost = 100,
+                stock = 3,
+                iconSpec = RewardIconSpec(source = com.rrrrz.tinyvow.data.db.RewardIconSource.EMOJI, value = "tea"),
+            ),
+        )
+    }
+
+    @Test
+    fun multipleEmojiClustersAreRejected() {
+        assertEquals(
+            RewardSaveValidationError.ICON_INVALID,
+            validateCustomRewardInput(
+                title = "Tea break",
+                pointCost = 100,
+                stock = 3,
+                iconSpec = RewardIconSpec(source = com.rrrrz.tinyvow.data.db.RewardIconSource.EMOJI, value = "🎁🎉"),
+            ),
+        )
+    }
 }

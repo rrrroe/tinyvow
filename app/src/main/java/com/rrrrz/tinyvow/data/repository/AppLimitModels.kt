@@ -2,6 +2,7 @@ package com.rrrrz.tinyvow.data.repository
 
 import com.rrrrz.tinyvow.data.db.AppGroupEntity
 import com.rrrrz.tinyvow.data.db.RedemptionEntity
+import com.rrrrz.tinyvow.data.db.RewardIconSource
 import com.rrrrz.tinyvow.data.db.RewardType
 import com.rrrrz.tinyvow.data.db.StreakShieldPendingEntity
 import com.rrrrz.tinyvow.data.db.StreakShieldTarget
@@ -15,6 +16,19 @@ data class RewardPayload(
     val minutes: Int = 0,
     val pointsMultiplier: Double = 1.0,
     val shieldTarget: StreakShieldTarget? = null,
+)
+
+data class RewardIconSpec(
+    val source: RewardIconSource,
+    val value: String,
+)
+
+data class CustomRewardDraft(
+    val title: String,
+    val pointCost: Int,
+    val stock: Int,
+    val description: String,
+    val iconSpec: RewardIconSpec? = null,
 )
 
 data class RewardStoreItem(
@@ -82,6 +96,7 @@ enum class RewardSaveValidationError {
     TITLE_REQUIRED,
     POINT_COST_INVALID,
     STOCK_INVALID,
+    ICON_INVALID,
     REWARD_NOT_EDITABLE,
 }
 

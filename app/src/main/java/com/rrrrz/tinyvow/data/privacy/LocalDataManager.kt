@@ -2,6 +2,7 @@ package com.rrrrz.tinyvow.data.privacy
 
 import android.content.Context
 import com.rrrrz.tinyvow.data.db.AppDatabase
+import com.rrrrz.tinyvow.data.repository.RewardIconStorage
 import com.rrrrz.tinyvow.data.settings.ManagedAppPreferences
 import java.io.File
 import kotlinx.coroutines.Dispatchers
@@ -34,6 +35,7 @@ class LocalDataManager(
         withContext(Dispatchers.IO) {
             database.clearAllTables()
             preferences.clearAll()
+            RewardIconStorage.fromContext(context).clearAll()
         }
     }
 

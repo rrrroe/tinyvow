@@ -106,6 +106,7 @@ import com.rrrrz.tinyvow.data.repository.AppGroupWithApps
 import com.rrrrz.tinyvow.data.repository.AppLimitRepository
 import com.rrrrz.tinyvow.data.repository.AchievementProgress
 import com.rrrrz.tinyvow.data.repository.DailyArchiveRepository
+import com.rrrrz.tinyvow.data.repository.CustomRewardDraft
 import com.rrrrz.tinyvow.data.repository.PointsRepository
 import com.rrrrz.tinyvow.data.repository.InventoryRewardItem
 import com.rrrrz.tinyvow.data.repository.PendingStreakShieldItem
@@ -219,7 +220,7 @@ fun RewardsHome(
     onPurchaseReward: (RedemptionEntity) -> Unit,
     onUseInventoryReward: (RedemptionEntity, String?) -> Unit,
     onResolvePendingShield: (String, Boolean) -> Unit,
-    onAddReward: (String, Int, Int, String) -> Unit,
+    onAddReward: (CustomRewardDraft) -> Unit,
     onUpdateReward: (RedemptionEntity) -> Unit,
     onArchiveReward: (RedemptionEntity) -> Unit,
     isProActive: Boolean,
@@ -366,6 +367,7 @@ private fun rewardSaveResultMessage(result: RewardSaveResult): String? =
                 RewardSaveValidationError.TITLE_REQUIRED -> AppText.t("redeem_error_title_required")
                 RewardSaveValidationError.POINT_COST_INVALID -> AppText.t("redeem_error_point_cost_invalid")
                 RewardSaveValidationError.STOCK_INVALID -> AppText.t("redeem_error_stock_invalid")
+                RewardSaveValidationError.ICON_INVALID -> AppText.t("redeem_error_icon_invalid")
                 RewardSaveValidationError.REWARD_NOT_EDITABLE -> AppText.t("redeem_error_reward_not_editable")
             }
     }
@@ -917,16 +919,9 @@ fun HomeRoute(
                                 )
                             }
                         },
-                        onAddReward = { name, cost, stock, desc ->
+                        onAddReward = { draft ->
                             coroutineScope.launch {
-                                val result =
-                                    appLimitRepository.addReward(
-                                        name,
-                                        cost,
-                                        com.rrrrz.tinyvow.data.db.RewardType.CUSTOM,
-                                        stock,
-                                        desc,
-                                    )
+                                val result = appLimitRepository.addCustomReward(draft)
                                 if (result == RewardSaveResult.Success) {
                                     superModeController.touch(proEntitlement.isProActive)
                                 }

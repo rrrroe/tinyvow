@@ -25,7 +25,7 @@ import com.rrrrz.tinyvow.data.db.migration.AppDatabaseMigrations
         StreakShieldPendingEntity::class,
         RewardUseHistoryEntity::class,
     ],
-    version = 18,
+    version = 19,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -58,6 +58,7 @@ abstract class AppDatabase : RoomDatabase() {
         val MIGRATION_15_16 = AppDatabaseMigrations.MIGRATION_15_16
         val MIGRATION_16_17 = AppDatabaseMigrations.MIGRATION_16_17
         val MIGRATION_17_18 = AppDatabaseMigrations.MIGRATION_17_18
+        val MIGRATION_18_19 = AppDatabaseMigrations.MIGRATION_18_19
 
         @Volatile
         private var INSTANCE: AppDatabase? = null
