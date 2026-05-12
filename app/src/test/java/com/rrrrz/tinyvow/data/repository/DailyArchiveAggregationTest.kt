@@ -60,4 +60,39 @@ class DailyArchiveAggregationTest {
         assertEquals(5.0, evenAllocation.getValue("a"), 0.0001)
         assertEquals(5.0, evenAllocation.getValue("b"), 0.0001)
     }
+
+    @Test
+    fun selectUngroupedLaunchablePackages_onlyKeepsLaunchableUngroupedPackages() {
+        val selected =
+            selectUngroupedLaunchablePackages(
+                activePackageNames = setOf("grouped.framework", "launchable.app", "background.framework"),
+                groupedPackageNames = setOf("grouped.framework"),
+                launchablePackageNames = setOf("launchable.app"),
+            )
+
+        assertEquals(setOf("launchable.app"), selected)
+    }
+
+    @Test
+    fun selectUngroupedLaunchablePackages_keepsGroupedPackagesOutOfUngroupedCandidates() {
+        val selected =
+            selectUngroupedLaunchablePackages(
+                activePackageNames = setOf("managed.system"),
+                groupedPackageNames = setOf("managed.system"),
+                launchablePackageNames = emptySet(),
+            )
+
+        assertTrue(selected.isEmpty())
+    }
+
+    @Test
+    fun selectPackagesToArchive_keepsGroupedPackagesAndLaunchableUngroupedPackages() {
+        val packagesToArchive =
+            selectPackagesToArchive(
+                groupedPackageNames = setOf("managed.system"),
+                ungroupedLaunchablePackages = setOf("launchable.app"),
+            )
+
+        assertEquals(setOf("managed.system", "launchable.app"), packagesToArchive)
+    }
 }

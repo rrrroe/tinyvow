@@ -1,6 +1,9 @@
 package com.rrrrz.tinyvow.data.repository
 
 import android.content.Context
+import android.content.Intent
+import android.os.Build
+import android.content.pm.PackageManager
 import androidx.room.withTransaction
 import com.rrrrz.tinyvow.data.db.ActiveRewardEffectStatus
 import com.rrrrz.tinyvow.data.db.AppDatabase
@@ -193,17 +196,22 @@ class DailyArchiveRepository(
                 .getAllValidCrossRefsSync()
                 .map { it.packageName }
                 .toSet()
+        val launchablePackageNames = loadLaunchablePackageNames()
         dailyArchiveDao.getAllArchiveDatesAsc().forEach { dateString ->
             val date = LocalDate.parse(dateString)
             val dayStart = ArchiveDateUtils.startOfDayMillis(date, zoneId)
             val nextDayStart = ArchiveDateUtils.nextDayStartMillis(date, zoneId)
-            val hasUngroupedCandidates =
+            val activePackageNames =
                 usageRepository
                     .getUsageStats(dayStart, nextDayStart)
-                    .any { (packageName, usageMillis) ->
-                        usageMillis >= MIN_UNGROUPED_APP_ARCHIVE_USAGE_MILLIS &&
-                            packageName !in groupedPackageNames
-                    }
+                    .filterValues { it >= MIN_UNGROUPED_APP_ARCHIVE_USAGE_MILLIS }
+                    .keys
+            val hasUngroupedCandidates =
+                selectUngroupedLaunchablePackages(
+                    activePackageNames = activePackageNames,
+                    groupedPackageNames = groupedPackageNames,
+                    launchablePackageNames = launchablePackageNames,
+                ).isNotEmpty()
             val hasAppSnapshots = dailyAppArchiveDao.countByDate(dateString) > 0
             val hasUngroupedSnapshots = dailyAppArchiveDao.countUngroupedByDate(dateString) > 0
             val hadGroupedApps = dailyGroupArchiveDao.countGroupsWithPackagesByDate(dateString) > 0
@@ -235,11 +243,18 @@ class DailyArchiveRepository(
                 existingGroupedAppsByGroup.values.asSequence().flatten().map { it.packageName })
                 .distinct()
                 .toSet()
+        val launchablePackageNames = loadLaunchablePackageNames()
         val activePackageNames =
             dailyUsageByPackage
                 .filterValues { it >= MIN_UNGROUPED_APP_ARCHIVE_USAGE_MILLIS }
                 .keys
-        val packagesToArchive = (groupedPackageNames + activePackageNames).toSet()
+        val ungroupedLaunchablePackages =
+            selectUngroupedLaunchablePackages(
+                activePackageNames = activePackageNames,
+                groupedPackageNames = groupedPackageNames,
+                launchablePackageNames = launchablePackageNames,
+            )
+        val packagesToArchive = selectPackagesToArchive(groupedPackageNames, ungroupedLaunchablePackages)
         val sessionsByPackage =
             usageRepository
                 .getUsageSessions(dayStart, nextDayStart)
@@ -334,7 +349,7 @@ class DailyArchiveRepository(
                 }
             }
         val ungroupedAppArchives =
-            (activePackageNames - groupedPackageNames).map { packageName ->
+            ungroupedLaunchablePackages.map { packageName ->
                 val behaviorSummary =
                     summarizeAppBehavior(
                         sessions = sessionsByPackage[packageName].orEmpty(),
@@ -714,6 +729,25 @@ class DailyArchiveRepository(
             ).toString().takeIf { it.isNotBlank() } ?: packageName
         }.getOrDefault(packageName)
 
+    private fun loadLaunchablePackageNames(): Set<String> {
+        val launchIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
+        val resolvedActivities =
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                packageManager.queryIntentActivities(
+                    launchIntent,
+                    PackageManager.ResolveInfoFlags.of(0),
+                )
+            } else {
+                @Suppress("DEPRECATION")
+                packageManager.queryIntentActivities(launchIntent, 0)
+            }
+        return resolvedActivities
+            .asSequence()
+            .mapNotNull { it.activityInfo?.packageName }
+            .filter { it.isNotBlank() }
+            .toSet()
+    }
+
     private fun sumSessionUsageInRange(
         packageNames: List<String>,
         sessionsByPackage: Map<String, List<com.rrrrz.tinyvow.data.usage.AppSession>>,
@@ -750,3 +784,14 @@ class DailyArchiveRepository(
         val sortOrder: Int,
     )
 }
+
+internal fun selectUngroupedLaunchablePackages(
+    activePackageNames: Set<String>,
+    groupedPackageNames: Set<String>,
+    launchablePackageNames: Set<String>,
+): Set<String> = (activePackageNames - groupedPackageNames).intersect(launchablePackageNames)
+
+internal fun selectPackagesToArchive(
+    groupedPackageNames: Set<String>,
+    ungroupedLaunchablePackages: Set<String>,
+): Set<String> = groupedPackageNames + ungroupedLaunchablePackages
