@@ -320,6 +320,9 @@
     <string name="home_value_year">%1$s y</string>
     <string name="home_well_done_yesterday_your_strong_will_saved_this">Well done. Yesterday, your strong will saved this much time in controlled apps:</string>
     <string name="home_yesterday_s_report">Yesterday\'s report</string>
+    <string name="home_day_unit">d</string>
+    <string name="home_current_remaining">Current balance</string>
+    <string name="home_total_earned">Total earned</string>
     <string name="home_total_saved">Total saved</string>
     <string name="lab_laboratory_debug_tools">Laboratory (debug tools)</string>
     <string name="lab_add_pro_days">+%1$d days</string>

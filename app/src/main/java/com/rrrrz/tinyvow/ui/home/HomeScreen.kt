@@ -16,11 +16,13 @@ import androidx.compose.foundation.background
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.animation.core.*
 import androidx.compose.ui.unit.sp
 import androidx.compose.animation.*
@@ -135,8 +137,13 @@ import kotlinx.coroutines.flow.first
 import androidx.compose.animation.*
 import androidx.compose.foundation.BorderStroke
 import java.time.LocalDate
+import java.time.LocalTime
 import java.time.ZoneId
+import kotlin.math.PI
+import kotlin.math.cos
+import kotlin.math.min
 import kotlin.math.roundToLong
+import kotlin.math.sin
 import com.rrrrz.tinyvow.data.usage.UsageStatsUsageRepository
 import com.rrrrz.tinyvow.data.usage.UsageRepository
 
@@ -205,6 +212,8 @@ private data class HomeEncourageOverviewUiState(
 private data class HomeHistoryOverviewUiState(
     val totalSavedMinutes: Long,
     val extendedLifeMinutes: Long,
+    val totalEarnedPoints: Double,
+    val currentPoints: Double,
 )
 
 @Composable
@@ -1981,6 +1990,8 @@ fun HomeScreen(
                         groupsWithApps,
                         usageMap,
                         historicalArchives,
+                        userPoints,
+                        todayPoints,
                         achievementProgress,
                     ) {
                         buildHomeOverviewUiState(
@@ -1988,6 +1999,8 @@ fun HomeScreen(
                             groupsWithApps = groupsWithApps,
                             usageMap = usageMap,
                             historicalArchives = historicalArchives,
+                            userPoints = userPoints,
+                            todayPoints = todayPoints,
                             achievementProgress = achievementProgress,
                         )
                     }
@@ -2151,95 +2164,393 @@ private fun HomeOverviewCard(
         modifier =
             modifier
                 .clip(RoundedCornerShape(32.dp))
-                .background(MaterialTheme.colorScheme.surface)
+                .background(
+                    brush =
+                        Brush.linearGradient(
+                            colors =
+                                listOf(
+                                    lerp(MaterialTheme.colorScheme.surface, themeColors.controlContainer, 0.28f),
+                                    lerp(MaterialTheme.colorScheme.surface, themeColors.baseContainer, 0.34f),
+                                    lerp(MaterialTheme.colorScheme.surface, themeColors.encourageContainer, 0.30f),
+                                ),
+                            start = Offset(0f, 0f),
+                            end = Offset(920f, 720f),
+                        )
+                )
     ) {
-        Box(
-            modifier =
-                Modifier
-                    .size(260.dp)
-                    .offset(x = (-36).dp, y = (-62).dp)
-                    .clip(CircleShape)
-                    .background(
-                        brush =
-                            Brush.linearGradient(
-                                colors =
-                                    listOf(
-                                        themeColors.baseContainer.copy(alpha = 0.92f),
-                                        themeColors.baseContainer.copy(alpha = 0.62f),
-                                        themeColors.baseContainer.copy(alpha = 0.22f),
-                                    ),
-                                start = Offset(0f, 0f),
-                                end = Offset(360f, 360f),
-                            )
-                    )
-        )
+        HomeOverviewBackdrop(modifier = Modifier.matchParentSize())
 
         Column(
             modifier = Modifier.padding(horizontal = 18.dp, vertical = 18.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             HomeOverviewHeader(
                 dateLabel = state.dateLabel,
                 tagline = state.tagline,
             )
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            Box(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .height(196.dp),
             ) {
-                HomeEnginePanel(
-                    title = AppText.t("home_commitment_panel"),
-                    headlineLabel = AppText.t("home_saved_today"),
-                    headlineValue = AppText.t("home_value_minutes", state.control.todaySavedMinutes),
-                    accent = MaterialTheme.colorScheme.secondary,
-                    containerColor = themeColors.controlContainer.copy(alpha = 0.86f),
-                    onContainer = themeColors.onControlContainer,
-                    trailingAlignment = false,
-                    tags =
-                        listOf(
-                            AppText.t("home_commitment_progress_value", state.control.completedGroups, state.control.totalGroups),
-                            AppText.t("home_control_streak_value", state.control.streakDays),
-                        ),
-                    modifier = Modifier.weight(1f),
+                HomeOverviewClockWatermark(
+                    modifier =
+                        Modifier
+                            .size(176.dp)
+                            .align(Alignment.BottomCenter)
+                            .offset(y = (-8).dp),
                 )
-                HomeEnginePanel(
-                    title = AppText.t("home_encouragement_panel"),
-                    headlineLabel = AppText.t("home_earned_today"),
-                    headlineValue = AppText.t("home_value_pts", state.encourage.todayEarnedPoints),
-                    accent = MaterialTheme.colorScheme.tertiary,
-                    containerColor = themeColors.encourageContainer.copy(alpha = 0.88f),
-                    onContainer = themeColors.onEncourageContainer,
-                    trailingAlignment = true,
-                    tags =
-                        listOf(
-                            AppText.t("home_encouragement_progress_value", state.encourage.completedGroups, state.encourage.totalGroups),
-                            AppText.t("home_encourage_streak_value", state.encourage.streakDays),
+
+                Row(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .align(Alignment.TopCenter)
+                            .padding(top = 10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(18.dp),
+                    verticalAlignment = Alignment.Top,
+                ) {
+                    HomeOverviewSideMetric(
+                        title = AppText.t("home_commitment_panel"),
+                        headlineLabel = AppText.t("home_saved_today"),
+                        headlineValue = state.control.todaySavedMinutes.toString(),
+                        headlineUnit = AppText.t("group_minutes"),
+                        accent = MaterialTheme.colorScheme.secondary,
+                        tags =
+                            listOf(
+                                AppText.t("home_commitment_progress_value", state.control.completedGroups, state.control.totalGroups),
+                                AppText.t("home_control_streak_value", state.control.streakDays),
                         ),
-                    modifier = Modifier.weight(1f),
-                )
+                        modifier = Modifier.weight(1f),
+                    )
+                    HomeOverviewSideMetric(
+                        title = AppText.t("home_encouragement_panel"),
+                        headlineLabel = AppText.t("home_earned_today"),
+                        headlineValue = formatHomePointWholeValue(state.encourage.todayEarnedPoints),
+                        headlineUnit = AppText.t("group_points"),
+                        accent = MaterialTheme.colorScheme.tertiary,
+                        tags =
+                            listOf(
+                                AppText.t("home_encouragement_progress_value", state.encourage.completedGroups, state.encourage.totalGroups),
+                                AppText.t("home_encourage_streak_value", state.encourage.streakDays),
+                            ),
+                        alignEnd = true,
+                        unitBefore = true,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
             }
 
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(24.dp),
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.50f),
+                border = BorderStroke(1.dp, themeColors.base.copy(alpha = 0.12f)),
+            ) {
+                Row(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 18.dp, vertical = 13.dp),
+                    horizontalArrangement = Arrangement.spacedBy(42.dp),
+                    verticalAlignment = Alignment.Top,
+                ) {
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        HomeHistoryMetric(
+                            label = AppText.t("home_total_saved"),
+                            value = state.history.totalSavedMinutes.toString(),
+                            unit = AppText.t("group_minutes"),
+                            accent = MaterialTheme.colorScheme.secondary,
+                        )
+                        HomeHistoryMetric(
+                            label = AppText.t("home_equivalent_live_more"),
+                            value = roundedDaysValue(state.history.extendedLifeMinutes).toString(),
+                            unit = AppText.t("home_day_unit"),
+                            accent = MaterialTheme.colorScheme.secondary,
+                        )
+                    }
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        HomeHistoryMetric(
+                            label = AppText.t("home_total_earned"),
+                            value = formatHomePointValue(state.history.totalEarnedPoints),
+                            unit = AppText.t("group_points"),
+                            accent = MaterialTheme.colorScheme.tertiary,
+                            alignEnd = true,
+                            unitBefore = true,
+                        )
+                        HomeHistoryMetric(
+                            label = AppText.t("home_current_remaining"),
+                            value = formatHomePointValue(state.history.currentPoints),
+                            unit = AppText.t("group_points"),
+                            accent = MaterialTheme.colorScheme.tertiary,
+                            alignEnd = true,
+                            unitBefore = true,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun HomeOverviewBackdrop(
+    modifier: Modifier = Modifier,
+) {
+    val themeColors = LocalThemeColors.current
+    Canvas(modifier = modifier) {
+        drawCircle(
+            brush =
+                Brush.radialGradient(
+                    colors = listOf(themeColors.controlContainer.copy(alpha = 0.72f), Color.Transparent),
+                    center = Offset(size.width * 0.10f, size.height * 0.42f),
+                    radius = size.width * 0.58f,
+                ),
+            radius = size.width * 0.58f,
+            center = Offset(size.width * 0.10f, size.height * 0.42f),
+        )
+        drawCircle(
+            brush =
+                Brush.radialGradient(
+                    colors = listOf(themeColors.encourageContainer.copy(alpha = 0.74f), Color.Transparent),
+                    center = Offset(size.width * 0.92f, size.height * 0.46f),
+                    radius = size.width * 0.56f,
+                ),
+            radius = size.width * 0.56f,
+            center = Offset(size.width * 0.92f, size.height * 0.46f),
+        )
+        drawCircle(
+            brush =
+                Brush.radialGradient(
+                    colors = listOf(themeColors.baseContainer.copy(alpha = 0.58f), Color.Transparent),
+                    center = Offset(size.width * 0.52f, size.height * 0.74f),
+                    radius = size.width * 0.62f,
+                ),
+            radius = size.width * 0.62f,
+            center = Offset(size.width * 0.52f, size.height * 0.74f),
+        )
+    }
+}
+
+@Composable
+private fun HomeOverviewClockWatermark(
+    modifier: Modifier = Modifier,
+) {
+    val themeColors = LocalThemeColors.current
+    val time by produceState(initialValue = LocalTime.now()) {
+        while (true) {
+            val current = LocalTime.now()
+            value = current
+            delay(((60 - current.second).coerceAtLeast(1) * 1000).toLong())
+        }
+    }
+
+    Canvas(modifier = modifier) {
+        val center = Offset(size.width / 2f, size.height / 2f)
+        val radius = min(size.width, size.height) * 0.42f
+        val clockGradient =
+            Brush.horizontalGradient(
+                colors =
+                    listOf(
+                        themeColors.control.copy(alpha = 0.26f),
+                        themeColors.base.copy(alpha = 0.16f),
+                        themeColors.encourage.copy(alpha = 0.26f),
+                    ),
+                startX = center.x - radius,
+                endX = center.x + radius,
+            )
+
+        drawCircle(
+            brush = clockGradient,
+            radius = radius,
+            center = center,
+            style = Stroke(width = 1.6.dp.toPx()),
+        )
+
+        val minuteAngle = (time.minute / 60.0) * 2.0 * PI - PI / 2.0
+        val hourAngle = (((time.hour % 12) + time.minute / 60.0) / 12.0) * 2.0 * PI - PI / 2.0
+        val handColor = themeColors.base.copy(alpha = 0.36f)
+        drawLine(
+            color = handColor,
+            start = center,
+            end = Offset(
+                x = center.x + cos(hourAngle).toFloat() * radius * 0.42f,
+                y = center.y + sin(hourAngle).toFloat() * radius * 0.42f,
+            ),
+            strokeWidth = 2.4.dp.toPx(),
+        )
+        drawLine(
+            color = handColor,
+            start = center,
+            end = Offset(
+                x = center.x + cos(minuteAngle).toFloat() * radius * 0.60f,
+                y = center.y + sin(minuteAngle).toFloat() * radius * 0.60f,
+            ),
+            strokeWidth = 1.5.dp.toPx(),
+        )
+    }
+}
+
+@Composable
+private fun HomeOverviewSideMetric(
+    title: String,
+    headlineLabel: String,
+    headlineValue: String,
+    headlineUnit: String,
+    accent: Color,
+    tags: List<String>,
+    modifier: Modifier = Modifier,
+    alignEnd: Boolean = false,
+    unitBefore: Boolean = false,
+) {
+    val textAlign =
+        if (alignEnd) {
+            androidx.compose.ui.text.style.TextAlign.End
+        } else {
+            androidx.compose.ui.text.style.TextAlign.Start
+        }
+    val horizontalAlignment =
+        if (alignEnd) {
+            Alignment.End
+        } else {
+            Alignment.Start
+        }
+
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+        horizontalAlignment = horizontalAlignment,
+    ) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.ExtraBold,
+            color = accent,
+            textAlign = textAlign,
+            modifier = Modifier.fillMaxWidth(),
+            maxLines = 1,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+        )
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+            horizontalAlignment = horizontalAlignment,
+        ) {
+            Text(
+                text = headlineLabel,
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = textAlign,
+                modifier = Modifier.fillMaxWidth(),
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            )
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalAlignment = Alignment.Top,
+                horizontalArrangement =
+                    if (alignEnd) {
+                        Arrangement.End
+                    } else {
+                        Arrangement.Start
+                    },
+                verticalAlignment = Alignment.Bottom,
             ) {
-                HomeHistoryMetric(
-                    modifier = Modifier.weight(0.92f),
-                    label = AppText.t("home_total_saved"),
-                    value = AppText.t("home_value_minutes", state.history.totalSavedMinutes),
-                    accent = MaterialTheme.colorScheme.secondary,
-                )
-                HomeHistoryMetric(
-                    modifier = Modifier.weight(1.08f),
-                    label = AppText.t("home_equivalent_live_more"),
-                    value = formatRoundedDays(state.history.extendedLifeMinutes),
-                    accent = MaterialTheme.colorScheme.tertiary,
-                    alignEnd = true,
-                    valueMaxLines = 1,
+                if (unitBefore) {
+                    HomeOverviewHeadlineUnit(text = headlineUnit, accent = accent)
+                    Spacer(modifier = Modifier.width(4.dp))
+                    HomeOverviewHeadlineValue(text = headlineValue, accent = accent)
+                } else {
+                    HomeOverviewHeadlineValue(text = headlineValue, accent = accent)
+                    Spacer(modifier = Modifier.width(4.dp))
+                    HomeOverviewHeadlineUnit(text = headlineUnit, accent = accent)
+                }
+            }
+        }
+        Column(
+            modifier = Modifier.fillMaxWidth(),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalAlignment = horizontalAlignment,
+        ) {
+            tags.forEach { tag ->
+                HomeOverviewPill(
+                    text = tag,
+                    accent = accent,
+                    alignEnd = alignEnd,
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun HomeOverviewHeadlineValue(
+    text: String,
+    accent: Color,
+) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.displaySmall,
+        fontSize = 34.sp,
+        fontWeight = FontWeight.ExtraBold,
+        color = accent,
+        maxLines = 1,
+        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+    )
+}
+
+@Composable
+private fun HomeOverviewHeadlineUnit(
+    text: String,
+    accent: Color,
+) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelMedium,
+        fontWeight = FontWeight.SemiBold,
+        color = accent,
+        modifier = Modifier.padding(bottom = 4.dp),
+        maxLines = 1,
+        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+    )
+}
+
+@Composable
+private fun HomeOverviewPill(
+    text: String,
+    accent: Color,
+    alignEnd: Boolean,
+) {
+    if (text.isBlank()) return
+    Surface(
+        shape = RoundedCornerShape(50),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.46f),
+        border = BorderStroke(1.dp, accent.copy(alpha = 0.16f)),
+        modifier = Modifier.widthIn(max = 132.dp),
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = accent,
+            textAlign =
+                if (alignEnd) {
+                    androidx.compose.ui.text.style.TextAlign.End
+                } else {
+                    androidx.compose.ui.text.style.TextAlign.Start
+                },
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp),
+            maxLines = 1,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+        )
     }
 }
 
@@ -2405,9 +2716,10 @@ private fun HomeOverviewTagLine(
 private fun HomeHistoryMetric(
     label: String,
     value: String,
+    unit: String,
     accent: Color,
     alignEnd: Boolean = false,
-    valueMaxLines: Int = 3,
+    unitBefore: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val textAlign =
@@ -2436,34 +2748,76 @@ private fun HomeHistoryMetric(
             textAlign = textAlign,
             modifier = Modifier.fillMaxWidth(),
         )
-        Text(
-            text = value,
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.ExtraBold,
-            color = accent,
-            textAlign = textAlign,
+        Row(
             modifier = Modifier.fillMaxWidth(),
-            maxLines = valueMaxLines,
-            overflow =
-                if (valueMaxLines == 1) {
-                    androidx.compose.ui.text.style.TextOverflow.Clip
+            horizontalArrangement =
+                if (alignEnd) {
+                    Arrangement.End
                 } else {
-                    androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                    Arrangement.Start
                 },
-        )
+            verticalAlignment = Alignment.Bottom,
+        ) {
+            if (unitBefore) {
+                HomeHistoryMetricUnit(text = unit, accent = accent)
+                Spacer(modifier = Modifier.width(4.dp))
+                HomeHistoryMetricValue(text = value, accent = accent)
+            } else {
+                HomeHistoryMetricValue(text = value, accent = accent)
+                Spacer(modifier = Modifier.width(4.dp))
+                HomeHistoryMetricUnit(text = unit, accent = accent)
+            }
+        }
     }
 }
 
-private fun formatRoundedDays(totalMinutes: Long): String {
-    val roundedDays = (totalMinutes.toDouble() / (24.0 * 60.0)).roundToLong().coerceAtLeast(0L)
-    return AppText.t("home_value_day", roundedDays)
+@Composable
+private fun HomeHistoryMetricValue(
+    text: String,
+    accent: Color,
+) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.titleLarge,
+        fontWeight = FontWeight.ExtraBold,
+        color = accent,
+        maxLines = 1,
+        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+    )
 }
+
+@Composable
+private fun HomeHistoryMetricUnit(
+    text: String,
+    accent: Color,
+) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelMedium,
+        fontWeight = FontWeight.SemiBold,
+        color = accent,
+        modifier = Modifier.padding(bottom = 3.dp),
+        maxLines = 1,
+        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+    )
+}
+
+private fun roundedDaysValue(totalMinutes: Long): Long =
+    (totalMinutes.toDouble() / (24.0 * 60.0)).roundToLong().coerceAtLeast(0L)
+
+private fun formatHomePointValue(points: Double): String =
+    java.lang.String.format(java.util.Locale.getDefault(), "%.1f", points.coerceAtLeast(0.0))
+
+private fun formatHomePointWholeValue(points: Double): String =
+    points.roundToLong().coerceAtLeast(0L).toString()
 
 private fun buildHomeOverviewUiState(
     context: android.content.Context,
     groupsWithApps: List<AppGroupWithApps>,
     usageMap: Map<String, Long>,
     historicalArchives: List<com.rrrrz.tinyvow.data.db.DailyArchiveEntity>,
+    userPoints: Double,
+    todayPoints: Double,
     achievementProgress: AchievementProgress,
 ): HomeOverviewUiState {
     val controlGroups = groupsWithApps.filter { it.group.type == GroupType.CONTROL }
@@ -2498,6 +2852,7 @@ private fun buildHomeOverviewUiState(
         }
     val totalSavedMinutes = historicalArchives.sumOf { it.savedMillis } / 60_000L
     val extendedLifeMinutes = totalSavedMinutes * 3L
+    val totalEarnedPoints = historicalArchives.sumOf { it.pointsEarned } + todayPoints
     val locale = context.resources.configuration.locales[0] ?: java.util.Locale.getDefault()
     val currentDate =
         LocalDate.now().format(
@@ -2525,6 +2880,8 @@ private fun buildHomeOverviewUiState(
             HomeHistoryOverviewUiState(
                 totalSavedMinutes = totalSavedMinutes,
                 extendedLifeMinutes = extendedLifeMinutes,
+                totalEarnedPoints = totalEarnedPoints,
+                currentPoints = userPoints,
             ),
     )
 }

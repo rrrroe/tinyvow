@@ -320,6 +320,9 @@
     <string name="home_value_year">%1$s年</string>
     <string name="home_well_done_yesterday_your_strong_will_saved_this">太棒了！昨天你凭借强大的意志力，在受控应用中省下了：</string>
     <string name="home_yesterday_s_report">昨日战报</string>
+    <string name="home_day_unit">天</string>
+    <string name="home_current_remaining">当前剩余</string>
+    <string name="home_total_earned">累计收获</string>
     <string name="home_total_saved">累计节约</string>
     <string name="lab_laboratory_debug_tools">实验室（调试工具）</string>
     <string name="lab_add_pro_days">+%1$d 天</string>
