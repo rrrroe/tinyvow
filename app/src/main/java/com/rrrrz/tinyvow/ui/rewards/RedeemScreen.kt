@@ -12,6 +12,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -20,6 +21,8 @@ import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.Inventory2
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.LockClock
 import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.Timer
@@ -32,7 +35,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
@@ -47,9 +49,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -87,6 +91,9 @@ private enum class InventorySubsection {
     PURCHASES,
     USES,
 }
+
+private val RewardFilledFieldHeight = 52.dp
+private val RewardFilledFieldShape = RoundedCornerShape(16.dp)
 
 @Composable
 fun RedeemScreen(
@@ -353,7 +360,7 @@ private fun RewardConfigScreen(
             RewardConfigItemCard(
                 reward = item.reward,
                 subtitle = AppText.t("redeem_config_builtin_subtitle", item.reward.pointCost),
-                primaryActionLabel = AppText.t("redeem_edit_builtin_reward_cost"),
+                primaryActionDescription = AppText.t("redeem_edit_builtin_reward_cost"),
                 onPrimaryAction = { onEditReward(item.reward) },
             )
         }
@@ -377,10 +384,10 @@ private fun RewardConfigScreen(
                 RewardConfigItemCard(
                     reward = item.reward,
                     subtitle = AppText.t("redeem_config_custom_subtitle", item.reward.pointCost),
-                    primaryActionLabel = AppText.t("redeem_edit_reward"),
+                    primaryActionDescription = AppText.t("redeem_edit_reward"),
                     onPrimaryAction = { onEditReward(item.reward) },
                     primaryEnabled = canEdit,
-                    secondaryActionLabel = AppText.t("redeem_archive_custom_reward"),
+                    secondaryActionDescription = AppText.t("redeem_archive_custom_reward"),
                     onSecondaryAction = { onArchiveReward(item.reward) },
                 )
             }
@@ -680,11 +687,14 @@ private fun StoreRewardItemCard(
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.Top,
+                verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                RewardIcon(reward = reward, size = 38.dp)
-                Column(modifier = Modifier.weight(1f)) {
+                RewardIcon(reward = reward, size = 56.dp)
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
                     Text(
                         text = reward.localizedTitle(),
                         style = MaterialTheme.typography.titleSmall,
@@ -695,11 +705,6 @@ private fun StoreRewardItemCard(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 2,
-                    )
-                    Text(
-                        text = storeRuleSummary(reward),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.primary,
                     )
                 }
                 if (onEdit != null || onArchive != null) {
@@ -768,10 +773,10 @@ private fun StoreRewardItemCard(
 private fun RewardConfigItemCard(
     reward: RedemptionEntity,
     subtitle: String,
-    primaryActionLabel: String,
+    primaryActionDescription: String,
     onPrimaryAction: () -> Unit,
     primaryEnabled: Boolean = true,
-    secondaryActionLabel: String? = null,
+    secondaryActionDescription: String? = null,
     onSecondaryAction: (() -> Unit)? = null,
 ) {
     ElevatedCard(
@@ -803,19 +808,23 @@ private fun RewardConfigItemCard(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(2.dp),
             ) {
-                TextButton(
+                IconButton(
                     onClick = onPrimaryAction,
                     enabled = primaryEnabled,
-                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                 ) {
-                    Text(primaryActionLabel)
+                    Icon(
+                        imageVector = Icons.Default.Edit,
+                        contentDescription = primaryActionDescription,
+                    )
                 }
-                if (secondaryActionLabel != null && onSecondaryAction != null) {
-                    TextButton(
+                if (secondaryActionDescription != null && onSecondaryAction != null) {
+                    IconButton(
                         onClick = onSecondaryAction,
-                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                     ) {
-                        Text(secondaryActionLabel)
+                        Icon(
+                            imageVector = Icons.Default.DeleteOutline,
+                            contentDescription = secondaryActionDescription,
+                        )
                     }
                 }
             }
@@ -1026,6 +1035,7 @@ fun RewardEditDialog(
     }
     var showErrors by remember(reward?.id) { mutableStateOf(false) }
     var importFailed by remember(reward?.id) { mutableStateOf(false) }
+    var iconPickerExpanded by remember(reward?.id) { mutableStateOf(false) }
 
     val imagePickerLauncher =
         rememberLauncherForActivityResult(
@@ -1109,7 +1119,14 @@ fun RewardEditDialog(
             )
         },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Column(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .heightIn(max = 520.dp)
+                        .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
                 if (builtinCostOnly) {
                     RewardIconPreview(
                         builtinKey = reward?.builtinKey,
@@ -1125,7 +1142,99 @@ fun RewardEditDialog(
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
+                    RewardFieldLabel(AppText.t("redeem_required_points"))
+                    RewardFilledInputField(
+                        value = cost,
+                        onValueChange = { cost = it },
+                        placeholder = AppText.t("redeem_required_points"),
+                        modifier = Modifier.fillMaxWidth(),
+                        keyboardType = KeyboardType.Number,
+                        textAlign = TextAlign.Start,
+                    )
+                    if (costError) {
+                        RewardFieldAssistiveText(
+                            text = AppText.t("redeem_error_point_cost_invalid"),
+                            isError = true,
+                        )
+                    }
                 } else {
+                    RewardFieldLabel(AppText.t("redeem_item_name"))
+                    RewardFilledInputField(
+                        value = title,
+                        onValueChange = { title = it },
+                        placeholder = AppText.t("redeem_item_name"),
+                        modifier = Modifier.fillMaxWidth(),
+                        keyboardType = KeyboardType.Text,
+                        textAlign = TextAlign.Start,
+                    )
+                    if (titleError) {
+                        RewardFieldAssistiveText(
+                            text = AppText.t("redeem_error_title_required"),
+                            isError = true,
+                        )
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.Top,
+                    ) {
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            RewardFieldLabel(AppText.t("redeem_required_points"))
+                            RewardFilledInputField(
+                                value = cost,
+                                onValueChange = { cost = it },
+                                placeholder = AppText.t("redeem_required_points"),
+                                modifier = Modifier.fillMaxWidth(),
+                                keyboardType = KeyboardType.Number,
+                                textAlign = TextAlign.Start,
+                            )
+                            if (costError) {
+                                RewardFieldAssistiveText(
+                                    text = AppText.t("redeem_error_point_cost_invalid"),
+                                    isError = true,
+                                )
+                            }
+                        }
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            RewardFieldLabel(AppText.t("redeem_stock_quantity"))
+                            RewardFilledInputField(
+                                value = stock,
+                                onValueChange = { stock = it },
+                                placeholder = AppText.t("redeem_stock_quantity"),
+                                modifier = Modifier.fillMaxWidth(),
+                                keyboardType = KeyboardType.Number,
+                                textAlign = TextAlign.Start,
+                                enabled = !isInfinite,
+                            )
+                            if (!isInfinite && stockError) {
+                                RewardFieldAssistiveText(
+                                    text = AppText.t("redeem_error_stock_invalid"),
+                                    isError = true,
+                                )
+                            }
+                        }
+                    }
+                    Row(
+                        modifier = Modifier.padding(start = 2.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(2.dp),
+                    ) {
+                        Checkbox(checked = isInfinite, onCheckedChange = { isInfinite = it })
+                        Text(AppText.t("redeem_unlimited_stock"), style = MaterialTheme.typography.bodyMedium)
+                    }
+                    RewardFieldLabel(AppText.t("redeem_description_optional"))
+                    RewardFilledTextArea(
+                        value = description,
+                        onValueChange = { description = it },
+                        placeholder = AppText.t("redeem_description_optional"),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(16.dp),
@@ -1143,10 +1252,13 @@ fun RewardEditDialog(
                     ) {
                         Column(
                             modifier = Modifier.padding(12.dp),
-                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp),
                         ) {
                             Row(
-                                modifier = Modifier.fillMaxWidth(),
+                                modifier =
+                                    Modifier
+                                        .fillMaxWidth()
+                                        .clickable { iconPickerExpanded = !iconPickerExpanded },
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                             ) {
@@ -1165,270 +1277,233 @@ fun RewardEditDialog(
                                         fontWeight = FontWeight.SemiBold,
                                     )
                                     Text(
-                                        text = AppText.t("redeem_icon_picker_hint"),
+                                        text =
+                                            if (iconPickerExpanded) {
+                                                AppText.t("redeem_icon_picker_hint")
+                                            } else {
+                                                iconModeHint
+                                            },
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     )
                                 }
-                                TextButton(
-                                    onClick = {
-                                        if (!importedPath.isNullOrBlank() && importedPath != originalImportedPath) {
-                                            rewardIconStorage.deleteImportedIcon(importedPath)
-                                        }
-                                        presetKey = null
-                                        importedPath = null
-                                        emojiValue = ""
-                                    },
-                                    enabled = hasSelectedCustomIcon,
-                                    contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp),
-                                ) {
-                                    Text(AppText.t("redeem_icon_remove"))
-                                }
-                            }
-                            SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                                SegmentedButton(
-                                    selected = iconMode == RewardIconSource.PRESET,
-                                    onClick = { iconMode = RewardIconSource.PRESET },
-                                    shape = androidx.compose.material3.SegmentedButtonDefaults.itemShape(index = 0, count = 3),
-                                ) {
-                                    Text(AppText.t("redeem_icon_source_presets"))
-                                }
-                                SegmentedButton(
-                                    selected = iconMode == RewardIconSource.IMPORTED_FILE,
-                                    onClick = { iconMode = RewardIconSource.IMPORTED_FILE },
-                                    shape = androidx.compose.material3.SegmentedButtonDefaults.itemShape(index = 1, count = 3),
-                                ) {
-                                    Text(AppText.t("redeem_icon_source_photo"))
-                                }
-                                SegmentedButton(
-                                    selected = iconMode == RewardIconSource.EMOJI,
-                                    onClick = { iconMode = RewardIconSource.EMOJI },
-                                    shape = androidx.compose.material3.SegmentedButtonDefaults.itemShape(index = 2, count = 3),
-                                ) {
-                                    Text(AppText.t("redeem_icon_source_emoji"))
-                                }
-                            }
-                            Text(
-                                text = iconModeHint,
-                                style = MaterialTheme.typography.bodySmall,
-                                color =
-                                    if (iconError) MaterialTheme.colorScheme.error
-                                    else MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            when (iconMode) {
-                                RewardIconSource.PRESET -> {
-                                    FlowRow(
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    TextButton(
+                                        onClick = {
+                                            if (!importedPath.isNullOrBlank() && importedPath != originalImportedPath) {
+                                                rewardIconStorage.deleteImportedIcon(importedPath)
+                                            }
+                                            presetKey = null
+                                            importedPath = null
+                                            emojiValue = ""
+                                        },
+                                        enabled = hasSelectedCustomIcon,
+                                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp),
                                     ) {
-                                        RewardIconCatalog.customPresetKeys.forEach { key ->
-                                            val selected = presetKey == key
-                                            Surface(
-                                                modifier =
-                                                    Modifier
-                                                        .size(68.dp)
-                                                        .semantics {
-                                                            contentDescription =
-                                                                AppText.t(
-                                                                    "redeem_icon_preset_accessibility",
-                                                                    RewardIconCatalog.presetOrdinal(key) ?: 0,
-                                                                )
-                                                        }
-                                                        .clickable {
-                                                            presetKey = if (selected) null else key
+                                        Text(AppText.t("redeem_icon_remove"))
+                                    }
+                                    Icon(
+                                        imageVector =
+                                            if (iconPickerExpanded) Icons.Default.KeyboardArrowUp
+                                            else Icons.Default.KeyboardArrowDown,
+                                        contentDescription = AppText.t("redeem_icon_picker_title"),
+                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    )
+                                }
+                            }
+                            if (iconPickerExpanded) {
+                                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                                    SegmentedButton(
+                                        selected = iconMode == RewardIconSource.PRESET,
+                                        onClick = { iconMode = RewardIconSource.PRESET },
+                                        shape = androidx.compose.material3.SegmentedButtonDefaults.itemShape(index = 0, count = 3),
+                                    ) {
+                                        Text(AppText.t("redeem_icon_source_presets"))
+                                    }
+                                    SegmentedButton(
+                                        selected = iconMode == RewardIconSource.IMPORTED_FILE,
+                                        onClick = { iconMode = RewardIconSource.IMPORTED_FILE },
+                                        shape = androidx.compose.material3.SegmentedButtonDefaults.itemShape(index = 1, count = 3),
+                                    ) {
+                                        Text(AppText.t("redeem_icon_source_photo"))
+                                    }
+                                    SegmentedButton(
+                                        selected = iconMode == RewardIconSource.EMOJI,
+                                        onClick = { iconMode = RewardIconSource.EMOJI },
+                                        shape = androidx.compose.material3.SegmentedButtonDefaults.itemShape(index = 2, count = 3),
+                                    ) {
+                                        Text(AppText.t("redeem_icon_source_emoji"))
+                                    }
+                                }
+                                Text(
+                                    text = iconModeHint,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color =
+                                        if (iconError) MaterialTheme.colorScheme.error
+                                        else MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                when (iconMode) {
+                                    RewardIconSource.PRESET -> {
+                                        FlowRow(
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                            verticalArrangement = Arrangement.spacedBy(8.dp),
+                                        ) {
+                                            RewardIconCatalog.customPresetKeys.forEach { key ->
+                                                val selected = presetKey == key
+                                                Surface(
+                                                    modifier =
+                                                        Modifier
+                                                            .size(68.dp)
+                                                            .semantics {
+                                                                contentDescription =
+                                                                    AppText.t(
+                                                                        "redeem_icon_preset_accessibility",
+                                                                        RewardIconCatalog.presetOrdinal(key) ?: 0,
+                                                                    )
+                                                            }
+                                                            .clickable {
+                                                                presetKey = if (selected) null else key
+                                                            },
+                                                    shape = RoundedCornerShape(14.dp),
+                                                    color =
+                                                        if (selected) {
+                                                            MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                                                        } else {
+                                                            MaterialTheme.colorScheme.surface
                                                         },
+                                                    border =
+                                                        BorderStroke(
+                                                            width = if (selected) 2.dp else 1.dp,
+                                                            color =
+                                                                if (selected) MaterialTheme.colorScheme.primary
+                                                                else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f),
+                                                        ),
+                                                ) {
+                                                    Box(contentAlignment = Alignment.Center) {
+                                                        RewardIconPreview(
+                                                            iconSource = RewardIconSource.PRESET,
+                                                            iconValue = key,
+                                                            size = 52.dp,
+                                                        )
+                                                        if (selected) {
+                                                            Surface(
+                                                                modifier =
+                                                                    Modifier
+                                                                        .align(Alignment.TopEnd)
+                                                                        .padding(4.dp),
+                                                                shape = RoundedCornerShape(10.dp),
+                                                                color = MaterialTheme.colorScheme.primary,
+                                                            ) {
+                                                                Text(
+                                                                    text = "✓",
+                                                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
+                                                                    style = MaterialTheme.typography.labelSmall,
+                                                                    color = MaterialTheme.colorScheme.onPrimary,
+                                                                    textAlign = TextAlign.Center,
+                                                                )
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                    RewardIconSource.IMPORTED_FILE -> {
+                                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                                            OutlinedButton(
+                                                onClick = { imagePickerLauncher.launch(arrayOf("image/*")) },
+                                                modifier = Modifier.fillMaxWidth(),
                                                 shape = RoundedCornerShape(14.dp),
-                                                color =
-                                                    if (selected) {
-                                                        MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                                            ) {
+                                                Icon(Icons.Default.PhotoLibrary, contentDescription = null)
+                                                Spacer(Modifier.width(8.dp))
+                                                Text(
+                                                    if (importedPath.isNullOrBlank()) {
+                                                        AppText.t("redeem_icon_import_photo")
                                                     } else {
-                                                        MaterialTheme.colorScheme.surface
+                                                        AppText.t("redeem_icon_replace_photo")
                                                     },
+                                                )
+                                            }
+                                            Surface(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                shape = RoundedCornerShape(14.dp),
+                                                color = MaterialTheme.colorScheme.surface,
                                                 border =
                                                     BorderStroke(
-                                                        width = if (selected) 2.dp else 1.dp,
-                                                        color =
-                                                            if (selected) MaterialTheme.colorScheme.primary
-                                                            else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f),
+                                                        1.dp,
+                                                        MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f),
                                                     ),
                                             ) {
-                                                Box(contentAlignment = Alignment.Center) {
+                                                Row(
+                                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                                ) {
                                                     RewardIconPreview(
-                                                        iconSource = RewardIconSource.PRESET,
-                                                        iconValue = key,
-                                                        size = 52.dp,
+                                                        iconSource = RewardIconSource.IMPORTED_FILE,
+                                                        iconValue = importedPath,
+                                                        size = 48.dp,
                                                     )
-                                                    if (selected) {
-                                                        Surface(
-                                                            modifier =
-                                                                Modifier
-                                                                    .align(Alignment.TopEnd)
-                                                                    .padding(4.dp),
-                                                            shape = RoundedCornerShape(10.dp),
-                                                            color = MaterialTheme.colorScheme.primary,
-                                                        ) {
+                                                    Column(
+                                                        modifier = Modifier.weight(1f),
+                                                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                                                    ) {
+                                                        Text(
+                                                            text =
+                                                                if (importedPath.isNullOrBlank()) {
+                                                                    AppText.t("redeem_icon_photo_missing")
+                                                                } else {
+                                                                    AppText.t("redeem_icon_photo_ready")
+                                                                },
+                                                            style = MaterialTheme.typography.labelLarge,
+                                                            fontWeight = FontWeight.SemiBold,
+                                                        )
+                                                        val importedFileName = importedPath?.takeIf { it.isNotBlank() }?.let { java.io.File(it).name }
+                                                        if (importedFileName != null) {
                                                             Text(
-                                                                text = "✓",
-                                                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
-                                                                style = MaterialTheme.typography.labelSmall,
-                                                                color = MaterialTheme.colorScheme.onPrimary,
-                                                                textAlign = TextAlign.Center,
+                                                                text = importedFileName,
+                                                                style = MaterialTheme.typography.bodySmall,
+                                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                                maxLines = 1,
                                                             )
                                                         }
                                                     }
                                                 }
                                             }
-                                        }
-                                    }
-                                }
-                                RewardIconSource.IMPORTED_FILE -> {
-                                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                        OutlinedButton(
-                                            onClick = { imagePickerLauncher.launch(arrayOf("image/*")) },
-                                            modifier = Modifier.fillMaxWidth(),
-                                            shape = RoundedCornerShape(14.dp),
-                                        ) {
-                                            Icon(Icons.Default.PhotoLibrary, contentDescription = null)
-                                            Spacer(Modifier.width(8.dp))
-                                            Text(
-                                                if (importedPath.isNullOrBlank()) {
-                                                    AppText.t("redeem_icon_import_photo")
-                                                } else {
-                                                    AppText.t("redeem_icon_replace_photo")
-                                                },
-                                            )
-                                        }
-                                        Surface(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            shape = RoundedCornerShape(14.dp),
-                                            color = MaterialTheme.colorScheme.surface,
-                                            border =
-                                                BorderStroke(
-                                                    1.dp,
-                                                    MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f),
-                                                ),
-                                        ) {
-                                            Row(
-                                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                            ) {
-                                                RewardIconPreview(
-                                                    iconSource = RewardIconSource.IMPORTED_FILE,
-                                                    iconValue = importedPath,
-                                                    size = 48.dp,
+                                            if (importFailed) {
+                                                Text(
+                                                    text = AppText.t("redeem_error_icon_import_failed"),
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = MaterialTheme.colorScheme.error,
                                                 )
-                                                Column(
-                                                    modifier = Modifier.weight(1f),
-                                                    verticalArrangement = Arrangement.spacedBy(2.dp),
-                                                ) {
-                                                    Text(
-                                                        text =
-                                                            if (importedPath.isNullOrBlank()) {
-                                                                AppText.t("redeem_icon_photo_missing")
-                                                            } else {
-                                                                AppText.t("redeem_icon_photo_ready")
-                                                            },
-                                                        style = MaterialTheme.typography.labelLarge,
-                                                        fontWeight = FontWeight.SemiBold,
-                                                    )
-                                                    val importedFileName = importedPath?.takeIf { it.isNotBlank() }?.let { java.io.File(it).name }
-                                                    if (importedFileName != null) {
-                                                        Text(
-                                                            text = importedFileName,
-                                                            style = MaterialTheme.typography.bodySmall,
-                                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                            maxLines = 1,
-                                                        )
-                                                    }
-                                                }
                                             }
                                         }
-                                        if (importFailed) {
-                                            Text(
-                                                text = AppText.t("redeem_error_icon_import_failed"),
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.error,
-                                            )
-                                        }
                                     }
-                                }
-                                RewardIconSource.EMOJI -> {
-                                    OutlinedTextField(
-                                        value = emojiValue,
-                                        onValueChange = { emojiValue = it },
-                                        label = { Text(AppText.t("redeem_icon_emoji_label")) },
-                                        modifier = Modifier.fillMaxWidth(),
-                                        shape = RoundedCornerShape(12.dp),
-                                        singleLine = true,
-                                        textStyle = MaterialTheme.typography.headlineSmall.copy(textAlign = TextAlign.Center),
-                                        isError = iconError && emojiValue.trim().isNotBlank(),
-                                        supportingText = {
-                                            Text(
-                                                text =
-                                                    if (iconError && emojiValue.trim().isNotBlank()) {
-                                                        AppText.t("redeem_error_icon_invalid")
-                                                    } else {
-                                                        AppText.t("redeem_icon_emoji_supporting")
-                                                    },
-                                                color =
-                                                    if (iconError && emojiValue.trim().isNotBlank()) {
-                                                        MaterialTheme.colorScheme.error
-                                                    } else {
-                                                        MaterialTheme.colorScheme.onSurfaceVariant
-                                                    },
-                                            )
-                                        },
-                                    )
+                                    RewardIconSource.EMOJI -> {
+                                        RewardFilledInputField(
+                                            value = emojiValue,
+                                            onValueChange = { emojiValue = it },
+                                            placeholder = AppText.t("redeem_icon_emoji_label"),
+                                            modifier = Modifier.fillMaxWidth(),
+                                            keyboardType = KeyboardType.Text,
+                                            textAlign = TextAlign.Center,
+                                            textStyle = MaterialTheme.typography.headlineSmall,
+                                        )
+                                        RewardFieldAssistiveText(
+                                            text =
+                                                if (iconError && emojiValue.trim().isNotBlank()) {
+                                                    AppText.t("redeem_error_icon_invalid")
+                                                } else {
+                                                    AppText.t("redeem_icon_emoji_supporting")
+                                                },
+                                            isError = iconError && emojiValue.trim().isNotBlank(),
+                                        )
+                                    }
                                 }
                             }
                         }
                     }
-                    OutlinedTextField(
-                        value = title,
-                        onValueChange = { title = it },
-                        label = { Text(AppText.t("redeem_item_name")) },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp),
-                        isError = titleError,
-                        supportingText = { if (titleError) Text(AppText.t("redeem_error_title_required")) },
-                    )
-                }
-                OutlinedTextField(
-                    value = cost,
-                    onValueChange = { cost = it },
-                    label = { Text(AppText.t("redeem_required_points")) },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(12.dp),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    isError = costError,
-                    supportingText = { if (costError) Text(AppText.t("redeem_error_point_cost_invalid")) },
-                )
-                if (!builtinCostOnly) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Checkbox(checked = isInfinite, onCheckedChange = { isInfinite = it })
-                        Text(AppText.t("redeem_unlimited_stock"), style = MaterialTheme.typography.bodyMedium)
-                    }
-                    if (!isInfinite) {
-                        OutlinedTextField(
-                            value = stock,
-                            onValueChange = { stock = it },
-                            label = { Text(AppText.t("redeem_stock_quantity")) },
-                            modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(12.dp),
-                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            isError = stockError,
-                            supportingText = { if (stockError) Text(AppText.t("redeem_error_stock_invalid")) },
-                        )
-                    }
-                    OutlinedTextField(
-                        value = description,
-                        onValueChange = { description = it },
-                        label = { Text(AppText.t("redeem_description_optional")) },
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(12.dp),
-                        minLines = 2,
-                    )
                 }
             }
         },
@@ -1470,6 +1545,155 @@ fun RewardEditDialog(
             }
         },
     )
+}
+
+@Composable
+private fun RewardFieldLabel(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+}
+
+@Composable
+private fun RewardFieldAssistiveText(
+    text: String,
+    isError: Boolean = false,
+) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.bodySmall,
+        color =
+            if (isError) {
+                MaterialTheme.colorScheme.error
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            },
+    )
+}
+
+@Composable
+private fun RewardFilledInputField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    placeholder: String,
+    modifier: Modifier = Modifier,
+    keyboardType: KeyboardType,
+    textAlign: TextAlign,
+    enabled: Boolean = true,
+    textStyle: androidx.compose.ui.text.TextStyle = MaterialTheme.typography.titleSmall,
+) {
+    RewardFieldContainer(
+        modifier = modifier,
+        enabled = enabled,
+    ) {
+        BasicTextField(
+            value = value,
+            onValueChange = {
+                if (enabled) {
+                    onValueChange(it)
+                }
+            },
+            modifier = Modifier.fillMaxWidth(),
+            enabled = enabled,
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
+            textStyle =
+                textStyle.merge(
+                    TextStyle(
+                        color =
+                            if (enabled) {
+                                MaterialTheme.colorScheme.onSurface
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.75f)
+                            },
+                        textAlign = textAlign,
+                    ),
+                ),
+            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+            decorationBox = { innerTextField ->
+                Box(modifier = Modifier.fillMaxWidth()) {
+                    if (value.isBlank()) {
+                        Text(
+                            text = placeholder,
+                            style = textStyle,
+                            color = MaterialTheme.colorScheme.outline,
+                            modifier = Modifier.fillMaxWidth(),
+                            textAlign = textAlign,
+                        )
+                    }
+                    innerTextField()
+                }
+            },
+        )
+    }
+}
+
+@Composable
+private fun RewardFilledTextArea(
+    value: String,
+    onValueChange: (String) -> Unit,
+    placeholder: String,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier,
+        shape = RewardFilledFieldShape,
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+    ) {
+        BasicTextField(
+            value = value,
+            onValueChange = onValueChange,
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .defaultMinSize(minHeight = 92.dp)
+                    .padding(horizontal = 14.dp, vertical = 14.dp),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Text),
+            textStyle =
+                MaterialTheme.typography.bodyMedium.merge(
+                    TextStyle(color = MaterialTheme.colorScheme.onSurface),
+                ),
+            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+            decorationBox = { innerTextField ->
+                Box(modifier = Modifier.fillMaxWidth()) {
+                    if (value.isBlank()) {
+                        Text(
+                            text = placeholder,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.outline,
+                        )
+                    }
+                    innerTextField()
+                }
+            },
+        )
+    }
+}
+
+@Composable
+private fun RewardFieldContainer(
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    content: @Composable BoxScope.() -> Unit,
+) {
+    Surface(
+        modifier = modifier.height(RewardFilledFieldHeight),
+        shape = RewardFilledFieldShape,
+        color =
+            MaterialTheme.colorScheme.surfaceVariant.copy(
+                alpha = if (enabled) 0.3f else 0.2f,
+            ),
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 14.dp),
+            contentAlignment = Alignment.CenterStart,
+            content = content,
+        )
+    }
 }
 
 @Composable

@@ -136,6 +136,7 @@ import androidx.compose.animation.*
 import androidx.compose.foundation.BorderStroke
 import java.time.LocalDate
 import java.time.ZoneId
+import kotlin.math.roundToLong
 import com.rrrrz.tinyvow.data.usage.UsageStatsUsageRepository
 import com.rrrrz.tinyvow.data.usage.UsageRepository
 
@@ -2232,7 +2233,7 @@ private fun HomeOverviewCard(
                 HomeHistoryMetric(
                     modifier = Modifier.weight(1.08f),
                     label = AppText.t("home_equivalent_live_more"),
-                    value = formatFlexibleDuration(state.history.extendedLifeMinutes),
+                    value = formatRoundedDays(state.history.extendedLifeMinutes),
                     accent = MaterialTheme.colorScheme.tertiary,
                     alignEnd = true,
                     valueMaxLines = 1,
@@ -2453,34 +2454,9 @@ private fun HomeHistoryMetric(
     }
 }
 
-private fun formatFlexibleDuration(totalMinutes: Long): String {
-    if (totalMinutes <= 0L) {
-        return AppText.t("home_value_minutes", 0)
-    }
-    var remaining = totalMinutes
-    val minutesPerYear = 365L * 24L * 60L
-    val minutesPerMonth = 30L * 24L * 60L
-    val minutesPerDay = 24L * 60L
-    val minutesPerHour = 60L
-
-    val years = remaining / minutesPerYear
-    remaining %= minutesPerYear
-    val months = remaining / minutesPerMonth
-    remaining %= minutesPerMonth
-    val days = remaining / minutesPerDay
-    remaining %= minutesPerDay
-    val hours = remaining / minutesPerHour
-    val minutes = remaining % minutesPerHour
-
-    val separator = AppText.t("home_duration_separator")
-    val parts = buildList {
-        if (years > 0) add(AppText.t("home_value_year", years))
-        if (months > 0) add(AppText.t("home_value_month", months))
-        if (days > 0) add(AppText.t("home_value_day", days))
-        if (hours > 0) add(AppText.t("home_value_hour", hours))
-        if (minutes > 0) add(AppText.t("home_value_min", minutes))
-    }
-    return parts.joinToString(separator = separator).ifEmpty { AppText.t("home_value_minutes", 0) }
+private fun formatRoundedDays(totalMinutes: Long): String {
+    val roundedDays = (totalMinutes.toDouble() / (24.0 * 60.0)).roundToLong().coerceAtLeast(0L)
+    return AppText.t("home_value_day", roundedDays)
 }
 
 private fun buildHomeOverviewUiState(
