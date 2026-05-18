@@ -12,7 +12,7 @@ This document records the current implementation boundaries for future human and
 
 ## Data And Migration Rules
 
-- Current Room database version is `18`; exported schemas live under `app/schemas/com.rrrrz.tinyvow.data.db.AppDatabase`.
+- Current Room database version is `19`; exported schemas live under `app/schemas/com.rrrrz.tinyvow.data.db.AppDatabase`.
 - Entity/DAO/schema changes require a version bump, a `Migration` from the previous version, registration in `Room.databaseBuilder(...).addMigrations(...)`, updated exported schema JSON, and migration tests.
 - Preserve user data by default: groups, cross refs, point ledger, redemption history, archives, custom themes, and activation state should not be dropped or rewritten without a documented recovery path.
 - Soft-delete semantics are part of the model for groups and group-app relationships. Do not replace them with physical deletes unless every historical reference is accounted for.

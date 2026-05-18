@@ -60,7 +60,7 @@ val MemberThemePresets = listOf(
     ThemeSeed("member_coral_tide", "Coral Tide", 0xFFD76E78.toInt(), 0xFF69B7A8.toInt(), 0xFF6F9FDA.toInt()),
 )
 
-val DefaultThemeSeed = ThemePresets.first()
+val DefaultThemeSeed = ThemePresets[2]
 
 val LocalThemeColors = staticCompositionLocalOf {
     themeTokensFromSeed(DefaultThemeSeed)

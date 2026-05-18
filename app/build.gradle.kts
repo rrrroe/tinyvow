@@ -4,6 +4,24 @@ plugins {
     alias(libs.plugins.ksp)
 }
 
+val tinyVowVersionName = providers.gradleProperty("TINYVOW_VERSION_NAME")
+    .orElse("1.0.0")
+    .get()
+    .also {
+        require(Regex("""\d+\.\d+\.\d+""").matches(it)) {
+            "TINYVOW_VERSION_NAME must use MAJOR.MINOR.PATCH, for example 1.0.0."
+        }
+    }
+val tinyVowVersionCode = providers.gradleProperty("TINYVOW_VERSION_CODE")
+    .orElse("1")
+    .get()
+    .toIntOrNull()
+    ?.also {
+        require(it > 0) {
+            "TINYVOW_VERSION_CODE must be a positive integer."
+        }
+    }
+    ?: error("TINYVOW_VERSION_CODE must be a positive integer.")
 val googleWebClientId = providers.gradleProperty("TINYVOW_GOOGLE_WEB_CLIENT_ID").orElse("").get()
 val defaultActivationPublicKeyBase64 =
     "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAvgPRg7yuYzmB0zJOm818Eo0eRZKZmBKcZoNlmu2+IYORRDPcQjYMTNfN9P6VbXisyHFMK5AGUydFLBug+vhP5jeI6+DJjt1Dp5Szd/jysKljEGAQBu2ebIGWWhDwVDIdOZ1YHPQK3HkIRN9TQiwPpK9JdLJPuUEFbdXOVZgLTYITugjb5PoUdT6rX/HU5YQy+VzsgKWTUmdkRzQ1WBR6Oo90W2YqWbHu8ykbWI5vq+Bny13348C4yDSsnqDu6/SeBLR5jwn3WemUgpNCWbQAJ6dJ/BEs5MzDAofqEGw2BxivUrOvyHbyuCAP6H622Rv9XGzyvXt6Fx48afhRTTjV8QIDAQAB"
@@ -32,8 +50,8 @@ android {
         applicationId = "com.rrrrz.tinyvow"
         minSdk = 26
         targetSdk = 36
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = tinyVowVersionCode
+        versionName = tinyVowVersionName
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         buildConfigField(
@@ -73,7 +91,9 @@ android {
     buildTypes {
         release {
             isMinifyEnabled = true
-            isShrinkResources = true
+            // AppText resolves many localized strings dynamically by key. Resource shrinking
+            // can remove those strings because they are not all referenced as R.string.*.
+            isShrinkResources = false
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"

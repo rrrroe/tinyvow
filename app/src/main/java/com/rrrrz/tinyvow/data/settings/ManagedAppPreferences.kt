@@ -326,7 +326,7 @@ class ManagedAppPreferences(
         recoveryAnswerSalt: String,
     ) {
         context.managedAppDataStore.edit { preferences ->
-            preferences[Keys.superModeEnabled] = true
+            preferences[Keys.superModeEnabled] = false
             preferences[Keys.superModePasswordHash] = passwordHash
             preferences[Keys.superModePasswordSalt] = passwordSalt
             preferences[Keys.superModeRecoveryQuestion] = recoveryQuestion
@@ -375,6 +375,17 @@ class ManagedAppPreferences(
         context.managedAppDataStore.edit { preferences ->
             preferences[Keys.superModeWindowStartMinutes] = startMinutes
             preferences[Keys.superModeWindowEndMinutes] = endMinutes
+        }
+    }
+
+    suspend fun setSuperModeEnabled(enabled: Boolean) {
+        context.managedAppDataStore.edit { preferences ->
+            preferences[Keys.superModeEnabled] = enabled
+            if (!enabled) {
+                preferences[Keys.superModeActive] = false
+                preferences[Keys.superModeDebugBypassActive] = false
+                preferences.remove(Keys.superModeLastActiveAtMillis)
+            }
         }
     }
 

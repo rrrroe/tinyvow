@@ -71,6 +71,7 @@ import com.rrrrz.tinyvow.data.pro.ProFeatureGate
 import com.rrrrz.tinyvow.i18n.AppText
 import com.rrrrz.tinyvow.ui.theme.LocalThemeColors
 import com.rrrrz.tinyvow.ui.theme.MemberThemePresets
+import com.rrrrz.tinyvow.ui.theme.DefaultThemeSeed
 import com.rrrrz.tinyvow.ui.theme.ThemePresets
 import com.rrrrz.tinyvow.ui.theme.ThemeSeed
 import com.rrrrz.tinyvow.ui.theme.argbToHex
@@ -124,9 +125,9 @@ fun ThemeSettingsScreen(
                     if (ProFeatureGate.canAddCustomTheme(isProActive, customThemes.size)) {
                         editingTheme = createCustomTheme(
                             name = AppText.t("settings_custom_theme"),
-                            controlColor = ThemePresets.first().controlColor,
-                            encourageColor = ThemePresets.first().encourageColor,
-                            baseColor = ThemePresets.first().baseColor,
+                            controlColor = DefaultThemeSeed.controlColor,
+                            encourageColor = DefaultThemeSeed.encourageColor,
+                            baseColor = DefaultThemeSeed.baseColor,
                         )
                     } else {
                         onShowProUpsell(ProUpsellSource.CUSTOM_THEME)

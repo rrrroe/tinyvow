@@ -31,6 +31,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Switch
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -125,6 +126,7 @@ fun SuperModeSettingsSheet(
     recoveryQuestion: String?,
     onDismiss: () -> Unit,
     onConfigure: () -> Unit,
+    onSetEnabled: (Boolean) -> Unit,
     onEnter: () -> Unit,
     onExit: () -> Unit,
     onEditCredentials: () -> Unit,
@@ -163,6 +165,34 @@ fun SuperModeSettingsSheet(
                         label = AppText.t("super_mode_status_label"),
                         value = describeSuperModeStatus(status),
                     )
+                    if (status.isConfigured) {
+                        HorizontalDivider()
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                verticalArrangement = Arrangement.spacedBy(2.dp),
+                            ) {
+                                Text(
+                                    text = AppText.t("super_mode_protection_toggle_label"),
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                )
+                                Text(
+                                    text = AppText.t("super_mode_protection_toggle_summary"),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            Switch(
+                                checked = status.isEnabled,
+                                onCheckedChange = onSetEnabled,
+                            )
+                        }
+                    }
                     SuperModeStatusRow(
                         label = AppText.t("super_mode_current_time_label"),
                         value = currentTimeLabel,
@@ -192,7 +222,14 @@ fun SuperModeSettingsSheet(
                     Text(AppText.t("super_mode_configure_action"))
                 }
             } else {
-                if (status.isActive) {
+                if (!status.isEnabled) {
+                    Button(
+                        onClick = { onSetEnabled(true) },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(AppText.t("super_mode_enable_action"))
+                    }
+                } else if (status.isActive) {
                     Button(
                         onClick = onExit,
                         modifier = Modifier.fillMaxWidth(),
@@ -683,6 +720,7 @@ private fun TimeInputRow(
 fun describeSuperModeStatus(status: SuperModeStatus): String =
     when {
         !status.isConfigured -> AppText.t("super_mode_not_configured")
+        !status.isEnabled -> AppText.t("super_mode_disabled_status")
         status.isActive -> AppText.t("super_mode_active_status", formatDurationMinutes(status.remainingMillis))
         status.isAvailableNow -> AppText.t("super_mode_ready_status")
         else -> AppText.t("super_mode_locked_until_status")

@@ -40,6 +40,7 @@ data class SuperModeStoredState(
 
 data class SuperModeStatus(
     val isConfigured: Boolean,
+    val isEnabled: Boolean,
     val isActive: Boolean,
     val isAvailableNow: Boolean,
     val windowLabel: String,

@@ -27,7 +27,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
@@ -37,6 +36,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.History
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Science
@@ -90,6 +90,7 @@ import com.rrrrz.tinyvow.data.billing.SubscriptionOffer
 import com.rrrrz.tinyvow.data.pro.ProFeatureGate
 import com.rrrrz.tinyvow.data.supermode.SuperModeStatus
 import com.rrrrz.tinyvow.i18n.AppLanguage
+import com.rrrrz.tinyvow.ui.theme.DefaultThemeSeed
 import com.rrrrz.tinyvow.ui.theme.LocalThemeColors
 import com.rrrrz.tinyvow.ui.theme.ThemePresets
 import com.rrrrz.tinyvow.ui.theme.ThemeSeed
@@ -111,6 +112,8 @@ fun MeScreen(
     isGoogleSignInConfigured: Boolean,
     isPlayBillingEnabled: Boolean,
     isLocalActivationEnabled: Boolean,
+    appVersionName: String,
+    appVersionCode: Int,
     proEntitlement: ProEntitlementState,
     subscriptionOffers: List<SubscriptionOffer>,
     totalSavedMinutes: Long,
@@ -204,13 +207,13 @@ fun MeScreen(
             isGoogleSignInEnabled -> null
             else -> AppText.t("me_china_local_mode_subtitle")
         }
-    val badgeText =
-        when {
-            isLocalActivationEnabled -> AppText.t("me_local_account_badge")
-            userSession != null -> AppText.t("me_google_account_badge")
-            else -> null
+    val channelName =
+        if (isLocalActivationEnabled) {
+            AppText.t("me_release_channel_china")
+        } else {
+            AppText.t("me_release_channel_google_play")
         }
-
+    val versionSummary = AppText.t("me_version_summary", appVersionName, appVersionCode, channelName)
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -250,13 +253,6 @@ fun MeScreen(
                         size = 72.dp,
                     )
                     Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        if (badgeText != null) {
-                            ProfileBadge(
-                                text = badgeText,
-                                backgroundColor = themeColors.onBase.copy(alpha = 0.14f),
-                                contentColor = themeColors.onBase,
-                            )
-                        }
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -453,6 +449,12 @@ fun MeScreen(
                             color = themeColors.base,
                         )
                     }
+                    SettingsDivider()
+                    MeInfoItem(
+                        icon = Icons.Default.Info,
+                        title = AppText.t("me_app_version"),
+                        subtitle = versionSummary,
+                    )
                 }
             }
         }
@@ -591,30 +593,6 @@ private fun ProfileAvatar(
                 error = painterResource(R.mipmap.ic_launcher_foreground),
             )
         }
-    }
-}
-
-@Composable
-private fun ProfileBadge(
-    text: String,
-    backgroundColor: Color,
-    contentColor: Color,
-    border: BorderStroke? = null,
-    fontWeight: FontWeight = FontWeight.Normal,
-    cornerRadius: androidx.compose.ui.unit.Dp = 999.dp,
-) {
-    Surface(
-        shape = RoundedCornerShape(cornerRadius),
-        color = backgroundColor,
-        border = border,
-    ) {
-        Text(
-            text = text,
-            modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
-            style = MaterialTheme.typography.labelMedium,
-            color = contentColor,
-            fontWeight = fontWeight,
-        )
     }
 }
 
@@ -976,9 +954,9 @@ private fun ThemeManager(
             AddThemeCard {
                 editingTheme = createCustomTheme(
                     name = AppText.t("settings_custom_theme"),
-                    controlColor = ThemePresets.first().controlColor,
-                    encourageColor = ThemePresets.first().encourageColor,
-                    baseColor = ThemePresets.first().baseColor,
+                    controlColor = DefaultThemeSeed.controlColor,
+                    encourageColor = DefaultThemeSeed.encourageColor,
+                    baseColor = DefaultThemeSeed.baseColor,
                 )
             }
         }
@@ -1629,6 +1607,32 @@ fun MeMenuSection(title: String, content: @Composable ColumnScope.() -> Unit) {
             color = MaterialTheme.colorScheme.surface,
         ) {
             Column(content = content)
+        }
+    }
+}
+
+@Composable
+private fun MeInfoItem(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    color: Color = MaterialTheme.colorScheme.onSurfaceVariant,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(16.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(icon, contentDescription = null, modifier = Modifier.size(24.dp), tint = color)
+        Spacer(Modifier.width(16.dp))
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+            Text(title, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface)
+            Text(
+                text = subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
     }
 }

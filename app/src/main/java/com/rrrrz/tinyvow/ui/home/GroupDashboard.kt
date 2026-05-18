@@ -1073,29 +1073,32 @@ private fun GroupEditDialog(
                     horizontalArrangement = Arrangement.spacedBy(10.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    val periodFieldWeight = if (forcedType == GroupType.ENCOURAGE) 0.9f else 1f
+                    val targetFieldWeight = if (forcedType == GroupType.ENCOURAGE) 0.85f else 1f
+                    val pointsFieldWeight = 1.25f
                     CompactPeriodSelector(
                         period = selectedPeriod,
                         groupType = forcedType,
                         onPeriodChange = { selectedPeriod = it },
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.weight(periodFieldWeight)
                     )
                     UnifiedInputField(
                         value = limitText,
                         onValueChange = { limitText = it.filter(Char::isDigit).take(4) },
                         placeholder = "0",
                         suffix = AppText.t("group_minutes"),
-                        modifier = Modifier.weight(1f),
+                        modifier = Modifier.weight(targetFieldWeight),
                         keyboardType = KeyboardType.Number,
                         textAlign = TextAlign.End
                     )
-                        if (forcedType == GroupType.ENCOURAGE) {
+                    if (forcedType == GroupType.ENCOURAGE) {
                         UnifiedInputField(
                             value = pointRateText,
                             onValueChange = { pointRateText = sanitizeDecimalInput(it) },
                             placeholder = "0",
                             prefix = AppText.t("group_minutes_2"),
                             suffix = AppText.t("group_pts"),
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier.weight(pointsFieldWeight),
                             keyboardType = KeyboardType.Decimal,
                             textAlign = TextAlign.End
                         )

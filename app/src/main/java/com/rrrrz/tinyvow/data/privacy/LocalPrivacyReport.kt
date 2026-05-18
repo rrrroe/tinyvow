@@ -22,7 +22,7 @@ object LocalPrivacyReportFormatter {
             appendLine("    \"sensitiveDataTypes\": [")
             appendLine("      \"installed app package names and labels selected by the user\",")
             appendLine("      \"usage duration, open counts, session counts, night usage, and block events\",")
-            appendLine("      \"local points, rewards, redemption history, achievements, and theme preferences\"")
+            appendLine("      \"local points, rewards, reward inventory, active reward effects, achievements, and theme preferences\"")
             appendLine("    ]")
             appendLine("  },")
             appendLine("  \"tables\": [")

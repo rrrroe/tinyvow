@@ -19,11 +19,11 @@
 - `ENCOURAGE` 分组：按使用时长累计积分，并支持目标达成奖励。
 - 使用情况访问权限：读取应用用量和使用周期统计。
 - 无障碍服务：监听前台窗口变化，显示全屏阻断 overlay，并承担一部分积分结算。
-- 奖励/兑换/成就：Room 持久化，积分通过 ledger 记录来源。
+- 奖励/库存/使用/成就：Room 持久化，积分通过 ledger 记录来源。
 - 统计页：基于每日归档和当前 UsageStats 展示日报、趋势、热力图、分享图等。
 - 外观主题：预设主题 + 自定义三色主题，DataStore 保存。
 - 多语言：支持系统语言、简体中文、英文。
-- 订阅：Play Billing 本地接入，Google Play 配置不完整时要有可理解的错误文案。
+- 订阅/权益：Google Play 版走 Play Billing；国内版走本地激活码。Google Play 配置不完整时要有可理解的错误文案。
 
 ## 业务逻辑速览
 
@@ -65,8 +65,13 @@
 - `PointsRepository` 负责常规积分入账，包括使用时长积分、目标奖励、手动调整等。
 - `AppLimitAccessibilityService` 在前台 App 切换和定时 ticker 中结算 `ENCOURAGE` 分组积分。
 - 鼓励组目标奖励通过 `lastBonusAt` 控制每天最多发放一次。
-- 奖励与兑换逻辑在 `AppLimitRepository`。兑换时先检查奖励有效性、库存、积分余额和目标分组。
-- `TIME_PACK` 只能兑换给 `CONTROL` 分组，兑换成功后插入 `BonusTimeEntity`，同时写兑换历史和积分 ledger。
+- 奖励与兑换逻辑在 `AppLimitRepository`。购买时先检查奖励有效性、每日限制、库存、积分余额；购买成功写兑换历史、积分 ledger，并进入 `RewardInventoryEntity`。
+- 当前内置奖励类型是 `TIME_ADD`、`PERIOD_PASS`、`EMERGENCY_UNLOCK`、`STREAK_SHIELD`、`DOUBLE_POINTS_DAY`；`CUSTOM` 只用于用户自定义兑换。
+- `TIME_ADD`、`PERIOD_PASS`、`DOUBLE_POINTS_DAY` 从库存页使用并写 `ActiveRewardEffectEntity`；`TIME_ADD` / `PERIOD_PASS` 只能用于 `CONTROL` 分组，双倍积分用于 `ENCOURAGE` 分组。
+- `EMERGENCY_UNLOCK` 只能先购买进库存，再在阻断 overlay 消耗；消耗后创建短时 `ActiveRewardEffectEntity`，避免直接绕开积分/历史记录。
+- `STREAK_SHIELD` 用于归档后待处理的断连胜项，待处理记录在 `StreakShieldPendingEntity`，处理结果和奖励使用记录要保留历史。
+- 旧 `BonusTimeEntity` / `bonus_times` 仍用于兼容加时包和历史数据；新增效果优先走 `active_reward_effects`。
+- 自定义奖励支持预设图标、导入文件、单 emoji；导入文件由 `RewardIconStorage` 管理，替换或删除时要清理不再引用的文件。
 - 内置奖励通过 `builtinKey` 做本地化，数据库旧标题只作兜底；自定义奖励标题和描述是用户数据，不自动翻译。
 
 ### 成就体系
@@ -95,8 +100,10 @@
 
 - `app/src/main/java/com/rrrrz/tinyvow/MainActivity.kt`：应用入口、主题、语言 context 注入。
 - `app/src/main/java/com/rrrrz/tinyvow/TinyVowApplication.kt`：Application 初始化。
-- `data/db`：Room entity、dao、migration，当前数据库版本是 `18`，schema 导出到 `app/schemas`。
+- `data/db`：Room entity、dao、migration，当前数据库版本是 `19`，schema 导出到 `app/schemas`。
 - `data/repository`：分组、奖励、积分、每日归档等主要业务仓库。
+- `data/activation`：国内版本地激活码、到期解析、时间回拨检测和激活 DataStore。
+- `data/billing`：Google Play Billing、Noop 仓库和统一 `ProEntitlementState`。
 - `domain/limit`：限额评估策略，尤其是 `GroupLimitEnforcer`。
 - `service/block`：无障碍软阻断服务和 overlay。
 - `data/usage`：UsageStats 权限与用量读取。
@@ -145,7 +152,7 @@
 
 ## Room 和数据迁移
 
-- 数据库定义在 `AppDatabase`，当前 `version = 18`，`exportSchema = true`。
+- 数据库定义在 `AppDatabase`，当前 `version = 19`，`exportSchema = true`。
 - 改 entity/dao/schema 时必须：
   - 增加数据库版本号。
   - 添加从上一版本到新版本的 `Migration`。
@@ -154,6 +161,7 @@
   - 尽量保留旧数据，尤其是用户分组、积分、兑换历史、归档、主题相关字段。
 - 软删除语义已经用于分组和分组-App 关系，不要改成物理删除，除非明确处理所有历史引用。
 - `PointLedgerEntity` 用于解释积分变化，新增积分来源时同步考虑 ledger entry type、message key、参数 JSON 和本地化文案。
+- 奖励库存、主动使用效果、连胜保护待处理、奖励使用历史分别在 `reward_inventory`、`active_reward_effects`、`streak_shield_pending`、`reward_use_history`。新增表或字段时同步隐私导出清单和迁移测试。
 - 每日归档是统计页稳定数据源；改归档字段时同步更新 DAO、聚合逻辑、统计 UI 和测试。
 - 实时阻断和统计达标是两套语义：阻断页应在 `CONTROL` 分组一超过有效限额就弹出；统计/归档里允许 5 分钟裕度，超过 5 分钟才记为超额或未完成。
 - 加时包要并入有效限额；按日分组到当天结束，按周分组覆盖兑换日起 7 天窗口，按月分组到当月结束。
@@ -192,8 +200,10 @@
 - Play Console 必须创建并激活 `tinyvow_pro` 订阅和至少一个 base plan；本地代码不能替代商品、价格、国家地区、测试轨道和 license tester 配置。
 - 本地调试构建不一定能完成真实购买，不要把它当成代码必然错误。
 - `LocalDataManager.exportPrivacyReport()` 导出本地表级摘要到缓存分享目录。
+- 隐私导出表清单要覆盖当前 Room 本地数据，包括奖励库存、主动效果、连胜保护待处理和奖励使用历史；新增本地表时同步 `LocalDataManager.localDataTables`。
+- 国内版账号是 `LocalAuthRepository.ensureLocalSession()` 生成的本地用户 ID；`LocalActivationSubscriptionRepository` 将激活码绑定到该 ID，并用 `activation_preferences` 记录激活状态、已用 codeId 和最后一次墙钟时间。
 - 账号删除、隐私说明相关改动要同步检查 `docs/account-delete.html`、`docs/privacy.html` 和应用内支持页文案。
-- 导出/清理本地数据时必须覆盖 Room 数据、DataStore 偏好和用户能感知的本地状态；不要误删应用安装外部数据。
+- 导出/清理本地数据时必须覆盖 Room 数据、`managed_app_preferences`、国内 `auth_preferences` / `activation_preferences`、奖励导入图标等用户能感知的本地状态；不要误删应用安装外部数据。
 
 ## 测试和检查
 
@@ -279,10 +289,12 @@ Get-Content -Raw -Encoding UTF8 AGENTS.md
 - 项目拆分为 `googlePlay` 和 `china` 两个 product flavor。
 - Google Play 版使用 `com.rrrrz.tinyvow`，只上传 `:app:bundleGooglePlayRelease` 到 Play Console。
 - 国内版使用 `com.rrrrz.tinyvow.cn`，用于国内测试和后续激活码能力，可与 Google Play 版同时安装，但本地数据不互通。
+- 国内版启动时会确保存在本地账号，并在“我的 > Tiny Vow Pro”显示用户 ID 复制与激活码输入入口。
 - 日常 debug 默认使用国内版：优先运行 `:app:assembleChinaDebug` 或 `:app:installChinaDebug`。
 - 为方便记忆，也可以运行 `:app:assembleDefaultDebug` 或 `:app:installDefaultDebug`，这两个 alias 当前指向国内版。
 - 不要把国内激活码、国内支付或外部购买入口显示在 `googlePlay` flavor 中。
 - 不要在 `china` flavor 中触发 Google 登录、Play Billing 购买、恢复购买或管理订阅流程。
+- 国内版 `SubscriptionRepository` 应使用 `LocalActivationSubscriptionRepository`；Google Play 版使用 `PlayBillingSubscriptionRepository`；其他禁用渠道才用 `NoopSubscriptionRepository`。
 - `:app:assembleDebug` 会构建多个 debug flavor，速度更慢，不作为日常默认命令。
 - 国内版本地 Pro 激活使用 `tools/activation/ActivationCodeTool.java` 生成激活码；私钥文件 `tools/activation/private_key.pkcs8` 只留在本机，不能提交。
 - 激活码绑定国内版本地 `userId`，支持自定义天数；无后端时只能防普通伪造和简单时间回拨，不能替代服务器时间。

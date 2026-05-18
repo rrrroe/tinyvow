@@ -569,6 +569,11 @@ fun HomeRoute(
             showSuperModeSetupDialog = true
             return
         }
+        if (!superModeStatus.isEnabled) {
+            clearPendingSuperModeRequest()
+            onAllowed?.invoke()
+            return
+        }
         if (superModeStatus.isActive) {
             onAllowed?.invoke()
             return
@@ -591,6 +596,11 @@ fun HomeRoute(
             clearPendingSuperModeRequest()
             setupRequiredActionLabel = guardedActionLabel(action)
             showSuperModeSetupDialog = true
+            return
+        }
+        if (!superModeStatus.isEnabled) {
+            clearPendingSuperModeRequest()
+            onAllowed()
             return
         }
         if (superModeStatus.isActive) {
@@ -663,7 +673,7 @@ fun HomeRoute(
         appLimitRepository.clearExpiredBonusTime(System.currentTimeMillis())
         dailyArchiveRepository.ensureArchivesUpToYesterday()
         
-        // 姣忔棩鎬荤粨閫昏緫
+        // Daily summary logic.
         val today = LocalDate.now().toString()
         val lastShownFlow = preferences.lastSummaryShownDate
         val lastShown = lastShownFlow.first()
@@ -710,7 +720,7 @@ fun HomeRoute(
         }
     }
 
-    // 浠呭湪搴旂敤棣栨鍚姩鏃舵鏌ヤ竴娆℃垚灏憋紝閬垮厤姣忔绉垎鍙樺寲閮借Е鍙戦珮浠ｄ环 DB 鎵弿
+    // Check achievements once at startup to avoid expensive DB scans on every point update.
     LaunchedEffect(Unit) {
         appLimitRepository.syncBuiltinRewardsV2()
         appLimitRepository.syncAchievementDefinitions()
@@ -993,6 +1003,8 @@ fun HomeRoute(
                         isGoogleSignInConfigured = authRepository.isGoogleSignInConfigured,
                         isPlayBillingEnabled = BuildConfig.ENABLE_PLAY_BILLING,
                         isLocalActivationEnabled = BuildConfig.ENABLE_LOCAL_ACTIVATION,
+                        appVersionName = BuildConfig.VERSION_NAME,
+                        appVersionCode = BuildConfig.VERSION_CODE,
                         proEntitlement = proEntitlement,
                         subscriptionOffers = subscriptionOffers,
                         totalSavedMinutes = meTotalSavedMinutes,
@@ -1343,6 +1355,18 @@ fun HomeRoute(
                 isEditingSuperModeCredentials = false
                 showSuperModeCredentialDialog = true
             },
+            onSetEnabled = { enabled ->
+                coroutineScope.launch {
+                    preferences.setSuperModeEnabled(enabled)
+                    snackbarHostState.showSnackbar(
+                        if (enabled) {
+                            AppText.t("super_mode_enabled_success")
+                        } else {
+                            AppText.t("super_mode_disabled_toggle_success")
+                        }
+                    )
+                }
+            },
             onEnter = {
                 requestSuperModeSession(AppText.t("super_mode_enter_for_settings"))
             },
@@ -1600,7 +1624,7 @@ fun HomeRoute(
         )
     }
 
-        // 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€ 鎴愬氨瑙ｉ攣閫氱煡妯箙 鈹€鈹€鈹€鈹€鈹€鈹€鈹€鈹€
+        // Achievement unlock banner.
         AnimatedVisibility(
             visible = newlyUnlockedAchievement != null,
             enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
@@ -1931,7 +1955,7 @@ fun HomeScreen(
             archives
         } ?: emptyList()
     
-    // 瀹氭椂鍒锋柊鍚勫垎缁勭敤閲忥細鎵归噺鏌ヨ涓€娆?UsageStats锛岃繃婊ゅ垎缁勬眹鎬汇€傝繖鏍峰彲灏?N 娆?IPC 闄嶄负 1 娆?
+    // Periodically refresh group usage by querying UsageStats once and aggregating packages in memory.
     LaunchedEffect(groupsWithApps, usageAccessStatus) {
         if (usageAccessStatus != UsageAccessStatus.GRANTED) {
             usageMap = emptyMap()
@@ -3402,7 +3426,7 @@ private fun HomeScreenPreviewDenied() {
             userPoints = 120.5,
             todayPoints = 10.0,
             isLoadingApps = false,
-            superModeStatus = SuperModeStatus(false, false, false, "06:00 - 10:00", 360, 600, null, 0L),
+            superModeStatus = SuperModeStatus(false, false, false, false, "06:00 - 10:00", 360, 600, null, 0L),
             notificationPermissionGranted = false,
             isIgnoringBattery = false,
             isAutoStartDismissed = false,
@@ -3443,7 +3467,7 @@ private fun HomeScreenPreviewGranted() {
             userPoints = 450.0,
             todayPoints = 25.0,
             isLoadingApps = false,
-            superModeStatus = SuperModeStatus(true, true, true, "06:00 - 10:00", 360, 600, System.currentTimeMillis() + 300_000L, 300_000L),
+            superModeStatus = SuperModeStatus(true, true, true, true, "06:00 - 10:00", 360, 600, System.currentTimeMillis() + 300_000L, 300_000L),
             notificationPermissionGranted = true,
             isIgnoringBattery = true,
             isAutoStartDismissed = false,

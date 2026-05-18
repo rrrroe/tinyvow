@@ -154,16 +154,14 @@ object SuperModePolicy {
             } else {
                 DEFAULT_END_MINUTES
             }
-        val isConfigured =
-            storedState.debugBypassActive ||
-                (
-                    storedState.enabled &&
-                        !storedState.passwordHash.isNullOrBlank() &&
-                        !storedState.passwordSalt.isNullOrBlank() &&
-                        !storedState.recoveryQuestion.isNullOrBlank() &&
-                        !storedState.recoveryAnswerHash.isNullOrBlank() &&
-                        !storedState.recoveryAnswerSalt.isNullOrBlank()
-                )
+        val hasCredentials =
+            !storedState.passwordHash.isNullOrBlank() &&
+                !storedState.passwordSalt.isNullOrBlank() &&
+                !storedState.recoveryQuestion.isNullOrBlank() &&
+                !storedState.recoveryAnswerHash.isNullOrBlank() &&
+                !storedState.recoveryAnswerSalt.isNullOrBlank()
+        val isConfigured = storedState.debugBypassActive || hasCredentials
+        val isEnabled = storedState.debugBypassActive || (isConfigured && storedState.enabled)
         val isAvailableNow =
             if (storedState.debugBypassActive) {
                 true
@@ -175,10 +173,11 @@ object SuperModePolicy {
                 ?.takeIf { storedState.isActive }
                 ?.plus(IDLE_TIMEOUT_MILLIS)
         val isSessionValid = expiresAt?.let { it > nowMillis } ?: false
-        val isActive = isConfigured && storedState.isActive && isAvailableNow && isSessionValid
-        val remainingMillis = if (isActive && expiresAt != null) maxOf(0L, expiresAt - nowMillis) else 0L
+        val isActive = isEnabled && storedState.isActive && isAvailableNow && isSessionValid
+        val remainingMillis = if (isActive) maxOf(0L, expiresAt!! - nowMillis) else 0L
         return SuperModeStatus(
             isConfigured = isConfigured,
+            isEnabled = isEnabled,
             isActive = isActive,
             isAvailableNow = isAvailableNow,
             windowLabel = formatWindowLabel(windowStartMinutes, windowEndMinutes),
