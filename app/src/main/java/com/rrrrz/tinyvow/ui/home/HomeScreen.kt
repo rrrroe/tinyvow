@@ -18,6 +18,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.drawscope.Stroke
@@ -2382,6 +2383,8 @@ private fun HomeOverviewClockWatermark(
     modifier: Modifier = Modifier,
 ) {
     val themeColors = LocalThemeColors.current
+    val surfaceColor = MaterialTheme.colorScheme.surface
+    val outlineColor = MaterialTheme.colorScheme.outlineVariant
     val time by produceState(initialValue = LocalTime.now()) {
         while (true) {
             val current = LocalTime.now()
@@ -2392,46 +2395,80 @@ private fun HomeOverviewClockWatermark(
 
     Canvas(modifier = modifier) {
         val center = Offset(size.width / 2f, size.height / 2f)
-        val radius = min(size.width, size.height) * 0.42f
-        val clockGradient =
+        val radius = min(size.width, size.height) * 0.36f
+        val outerRadius = radius * 1.10f
+        val ringGradient =
             Brush.horizontalGradient(
                 colors =
                     listOf(
-                        themeColors.control.copy(alpha = 0.26f),
-                        themeColors.base.copy(alpha = 0.16f),
-                        themeColors.encourage.copy(alpha = 0.26f),
+                        themeColors.control.copy(alpha = 0.58f),
+                        themeColors.base.copy(alpha = 0.22f),
+                        themeColors.encourage.copy(alpha = 0.58f),
                     ),
-                startX = center.x - radius,
-                endX = center.x + radius,
+                startX = center.x - outerRadius,
+                endX = center.x + outerRadius,
             )
 
         drawCircle(
-            brush = clockGradient,
+            brush =
+                Brush.radialGradient(
+                    colors =
+                        listOf(
+                            surfaceColor.copy(alpha = 0.18f),
+                            themeColors.baseContainer.copy(alpha = 0.06f),
+                            Color.Transparent,
+                        ),
+                    center = center,
+                    radius = outerRadius * 1.12f,
+                ),
+            radius = outerRadius * 1.12f,
+            center = center,
+        )
+        drawCircle(
+            brush = ringGradient,
             radius = radius,
             center = center,
-            style = Stroke(width = 1.6.dp.toPx()),
+            style = Stroke(width = 3.2.dp.toPx(), cap = StrokeCap.Round),
+        )
+        drawCircle(
+            color = surfaceColor.copy(alpha = 0.34f),
+            radius = radius * 0.90f,
+            center = center,
+            style = Stroke(width = 1.dp.toPx()),
         )
 
         val minuteAngle = (time.minute / 60.0) * 2.0 * PI - PI / 2.0
         val hourAngle = (((time.hour % 12) + time.minute / 60.0) / 12.0) * 2.0 * PI - PI / 2.0
-        val handColor = themeColors.base.copy(alpha = 0.36f)
+        val handColor = lerp(themeColors.base, themeColors.encourage, 0.30f)
         drawLine(
-            color = handColor,
+            color = handColor.copy(alpha = 0.46f),
             start = center,
             end = Offset(
-                x = center.x + cos(hourAngle).toFloat() * radius * 0.42f,
-                y = center.y + sin(hourAngle).toFloat() * radius * 0.42f,
+                x = center.x + cos(hourAngle).toFloat() * radius * 0.48f,
+                y = center.y + sin(hourAngle).toFloat() * radius * 0.48f,
             ),
-            strokeWidth = 2.4.dp.toPx(),
+            strokeWidth = 5.dp.toPx(),
+            cap = StrokeCap.Round,
         )
         drawLine(
-            color = handColor,
+            color = handColor.copy(alpha = 0.38f),
             start = center,
             end = Offset(
-                x = center.x + cos(minuteAngle).toFloat() * radius * 0.60f,
-                y = center.y + sin(minuteAngle).toFloat() * radius * 0.60f,
+                x = center.x + cos(minuteAngle).toFloat() * radius * 0.68f,
+                y = center.y + sin(minuteAngle).toFloat() * radius * 0.68f,
             ),
-            strokeWidth = 1.5.dp.toPx(),
+            strokeWidth = 3.4.dp.toPx(),
+            cap = StrokeCap.Round,
+        )
+        drawCircle(
+            color = surfaceColor.copy(alpha = 0.56f),
+            radius = 5.8.dp.toPx(),
+            center = center,
+        )
+        drawCircle(
+            color = outlineColor.copy(alpha = 0.34f),
+            radius = 3.2.dp.toPx(),
+            center = center,
         )
     }
 }

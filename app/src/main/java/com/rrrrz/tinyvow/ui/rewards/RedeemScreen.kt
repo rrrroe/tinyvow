@@ -723,19 +723,13 @@ private fun StoreRewardItemCard(
                     contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
                 ) {
                     Text(
-                        text = AppText.t("redeem_store_purchase", reward.pointCost),
+                        text = "${reward.pointCost} PT",
                         maxLines = 1,
                         textAlign = TextAlign.Center,
                     )
                 }
             }
         }
-
-        Text(
-            text = stockSummary(reward.stock, item.ownedQuantity, reward.builtinKey != null, item.purchasedTodayCount),
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
 
         if (needsControlGroups) {
             Text(
@@ -968,25 +962,6 @@ private fun useRuleSummary(
         RewardType.DOUBLE_POINTS_DAY -> AppText.t("redeem_use_rule_double_points_day")
         else -> AppText.t("redeem_rule_keep_in_inventory")
     }
-
-private fun stockSummary(
-    stock: Int,
-    owned: Int,
-    isBuiltin: Boolean,
-    purchasedTodayCount: Int,
-): String {
-    val stockText =
-        if (stock == -1) {
-            AppText.t("redeem_store_stock_owned_unlimited", owned)
-        } else {
-            AppText.t("redeem_store_stock_owned_value", stock, owned)
-        }
-    return if (isBuiltin) {
-        AppText.t("redeem_store_stock_owned_daily_limit", stockText, purchasedTodayCount)
-    } else {
-        stockText
-    }
-}
 
 private fun periodLabel(period: LimitPeriod): String =
     AppText.t(
