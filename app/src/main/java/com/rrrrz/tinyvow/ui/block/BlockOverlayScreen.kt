@@ -110,7 +110,7 @@ fun BlockOverlayScreen(
                 },
                 style = MaterialTheme.typography.bodyLarge.copy(
                     lineHeight = 26.sp,
-                    letterSpacing = 0.5.sp
+                    letterSpacing = 0.1.sp
                 ),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
@@ -135,7 +135,6 @@ fun BlockOverlayScreen(
                 Text(
                     text = AppText.t("block_back_to_home"),
                     style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
                 )
             }
 

@@ -101,7 +101,7 @@ fun SuperModeHomeActionChip(
                 Text(
                     text = AppText.t("super_mode_title"),
                     style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.Bold,
+                    fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 1,
                 )
@@ -144,7 +144,6 @@ fun SuperModeSettingsSheet(
             Text(
                 text = AppText.t("super_mode_title"),
                 style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
             )
             Text(
                 text = AppText.t("super_mode_sheet_summary"),
@@ -271,7 +270,6 @@ private fun SuperModeStatusRow(
         Text(
             text = value,
             style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.Medium,
             color = MaterialTheme.colorScheme.onSurface,
         )
     }

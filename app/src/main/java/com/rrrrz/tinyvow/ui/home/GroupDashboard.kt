@@ -39,12 +39,10 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
@@ -167,7 +165,7 @@ fun GroupDashboard(
     }
 
     Column(
-        modifier = modifier.verticalScroll(rememberScrollState()),
+        modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
         Row(
@@ -249,7 +247,6 @@ fun GroupDashboard(
             )
         }
 
-        Spacer(modifier = Modifier.height(80.dp))
     }
 
     if (showDialog) {
@@ -339,7 +336,6 @@ private fun SectionCard(
                     Text(
                         text = title,
                         style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.onSurface,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -507,7 +503,7 @@ private fun GroupCard(
                 text = groupData.group.name,
                 modifier = Modifier.weight(1f).padding(start = 8.dp),
                 style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
+                fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurface,
                 textAlign = TextAlign.End,
                 maxLines = 1,
@@ -591,7 +587,7 @@ private fun GroupSortDialog(
                                     text = item.group.name,
                                     modifier = Modifier.weight(1f),
                                     style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = FontWeight.SemiBold,
+                                    fontWeight = FontWeight.Medium,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                                 )
@@ -709,7 +705,7 @@ private fun GroupDetailDialog(
                     modifier = Modifier.weight(1f),
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
-                    fontWeight = FontWeight.Bold,
+                    fontWeight = FontWeight.SemiBold,
                 )
                 IconButton(
                     onClick = {
@@ -753,7 +749,7 @@ private fun GroupDetailDialog(
                                 text = label,
                                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
                                 style = MaterialTheme.typography.labelLarge,
-                                fontWeight = FontWeight.SemiBold,
+                                fontWeight = if (selectedTab == index) FontWeight.Medium else FontWeight.Normal,
                                 color = if (selectedTab == index) {
                                     MaterialTheme.colorScheme.onPrimaryContainer
                                 } else {
@@ -796,7 +792,7 @@ private fun GroupTodayPanel(
             text = if (delta >= 0L) AppText.t("group_remaining_value", formatUsageDuration(delta)) else AppText.t("group_over_by_value", formatUsageDuration(-delta)),
             style = MaterialTheme.typography.bodyMedium,
             color = if (delta >= 0L) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
-            fontWeight = FontWeight.SemiBold,
+            fontWeight = FontWeight.Medium,
         )
     }
 }
@@ -877,7 +873,7 @@ private fun DetailMetricGrid(items: List<Pair<String, String>>) {
                             Text(
                                 value,
                                 style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold,
+                                fontWeight = FontWeight.SemiBold,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
                             )
@@ -1121,7 +1117,7 @@ private fun GroupEditDialog(
                         Text(
                             text = if (showOnlyUsedInSevenDays) AppText.t("group_active_last_7_days") else AppText.t("group_all_apps"),
                             style = MaterialTheme.typography.labelLarge,
-                            fontWeight = FontWeight.Bold,
+                            fontWeight = FontWeight.SemiBold,
                             color = if (showOnlyUsedInSevenDays) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
                         )
@@ -1358,7 +1354,7 @@ private fun AppSelectionItem(
             Text(
                 text = app.appName,
                 style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
+                fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
@@ -1405,7 +1401,6 @@ private fun CompactPeriodSelector(
                 text = label,
                 modifier = Modifier.weight(1f),
                 style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Medium,
                 color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis

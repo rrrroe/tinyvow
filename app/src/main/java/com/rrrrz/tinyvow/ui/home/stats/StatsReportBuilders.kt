@@ -197,6 +197,7 @@ internal suspend fun buildArchivedWindowReportUiState(
     val daySummaries = buildPeriodDaySummaries(periodBounds.startDate, periodBounds.endDate, currentArchives, currentSnapshots)
     val hourBuckets = buildPeriodHourBuckets(currentSnapshots)
     val behaviorInsight = buildArchivedDayBehaviorInsight(currentSnapshots, hourBuckets)
+    val behaviorStructure = buildArchivedDayBehaviorStructure(currentSnapshots, hourBuckets)
     val windowFocusData =
         buildWindowFocusSectionData(
             selectedTab = selectedTab,
@@ -221,7 +222,15 @@ internal suspend fun buildArchivedWindowReportUiState(
             snapshots = currentSnapshots,
             topApps = topApps,
             windowFocus = windowFocusData,
-            behavior = behaviorInsight?.let { BehaviorSectionData(it) },
+            behavior =
+                if (behaviorStructure == null) {
+                    null
+                } else {
+                    BehaviorSectionData(
+                        behaviorInsight = behaviorInsight,
+                        structure = behaviorStructure,
+                    )
+                },
             comparison = comparisonData,
         )
     val selectedWeekIndex = availableWeekStarts.indexOf(selectedWeekStart)
@@ -486,13 +495,14 @@ internal fun buildWeeklyReportData(
         tab = ReportTab.WEEK,
         hero =
             PeriodHeroData(
-                eyebrow = AppText.t("stats_weekly_report"),
-                title = AppText.t("stats_weekly_battle_title"),
+                eyebrow = "",
+                title = AppText.t("stats_total_phone_usage"),
                 rangeLabel = periodWeekLabel(bounds.startDate),
                 primaryValue = formatDuration(totalUsage),
                 message = AppText.t("stats_weekly_battle_message"),
-                comparisonValue = comparison?.comparisons?.firstOrNull()?.yesterdayDelta ?: AppText.t("stats_not_enough_samples"),
-                tertiaryValue = AppText.t("stats_daily_average_value", formatDuration(if (activeDays > 0) totalUsage / activeDays else 0L)),
+                comparisonValue = periodUsageDeltaValue(comparison),
+                averageLabel = AppText.t("stats_daily_average"),
+                tertiaryValue = formatDuration(if (activeDays > 0) totalUsage / activeDays else 0L),
                 tags = listOf(windowFocus.control.primaryValue, windowFocus.encourage.primaryValue, totalNight.takeIf { it > 0L }?.let(::formatDuration) ?: AppText.t("stats_none")),
                 metrics =
                     listOf(
@@ -545,13 +555,14 @@ internal fun buildMonthlyReportData(
         tab = ReportTab.MONTH,
         hero =
             PeriodHeroData(
-                eyebrow = AppText.t("stats_monthly_report"),
-                title = AppText.t("stats_monthly_battle_title"),
+                eyebrow = "",
+                title = AppText.t("stats_total_phone_usage"),
                 rangeLabel = periodRangeLabel(bounds.startDate, bounds.endDate),
                 primaryValue = formatDuration(totalUsage),
                 message = AppText.t("stats_monthly_battle_message"),
-                comparisonValue = comparison?.comparisons?.firstOrNull()?.yesterdayDelta ?: AppText.t("stats_not_enough_samples"),
-                tertiaryValue = AppText.t("stats_daily_average_value", formatDuration(if (activeDays > 0) totalUsage / activeDays else 0L)),
+                comparisonValue = periodUsageDeltaValue(comparison),
+                averageLabel = AppText.t("stats_daily_average"),
+                tertiaryValue = formatDuration(if (activeDays > 0) totalUsage / activeDays else 0L),
                 tags = listOf(AppText.t("stats_value_days_2", activeDays), windowFocus.control.primaryValue, windowFocus.encourage.primaryValue),
                 metrics =
                     listOf(
@@ -640,13 +651,14 @@ internal fun buildYearlyReportData(
         tab = ReportTab.YEAR,
         hero =
             PeriodHeroData(
-                eyebrow = AppText.t("stats_yearly_report"),
-                title = AppText.t("stats_yearly_battle_title"),
+                eyebrow = "",
+                title = AppText.t("stats_total_phone_usage"),
                 rangeLabel = periodRangeLabel(bounds.startDate, bounds.endDate),
                 primaryValue = formatDuration(totalUsage),
                 message = AppText.t("stats_yearly_battle_message"),
-                comparisonValue = comparison?.comparisons?.firstOrNull()?.yesterdayDelta ?: AppText.t("stats_not_enough_samples"),
-                tertiaryValue = AppText.t("stats_monthly_average_value", formatDuration(if (activeMonths > 0) totalUsage / activeMonths else 0L)),
+                comparisonValue = periodUsageDeltaValue(comparison),
+                averageLabel = AppText.t("stats_monthly_average"),
+                tertiaryValue = formatDuration(if (activeMonths > 0) totalUsage / activeMonths else 0L),
                 tags = listOf(formatDuration(totalSaved), formatSignedPointsLocal(archives.sumOf { it.pointsNet }), AppText.t("stats_value_times_12", activeMonths)),
                 metrics =
                     listOf(
@@ -681,6 +693,12 @@ internal fun buildYearlyReportData(
                 quarters = buildQuarterSummaries(monthSummaries, snapshots),
             ),
     )
+}
+
+internal fun periodUsageDeltaValue(comparison: ComparisonSectionData?): String {
+    val totalChart = comparison?.comparisons?.firstOrNull()?.chartData ?: return AppText.t("stats_not_enough_samples")
+    val previousValue = totalChart.previousValue ?: return AppText.t("stats_not_enough_samples")
+    return formatDuration(kotlin.math.abs(totalChart.currentValue - previousValue))
 }
 
 internal fun generateDateSequence(startDate: LocalDate, endDate: LocalDate): List<LocalDate> {
@@ -1502,6 +1520,7 @@ internal suspend fun buildArchivedDayReportUiState(
             dominantPeriod = periodUsage.maxByOrNull { it.deviceMillis }?.label ?: AppText.t("stats_all_day"),
         )
     val behaviorInsight = buildArchivedDayBehaviorInsight(currentSnapshots, timelineBuckets)
+    val behaviorStructure = buildArchivedDayBehaviorStructure(currentSnapshots, timelineBuckets)
     val comparisons =
         buildArchivedDayComparisonMetrics(
             currentArchive = selectedArchive,
@@ -1575,10 +1594,15 @@ internal suspend fun buildArchivedDayReportUiState(
                     SectionState.Ready(TopAppsSectionData(usageTopApps = topApps))
                 },
             behaviorState =
-                if (behaviorInsight == null) {
+                if (behaviorStructure == null) {
                     SectionState.Empty
                 } else {
-                    SectionState.Ready(BehaviorSectionData(behaviorInsight = behaviorInsight))
+                    SectionState.Ready(
+                        BehaviorSectionData(
+                            behaviorInsight = behaviorInsight,
+                            structure = behaviorStructure,
+                        ),
+                    )
                 },
             comparisonState =
                 if (comparisons.isEmpty()) {
@@ -1680,6 +1704,15 @@ internal fun buildArchivedComparisonMetrics(
             todayValue = formatDuration(overview.totalUsageMillis),
             yesterdayDelta = deltaDescription(overview.totalUsageMillis, previousMetrics.deviceUsageMillis, AppText.t("stats_vs_previous_window")),
             averageDelta = AppText.t("stats_daily_average_value", formatDuration(averagePerDayUsage)),
+            chartData =
+                ComparisonChartData(
+                    currentValue = overview.totalUsageMillis,
+                    previousValue = previousMetrics.deviceUsageMillis,
+                    averageValue = averagePerDayUsage,
+                    currentLabel = AppText.t("stats_window_total"),
+                    previousLabel = AppText.t("stats_vs_previous_window"),
+                    averageLabel = AppText.t("stats_daily_average"),
+                ),
         ),
         ComparisonMetric(
             label = AppText.t("stats_launches"),
@@ -1728,13 +1761,13 @@ internal fun buildArchivedDaySummary(
             else -> AppText.t("stats_usage_close_to_previous_archive")
         }
     return DailyReportSummary(
-        title = AppText.t("stats_archived_daily_reports"),
-        subtitle = formatArchiveDate(archive.archiveDate, AppText.t("home_mmm_d_eeee")),
-        capturedAt = AppText.t("stats_archive_date_value", formatArchiveDate(archive.archiveDate, "M/d")),
+        title = AppText.t("stats_total_phone_usage"),
+        subtitle = "",
+        capturedAt = "",
         message = AppText.t("stats_value_was_mainly_concentrated_in_value", message, dominantPeriod),
         primaryValue = formatDuration(overview.totalUsageMillis),
-        secondaryValue = deltaDescription(overview.totalUsageMillis, previousMetrics.deviceUsageMillis, AppText.t("stats_vs_previous_archive")),
-        tertiaryValue = if (averagePerDayUsage > 0L) AppText.t("stats_last_7_archived_day_average", formatDuration(averagePerDayUsage)) else AppText.t("stats_no_earlier_archive_average_yet"),
+        secondaryValue = formatDuration(kotlin.math.abs(overview.totalUsageMillis - previousMetrics.deviceUsageMillis)),
+        tertiaryValue = formatDuration(averagePerDayUsage),
         tags = listOf(AppText.t("stats_net_points_value_3", formatSignedPointsLocal(archive.pointsNet)), AppText.t("stats_value_redemptions_2", archive.redemptionCount), AppText.t("stats_saved_duration_value", formatDuration(archive.savedMillis))),
     )
 }
@@ -1803,6 +1836,81 @@ internal fun buildArchivedDayBehaviorInsight(
             packageName = mostOpened?.packageName,
             appLabel = mostOpened?.label,
         ),
+    )
+}
+
+internal fun buildArchivedDayBehaviorStructure(
+    items: List<ArchivedAppSnapshot>,
+    timelineBuckets: List<DailyTimelineBucket>,
+): DailyBehaviorStructureData? {
+    val totalUsage = items.sumOf { it.usageMillis }
+    if (totalUsage <= 0L) return null
+
+    val totalSessions = items.sumOf { it.sessionCount }
+    val sessionsPerHour = totalSessions.toFloat() / (totalUsage.toFloat() / 3_600_000f).coerceAtLeast(1f)
+    val fragmentationLevel =
+        when {
+            sessionsPerHour < 2f -> AppText.t("stats_behavior_level_low")
+            sessionsPerHour < 5f -> AppText.t("stats_behavior_level_medium")
+            else -> AppText.t("stats_behavior_level_high")
+        }
+
+    val topAppUsage = items.maxOfOrNull { it.usageMillis } ?: 0L
+    val concentrationRatio = (topAppUsage.toFloat() / totalUsage.toFloat()).coerceIn(0f, 1f)
+    val concentrationLevel =
+        when {
+            concentrationRatio < 0.35f -> AppText.t("stats_behavior_concentration_spread")
+            concentrationRatio < 0.6f -> AppText.t("stats_behavior_concentration_balanced")
+            else -> AppText.t("stats_behavior_concentration_focused")
+        }
+
+    val activeHours = timelineBuckets.filter { it.deviceMillis > 0L }.map { it.hour }
+    val activeSpanHours =
+        if (activeHours.isEmpty()) {
+            0
+        } else {
+            activeHours.last() - activeHours.first() + 1
+        }
+    val activeSpanLevel =
+        when {
+            activeSpanHours <= 4 -> AppText.t("stats_behavior_span_compact")
+            activeSpanHours <= 10 -> AppText.t("stats_behavior_span_moderate")
+            else -> AppText.t("stats_behavior_span_long")
+        }
+
+    val nightUsage = items.sumOf { it.nightUsageMillis }
+    val nightShare = (nightUsage.toFloat() / totalUsage.toFloat()).coerceIn(0f, 1f)
+    val nightLevel =
+        when {
+            nightShare < 0.15f -> AppText.t("stats_behavior_night_low")
+            nightShare < 0.35f -> AppText.t("stats_behavior_night_moderate")
+            else -> AppText.t("stats_behavior_night_high")
+        }
+
+    return DailyBehaviorStructureData(
+        metrics =
+            listOf(
+                DailyBehaviorStructureMetric(
+                    label = AppText.t("stats_behavior_fragmentation"),
+                    value = AppText.t("stats_behavior_sessions_per_hour_value", fragmentationLevel, sessionsPerHour),
+                    visualRatio = (sessionsPerHour / 8f).coerceIn(0f, 1f),
+                ),
+                DailyBehaviorStructureMetric(
+                    label = AppText.t("stats_behavior_app_concentration"),
+                    value = AppText.t("stats_behavior_percent_value", concentrationLevel, (concentrationRatio * 100f).roundToInt()),
+                    visualRatio = concentrationRatio,
+                ),
+                DailyBehaviorStructureMetric(
+                    label = AppText.t("stats_behavior_active_span"),
+                    value = AppText.t("stats_behavior_hours_value", activeSpanLevel, activeSpanHours),
+                    visualRatio = (activeSpanHours / 24f).coerceIn(0f, 1f),
+                ),
+                DailyBehaviorStructureMetric(
+                    label = AppText.t("stats_behavior_night_dependency"),
+                    value = AppText.t("stats_behavior_percent_value", nightLevel, (nightShare * 100f).roundToInt()),
+                    visualRatio = nightShare,
+                ),
+            ),
     )
 }
 

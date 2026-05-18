@@ -1,7 +1,8 @@
 package com.rrrrz.tinyvow.ui.home
 
-import com.rrrrz.tinyvow.i18n.AppText
-
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -11,6 +12,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -19,23 +21,30 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ElevatedCard
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -50,8 +59,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import com.rrrrz.tinyvow.data.pro.ProFeatureGate
+import com.rrrrz.tinyvow.i18n.AppText
 import com.rrrrz.tinyvow.ui.theme.LocalThemeColors
 import com.rrrrz.tinyvow.ui.theme.MemberThemePresets
 import com.rrrrz.tinyvow.ui.theme.ThemePresets
@@ -60,7 +77,7 @@ import com.rrrrz.tinyvow.ui.theme.argbToHex
 import com.rrrrz.tinyvow.ui.theme.createCustomTheme
 import com.rrrrz.tinyvow.ui.theme.localizedName
 import com.rrrrz.tinyvow.ui.theme.parseHexColorOrNull
-import com.rrrrz.tinyvow.data.pro.ProFeatureGate
+import kotlin.math.roundToInt
 
 @Composable
 fun ThemeSettingsScreen(
@@ -95,7 +112,7 @@ fun ThemeSettingsScreen(
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = AppText.t("group_back"))
             }
             Column(modifier = Modifier.weight(1f)) {
-                Text(AppText.t("me_appearance_theme"), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Text(AppText.t("me_appearance_theme"), style = MaterialTheme.typography.titleLarge)
                 Text(
                     AppText.t("theme_manage_preset_and_custom_three_color_themes"),
                     style = MaterialTheme.typography.bodySmall,
@@ -137,6 +154,7 @@ fun ThemeSettingsScreen(
                     theme = theme,
                     selected = selectedThemeId == theme.id,
                     isLocked = themeLocked,
+                    showCategory = ProFeatureGate.isMemberTheme(theme.id) || theme.isCustom,
                     onSelect = {
                         if (themeLocked) {
                             onShowProUpsell(lockedSource)
@@ -144,7 +162,8 @@ fun ThemeSettingsScreen(
                             onSelectTheme(theme.id)
                         }
                     },
-                    onEdit = {
+                    onEdit = if (theme.isCustom) {
+                        {
                         when {
                             ProFeatureGate.isMemberTheme(theme.id) && !isProActive -> {
                                 onShowProUpsell(ProUpsellSource.MEMBER_THEME)
@@ -167,7 +186,8 @@ fun ThemeSettingsScreen(
                                 onShowProUpsell(ProUpsellSource.CUSTOM_THEME)
                             }
                         }
-                    },
+                        }
+                    } else null,
                     onCopy = {
                         if (ProFeatureGate.isMemberTheme(theme.id) && !isProActive) {
                             onShowProUpsell(ProUpsellSource.MEMBER_THEME)
@@ -210,8 +230,9 @@ private fun ThemeListItem(
     theme: ThemeSeed,
     selected: Boolean,
     isLocked: Boolean,
+    showCategory: Boolean,
     onSelect: () -> Unit,
-    onEdit: () -> Unit,
+    onEdit: (() -> Unit)?,
     onCopy: () -> Unit,
     onDelete: (() -> Unit)?,
 ) {
@@ -226,50 +247,52 @@ private fun ThemeListItem(
         tonalElevation = if (selected) 1.dp else 0.dp,
     ) {
         Row(
-            modifier = Modifier.padding(14.dp),
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Row(
                     modifier = Modifier
-                        .width(76.dp)
-                        .height(34.dp)
-                        .clip(RoundedCornerShape(10.dp))
+                        .width(68.dp)
+                        .height(28.dp)
+                        .clip(RoundedCornerShape(8.dp))
                 ) {
                     ThemeStrip(Color(theme.controlColor))
                     ThemeStrip(Color(theme.encourageColor))
                     ThemeStrip(Color(theme.baseColor))
                 }
-                Text(
-                    when {
-                        ProFeatureGate.isMemberTheme(theme.id) -> AppText.t("theme_member")
-                        theme.isCustom -> AppText.t("theme_custom")
-                        else -> AppText.t("theme_presets")
-                    },
-                    style = MaterialTheme.typography.labelSmall,
-                    color = if (isLocked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+                if (showCategory) {
+                    Text(
+                        when {
+                            ProFeatureGate.isMemberTheme(theme.id) -> AppText.t("theme_member")
+                            theme.isCustom -> AppText.t("theme_custom")
+                            else -> ""
+                        },
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (isLocked) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
 
-            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(theme.localizedName(), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
-                Text(
-                    if (isLocked) {
-                        AppText.t("theme_member_unlock_hint")
-                    } else {
-                        AppText.t("theme_limit_value_encourage_value_base_value", argbToHex(theme.controlColor), argbToHex(theme.encourageColor), argbToHex(theme.baseColor))
-                    },
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(theme.localizedName(), style = MaterialTheme.typography.titleMedium)
+                if (isLocked) {
+                    Text(
+                        AppText.t("theme_member_unlock_hint"),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
             }
 
             IconButton(onClick = onCopy) {
                 Icon(Icons.Default.ContentCopy, contentDescription = AppText.t("me_copy"))
             }
-            IconButton(onClick = onEdit) {
-                Icon(Icons.Default.Edit, contentDescription = AppText.t("me_edit"))
+            if (onEdit != null) {
+                IconButton(onClick = onEdit) {
+                    Icon(Icons.Default.Edit, contentDescription = AppText.t("me_edit"))
+                }
             }
             if (onDelete != null) {
                 IconButton(onClick = onDelete) {
@@ -279,6 +302,15 @@ private fun ThemeListItem(
         }
     }
 }
+
+private enum class ThemeColorRole {
+    CONTROL,
+    ENCOURAGE,
+    BASE,
+}
+
+private val ThemeFieldHeight = 50.dp
+private val ThemeFieldShape = RoundedCornerShape(16.dp)
 
 @Composable
 private fun ThemeEditorDialog(
@@ -290,59 +322,189 @@ private fun ThemeEditorDialog(
     var control by remember(initialTheme.id) { mutableStateOf(initialTheme.controlColor) }
     var encourage by remember(initialTheme.id) { mutableStateOf(initialTheme.encourageColor) }
     var base by remember(initialTheme.id) { mutableStateOf(initialTheme.baseColor) }
+    var selectedRole by remember(initialTheme.id) { mutableStateOf(ThemeColorRole.CONTROL) }
 
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(AppText.t("me_edit_theme"), fontWeight = FontWeight.Bold) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it },
-                    label = { Text(AppText.t("me_theme_name")) },
-                    singleLine = true,
-                )
-                ColorControl(AppText.t("me_limit_color"), AppText.t("theme_limit_groups_blocking_over_limit_and_risk_states"), control, onColorChange = { control = it })
-                ColorControl(AppText.t("me_encourage_color"), AppText.t("theme_encourage_groups_points_rewards_and_completion_states"), encourage, onColorChange = { encourage = it })
-                ColorControl(AppText.t("me_base_color"), AppText.t("theme_navigation_buttons_cards_and_common_components"), base, onColorChange = { base = it })
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = {
-                    onSave(
-                        initialTheme.copy(
-                            name = name.ifBlank { AppText.t("settings_custom_theme") },
-                            controlColor = control,
-                            encourageColor = encourage,
-                            baseColor = base,
-                            isCustom = true,
-                        )
+    val previewTheme = remember(name, control, encourage, base, initialTheme.id) {
+        initialTheme.copy(
+            name = name.ifBlank { AppText.t("settings_custom_theme") },
+            controlColor = control,
+            encourageColor = encourage,
+            baseColor = base,
+            isCustom = true,
+        )
+    }
+
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(20.dp)
+                .widthIn(max = 520.dp),
+            shape = RoundedCornerShape(28.dp),
+            color = MaterialTheme.colorScheme.surface,
+        ) {
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 18.dp, vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    ThemeInputField(
+                        value = name,
+                        onValueChange = { name = it },
+                        placeholder = AppText.t("me_theme_name"),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                    ThemeColorEditorPanel(
+                        role = selectedRole,
+                        controlColor = control,
+                        encourageColor = encourage,
+                        baseColor = base,
+                        onRoleSelected = { selectedRole = it },
+                        color = when (selectedRole) {
+                            ThemeColorRole.CONTROL -> control
+                            ThemeColorRole.ENCOURAGE -> encourage
+                            ThemeColorRole.BASE -> base
+                        },
+                        onColorChange = {
+                            when (selectedRole) {
+                                ThemeColorRole.CONTROL -> control = it
+                                ThemeColorRole.ENCOURAGE -> encourage = it
+                                ThemeColorRole.BASE -> base = it
+                            }
+                        },
                     )
                 }
-            ) {
-                Text(AppText.t("group_save"))
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 18.dp, end = 18.dp, top = 0.dp, bottom = 12.dp),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    TextButton(onClick = onDismiss) {
+                        Text(AppText.t("group_cancel"))
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Button(
+                        onClick = { onSave(previewTheme) },
+                    ) {
+                        Text(AppText.t("group_save"))
+                    }
+                }
             }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text(AppText.t("group_cancel")) }
-        },
-    )
+        }
+    }
 }
 
 @Composable
-private fun ColorControl(
+private fun ThemeColorRoleButton(
     label: String,
-    description: String,
+    color: Color,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Button(
+        onClick = onClick,
+        modifier = modifier
+            .defaultMinSize(minWidth = 0.dp)
+            .height(40.dp),
+        shape = RoundedCornerShape(16.dp),
+        border = if (selected) BorderStroke(2.dp, MaterialTheme.colorScheme.onSurface.copy(alpha = 0.16f)) else null,
+        colors = ButtonDefaults.buttonColors(
+            containerColor = color,
+            contentColor = Color.White,
+        ),
+        elevation = ButtonDefaults.buttonElevation(defaultElevation = if (selected) 2.dp else 0.dp),
+        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 4.dp, vertical = 0.dp),
+    ) {
+        Text(
+            text = label,
+            maxLines = 1,
+            overflow = TextOverflow.Clip,
+            style = MaterialTheme.typography.labelSmall,
+            color = Color.White,
+            textAlign = TextAlign.Center,
+        )
+    }
+}
+
+@Composable
+private fun ThemeInputField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    placeholder: String,
+    modifier: Modifier = Modifier,
+    keyboardType: KeyboardType = KeyboardType.Text,
+) {
+    ThemeFieldContainer(modifier = modifier) {
+        BasicTextField(
+            value = value,
+            onValueChange = onValueChange,
+            modifier = Modifier.weight(1f),
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
+            textStyle = MaterialTheme.typography.titleSmall.merge(
+                TextStyle(color = MaterialTheme.colorScheme.onSurface)
+            ),
+            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+            decorationBox = { innerTextField ->
+                Box(modifier = Modifier.fillMaxWidth()) {
+                    if (value.isBlank()) {
+                        Text(
+                            text = placeholder,
+                            style = MaterialTheme.typography.titleSmall,
+                            color = MaterialTheme.colorScheme.outline,
+                        )
+                    }
+                    innerTextField()
+                }
+            }
+        )
+    }
+}
+
+@Composable
+private fun ThemeFieldContainer(
+    modifier: Modifier = Modifier,
+    content: @Composable RowScope.() -> Unit,
+) {
+    Surface(
+        modifier = modifier.height(ThemeFieldHeight),
+        shape = ThemeFieldShape,
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            content = content,
+        )
+    }
+}
+
+@Composable
+private fun ThemeColorEditorPanel(
+    role: ThemeColorRole,
+    controlColor: Int,
+    encourageColor: Int,
+    baseColor: Int,
+    onRoleSelected: (ThemeColorRole) -> Unit,
     color: Int,
     onColorChange: (Int) -> Unit,
 ) {
-    var hue by remember { mutableFloatStateOf(0f) }
-    var saturation by remember { mutableFloatStateOf(1f) }
-    var brightness by remember { mutableFloatStateOf(1f) }
-    var hexInput by remember(color) { mutableStateOf(argbToHex(color)) }
+    var hue by remember(role) { mutableFloatStateOf(0f) }
+    var saturation by remember(role) { mutableFloatStateOf(1f) }
+    var brightness by remember(role) { mutableFloatStateOf(1f) }
+    var hexInput by remember(role, color) { mutableStateOf(argbToHex(color)) }
 
-    LaunchedEffect(color) {
+    LaunchedEffect(color, role) {
         val hsv = FloatArray(3)
         android.graphics.Color.colorToHSV(color, hsv)
         hue = hsv[0]
@@ -351,34 +513,179 @@ private fun ColorControl(
         hexInput = argbToHex(color)
     }
 
-    fun emit() {
-        onColorChange(android.graphics.Color.HSVToColor(floatArrayOf(hue, saturation, brightness)))
+    fun emit(nextHue: Float = hue, nextSaturation: Float = saturation, nextBrightness: Float = brightness) {
+        onColorChange(android.graphics.Color.HSVToColor(floatArrayOf(nextHue, nextSaturation, nextBrightness)))
     }
 
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Box(modifier = Modifier.size(28.dp).clip(CircleShape).background(Color(color)))
-            Column(modifier = Modifier.weight(1f)) {
-                Text(label, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.Bold)
-                Text(description, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    ElevatedCard(
+        shape = RoundedCornerShape(22.dp),
+        colors = androidx.compose.material3.CardDefaults.elevatedCardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+        ),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .background(Color(color))
+                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = when (role) {
+                            ThemeColorRole.CONTROL -> AppText.t("me_limit_color")
+                            ThemeColorRole.ENCOURAGE -> AppText.t("me_encourage_color")
+                            ThemeColorRole.BASE -> AppText.t("me_base_color")
+                        },
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    Text(
+                        text = when (role) {
+                            ThemeColorRole.CONTROL -> AppText.t("theme_limit_groups_blocking_over_limit_and_risk_states")
+                            ThemeColorRole.ENCOURAGE -> AppText.t("theme_encourage_groups_points_rewards_and_completion_states")
+                            ThemeColorRole.BASE -> AppText.t("theme_navigation_buttons_cards_and_common_components")
+                        },
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                ThemeColorRoleButton(
+                    label = AppText.t("theme_control_role"),
+                    color = Color(controlColor),
+                    selected = role == ThemeColorRole.CONTROL,
+                    onClick = { onRoleSelected(ThemeColorRole.CONTROL) },
+                    modifier = Modifier.weight(1f),
+                )
+                ThemeColorRoleButton(
+                    label = AppText.t("theme_encourage_role"),
+                    color = Color(encourageColor),
+                    selected = role == ThemeColorRole.ENCOURAGE,
+                    onClick = { onRoleSelected(ThemeColorRole.ENCOURAGE) },
+                    modifier = Modifier.weight(1f),
+                )
+                ThemeColorRoleButton(
+                    label = AppText.t("theme_base_role"),
+                    color = Color(baseColor),
+                    selected = role == ThemeColorRole.BASE,
+                    onClick = { onRoleSelected(ThemeColorRole.BASE) },
+                    modifier = Modifier.weight(1f),
+                )
+            }
+            ThemeColorProgressBar(
+                label = AppText.t("theme_hue_value", hue.roundToInt().toString()),
+                value = hue,
+                valueRange = 0f..360f,
+                activeColor = Color(android.graphics.Color.HSVToColor(floatArrayOf(hue, 0.72f, 0.92f))),
+                inactiveColor = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.42f),
+                onValueChange = { next ->
+                    hue = next
+                    emit(nextHue = next)
+                },
+            )
+            ThemeColorProgressBar(
+                label = AppText.t("theme_saturation_value", (saturation * 100).roundToInt().toString()),
+                value = saturation,
+                valueRange = 0f..1f,
+                activeColor = Color(android.graphics.Color.HSVToColor(floatArrayOf(hue, saturation, brightness))),
+                inactiveColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+                onValueChange = { next ->
+                    saturation = next
+                    emit(nextSaturation = next)
+                },
+            )
+            ThemeColorProgressBar(
+                label = AppText.t("theme_brightness_value", (brightness * 100).roundToInt().toString()),
+                value = brightness,
+                valueRange = 0f..1f,
+                activeColor = Color(android.graphics.Color.HSVToColor(floatArrayOf(hue, saturation, brightness))),
+                inactiveColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f),
+                onValueChange = { next ->
+                    brightness = next
+                    emit(nextBrightness = next)
+                },
+            )
+
+            ThemeInputField(
+                value = hexInput,
+                onValueChange = { value ->
+                    hexInput = value
+                    parseHexColorOrNull(value)?.let(onColorChange)
+                },
+                placeholder = AppText.t("theme_color_code"),
+                modifier = Modifier.fillMaxWidth(),
+                keyboardType = KeyboardType.Ascii,
+            )
         }
-        OutlinedTextField(
-            value = hexInput,
-            onValueChange = { value ->
-                hexInput = value
-                parseHexColorOrNull(value)?.let(onColorChange)
-            },
-            label = { Text(AppText.t("theme_color_code")) },
-            placeholder = { Text("#AABBCC") },
-            singleLine = true,
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ThemeColorProgressBar(
+    label: String,
+    value: Float,
+    valueRange: ClosedFloatingPointRange<Float>,
+    activeColor: Color,
+    inactiveColor: Color,
+    onValueChange: (Float) -> Unit,
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(1.dp),
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        Text(AppText.t("theme_hue_value", hue.toInt()), style = MaterialTheme.typography.labelSmall)
-        Slider(value = hue, onValueChange = { hue = it; emit() }, valueRange = 0f..360f)
-        Text(AppText.t("theme_saturation_value", (saturation * 100).toInt()), style = MaterialTheme.typography.labelSmall)
-        Slider(value = saturation, onValueChange = { saturation = it; emit() }, valueRange = 0.05f..0.80f)
-        Text(AppText.t("theme_brightness_value", (brightness * 100).toInt()), style = MaterialTheme.typography.labelSmall)
-        Slider(value = brightness, onValueChange = { brightness = it; emit() }, valueRange = 0.55f..0.98f)
+        Slider(
+            value = value,
+            onValueChange = onValueChange,
+            valueRange = valueRange,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(18.dp),
+            thumb = {
+                Surface(
+                    modifier = Modifier
+                        .width(10.dp)
+                        .height(14.dp),
+                    shape = RoundedCornerShape(4.dp),
+                    color = MaterialTheme.colorScheme.surface,
+                    border = BorderStroke(1.dp, activeColor),
+                    shadowElevation = 1.dp,
+                ) {}
+            },
+            track = { sliderState ->
+                SliderDefaults.Track(
+                    sliderState = sliderState,
+                    modifier = Modifier.height(5.dp),
+                    drawStopIndicator = null,
+                    thumbTrackGapSize = 0.dp,
+                    colors = SliderDefaults.colors(
+                        activeTrackColor = activeColor,
+                        inactiveTrackColor = inactiveColor,
+                    ),
+                )
+            },
+        )
     }
 }
 

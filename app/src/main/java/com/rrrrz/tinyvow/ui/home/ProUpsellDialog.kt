@@ -10,7 +10,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 
 enum class ProUpsellSource {
@@ -25,7 +24,7 @@ enum class ProUpsellSource {
 @Composable
 fun ProUpsellDialog(
     source: ProUpsellSource,
-    isLocalActivationEnabled: Boolean,
+    onViewBenefits: () -> Unit,
     onDismiss: () -> Unit,
 ) {
     AlertDialog(
@@ -33,7 +32,7 @@ fun ProUpsellDialog(
         title = {
             Text(
                 text = AppText.t("pro_upsell_title"),
-                fontWeight = FontWeight.Bold,
+                style = MaterialTheme.typography.titleLarge,
             )
         },
         text = {
@@ -50,14 +49,8 @@ fun ProUpsellDialog(
             }
         },
         confirmButton = {
-            Button(onClick = onDismiss) {
-                Text(
-                    if (isLocalActivationEnabled) {
-                        AppText.t("pro_upsell_activation_button")
-                    } else {
-                        AppText.t("pro_upsell_subscription_button")
-                    },
-                )
+            Button(onClick = onViewBenefits) {
+                Text(AppText.t("pro_view_benefits"))
             }
         },
         dismissButton = {

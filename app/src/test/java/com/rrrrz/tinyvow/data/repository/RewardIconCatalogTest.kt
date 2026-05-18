@@ -21,7 +21,7 @@ class RewardIconCatalogTest {
             RewardIconCatalog.STREAK_SHIELD_ENCOURAGE_PRESET_KEY,
             RewardIconCatalog.builtinPresetKeyFor("reward_streak_shield_encourage"),
         )
-        assertEquals(RewardIconCatalog.DOUBLE_POINTS_PRESET_KEY, RewardIconCatalog.builtinPresetKeyFor("reward_double_points_day"))
+        assertEquals(null, RewardIconCatalog.builtinPresetKeyFor("reward_double_points_day"))
     }
 
     @Test
@@ -33,7 +33,6 @@ class RewardIconCatalogTest {
         assertFalse(RewardIconCatalog.isValidCustomPresetKey(RewardIconCatalog.EMERGENCY_UNLOCK_PRESET_KEY))
         assertFalse(RewardIconCatalog.isValidCustomPresetKey(RewardIconCatalog.STREAK_SHIELD_CONTROL_PRESET_KEY))
         assertFalse(RewardIconCatalog.isValidCustomPresetKey(RewardIconCatalog.STREAK_SHIELD_ENCOURAGE_PRESET_KEY))
-        assertFalse(RewardIconCatalog.isValidCustomPresetKey(RewardIconCatalog.DOUBLE_POINTS_PRESET_KEY))
         assertTrue(RewardIconCatalog.isValidCustomPresetKey(RewardIconCatalog.customPresetKeys.first()))
     }
 

@@ -273,7 +273,7 @@ private fun HistoryListScreen(
                     Text(
                         text = "\u5386\u53f2\u603b\u89c8",
                         style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
+                        fontWeight = FontWeight.SemiBold,
                     )
                     HistoryMetricRow(label = "\u5f52\u6863\u5929\u6570", value = "${sortedArchives.size} \u5929")
                     HistoryMetricRow(
@@ -384,7 +384,7 @@ private fun HistoryListScreen(
                                 Text(
                                     text = archive.archiveDate,
                                     style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold,
+                                    fontWeight = FontWeight.SemiBold,
                                 )
                                 Text(
                                     text = listCardHeadline(archive, groupFilter),
@@ -519,7 +519,7 @@ private fun HistoryDetailScreen(
                 Text(
                     text = archive.archiveDate,
                     style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
+                    fontWeight = FontWeight.SemiBold,
                 )
                 Text(
                     text = "\u5f53\u5929\u603b\u89c8",
@@ -640,7 +640,7 @@ private fun DetailDateNavigator(
                 Text(
                     text = currentDate,
                     style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
+                    fontWeight = FontWeight.SemiBold,
                 )
                 Text(
                     text = "\u53ea\u5728\u5df2\u6709\u5f52\u6863\u65e5\u671f\u95f4\u8df3\u8f6c",
@@ -719,7 +719,7 @@ private fun GroupArchiveSection(
                 Text(
                     text = title,
                     style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
+                    fontWeight = FontWeight.SemiBold,
                 )
             }
 
@@ -830,7 +830,7 @@ private fun GroupArchiveCard(
             Text(
                 text = item.groupName,
                 style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
+                fontWeight = FontWeight.SemiBold,
             )
             Surface(
                 shape = RoundedCornerShape(999.dp),
@@ -856,7 +856,7 @@ private fun GroupArchiveCard(
                         } else {
                             MaterialTheme.colorScheme.error
                         },
-                    fontWeight = FontWeight.SemiBold,
+                    fontWeight = FontWeight.Medium,
                 )
             }
         }
@@ -900,7 +900,7 @@ private fun GroupArchiveCard(
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.primary,
-                fontWeight = FontWeight.SemiBold,
+                fontWeight = FontWeight.Medium,
             )
         }
 
@@ -936,7 +936,6 @@ private fun GroupArchiveCard(
                     Text(
                         text = "\u7ec4\u5185\u5e94\u7528",
                         style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Text(
@@ -986,7 +985,6 @@ private fun AppComparisonPanel(appItems: List<DailyAppArchiveEntity>) {
             Text(
                 text = "\u7ec4\u5185\u5bf9\u6bd4",
                 style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
             usageLeaders.forEach { appItem ->
@@ -1040,7 +1038,7 @@ private fun AppUsageCompareRow(
                 Text(
                     text = appItem.appLabel,
                     style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = FontWeight.SemiBold,
+                    fontWeight = FontWeight.Medium,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -1100,7 +1098,7 @@ private fun ComparisonBadge(
             Text(
                 text = value,
                 style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.SemiBold,
+                fontWeight = FontWeight.Medium,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -1137,7 +1135,7 @@ private fun AppArchiveRow(appItem: DailyAppArchiveEntity) {
                 Text(
                     text = appItem.appLabel,
                     style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
+                    fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -1184,7 +1182,7 @@ private fun AppArchiveRow(appItem: DailyAppArchiveEntity) {
                 Text(
                     text = "+${formatPoints(appItem.earnedPoints)}",
                     style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.SemiBold,
+                    fontWeight = FontWeight.Medium,
                 )
                 Text(
                     text =
@@ -1247,7 +1245,6 @@ private fun AppArchiveRow(appItem: DailyAppArchiveEntity) {
                     Text(
                         text = "24 \u5c0f\u65f6\u5206\u5e03",
                         style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     AppHourlyDistributionChart(hourlyBuckets = hourlyBuckets)
@@ -1288,7 +1285,7 @@ private fun UngroupedAppArchiveSection(appItems: List<DailyAppArchiveEntity>) {
                 Text(
                     text = "\u672a\u5206\u7ec4\u5e94\u7528",
                     style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
+                    fontWeight = FontWeight.SemiBold,
                 )
             }
             Text(
@@ -1428,11 +1425,11 @@ private fun EmptyHistoryState(
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.primary,
                 )
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
-                )
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
                 Text(
                     text = body,
                     style = MaterialTheme.typography.bodyMedium,
@@ -1459,7 +1456,7 @@ private fun ListEmptyStateCard(
             Text(
                 text = title,
                 style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
+                fontWeight = FontWeight.SemiBold,
             )
             Text(
                 text = body,
@@ -1489,7 +1486,7 @@ private fun HistoryMetricRow(
         Text(
             text = value,
             style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.SemiBold,
+            fontWeight = FontWeight.Medium,
         )
     }
 }
@@ -1517,7 +1514,7 @@ private fun CompactMetricBlock(
             Text(
                 text = value,
                 style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
+                fontWeight = FontWeight.SemiBold,
             )
         }
     }
@@ -1546,7 +1543,7 @@ private fun DashboardMetric(
             Text(
                 text = value,
                 style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
+                fontWeight = FontWeight.SemiBold,
             )
         }
     }
@@ -1563,7 +1560,6 @@ private fun HistoryTagChip(text: String) {
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurface,
-            fontWeight = FontWeight.Medium,
         )
     }
 }
@@ -1594,7 +1590,7 @@ private fun HistoryToggleChip(
                 } else {
                     MaterialTheme.colorScheme.onSurface
                 },
-            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+            fontWeight = if (selected) FontWeight.Medium else FontWeight.Normal,
         )
     }
 }

@@ -131,7 +131,18 @@ internal data class TopAppsSectionData(
 )
 
 internal data class BehaviorSectionData(
-    val behaviorInsight: UsageBehaviorInsight?,
+    val behaviorInsight: UsageBehaviorInsight? = null,
+    val structure: DailyBehaviorStructureData? = null,
+)
+
+internal data class DailyBehaviorStructureData(
+    val metrics: List<DailyBehaviorStructureMetric>,
+)
+
+internal data class DailyBehaviorStructureMetric(
+    val label: String,
+    val value: String,
+    val visualRatio: Float,
 )
 
 internal data class ComparisonSectionData(
@@ -201,6 +212,7 @@ internal data class PeriodHeroData(
     val primaryValue: String,
     val message: String,
     val comparisonValue: String,
+    val averageLabel: String,
     val tertiaryValue: String,
     val tags: List<String>,
     val metrics: List<DailyFocusMetric>,

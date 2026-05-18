@@ -1,7 +1,5 @@
 package com.rrrrz.tinyvow.ui.rewards
 
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
@@ -21,10 +19,7 @@ import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.Inventory2
-import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.LockClock
-import androidx.compose.material.icons.filled.PhotoLibrary
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -35,8 +30,6 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -50,7 +43,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
@@ -74,7 +67,6 @@ import com.rrrrz.tinyvow.data.repository.InventoryRewardItem
 import com.rrrrz.tinyvow.data.repository.PendingStreakShieldItem
 import com.rrrrz.tinyvow.data.repository.RewardIconCatalog
 import com.rrrrz.tinyvow.data.repository.RewardIconSpec
-import com.rrrrz.tinyvow.data.repository.RewardIconStorage
 import com.rrrrz.tinyvow.data.repository.RewardSaveValidationError
 import com.rrrrz.tinyvow.data.repository.RewardStoreItem
 import com.rrrrz.tinyvow.data.repository.parseRewardPayload
@@ -343,7 +335,6 @@ private fun RewardConfigScreen(
                         Text(
                             text = AppText.t("redeem_custom_config_title"),
                             style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
                         )
                         Text(
                             text = AppText.t("redeem_custom_config_hint"),
@@ -578,7 +569,6 @@ private fun InventorySwitchButton(
             Text(
                 text = title,
                 style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.SemiBold,
                 color =
                     if (selected) MaterialTheme.colorScheme.onPrimaryContainer
                     else MaterialTheme.colorScheme.onSurfaceVariant,
@@ -622,7 +612,6 @@ private fun CompactPointsSummaryCard(userPoints: Double) {
                     text = "%.1f PT".format(userPoints),
                     style = MaterialTheme.typography.titleLarge,
                     color = Color.White,
-                    fontWeight = FontWeight.Bold,
                 )
             }
             Text(
@@ -639,7 +628,6 @@ private fun RewardSectionTitle(title: String) {
     Text(
         text = title,
         style = MaterialTheme.typography.titleSmall,
-        fontWeight = FontWeight.Bold,
     )
 }
 
@@ -681,90 +669,92 @@ private fun StoreRewardItemCard(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface),
     ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            RewardIcon(reward = reward, size = 56.dp)
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {
-                RewardIcon(reward = reward, size = 56.dp)
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                Text(
+                    text = reward.localizedTitle(),
+                    style = MaterialTheme.typography.titleSmall,
+                )
+                Text(
+                    text = reward.localizedDescription(),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                )
+            }
+            if (onEdit != null || onArchive != null) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(2.dp),
                 ) {
-                    Text(
-                        text = reward.localizedTitle(),
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold,
-                    )
-                    Text(
-                        text = reward.localizedDescription(),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 2,
-                    )
-                }
-                if (onEdit != null || onArchive != null) {
-                    Row {
-                        onEdit?.let {
-                            IconButton(onClick = it) {
-                                Icon(
-                                    Icons.Default.Edit,
-                                    contentDescription =
-                                        if (reward.builtinKey != null) AppText.t("redeem_edit_builtin_reward_cost")
-                                        else AppText.t("redeem_edit_reward"),
-                                )
-                            }
+                    onEdit?.let {
+                        IconButton(onClick = it) {
+                            Icon(
+                                Icons.Default.Edit,
+                                contentDescription =
+                                    if (reward.builtinKey != null) AppText.t("redeem_edit_builtin_reward_cost")
+                                    else AppText.t("redeem_edit_reward"),
+                            )
                         }
-                        onArchive?.let {
-                            IconButton(onClick = it) {
-                                Icon(
-                                    Icons.Default.DeleteOutline,
-                                    contentDescription = AppText.t("redeem_archive_custom_reward"),
-                                )
-                            }
+                    }
+                    onArchive?.let {
+                        IconButton(onClick = it) {
+                            Icon(
+                                Icons.Default.DeleteOutline,
+                                contentDescription = AppText.t("redeem_archive_custom_reward"),
+                            )
                         }
                     }
                 }
+            } else {
+                Button(
+                    onClick = onPurchase,
+                    enabled = canAfford && inStock && !dailyLimitReached && !needsControlGroups && !needsEncourageGroups,
+                    shape = RoundedCornerShape(14.dp),
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+                ) {
+                    Text(
+                        text = AppText.t("redeem_store_purchase", reward.pointCost),
+                        maxLines = 1,
+                        textAlign = TextAlign.Center,
+                    )
+                }
             }
+        }
 
+        Text(
+            text = stockSummary(reward.stock, item.ownedQuantity, reward.builtinKey != null, item.purchasedTodayCount),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+
+        if (needsControlGroups) {
             Text(
-                text = stockSummary(reward.stock, item.ownedQuantity, reward.builtinKey != null, item.purchasedTodayCount),
+                text = AppText.t("redeem_no_control_group_for_time_pack"),
                 style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = MaterialTheme.colorScheme.error,
             )
-
-            if (needsControlGroups) {
-                Text(
-                    text = AppText.t("redeem_no_control_group_for_time_pack"),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.error,
-                )
-            } else if (needsEncourageGroups) {
-                Text(
-                    text = AppText.t("redeem_no_encourage_group_for_double_points"),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.error,
-                )
-            } else if (dailyLimitReached) {
-                Text(
-                    text = AppText.t("redeem_store_daily_limit_reached"),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.error,
-                )
-            }
-
-            Button(
-                onClick = onPurchase,
-                enabled = canAfford && inStock && !dailyLimitReached && !needsControlGroups && !needsEncourageGroups,
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(14.dp),
-            ) {
-                Text(AppText.t("redeem_store_purchase", reward.pointCost))
-            }
+        } else if (needsEncourageGroups) {
+            Text(
+                text = AppText.t("redeem_no_encourage_group_for_double_points"),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.error,
+            )
+        } else if (dailyLimitReached) {
+            Text(
+                text = AppText.t("redeem_store_daily_limit_reached"),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.error,
+            )
         }
     }
 }
@@ -788,7 +778,7 @@ private fun RewardConfigItemCard(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            RewardIcon(reward = reward, size = 34.dp)
+            RewardIcon(reward = reward, size = 56.dp)
             Column(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(2.dp),
@@ -796,7 +786,6 @@ private fun RewardConfigItemCard(
                 Text(
                     text = reward.localizedTitle(),
                     style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
                 )
                 Text(
                     text = subtitle,
@@ -856,7 +845,6 @@ private fun InventoryRewardCard(
                 Text(
                     text = reward.localizedTitle(),
                     style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
                 )
                 Text(
                     text = reward.localizedDescription(),
@@ -901,7 +889,7 @@ private fun PendingShieldCard(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text(item.title, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+            Text(item.title, style = MaterialTheme.typography.titleSmall)
             Text(
                 text = AppText.t("redeem_pending_archive_date_value", item.pending.archiveDate),
                 style = MaterialTheme.typography.bodySmall,
@@ -939,7 +927,7 @@ private fun TargetGroupRow(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            Text(group.group.name, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.SemiBold)
+            Text(group.group.name, style = MaterialTheme.typography.bodyLarge)
             Text(
                 text =
                     AppText.t(
@@ -1016,63 +1004,31 @@ fun RewardEditDialog(
     onDismiss: () -> Unit,
     onConfirm: (CustomRewardDraft) -> Unit,
 ) {
-    val context = LocalContext.current
-    val rewardIconStorage = remember(context) { RewardIconStorage.fromContext(context) }
     val builtinCostOnly = reward?.builtinKey != null
-    val originalImportedPath = reward?.takeIf { it.iconSource == RewardIconSource.IMPORTED_FILE }?.iconValue
     var title by remember(reward?.id) { mutableStateOf(reward?.title ?: "") }
     var cost by remember(reward?.id) { mutableStateOf(reward?.pointCost?.toString() ?: "100") }
     var stock by remember(reward?.id) { mutableStateOf(reward?.stock?.takeIf { it > 0 }?.toString() ?: "1") }
     var description by remember(reward?.id) { mutableStateOf(reward?.description ?: "") }
     var isInfinite by remember(reward?.id) { mutableStateOf(reward?.stock == -1) }
-    var iconMode by remember(reward?.id) { mutableStateOf(reward?.iconSource ?: RewardIconSource.PRESET) }
-    var presetKey by remember(reward?.id) {
+    var selectedPresetKey by remember(reward?.id) {
         mutableStateOf(reward?.takeIf { it.iconSource == RewardIconSource.PRESET }?.iconValue)
     }
-    var importedPath by remember(reward?.id) { mutableStateOf(originalImportedPath) }
-    var emojiValue by remember(reward?.id) {
-        mutableStateOf(reward?.takeIf { it.iconSource == RewardIconSource.EMOJI }?.iconValue.orEmpty())
-    }
     var showErrors by remember(reward?.id) { mutableStateOf(false) }
-    var importFailed by remember(reward?.id) { mutableStateOf(false) }
-    var iconPickerExpanded by remember(reward?.id) { mutableStateOf(false) }
-
-    val imagePickerLauncher =
-        rememberLauncherForActivityResult(
-            contract = ActivityResultContracts.OpenDocument(),
-        ) { uri ->
-            uri ?: return@rememberLauncherForActivityResult
-            runCatching {
-                rewardIconStorage.importImage(context.contentResolver, uri)
-            }.onSuccess { newPath ->
-                importFailed = false
-                if (!importedPath.isNullOrBlank() && importedPath != originalImportedPath) {
-                    rewardIconStorage.deleteImportedIcon(importedPath)
-                }
-                importedPath = newPath
-                iconMode = RewardIconSource.IMPORTED_FILE
-            }.onFailure {
-                importFailed = true
-            }
-        }
+    var showingIconPicker by remember(reward?.id) { mutableStateOf(false) }
 
     val costValue = cost.toIntOrNull() ?: 0
     val stockValue = if (isInfinite) -1 else stock.toIntOrNull() ?: 0
+    val existingIconSpec =
+        reward?.iconSource?.let { source ->
+            reward.iconValue?.takeIf { it.isNotBlank() }?.let { value ->
+                RewardIconSpec(source = source, value = value)
+            }
+        }
     val selectedIconSpec =
         if (builtinCostOnly) {
             null
         } else {
-            when (iconMode) {
-                RewardIconSource.PRESET -> presetKey?.let { RewardIconSpec(RewardIconSource.PRESET, it) }
-                RewardIconSource.IMPORTED_FILE ->
-                    importedPath?.takeIf { it.isNotBlank() }?.let {
-                        RewardIconSpec(RewardIconSource.IMPORTED_FILE, it)
-                    }
-                RewardIconSource.EMOJI ->
-                    emojiValue.trim().takeIf { it.isNotBlank() }?.let {
-                        RewardIconSpec(RewardIconSource.EMOJI, it)
-                    }
-            }
+            selectedPresetKey?.let { RewardIconSpec(RewardIconSource.PRESET, it) } ?: existingIconSpec
         }
     val validationError =
         if (builtinCostOnly) {
@@ -1088,27 +1044,84 @@ fun RewardEditDialog(
     val titleError = showErrors && !builtinCostOnly && title.isBlank()
     val costError = showErrors && validationError == RewardSaveValidationError.POINT_COST_INVALID
     val stockError = showErrors && !builtinCostOnly && validationError == RewardSaveValidationError.STOCK_INVALID
-    val iconError = showErrors && !builtinCostOnly && validationError == RewardSaveValidationError.ICON_INVALID
-    val hasSelectedCustomIcon = selectedIconSpec != null
-    val iconModeHint =
-        when (iconMode) {
-            RewardIconSource.PRESET -> AppText.t("redeem_icon_mode_presets_hint")
-            RewardIconSource.IMPORTED_FILE -> AppText.t("redeem_icon_mode_photo_hint")
-            RewardIconSource.EMOJI -> AppText.t("redeem_icon_mode_emoji_hint")
-        }
 
-    fun cleanupUnsavedImportedPath() {
-        val path = importedPath
-        if (!path.isNullOrBlank() && path != originalImportedPath) {
-            rewardIconStorage.deleteImportedIcon(path)
+    if (!builtinCostOnly && showingIconPicker) {
+        Dialog(onDismissRequest = { showingIconPicker = false }) {
+            Surface(
+                shape = RoundedCornerShape(28.dp),
+                color = MaterialTheme.colorScheme.surface,
+                tonalElevation = 6.dp,
+            ) {
+                Column(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(0.dp),
+                        verticalArrangement = Arrangement.spacedBy(0.dp),
+                    ) {
+                        RewardIconCatalog.customPresetKeys.forEach { key ->
+                            val selected = selectedPresetKey == key
+                            Surface(
+                                modifier =
+                                    Modifier
+                                        .size(55.dp)
+                                        .semantics {
+                                            contentDescription =
+                                                AppText.t(
+                                                    "redeem_icon_preset_accessibility",
+                                                    RewardIconCatalog.presetOrdinal(key) ?: 0,
+                                                )
+                                        }
+                                        .clickable {
+                                            selectedPresetKey = key
+                                            showingIconPicker = false
+                                        },
+                                shape = RoundedCornerShape(14.dp),
+                                color =
+                                    if (selected) {
+                                        MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+                                    } else {
+                                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.24f)
+                                    },
+                                border =
+                                    BorderStroke(
+                                        width = if (selected) 2.dp else 1.dp,
+                                        color =
+                                            if (selected) {
+                                                MaterialTheme.colorScheme.primary
+                                            } else {
+                                                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)
+                                            },
+                                    ),
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    RewardIconPreview(
+                                        iconSource = RewardIconSource.PRESET,
+                                        iconValue = key,
+                                        size = 72.dp,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                    ) {
+                        TextButton(onClick = { showingIconPicker = false }) {
+                            Text(AppText.t("group_back"))
+                        }
+                    }
+                }
+            }
         }
+        return
     }
 
     AlertDialog(
-        onDismissRequest = {
-            cleanupUnsavedImportedPath()
-            onDismiss()
-        },
+        onDismissRequest = onDismiss,
         title = {
             Text(
                 when {
@@ -1135,7 +1148,6 @@ fun RewardEditDialog(
                     Text(
                         text = reward?.localizedTitle().orEmpty(),
                         style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold,
                     )
                     Text(
                         text = AppText.t("redeem_builtin_reward_cost_hint"),
@@ -1158,15 +1170,25 @@ fun RewardEditDialog(
                         )
                     }
                 } else {
-                    RewardFieldLabel(AppText.t("redeem_item_name"))
-                    RewardFilledInputField(
-                        value = title,
-                        onValueChange = { title = it },
-                        placeholder = AppText.t("redeem_item_name"),
+                    Row(
                         modifier = Modifier.fillMaxWidth(),
-                        keyboardType = KeyboardType.Text,
-                        textAlign = TextAlign.Start,
-                    )
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        RewardFilledInputField(
+                            value = title,
+                            onValueChange = { title = it },
+                            placeholder = AppText.t("redeem_item_name"),
+                            modifier = Modifier.weight(1f),
+                            keyboardType = KeyboardType.Text,
+                            textAlign = TextAlign.Start,
+                        )
+                        RewardIconSelectorButton(
+                            iconSource = selectedIconSpec?.source,
+                            iconValue = selectedIconSpec?.value,
+                            onClick = { showingIconPicker = true },
+                        )
+                    }
                     if (titleError) {
                         RewardFieldAssistiveText(
                             text = AppText.t("redeem_error_title_required"),
@@ -1235,275 +1257,6 @@ fun RewardEditDialog(
                         placeholder = AppText.t("redeem_description_optional"),
                         modifier = Modifier.fillMaxWidth(),
                     )
-                    Surface(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(16.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.28f),
-                        border =
-                            BorderStroke(
-                                width = 1.dp,
-                                color =
-                                    if (iconError) {
-                                        MaterialTheme.colorScheme.error.copy(alpha = 0.55f)
-                                    } else {
-                                        MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f)
-                                    },
-                            ),
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(12.dp),
-                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                        ) {
-                            Row(
-                                modifier =
-                                    Modifier
-                                        .fillMaxWidth()
-                                        .clickable { iconPickerExpanded = !iconPickerExpanded },
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                            ) {
-                                RewardIconPreview(
-                                    iconSource = selectedIconSpec?.source,
-                                    iconValue = selectedIconSpec?.value,
-                                    size = 72.dp,
-                                )
-                                Column(
-                                    modifier = Modifier.weight(1f),
-                                    verticalArrangement = Arrangement.spacedBy(2.dp),
-                                ) {
-                                    Text(
-                                        text = AppText.t("redeem_icon_picker_title"),
-                                        style = MaterialTheme.typography.titleSmall,
-                                        fontWeight = FontWeight.SemiBold,
-                                    )
-                                    Text(
-                                        text =
-                                            if (iconPickerExpanded) {
-                                                AppText.t("redeem_icon_picker_hint")
-                                            } else {
-                                                iconModeHint
-                                            },
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                }
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    TextButton(
-                                        onClick = {
-                                            if (!importedPath.isNullOrBlank() && importedPath != originalImportedPath) {
-                                                rewardIconStorage.deleteImportedIcon(importedPath)
-                                            }
-                                            presetKey = null
-                                            importedPath = null
-                                            emojiValue = ""
-                                        },
-                                        enabled = hasSelectedCustomIcon,
-                                        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 4.dp),
-                                    ) {
-                                        Text(AppText.t("redeem_icon_remove"))
-                                    }
-                                    Icon(
-                                        imageVector =
-                                            if (iconPickerExpanded) Icons.Default.KeyboardArrowUp
-                                            else Icons.Default.KeyboardArrowDown,
-                                        contentDescription = AppText.t("redeem_icon_picker_title"),
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    )
-                                }
-                            }
-                            if (iconPickerExpanded) {
-                                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                                    SegmentedButton(
-                                        selected = iconMode == RewardIconSource.PRESET,
-                                        onClick = { iconMode = RewardIconSource.PRESET },
-                                        shape = androidx.compose.material3.SegmentedButtonDefaults.itemShape(index = 0, count = 3),
-                                    ) {
-                                        Text(AppText.t("redeem_icon_source_presets"))
-                                    }
-                                    SegmentedButton(
-                                        selected = iconMode == RewardIconSource.IMPORTED_FILE,
-                                        onClick = { iconMode = RewardIconSource.IMPORTED_FILE },
-                                        shape = androidx.compose.material3.SegmentedButtonDefaults.itemShape(index = 1, count = 3),
-                                    ) {
-                                        Text(AppText.t("redeem_icon_source_photo"))
-                                    }
-                                    SegmentedButton(
-                                        selected = iconMode == RewardIconSource.EMOJI,
-                                        onClick = { iconMode = RewardIconSource.EMOJI },
-                                        shape = androidx.compose.material3.SegmentedButtonDefaults.itemShape(index = 2, count = 3),
-                                    ) {
-                                        Text(AppText.t("redeem_icon_source_emoji"))
-                                    }
-                                }
-                                Text(
-                                    text = iconModeHint,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color =
-                                        if (iconError) MaterialTheme.colorScheme.error
-                                        else MaterialTheme.colorScheme.onSurfaceVariant,
-                                )
-                                when (iconMode) {
-                                    RewardIconSource.PRESET -> {
-                                        FlowRow(
-                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                            verticalArrangement = Arrangement.spacedBy(8.dp),
-                                        ) {
-                                            RewardIconCatalog.customPresetKeys.forEach { key ->
-                                                val selected = presetKey == key
-                                                Surface(
-                                                    modifier =
-                                                        Modifier
-                                                            .size(68.dp)
-                                                            .semantics {
-                                                                contentDescription =
-                                                                    AppText.t(
-                                                                        "redeem_icon_preset_accessibility",
-                                                                        RewardIconCatalog.presetOrdinal(key) ?: 0,
-                                                                    )
-                                                            }
-                                                            .clickable {
-                                                                presetKey = if (selected) null else key
-                                                            },
-                                                    shape = RoundedCornerShape(14.dp),
-                                                    color =
-                                                        if (selected) {
-                                                            MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
-                                                        } else {
-                                                            MaterialTheme.colorScheme.surface
-                                                        },
-                                                    border =
-                                                        BorderStroke(
-                                                            width = if (selected) 2.dp else 1.dp,
-                                                            color =
-                                                                if (selected) MaterialTheme.colorScheme.primary
-                                                                else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f),
-                                                        ),
-                                                ) {
-                                                    Box(contentAlignment = Alignment.Center) {
-                                                        RewardIconPreview(
-                                                            iconSource = RewardIconSource.PRESET,
-                                                            iconValue = key,
-                                                            size = 52.dp,
-                                                        )
-                                                        if (selected) {
-                                                            Surface(
-                                                                modifier =
-                                                                    Modifier
-                                                                        .align(Alignment.TopEnd)
-                                                                        .padding(4.dp),
-                                                                shape = RoundedCornerShape(10.dp),
-                                                                color = MaterialTheme.colorScheme.primary,
-                                                            ) {
-                                                                Text(
-                                                                    text = "✓",
-                                                                    modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
-                                                                    style = MaterialTheme.typography.labelSmall,
-                                                                    color = MaterialTheme.colorScheme.onPrimary,
-                                                                    textAlign = TextAlign.Center,
-                                                                )
-                                                            }
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-                                    RewardIconSource.IMPORTED_FILE -> {
-                                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                            OutlinedButton(
-                                                onClick = { imagePickerLauncher.launch(arrayOf("image/*")) },
-                                                modifier = Modifier.fillMaxWidth(),
-                                                shape = RoundedCornerShape(14.dp),
-                                            ) {
-                                                Icon(Icons.Default.PhotoLibrary, contentDescription = null)
-                                                Spacer(Modifier.width(8.dp))
-                                                Text(
-                                                    if (importedPath.isNullOrBlank()) {
-                                                        AppText.t("redeem_icon_import_photo")
-                                                    } else {
-                                                        AppText.t("redeem_icon_replace_photo")
-                                                    },
-                                                )
-                                            }
-                                            Surface(
-                                                modifier = Modifier.fillMaxWidth(),
-                                                shape = RoundedCornerShape(14.dp),
-                                                color = MaterialTheme.colorScheme.surface,
-                                                border =
-                                                    BorderStroke(
-                                                        1.dp,
-                                                        MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.7f),
-                                                    ),
-                                            ) {
-                                                Row(
-                                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                                                    verticalAlignment = Alignment.CenterVertically,
-                                                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                                                ) {
-                                                    RewardIconPreview(
-                                                        iconSource = RewardIconSource.IMPORTED_FILE,
-                                                        iconValue = importedPath,
-                                                        size = 48.dp,
-                                                    )
-                                                    Column(
-                                                        modifier = Modifier.weight(1f),
-                                                        verticalArrangement = Arrangement.spacedBy(2.dp),
-                                                    ) {
-                                                        Text(
-                                                            text =
-                                                                if (importedPath.isNullOrBlank()) {
-                                                                    AppText.t("redeem_icon_photo_missing")
-                                                                } else {
-                                                                    AppText.t("redeem_icon_photo_ready")
-                                                                },
-                                                            style = MaterialTheme.typography.labelLarge,
-                                                            fontWeight = FontWeight.SemiBold,
-                                                        )
-                                                        val importedFileName = importedPath?.takeIf { it.isNotBlank() }?.let { java.io.File(it).name }
-                                                        if (importedFileName != null) {
-                                                            Text(
-                                                                text = importedFileName,
-                                                                style = MaterialTheme.typography.bodySmall,
-                                                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                                                maxLines = 1,
-                                                            )
-                                                        }
-                                                    }
-                                                }
-                                            }
-                                            if (importFailed) {
-                                                Text(
-                                                    text = AppText.t("redeem_error_icon_import_failed"),
-                                                    style = MaterialTheme.typography.bodySmall,
-                                                    color = MaterialTheme.colorScheme.error,
-                                                )
-                                            }
-                                        }
-                                    }
-                                    RewardIconSource.EMOJI -> {
-                                        RewardFilledInputField(
-                                            value = emojiValue,
-                                            onValueChange = { emojiValue = it },
-                                            placeholder = AppText.t("redeem_icon_emoji_label"),
-                                            modifier = Modifier.fillMaxWidth(),
-                                            keyboardType = KeyboardType.Text,
-                                            textAlign = TextAlign.Center,
-                                            textStyle = MaterialTheme.typography.headlineSmall,
-                                        )
-                                        RewardFieldAssistiveText(
-                                            text =
-                                                if (iconError && emojiValue.trim().isNotBlank()) {
-                                                    AppText.t("redeem_error_icon_invalid")
-                                                } else {
-                                                    AppText.t("redeem_icon_emoji_supporting")
-                                                },
-                                            isError = iconError && emojiValue.trim().isNotBlank(),
-                                        )
-                                    }
-                                }
-                            }
-                        }
-                    }
                 }
             }
         },
@@ -1512,13 +1265,6 @@ fun RewardEditDialog(
                 onClick = {
                     showErrors = true
                     if (validationError == null) {
-                        if (selectedIconSpec?.source != RewardIconSource.IMPORTED_FILE &&
-                            !importedPath.isNullOrBlank() &&
-                            importedPath != originalImportedPath
-                        ) {
-                            rewardIconStorage.deleteImportedIcon(importedPath)
-                            importedPath = originalImportedPath
-                        }
                         onConfirm(
                             CustomRewardDraft(
                                 title = title.trim(),
@@ -1535,12 +1281,7 @@ fun RewardEditDialog(
             }
         },
         dismissButton = {
-            TextButton(
-                onClick = {
-                    cleanupUnsavedImportedPath()
-                    onDismiss()
-                },
-            ) {
+            TextButton(onClick = onDismiss) {
                 Text(AppText.t("group_cancel"))
             }
         },
@@ -1571,6 +1312,29 @@ private fun RewardFieldAssistiveText(
                 MaterialTheme.colorScheme.onSurfaceVariant
             },
     )
+}
+
+@Composable
+private fun RewardIconSelectorButton(
+    iconSource: RewardIconSource?,
+    iconValue: String?,
+    onClick: () -> Unit,
+) {
+    Surface(
+        modifier = Modifier
+            .size(RewardFilledFieldHeight)
+            .clickable(onClick = onClick),
+        shape = RewardFilledFieldShape,
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            RewardIconPreview(
+                iconSource = iconSource,
+                iconValue = iconValue,
+                size = 40.dp,
+            )
+        }
+    }
 }
 
 @Composable
@@ -1778,7 +1542,7 @@ private fun HistoryCard(
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                Text(title, style = MaterialTheme.typography.bodyLarge, fontWeight = FontWeight.Medium)
+                Text(title, style = MaterialTheme.typography.bodyLarge)
                 Text(
                     text = timestamp,
                     style = MaterialTheme.typography.labelSmall,
@@ -1789,7 +1553,6 @@ private fun HistoryCard(
             Text(
                 text = trailing,
                 style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.Bold,
                 color = trailingColor,
             )
         }

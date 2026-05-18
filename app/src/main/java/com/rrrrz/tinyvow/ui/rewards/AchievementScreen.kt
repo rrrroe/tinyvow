@@ -180,7 +180,7 @@ fun AchievementScreen(
                             )
                             Text(
                                 text = tab.label,
-                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                fontWeight = if (isSelected) FontWeight.SemiBold else FontWeight.Normal,
                                 style = MaterialTheme.typography.labelLarge,
                                 color = if (isSelected) tab.palette.accent
                                         else MaterialTheme.colorScheme.onSurfaceVariant
@@ -306,7 +306,6 @@ private fun AchievementSectionHeader(
         Text(
             text = title,
             style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.Bold,
             color = if (subdued) colors.onSurfaceVariant else colors.onSurface
         )
         Surface(
@@ -321,7 +320,6 @@ private fun AchievementSectionHeader(
                 text = count.toString(),
                 modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp),
                 style = MaterialTheme.typography.labelSmall,
-                fontWeight = FontWeight.Bold,
                 color = if (subdued) colors.onSurfaceVariant else palette.accent
             )
         }
@@ -363,7 +361,6 @@ private fun TierHeader(tab: TierTab, unlocked: Int, total: Int) {
                 Text(
                     text = AppText.t("achievement_value_achievements", tab.label),
                     style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
                     color = colors.onSurface,
                 )
                 Spacer(modifier = Modifier.height(2.dp))
@@ -479,9 +476,7 @@ private fun UnlockedAchievementCard(achievement: AchievementEntity) {
             ) {
                 Text(
                     text = achievement.localizedTitle(),
-                    fontSize = 18.sp,
-                    lineHeight = 22.sp,
-                    fontWeight = FontWeight.ExtraBold,
+                    style = MaterialTheme.typography.titleMedium,
                     color = colors.onSurface
                 )
                 Text(
@@ -490,7 +485,6 @@ private fun UnlockedAchievementCard(achievement: AchievementEntity) {
                     color = colors.onSurfaceVariant,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
-                    fontWeight = FontWeight.Medium
                 )
             }
 
@@ -523,7 +517,6 @@ private fun UnlockedAchievementCard(achievement: AchievementEntity) {
                         },
                         style = MaterialTheme.typography.labelSmall,
                         color = colors.onSurfaceVariant,
-                        fontWeight = FontWeight.SemiBold,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -605,9 +598,7 @@ private fun LockedAchievementCard(
             ) {
                 Text(
                     text = achievement.localizedTitle(),
-                    fontSize = 18.sp,
-                    lineHeight = 22.sp,
-                    fontWeight = FontWeight.Bold,
+                    style = MaterialTheme.typography.titleMedium,
                     color = colors.onSurface
                 )
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -654,7 +645,6 @@ private fun LockedAchievementCard(
                     text = "${formatAchievementValue(currentValue)} / ${formatAchievementValue(targetValue)}",
                     style = MaterialTheme.typography.labelSmall,
                     color = colors.onSurfaceVariant,
-                    fontWeight = FontWeight.Bold,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )

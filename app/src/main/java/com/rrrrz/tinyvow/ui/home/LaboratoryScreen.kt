@@ -64,7 +64,7 @@ fun LaboratoryScreen(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Text(AppText.t("lab_points_simulation"), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text(AppText.t("lab_points_simulation"), style = MaterialTheme.typography.titleLarge)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = { onAddPoints(10.0) }, modifier = Modifier.weight(1f)) { Text("+10") }
                 Button(onClick = { onAddPoints(100.0) }, modifier = Modifier.weight(1f)) { Text("+100") }
@@ -72,7 +72,7 @@ fun LaboratoryScreen(
 
             HorizontalDivider()
 
-            Text(AppText.t("lab_achievement_test"), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text(AppText.t("lab_achievement_test"), style = MaterialTheme.typography.titleLarge)
             Text(
                 AppText.t("lab_achievement_test_description"),
                 style = MaterialTheme.typography.bodySmall,
@@ -88,7 +88,7 @@ fun LaboratoryScreen(
             if (showDebugProControls) {
                 HorizontalDivider()
 
-                Text(AppText.t("lab_pro_debug"), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Text(AppText.t("lab_pro_debug"), style = MaterialTheme.typography.titleLarge)
                 Text(
                     AppText.t("lab_pro_debug_description"),
                     style = MaterialTheme.typography.bodySmall,
@@ -117,7 +117,7 @@ fun LaboratoryScreen(
             if (showDebugSuperModeControls) {
                 HorizontalDivider()
 
-                Text(AppText.t("lab_super_mode_debug"), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                Text(AppText.t("lab_super_mode_debug"), style = MaterialTheme.typography.titleLarge)
                 Text(
                     AppText.t("lab_super_mode_debug_description"),
                     style = MaterialTheme.typography.bodySmall,
@@ -133,7 +133,7 @@ fun LaboratoryScreen(
 
             HorizontalDivider()
 
-            Text(AppText.t("lab_report_test"), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text(AppText.t("lab_report_test"), style = MaterialTheme.typography.titleLarge)
             Button(
                 onClick = onResetSummary,
                 modifier = Modifier.fillMaxWidth(),

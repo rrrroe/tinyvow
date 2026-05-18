@@ -335,7 +335,6 @@ private fun RewardsSwitchButton(
             Text(
                 text = title,
                 style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.SemiBold,
                 color =
                     if (selected) MaterialTheme.colorScheme.onPrimaryContainer
                     else MaterialTheme.colorScheme.onSurfaceVariant,
@@ -491,6 +490,7 @@ fun HomeRoute(
     var rewardsSection by remember { mutableStateOf(RewardsSection.STORE) }
     val snackbarHostState = remember { SnackbarHostState() }
     var proUpsellSource by remember { mutableStateOf<ProUpsellSource?>(null) }
+    var openMeProBenefitsDialog by remember { mutableStateOf(false) }
     var pendingSensitiveDisclosure by remember { mutableStateOf<SensitivePermissionDisclosure?>(null) }
     var usageAccessStatus by remember { mutableStateOf(checker.getStatus()) }
     var accessibilityServiceEnabled by remember {
@@ -502,6 +502,11 @@ fun HomeRoute(
     
     var installedApps by remember { mutableStateOf<List<ManagedApp>>(emptyList()) }
     var isLoadingApps by remember { mutableStateOf(false) }
+    val meHistoricalArchives by dailyArchiveRepository.getRecentArchives(limit = 3650)
+        .collectAsStateWithLifecycle(initialValue = emptyList(), lifecycle = lifecycle)
+    val meTotalSavedMinutes = remember(meHistoricalArchives) {
+        meHistoricalArchives.sumOf { it.savedMillis } / 60_000L
+    }
 
     var showYesterdaySummary by remember { mutableStateOf(false) }
     var yesterdaySavedMinutes by remember { mutableIntStateOf(0) }
@@ -989,7 +994,8 @@ fun HomeRoute(
                         isLocalActivationEnabled = BuildConfig.ENABLE_LOCAL_ACTIVATION,
                         proEntitlement = proEntitlement,
                         subscriptionOffers = subscriptionOffers,
-                        userPoints = userPoints,
+                        totalSavedMinutes = meTotalSavedMinutes,
+                        totalEarnedPoints = achievementProgress.earnedPointsTotal,
                         profileDisplayName = profileDisplayName,
                         profileAvatarUri = profileAvatarUri,
                         selectedThemeId = selectedThemeId,
@@ -998,6 +1004,8 @@ fun HomeRoute(
                         superModeStatus = superModeStatus,
                         isDebugBuild = BuildConfig.DEBUG,
                         selectedAppLanguage = selectedAppLanguage,
+                        openBenefitsDialog = openMeProBenefitsDialog,
+                        onBenefitsDialogOpened = { openMeProBenefitsDialog = false },
                         usageAccessGranted = effectiveUsageAccessStatus == UsageAccessStatus.GRANTED,
                         accessibilityServiceEnabled = effectiveAccessibilityServiceEnabled,
                         isAutoStartDismissed = isAutoStartDismissed,
@@ -1206,12 +1214,12 @@ fun HomeRoute(
                     }
                 }
                 Screen.THEME -> {
-                    ThemeSettingsScreen(
-                        selectedThemeId = selectedThemeId,
-                        customThemes = customThemes,
-                        isProActive = proEntitlement.isProActive,
-                        isLocalActivationEnabled = BuildConfig.ENABLE_LOCAL_ACTIVATION,
-                        onSelectTheme = { themeId ->
+                     ThemeSettingsScreen(
+                         selectedThemeId = selectedThemeId,
+                         customThemes = customThemes,
+                         isProActive = proEntitlement.isProActive,
+                         isLocalActivationEnabled = BuildConfig.ENABLE_LOCAL_ACTIVATION,
+                         onSelectTheme = { themeId ->
                             coroutineScope.launch {
                                 preferences.setSelectedThemeId(themeId)
                             }
@@ -1531,7 +1539,11 @@ fun HomeRoute(
     proUpsellSource?.let { source ->
         ProUpsellDialog(
             source = source,
-            isLocalActivationEnabled = BuildConfig.ENABLE_LOCAL_ACTIVATION,
+            onViewBenefits = {
+                proUpsellSource = null
+                currentScreen = Screen.ME
+                openMeProBenefitsDialog = true
+            },
             onDismiss = { proUpsellSource = null },
         )
     }
@@ -1548,7 +1560,10 @@ fun HomeRoute(
                         modifier = Modifier.size(32.dp)
                     )
                     Spacer(modifier = Modifier.width(12.dp))
-                    Text(AppText.t("home_yesterday_s_report"), fontWeight = FontWeight.Bold)
+                    Text(
+                        text = AppText.t("home_yesterday_s_report"),
+                        style = MaterialTheme.typography.titleLarge,
+                    )
                 }
             },
             text = {
@@ -1568,8 +1583,7 @@ fun HomeRoute(
                             } else {
                                 AppText.t("home_value_minutes", yesterdaySavedMinutes)
                             },
-                            style = MaterialTheme.typography.headlineSmall,
-                            fontWeight = FontWeight.ExtraBold,
+                            style = MaterialTheme.typography.headlineMedium,
                             color = MaterialTheme.colorScheme.primary
                         )
                     }
@@ -1790,13 +1804,11 @@ fun AchievementNotificationBanner(achievement: AchievementEntity) {
                     Text(
                         tierLabel,
                         style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.ExtraBold,
                         color = tierGradient.first()
                     )
                     Text(
                         achievement.localizedAchievementTitle(),
                         style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Spacer(modifier = Modifier.height(2.dp))
@@ -1907,6 +1919,7 @@ fun HomeScreen(
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val coroutineScope = rememberCoroutineScope()
+    val homeScrollState = rememberScrollState()
     var usageMap by remember { mutableStateOf<Map<String, Long>>(emptyMap()) }
     val historicalArchives =
         archiveRepository?.let { repository ->
@@ -1942,12 +1955,33 @@ fun HomeScreen(
     val statusColor = if (usageAccessGranted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
 
     var showDiagnosticMenu by remember { mutableStateOf(false) }
+    val overviewState =
+        remember(
+            context,
+            groupsWithApps,
+            usageMap,
+            historicalArchives,
+            userPoints,
+            todayPoints,
+            achievementProgress,
+        ) {
+            buildHomeOverviewUiState(
+                context = context,
+                groupsWithApps = groupsWithApps,
+                usageMap = usageMap,
+                historicalArchives = historicalArchives,
+                userPoints = userPoints,
+                todayPoints = todayPoints,
+                achievementProgress = achievementProgress,
+            )
+        }
 
     Scaffold(modifier = modifier.fillMaxSize()) { innerPadding ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(innerPadding)
+                .verticalScroll(homeScrollState)
         ) {
             val pendingPermissionPrompts =
                 listOfNotNull(
@@ -1981,30 +2015,9 @@ fun HomeScreen(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 16.dp),
+                    .padding(start = 16.dp, end = 16.dp, top = 10.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                val overviewState =
-                    remember(
-                        context,
-                        groupsWithApps,
-                        usageMap,
-                        historicalArchives,
-                        userPoints,
-                        todayPoints,
-                        achievementProgress,
-                    ) {
-                        buildHomeOverviewUiState(
-                            context = context,
-                            groupsWithApps = groupsWithApps,
-                            usageMap = usageMap,
-                            historicalArchives = historicalArchives,
-                            userPoints = userPoints,
-                            todayPoints = todayPoints,
-                            achievementProgress = achievementProgress,
-                        )
-                    }
-
                 if (usageAccessGranted) {
                     ElevatedCard(
                         modifier = Modifier.fillMaxWidth(),
@@ -2033,29 +2046,53 @@ fun HomeScreen(
             }
 
             if (usageAccessGranted) {
-                GroupDashboard(
-                    groupsWithApps = groupsWithApps,
-                    usageMap = usageMap,
-                    installedApps = installedApps,
-                    isLoadingApps = isLoadingApps,
-                    onSaveGroup = onSaveGroup,
-                    onDeleteGroup = onDeleteGroup,
-                    onReorderGroups = { type, ids ->
-                        coroutineScope.launch { appLimitRepository?.reorderGroups(type, ids) }
-                    },
-                    archiveRepository = archiveRepository,
-                    isProActive = isProActive,
-                    onShowProUpsell = onShowProUpsell,
-                    onGuardAction = onGuardAction,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(start = 16.dp, end = 16.dp, top = 8.dp)
-                )
+                val dashboardTopSpacing = if (pendingPermissionPrompts.isEmpty()) 16.dp else 8.dp
+                Column(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(start = 16.dp, end = 16.dp, top = dashboardTopSpacing),
+                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    GroupDashboard(
+                        groupsWithApps = groupsWithApps,
+                        usageMap = usageMap,
+                        installedApps = installedApps,
+                        isLoadingApps = isLoadingApps,
+                        onSaveGroup = onSaveGroup,
+                        onDeleteGroup = onDeleteGroup,
+                        onReorderGroups = { type, ids ->
+                            coroutineScope.launch { appLimitRepository?.reorderGroups(type, ids) }
+                        },
+                        archiveRepository = archiveRepository,
+                        isProActive = isProActive,
+                        onShowProUpsell = onShowProUpsell,
+                        onGuardAction = onGuardAction,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+
+                    Text(
+                        text =
+                            AppText.t(
+                                "home_surprise_footer_format",
+                                AppText.t("group_commitment"),
+                                overviewState.tagline,
+                            ),
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Normal,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.84f),
+                        textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                        modifier =
+                            Modifier
+                                .fillMaxWidth(),
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    )
+                }
             } else {
                 Column(
                     modifier = Modifier
-                        .padding(start = 16.dp, end = 16.dp, top = 8.dp)
-                        .verticalScroll(rememberScrollState()),
+                        .padding(start = 16.dp, end = 16.dp, top = 8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text(
@@ -2066,6 +2103,8 @@ fun HomeScreen(
                     )
                 }
             }
+
+            Spacer(modifier = Modifier.height(20.dp))
         }
 
         if (showDiagnosticMenu) {
@@ -2083,7 +2122,6 @@ fun HomeScreen(
                     Text(
                         text = stringResource(R.string.action_diagnostic_settings),
                         style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
                     )
                     Text(
                         text = stringResource(R.string.settings_menu_subtitle),
@@ -2139,7 +2177,6 @@ private fun CompactPermissionBanner(
                 text = AppText.t("home_permission_suggestions_count", prompts.size),
                 modifier = Modifier.weight(1f),
                 style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 1,
                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
@@ -2182,25 +2219,24 @@ private fun HomeOverviewCard(
 
         Column(
             modifier = Modifier.padding(horizontal = 18.dp, vertical = 18.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             HomeOverviewHeader(
                 dateLabel = state.dateLabel,
-                tagline = state.tagline,
             )
 
             Box(
                 modifier =
                     Modifier
                         .fillMaxWidth()
-                        .height(196.dp),
+                        .height(170.dp),
             ) {
                 HomeOverviewClockWatermark(
                     modifier =
                         Modifier
                             .size(176.dp)
                             .align(Alignment.BottomCenter)
-                            .offset(y = (-8).dp),
+                            .offset(y = 4.dp),
                 )
 
                 Row(
@@ -2208,7 +2244,7 @@ private fun HomeOverviewCard(
                         Modifier
                             .fillMaxWidth()
                             .align(Alignment.TopCenter)
-                            .padding(top = 10.dp),
+                            .padding(top = 7.dp),
                     horizontalArrangement = Arrangement.spacedBy(18.dp),
                     verticalAlignment = Alignment.Top,
                 ) {
@@ -2253,13 +2289,13 @@ private fun HomeOverviewCard(
                     modifier =
                         Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 18.dp, vertical = 13.dp),
+                            .padding(horizontal = 18.dp, vertical = 9.dp),
                     horizontalArrangement = Arrangement.spacedBy(42.dp),
                     verticalAlignment = Alignment.Top,
                 ) {
                     Column(
                         modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(7.dp),
                     ) {
                         HomeHistoryMetric(
                             label = AppText.t("home_total_saved"),
@@ -2276,7 +2312,7 @@ private fun HomeOverviewCard(
                     }
                     Column(
                         modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(7.dp),
                     ) {
                         HomeHistoryMetric(
                             label = AppText.t("home_total_earned"),
@@ -2297,6 +2333,7 @@ private fun HomeOverviewCard(
                     }
                 }
             }
+
         }
     }
 }
@@ -2426,13 +2463,13 @@ private fun HomeOverviewSideMetric(
 
     Column(
         modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+        verticalArrangement = Arrangement.spacedBy(7.dp),
         horizontalAlignment = horizontalAlignment,
     ) {
         Text(
             text = title,
             style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.ExtraBold,
+            fontWeight = FontWeight.SemiBold,
             color = accent,
             textAlign = textAlign,
             modifier = Modifier.fillMaxWidth(),
@@ -2441,13 +2478,12 @@ private fun HomeOverviewSideMetric(
         )
         Column(
             modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(2.dp),
+            verticalArrangement = Arrangement.spacedBy(1.dp),
             horizontalAlignment = horizontalAlignment,
         ) {
             Text(
                 text = headlineLabel,
                 style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = textAlign,
                 modifier = Modifier.fillMaxWidth(),
@@ -2477,7 +2513,7 @@ private fun HomeOverviewSideMetric(
         }
         Column(
             modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(5.dp),
             horizontalAlignment = horizontalAlignment,
         ) {
             tags.forEach { tag ->
@@ -2500,7 +2536,7 @@ private fun HomeOverviewHeadlineValue(
         text = text,
         style = MaterialTheme.typography.displaySmall,
         fontSize = 34.sp,
-        fontWeight = FontWeight.ExtraBold,
+        fontWeight = FontWeight.SemiBold,
         color = accent,
         maxLines = 1,
         overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
@@ -2515,7 +2551,7 @@ private fun HomeOverviewHeadlineUnit(
     Text(
         text = text,
         style = MaterialTheme.typography.labelMedium,
-        fontWeight = FontWeight.SemiBold,
+        fontWeight = FontWeight.Normal,
         color = accent,
         modifier = Modifier.padding(bottom = 4.dp),
         maxLines = 1,
@@ -2539,7 +2575,6 @@ private fun HomeOverviewPill(
         Text(
             text = text,
             style = MaterialTheme.typography.labelMedium,
-            fontWeight = FontWeight.SemiBold,
             color = accent,
             textAlign =
                 if (alignEnd) {
@@ -2557,34 +2592,17 @@ private fun HomeOverviewPill(
 @Composable
 private fun HomeOverviewHeader(
     dateLabel: String,
-    tagline: String,
 ) {
-    Row(
+    Text(
+        text = dateLabel,
+        style = MaterialTheme.typography.titleLarge,
+        fontWeight = FontWeight.SemiBold,
+        color = MaterialTheme.colorScheme.primary,
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = dateLabel,
-            style = MaterialTheme.typography.titleLarge,
-            fontWeight = FontWeight.ExtraBold,
-            color = MaterialTheme.colorScheme.primary,
-            modifier = Modifier.weight(1f),
-            maxLines = 1,
-            softWrap = false,
-            overflow = androidx.compose.ui.text.style.TextOverflow.Clip,
-        )
-        Text(
-            text = tagline,
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = androidx.compose.ui.text.style.TextAlign.End,
-            modifier = Modifier.widthIn(max = 132.dp),
-            maxLines = 1,
-            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-        )
-    }
+        maxLines = 1,
+        softWrap = false,
+        overflow = androidx.compose.ui.text.style.TextOverflow.Clip,
+    )
 }
 
 @Composable
@@ -2626,7 +2644,7 @@ private fun HomeEnginePanel(
             Text(
                 text = title,
                 style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
+                fontWeight = FontWeight.Medium,
                 color = accent,
                 textAlign = textAlign,
                 modifier = Modifier.fillMaxWidth(),
@@ -2647,7 +2665,7 @@ private fun HomeEnginePanel(
                 Text(
                     text = headlineValue,
                     style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.ExtraBold,
+                    fontWeight = FontWeight.SemiBold,
                     color = onContainer,
                     textAlign = textAlign,
                     modifier = Modifier.fillMaxWidth(),
@@ -2702,7 +2720,6 @@ private fun HomeOverviewTagLine(
         Text(
             text = text,
             style = MaterialTheme.typography.labelMedium,
-            fontWeight = FontWeight.SemiBold,
             color = accent,
             textAlign = textAlign,
             modifier = Modifier.fillMaxWidth(),
@@ -2737,14 +2754,14 @@ private fun HomeHistoryMetric(
 
     Column(
         modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(4.dp),
+        verticalArrangement = Arrangement.spacedBy(3.dp),
         horizontalAlignment = horizontalAlignment,
     ) {
         Text(
             text = label,
             style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.Normal,
             color = accent,
-            fontWeight = FontWeight.SemiBold,
             textAlign = textAlign,
             modifier = Modifier.fillMaxWidth(),
         )
@@ -2779,7 +2796,7 @@ private fun HomeHistoryMetricValue(
     Text(
         text = text,
         style = MaterialTheme.typography.titleLarge,
-        fontWeight = FontWeight.ExtraBold,
+        fontWeight = FontWeight.SemiBold,
         color = accent,
         maxLines = 1,
         overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
@@ -2794,7 +2811,7 @@ private fun HomeHistoryMetricUnit(
     Text(
         text = text,
         style = MaterialTheme.typography.labelMedium,
-        fontWeight = FontWeight.SemiBold,
+        fontWeight = FontWeight.Normal,
         color = accent,
         modifier = Modifier.padding(bottom = 3.dp),
         maxLines = 1,
@@ -2810,6 +2827,15 @@ private fun formatHomePointValue(points: Double): String =
 
 private fun formatHomePointWholeValue(points: Double): String =
     points.roundToLong().coerceAtLeast(0L).toString()
+
+private const val HOME_SURPRISE_COUNT = 100
+
+private fun homeSurpriseKeyForDate(date: LocalDate): String {
+    val index = (((date.toEpochDay() * 37L) + 17L).floorMod(HOME_SURPRISE_COUNT.toLong()) + 1L).toInt()
+    return "home_surprise_%03d".format(java.util.Locale.US, index)
+}
+
+private fun Long.floorMod(modulus: Long): Long = ((this % modulus) + modulus) % modulus
 
 private fun buildHomeOverviewUiState(
     context: android.content.Context,
@@ -2854,14 +2880,15 @@ private fun buildHomeOverviewUiState(
     val extendedLifeMinutes = totalSavedMinutes * 3L
     val totalEarnedPoints = historicalArchives.sumOf { it.pointsEarned } + todayPoints
     val locale = context.resources.configuration.locales[0] ?: java.util.Locale.getDefault()
+    val today = LocalDate.now()
     val currentDate =
-        LocalDate.now().format(
+        today.format(
             java.time.format.DateTimeFormatter.ofPattern(AppText.t("home_mmm_d_eeee"), locale),
         )
 
     return HomeOverviewUiState(
         dateLabel = currentDate,
-        tagline = AppText.t("home_give_time_back_to_yourself"),
+        tagline = AppText.t(homeSurpriseKeyForDate(today)),
         control =
             HomeControlOverviewUiState(
                 todaySavedMinutes = controlTodaySavedMinutes,
@@ -2912,7 +2939,6 @@ fun PermissionProcessList(
         Text(
             text = AppText.t("home_core_permissions"),
             style = MaterialTheme.typography.labelLarge,
-            fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(start = 4.dp),
         )
@@ -2939,7 +2965,6 @@ fun PermissionProcessList(
             Text(
                 text = AppText.t("home_improve_reliability_optional"),
                 style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(start = 4.dp),
             )
@@ -2998,7 +3023,6 @@ private fun AccessibilityStatusCard(
             Text(
                 text = stringResource(R.string.accessibility_card_title),
                 style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurface,
             )
             PermissionStatusLine(
@@ -3053,7 +3077,6 @@ private fun ReminderStatusCard(
             Text(
                 text = stringResource(R.string.reminder_card_title),
                 style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurface,
             )
             PermissionStatusLine(
@@ -3102,7 +3125,6 @@ private fun PermissionCard(
             Text(
                 text = AppText.t("home_usage_access_step_title"),
                 style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurface,
             )
             PermissionStatusLine(
@@ -3163,7 +3185,6 @@ private fun AutoStartCard(
             Text(
                 text = stringResource(R.string.autostart_card_title),
                 style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurface,
             )
             PermissionStatusLine(
@@ -3214,7 +3235,6 @@ private fun PermissionStatusLine(
             text = text,
             style = MaterialTheme.typography.bodyMedium,
             color = color,
-            fontWeight = FontWeight.SemiBold,
         )
     }
 }
@@ -3246,7 +3266,6 @@ private fun BatteryOptimizationCard(
             Text(
                 text = stringResource(R.string.battery_card_title),
                 style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurface,
             )
             PermissionStatusLine(
@@ -3294,7 +3313,6 @@ private fun GuidanceCard(
             Text(
                 text = title,
                 style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
             )
             Text(
                 text = body,
@@ -3325,7 +3343,12 @@ internal fun DashboardProgressItem(
                 Box(modifier = Modifier.size(6.dp).clip(CircleShape).background(color))
                 Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            Text(value, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.ExtraBold, color = color)
+            Text(
+                value,
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.SemiBold,
+                color = color,
+            )
         }
     }
 }

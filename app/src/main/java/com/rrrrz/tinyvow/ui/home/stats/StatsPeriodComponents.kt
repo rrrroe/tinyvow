@@ -242,15 +242,16 @@ internal fun PeriodHeroCard(hero: PeriodHeroData) {
                     verticalAlignment = Alignment.Top,
                 ) {
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                        Text(
-                            text = hero.eyebrow,
-                            style = MaterialTheme.typography.labelLarge,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+                        if (hero.eyebrow.isNotBlank()) {
+                            Text(
+                                text = hero.eyebrow,
+                                style = MaterialTheme.typography.labelLarge,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                         Text(
                             text = hero.title,
                             style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold,
                         )
                     }
                     Surface(
@@ -268,14 +269,12 @@ internal fun PeriodHeroCard(hero: PeriodHeroData) {
                 Text(
                     text = hero.primaryValue,
                     style = MaterialTheme.typography.displaySmall,
-                    fontWeight = FontWeight.Black,
                     color = MaterialTheme.colorScheme.primary,
                 )
                 Text(
                     text = hero.message,
                     style = MaterialTheme.typography.titleSmall,
                     color = MaterialTheme.colorScheme.onSurface,
-                    fontWeight = FontWeight.SemiBold,
                 )
                 AdaptiveRowGrid(
                     itemCount = 2,
@@ -285,9 +284,9 @@ internal fun PeriodHeroCard(hero: PeriodHeroData) {
                     verticalSpacing = 8.dp,
                 ) { modifier, index ->
                     BattleHeadlineChip(
-                        label = if (index == 0) AppText.t("stats_vs_previous_window") else AppText.t("stats_daily_average"),
+                        label = if (index == 0) AppText.t("stats_vs_previous_period_decreased") else hero.averageLabel,
                         value = if (index == 0) hero.comparisonValue else hero.tertiaryValue,
-                        accent = if (index == 0) reportColors.warning else reportColors.positive,
+                        accent = if (index == 0) reportColors.danger else reportColors.positive,
                         modifier = modifier,
                     )
                 }
@@ -457,7 +456,7 @@ internal fun PeriodHeatmapCard(data: PeriodHeatmapData) {
                                 Text(
                                     text = cell.label,
                                     style = MaterialTheme.typography.labelMedium,
-                                    fontWeight = if (cell.selected) FontWeight.Bold else FontWeight.Medium,
+                                    fontWeight = if (cell.selected) FontWeight.SemiBold else FontWeight.Normal,
                                     color = if (cell.exceeded) LocalReportColors.current.warning else MaterialTheme.colorScheme.onSurface,
                                 )
                             }
@@ -488,48 +487,57 @@ internal fun PeriodAppFocusCard(data: AppFocusSectionData) {
             if (data.weeklyTopAppRows.isNotEmpty()) {
                 WeeklyTopAppsMatrix(rows = data.weeklyTopAppRows)
             }
-            data.topApps.take(6).forEachIndexed { index, app ->
-                val accent = appColors[app.packageName] ?: palette.getOrElse(index) { MaterialTheme.colorScheme.primary }
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    AppIconCircle(app.packageName)
-                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                data.topApps.take(6).forEachIndexed { index, app ->
+                    val accent = appColors[app.packageName] ?: palette.getOrElse(index) { MaterialTheme.colorScheme.primary }
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(18.dp),
+                        color = accent.copy(alpha = 0.05f),
+                        border = BorderStroke(1.dp, accent.copy(alpha = 0.18f)),
+                    ) {
                         Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) {
-                            Text(
-                                text = app.label,
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                            Text(
-                                text = formatDuration(app.value),
-                                style = MaterialTheme.typography.labelLarge,
-                                color = accent,
-                                fontWeight = FontWeight.Bold,
-                            )
-                        }
-                        Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(8.dp)
-                                .clip(CircleShape)
-                                .background(accent.copy(alpha = 0.14f)),
+                                .padding(horizontal = 10.dp, vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
                         ) {
-                            Box(
-                                modifier = Modifier
-                                    .fillMaxWidth((app.value.toFloat() / maxUsage.toFloat()).coerceIn(0.05f, 1f))
-                                    .fillMaxHeight()
-                                    .clip(CircleShape)
-                                    .background(accent.copy(alpha = 0.72f)),
-                            )
+                            AppIconCircle(app.packageName)
+                            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    Text(
+                                        text = app.label,
+                                        style = MaterialTheme.typography.titleSmall,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                    )
+                                    Text(
+                                        text = formatDuration(app.value),
+                                        style = MaterialTheme.typography.labelLarge,
+                                        color = accent,
+                                    )
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .height(8.dp)
+                                        .clip(CircleShape)
+                                        .background(accent.copy(alpha = 0.14f)),
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .fillMaxWidth((app.value.toFloat() / maxUsage.toFloat()).coerceIn(0.05f, 1f))
+                                            .fillMaxHeight()
+                                            .clip(CircleShape)
+                                            .background(accent.copy(alpha = 0.72f)),
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -559,7 +567,6 @@ internal fun PeriodAppFocusCard(data: AppFocusSectionData) {
                         Text(
                             text = insight.value,
                             style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
@@ -593,7 +600,6 @@ internal fun WeeklyTopAppsMatrix(rows: List<WeeklyTopAppsRow>) {
                     text = day.dayCode,
                     style = MaterialTheme.typography.labelMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontWeight = FontWeight.SemiBold,
                 )
                 repeat(7) { rank ->
                     val pkg = day.packages.getOrNull(rank)
@@ -647,7 +653,6 @@ internal fun MatrixPlaceholder() {
             text = "·",
             style = MaterialTheme.typography.titleMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            fontWeight = FontWeight.Bold,
         )
     }
 }
@@ -657,49 +662,57 @@ internal fun PeriodInsightSection(data: PeriodReportData) {
     ReportCard {
         Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
             SectionHeader(
-                icon = Icons.Default.RocketLaunch,
-                title = AppText.t("stats_pattern_summary"),
-                subtitle = AppText.t("stats_pattern_summary_description"),
+                icon = Icons.Default.Insights,
+                title = AppText.t("stats_behavior_analysis"),
+                subtitle = AppText.t("stats_behavior_structure_description"),
             )
-            data.behavior?.behaviorInsight?.let { insight ->
+            val structure = data.behavior?.structure
+            if (structure == null) {
+                Text(
+                    text = AppText.t("stats_this_archived_window_does_not_have_enough_behavior"),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
                 AdaptiveRowGrid(
-                    itemCount = 3,
+                    itemCount = structure.metrics.size,
                     compactColumns = 1,
-                    expandedColumns = 3,
+                    expandedColumns = 2,
                     horizontalSpacing = 8.dp,
                     verticalSpacing = 8.dp,
                 ) { modifier, index ->
+                    val metric = structure.metrics[index]
                     when (index) {
                         0 -> MiniInsightCard(
-                            icon = Icons.Default.Timeline,
-                            label = AppText.t("stats_peak_time"),
-                            value = "${insight.peakHourLabel} · ${formatDuration(insight.peakHourMillis)}",
-                            visualRatio = (insight.peakHourMillis.toFloat() / (2 * 60 * 60_000L).toFloat()).coerceIn(0f, 1f),
+                            icon = Icons.Default.TouchApp,
+                            label = metric.label,
+                            value = metric.value,
+                            visualRatio = metric.visualRatio,
                             modifier = modifier,
                         )
                         1 -> MiniInsightCard(
-                            icon = Icons.Default.NightsStay,
-                            label = AppText.t("stats_night_use"),
-                            value = formatDuration(insight.nightUsageMillis),
-                            visualRatio = (insight.nightUsageMillis.toFloat() / (4 * 60 * 60_000L).toFloat()).coerceIn(0f, 1f),
+                            icon = Icons.Default.BarChart,
+                            label = metric.label,
+                            value = metric.value,
+                            visualRatio = metric.visualRatio,
+                            modifier = modifier,
+                        )
+                        2 -> MiniInsightCard(
+                            icon = Icons.Default.Schedule,
+                            label = metric.label,
+                            value = metric.value,
+                            visualRatio = metric.visualRatio,
                             modifier = modifier,
                         )
                         else -> MiniInsightCard(
-                            icon = Icons.Default.Schedule,
-                            label = AppText.t("stats_label_11"),
-                            value = insight.longestSession?.let { "${it.label} · ${formatDuration(it.value)}" } ?: AppText.t("stats_none"),
-                            visualRatio = ((insight.longestSession?.value ?: 0L).toFloat() / (2 * 60 * 60_000L).toFloat()).coerceIn(0f, 1f),
+                            icon = Icons.Default.NightsStay,
+                            label = metric.label,
+                            value = metric.value,
+                            visualRatio = metric.visualRatio,
                             modifier = modifier,
                         )
                     }
                 }
-            }
-            data.comparison?.comparisons?.take(3)?.forEach { item ->
-                ComparisonRow(
-                    item = item,
-                    averageBarLabel = AppText.t("stats_average"),
-                    showChips = false,
-                )
             }
         }
     }
@@ -728,10 +741,10 @@ internal fun PeriodMonthStructureCard(data: MonthlyWeekStructureData) {
                         verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
                         Text(week.label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text(formatDuration(week.totalUsageMillis), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Text(formatDuration(week.totalUsageMillis), style = MaterialTheme.typography.titleMedium)
                         Text(AppText.t("stats_daily_average_value", formatDuration(week.averageUsageMillis)), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text(AppText.t("stats_peak_time"), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text(week.peakDayLabel, style = MaterialTheme.typography.labelLarge, fontWeight = FontWeight.SemiBold)
+                        Text(week.peakDayLabel, style = MaterialTheme.typography.labelLarge)
                     }
                 }
             }
@@ -762,11 +775,11 @@ internal fun PeriodQuarterBreakdownCard(data: YearQuarterSectionData) {
                         verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
                         Text(quarter.label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text(formatDuration(quarter.totalUsageMillis), style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                        Text(formatDuration(quarter.totalUsageMillis), style = MaterialTheme.typography.titleMedium)
                         Text(AppText.t("stats_best_month"), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text("${quarter.bestMonthLabel} · ${formatDuration(quarter.bestMonthUsageMillis)}", style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold)
+                        Text("${quarter.bestMonthLabel} · ${formatDuration(quarter.bestMonthUsageMillis)}", style = MaterialTheme.typography.bodySmall)
                         Text(AppText.t("stats_top_apps"), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text(quarter.topAppLabel, style = MaterialTheme.typography.bodySmall, fontWeight = FontWeight.SemiBold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(quarter.topAppLabel, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }
                 }
             }
@@ -796,7 +809,6 @@ internal fun MetricTileCompact(
             Text(
                 text = metric.value,
                 style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
             )
         }
     }

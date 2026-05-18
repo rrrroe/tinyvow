@@ -27,6 +27,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
@@ -95,7 +96,13 @@ import com.rrrrz.tinyvow.ui.theme.ThemeSeed
 import com.rrrrz.tinyvow.ui.theme.argbToHex
 import com.rrrrz.tinyvow.ui.theme.createCustomTheme
 import java.text.DateFormat
+import java.text.NumberFormat
 import java.util.Date
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneId
+import java.time.temporal.ChronoUnit
+import kotlin.math.roundToLong
 
 @Composable
 fun MeScreen(
@@ -106,7 +113,8 @@ fun MeScreen(
     isLocalActivationEnabled: Boolean,
     proEntitlement: ProEntitlementState,
     subscriptionOffers: List<SubscriptionOffer>,
-    userPoints: Double,
+    totalSavedMinutes: Long,
+    totalEarnedPoints: Double,
     profileDisplayName: String?,
     profileAvatarUri: String?,
     selectedThemeId: String,
@@ -115,6 +123,8 @@ fun MeScreen(
     superModeStatus: SuperModeStatus,
     isDebugBuild: Boolean,
     selectedAppLanguage: AppLanguage,
+    openBenefitsDialog: Boolean,
+    onBenefitsDialogOpened: () -> Unit,
     usageAccessGranted: Boolean,
     accessibilityServiceEnabled: Boolean,
     isAutoStartDismissed: Boolean,
@@ -177,6 +187,8 @@ fun MeScreen(
 
     val effectiveAvatar = profileAvatarUri ?: userSession?.avatarUrl
     val canTapToSignIn = isGoogleSignInEnabled && userSession == null && isGoogleSignInConfigured
+    val isProMember = isProActive
+    val appUsageDays = remember(context) { calculateInstalledDays(context) }
     val displayName =
         profileDisplayName
             ?: userSession?.displayName
@@ -185,11 +197,11 @@ fun MeScreen(
             } else {
                 AppText.t("me_not_signed_in")
             }
-    val subtitle =
+    val subtitle: String? =
         when {
             !userSession?.email.isNullOrBlank() -> userSession?.email.orEmpty()
             isLocalActivationEnabled -> AppText.t("me_local_account_subtitle")
-            isGoogleSignInEnabled -> AppText.t("me_sign_in_to_restore_subscriptions_and_prepare_for")
+            isGoogleSignInEnabled -> null
             else -> AppText.t("me_china_local_mode_subtitle")
         }
     val badgeText =
@@ -245,17 +257,26 @@ fun MeScreen(
                                 contentColor = themeColors.onBase,
                             )
                         }
-                        Text(
-                            text = displayName,
-                            style = MaterialTheme.typography.titleLarge,
-                            color = themeColors.onBase,
-                            fontWeight = FontWeight.Bold,
-                        )
-                        Text(
-                            text = subtitle,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = themeColors.onBase.copy(alpha = 0.78f),
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            Text(
+                                text = displayName,
+                                style = MaterialTheme.typography.titleLarge,
+                                color = themeColors.onBase,
+                            )
+                            if (isProMember) {
+                                ProMemberBadge()
+                            }
+                        }
+                        subtitle?.takeIf { it.isNotBlank() }?.let {
+                            Text(
+                                text = it,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = themeColors.onBase.copy(alpha = 0.78f),
+                            )
+                        }
                     }
                     IconButton(onClick = { showProfileEditor = true }) {
                         Icon(
@@ -292,22 +313,7 @@ fun MeScreen(
                         }
                     }
                 }
-                if (isLocalActivationEnabled) {
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text(
-                            text = AppText.t("me_china_local_mode_body"),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = themeColors.onBase.copy(alpha = 0.78f),
-                        )
-                        if (!userSession?.userId.isNullOrBlank()) {
-                            Text(
-                                text = AppText.t("activation_user_id_label", userSession?.userId.orEmpty()),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = themeColors.onBase.copy(alpha = 0.78f),
-                            )
-                        }
-                    }
-                } else if (!isGoogleSignInConfigured && userSession == null) {
+                if (!isLocalActivationEnabled && !isGoogleSignInConfigured && userSession == null) {
                     Text(
                         text = AppText.t("me_google_sign_in_is_not_configured"),
                         style = MaterialTheme.typography.bodySmall,
@@ -334,21 +340,33 @@ fun MeScreen(
                     horizontalArrangement = Arrangement.SpaceAround,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    MeStatItem(value = userPoints.toInt().toString(), label = AppText.t("me_current_points"), color = themeColors.encourage)
+                    MeStatItem(
+                        value = formatMetricNumber(totalSavedMinutes),
+                        label = AppText.t("me_total_saved_minutes"),
+                        color = themeColors.control,
+                    )
                     HorizontalDivider(
                         modifier = Modifier
                             .width(1.dp)
                             .height(40.dp),
                         color = MaterialTheme.colorScheme.outlineVariant,
                     )
-                    MeStatItem(value = "0", label = AppText.t("me_discipline_total"), color = themeColors.control)
+                    MeStatItem(
+                        value = formatMetricNumber(totalEarnedPoints.roundToLong()),
+                        label = AppText.t("me_total_earned_points"),
+                        color = themeColors.encourage,
+                    )
                     HorizontalDivider(
                         modifier = Modifier
                             .width(1.dp)
                             .height(40.dp),
                         color = MaterialTheme.colorScheme.outlineVariant,
                     )
-                    MeStatItem(value = "1", label = AppText.t("me_streak_days"), color = themeColors.base)
+                    MeStatItem(
+                        value = formatMetricNumber(appUsageDays),
+                        label = AppText.t("me_app_usage_days"),
+                        color = themeColors.base,
+                    )
                 }
             }
 
@@ -364,6 +382,8 @@ fun MeScreen(
                     isPlayBillingEnabled = isPlayBillingEnabled,
                     isLocalActivationEnabled = isLocalActivationEnabled,
                     localUserId = userSession?.userId,
+                    openBenefitsDialog = openBenefitsDialog,
+                    onBenefitsDialogOpened = onBenefitsDialogOpened,
                     onPurchasePro = onPurchasePro,
                     onRestorePurchases = onRestorePurchases,
                     onManageSubscription = onManageSubscription,
@@ -579,20 +599,50 @@ private fun ProfileBadge(
     text: String,
     backgroundColor: Color,
     contentColor: Color,
+    border: BorderStroke? = null,
+    fontWeight: FontWeight = FontWeight.Normal,
+    cornerRadius: androidx.compose.ui.unit.Dp = 999.dp,
 ) {
     Surface(
-        shape = RoundedCornerShape(999.dp),
+        shape = RoundedCornerShape(cornerRadius),
         color = backgroundColor,
+        border = border,
     ) {
         Text(
             text = text,
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp),
+            modifier = Modifier.padding(horizontal = 9.dp, vertical = 4.dp),
             style = MaterialTheme.typography.labelMedium,
             color = contentColor,
-            fontWeight = FontWeight.SemiBold,
+            fontWeight = fontWeight,
         )
     }
 }
+
+@Composable
+private fun ProMemberBadge() {
+    Surface(
+        shape = RoundedCornerShape(10.dp),
+        color = ProBadgeGold,
+    ) {
+        Box(modifier = Modifier.padding(2.dp)) {
+            Surface(
+                shape = RoundedCornerShape(8.dp),
+                color = ProBadgeBackground,
+            ) {
+                Text(
+                    text = AppText.t("me_pro_badge"),
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = ProBadgeGold,
+                    fontWeight = FontWeight.ExtraBold,
+                )
+            }
+        }
+    }
+}
+
+private val ProBadgeBackground = Color(0xFF141414)
+private val ProBadgeGold = Color(0xFFE0B84F)
 
 @Composable
 private fun ProfileEditorDialog(
@@ -607,7 +657,7 @@ private fun ProfileEditorDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(AppText.t("me_edit_profile"), fontWeight = FontWeight.Bold) },
+        title = { Text(AppText.t("me_edit_profile"), style = MaterialTheme.typography.titleLarge) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
                 Row(
@@ -683,7 +733,7 @@ private fun LanguageSettingsDialog(
                     ) {
                         Text(
                             text = language.displayName(),
-                            fontWeight = if (language == selected) FontWeight.Bold else FontWeight.Normal,
+                            fontWeight = if (language == selected) FontWeight.SemiBold else FontWeight.Normal,
                         )
                     }
                 }
@@ -719,7 +769,6 @@ private fun DataPrivacySheet(
             Text(
                 text = AppText.t("me_local_data_management"),
                 style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
             )
             Text(
                 text = AppText.t("me_tiny_vow_stores_the_apps_you_manage_usage"),
@@ -823,7 +872,6 @@ private fun PermissionSettingsSheet(
                     Text(
                         text = AppText.t("me_permission_settings"),
                         style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
                     )
                     Text(
                         text = AppText.t("me_check_permission_status_or_restore_permission_prompts_dismiss"),
@@ -985,7 +1033,7 @@ private fun RowScope.ThemePreviewCard(
             Text(
                 text = theme.name,
                 style = MaterialTheme.typography.labelLarge,
-                fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
                 color = MaterialTheme.colorScheme.onSurface,
                 maxLines = 1,
             )
@@ -1041,7 +1089,7 @@ private fun ThemeEditorDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(AppText.t("me_edit_theme"), fontWeight = FontWeight.Bold) },
+        title = { Text(AppText.t("me_edit_theme"), style = MaterialTheme.typography.titleLarge) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 OutlinedTextField(
@@ -1135,50 +1183,14 @@ private fun ThemeLegendDot(label: String, color: Color) {
 }
 
 @Composable
-private fun LocalModeInfoPanel(userId: String?) {
-    val clipboard = LocalClipboardManager.current
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        Text(
-            text = AppText.t("me_china_local_mode_title"),
-            style = MaterialTheme.typography.titleSmall,
-            fontWeight = FontWeight.Bold,
-        )
-        Text(
-            text = AppText.t("me_china_local_mode_body"),
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        if (!userId.isNullOrBlank()) {
-            Text(
-                text = AppText.t("activation_user_id_label", userId),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            TextButton(
-                onClick = {
-                    clipboard.setText(AnnotatedString(userId))
-                },
-            ) {
-                Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
-                Spacer(Modifier.width(6.dp))
-                Text(AppText.t("activation_copy_user_id"))
-            }
-        }
-    }
-}
-
-@Composable
 private fun SubscriptionStatusPanel(
     entitlement: ProEntitlementState,
     offers: List<SubscriptionOffer>,
     isPlayBillingEnabled: Boolean,
     isLocalActivationEnabled: Boolean,
     localUserId: String?,
+    openBenefitsDialog: Boolean,
+    onBenefitsDialogOpened: () -> Unit,
     onPurchasePro: (SubscriptionOffer) -> Unit,
     onRestorePurchases: () -> Unit,
     onManageSubscription: () -> Unit,
@@ -1188,12 +1200,18 @@ private fun SubscriptionStatusPanel(
     val isPending = entitlement.status == ProEntitlementStatus.PENDING
     var showActivationDialog by remember { mutableStateOf(false) }
     var showBenefitsDialog by remember { mutableStateOf(false) }
+    LaunchedEffect(openBenefitsDialog) {
+        if (openBenefitsDialog) {
+            showBenefitsDialog = true
+            onBenefitsDialogOpened()
+        }
+    }
 
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+        verticalArrangement = Arrangement.spacedBy(3.dp),
     ) {
         Row(
             modifier = Modifier
@@ -1208,7 +1226,6 @@ private fun SubscriptionStatusPanel(
                 Text(
                     text = "Tiny Vow Pro",
                     style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
                 )
                 Text(
                     text = entitlementStatusText(entitlement),
@@ -1224,7 +1241,6 @@ private fun SubscriptionStatusPanel(
                     text = subscriptionPriceSummary(offers, isActive),
                     style = MaterialTheme.typography.labelLarge,
                     color = if (isActive) LocalThemeColors.current.encourage else MaterialTheme.colorScheme.primary,
-                    fontWeight = FontWeight.Bold,
                 )
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
@@ -1274,18 +1290,19 @@ private fun SubscriptionStatusPanel(
                 }
             }
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            TextButton(onClick = onRestorePurchases) {
-                Text(AppText.t("me_restore_purchases"))
-            }
-            TextButton(onClick = onManageSubscription) {
-                Text(AppText.t("me_manage_subscription"))
-            }
-        }
     }
 
     if (showBenefitsDialog) {
         ProBenefitsComparisonDialog(
+            entitlement = entitlement,
+            offers = offers,
+            showSubscriptionActions = isPlayBillingEnabled && !isLocalActivationEnabled,
+            isLocalActivationEnabled = isLocalActivationEnabled,
+            localUserId = localUserId,
+            onPurchasePro = onPurchasePro,
+            onRestorePurchases = onRestorePurchases,
+            onManageSubscription = onManageSubscription,
+            onActivateProCode = onActivateProCode,
             onDismiss = { showBenefitsDialog = false },
         )
     }
@@ -1311,10 +1328,35 @@ private fun entitlementStatusText(entitlement: ProEntitlementState): String =
 
 @Composable
 private fun ProBenefitsComparisonDialog(
+    entitlement: ProEntitlementState,
+    offers: List<SubscriptionOffer>,
+    showSubscriptionActions: Boolean,
+    isLocalActivationEnabled: Boolean,
+    localUserId: String?,
+    onPurchasePro: (SubscriptionOffer) -> Unit,
+    onRestorePurchases: () -> Unit,
+    onManageSubscription: () -> Unit,
+    onActivateProCode: (String) -> Unit,
     onDismiss: () -> Unit,
 ) {
     val freeLimits = ProFeatureGate.limits(false)
     val proLimits = ProFeatureGate.limits(true)
+    val defaultOffer = offers.firstOrNull()
+    val purchaseButtonEnabled =
+        if (isLocalActivationEnabled) {
+            !localUserId.isNullOrBlank()
+        } else {
+            entitlement.status == ProEntitlementStatus.FREE && defaultOffer != null
+        }
+    val purchaseButtonLabel =
+        when {
+            isLocalActivationEnabled -> AppText.t("pro_activate_membership")
+            entitlement.status == ProEntitlementStatus.ACTIVE -> AppText.t("me_unlocked")
+            entitlement.status == ProEntitlementStatus.PENDING -> AppText.t("me_payment_pending")
+            defaultOffer != null -> AppText.t("me_buy_pro_with_price", defaultOffer.price)
+            else -> AppText.t("me_loading_subscription_info")
+        }
+    var showActivationDialog by remember { mutableStateOf(false) }
     val rows = listOf(
         Triple(
             AppText.t("pro_compare_control_groups"),
@@ -1374,14 +1416,53 @@ private fun ProBenefitsComparisonDialog(
                         proValue = proValue,
                     )
                 }
+                Spacer(modifier = Modifier.height(6.dp))
+                Button(
+                    onClick = {
+                        if (isLocalActivationEnabled) {
+                            showActivationDialog = true
+                        } else {
+                            defaultOffer?.let(onPurchasePro)
+                        }
+                    },
+                    enabled = purchaseButtonEnabled,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(purchaseButtonLabel)
+                }
             }
         },
         confirmButton = {
-            TextButton(onClick = onDismiss) {
-                Text(AppText.t("group_close"))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.End),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                if (showSubscriptionActions) {
+                    TextButton(onClick = onRestorePurchases) {
+                        Text(AppText.t("me_restore_purchases"))
+                    }
+                    TextButton(onClick = onManageSubscription) {
+                        Text(AppText.t("me_manage_subscription"))
+                    }
+                }
+                TextButton(onClick = onDismiss) {
+                    Text(AppText.t("group_close"))
+                }
             }
         },
     )
+
+    if (showActivationDialog) {
+        ActivationCodeDialog(
+            userId = localUserId.orEmpty(),
+            onDismiss = { showActivationDialog = false },
+            onActivate = {
+                showActivationDialog = false
+                onActivateProCode(it)
+            },
+        )
+    }
 }
 
 @Composable
@@ -1395,19 +1476,16 @@ private fun ProCompareHeaderRow() {
             text = AppText.t("pro_compare_feature"),
             modifier = Modifier.weight(1.4f),
             style = MaterialTheme.typography.labelMedium,
-            fontWeight = FontWeight.Bold,
         )
         Text(
             text = AppText.t("pro_compare_free"),
             modifier = Modifier.weight(0.8f),
             style = MaterialTheme.typography.labelMedium,
-            fontWeight = FontWeight.Bold,
         )
         Text(
             text = AppText.t("pro_compare_pro"),
             modifier = Modifier.weight(0.8f),
             style = MaterialTheme.typography.labelMedium,
-            fontWeight = FontWeight.Bold,
             color = MaterialTheme.colorScheme.primary,
         )
     }
@@ -1447,7 +1525,6 @@ private fun ProCompareValueRow(
                 modifier = Modifier.weight(0.8f),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.primary,
-                fontWeight = FontWeight.SemiBold,
             )
         }
     }
@@ -1520,9 +1597,21 @@ private fun ActivationCodeDialog(
 @Composable
 fun MeStatItem(value: String, label: String, color: Color) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(value, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.ExtraBold, color = color)
+        Text(value, style = MaterialTheme.typography.headlineSmall, color = color)
         Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
+}
+
+private fun formatMetricNumber(value: Long): String = NumberFormat.getIntegerInstance().format(value)
+
+private fun calculateInstalledDays(context: android.content.Context): Long {
+    val firstInstallTime =
+        runCatching {
+            context.packageManager.getPackageInfo(context.packageName, 0).firstInstallTime
+        }.getOrElse { return 1L }
+    val installedDate = Instant.ofEpochMilli(firstInstallTime).atZone(ZoneId.systemDefault()).toLocalDate()
+    val today = LocalDate.now(ZoneId.systemDefault())
+    return ChronoUnit.DAYS.between(installedDate, today).plus(1L).coerceAtLeast(1L)
 }
 
 @Composable
@@ -1533,7 +1622,6 @@ fun MeMenuSection(title: String, content: @Composable ColumnScope.() -> Unit) {
             modifier = Modifier.padding(start = 8.dp, bottom = 4.dp),
             style = MaterialTheme.typography.labelMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
-            fontWeight = FontWeight.Bold,
         )
         Surface(
             modifier = Modifier.fillMaxWidth(),

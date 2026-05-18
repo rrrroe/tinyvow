@@ -579,7 +579,7 @@ private fun PeriodNavigator(
                         Text(
                             text = title,
                             style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold,
+                            fontWeight = FontWeight.SemiBold,
                         )
                         Text(
                             text = subtitle,
@@ -656,7 +656,7 @@ private fun PeriodWeekPickerDialog(
             }
         },
         title = {
-            Text(AppText.t("stats_choose_week"), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text(AppText.t("stats_choose_week"), style = MaterialTheme.typography.titleLarge)
         },
         text = {
             Column(
@@ -674,7 +674,7 @@ private fun PeriodWeekPickerDialog(
                             text = periodWeekLabel(weekStart),
                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
                             style = MaterialTheme.typography.titleSmall,
-                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
                         )
                     }
                 }
@@ -696,7 +696,7 @@ private fun PeriodMonthPickerDialog(
             TextButton(onClick = onDismiss) { Text(AppText.t("group_close")) }
         },
         title = {
-            Text(AppText.t("stats_choose_month"), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text(AppText.t("stats_choose_month"), style = MaterialTheme.typography.titleLarge)
         },
         text = {
             Column(
@@ -714,7 +714,7 @@ private fun PeriodMonthPickerDialog(
                             text = month.format(DateTimeFormatter.ofPattern(AppText.t("stats_mmmm_yyyy"), Locale.getDefault())),
                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
                             style = MaterialTheme.typography.titleSmall,
-                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
                         )
                     }
                 }
@@ -736,7 +736,7 @@ private fun PeriodYearPickerDialog(
             TextButton(onClick = onDismiss) { Text(AppText.t("group_close")) }
         },
         title = {
-            Text(AppText.t("stats_choose_year"), style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+            Text(AppText.t("stats_choose_year"), style = MaterialTheme.typography.titleLarge)
         },
         text = {
             Column(
@@ -754,7 +754,7 @@ private fun PeriodYearPickerDialog(
                             text = year.toString(),
                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
                             style = MaterialTheme.typography.titleSmall,
-                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
                         )
                     }
                 }
@@ -851,7 +851,7 @@ private fun ArchiveDateNavigator(
                         Text(
                             text = formatArchiveDate(selectedArchiveDate, AppText.t("home_mmm_d_eeee")),
                             style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold,
+                            fontWeight = FontWeight.SemiBold,
                         )
                         Text(
                             text = AppText.t("stats_only_archived_dates_selectable"),
@@ -924,7 +924,6 @@ private fun ArchiveCalendarDialog(
             Text(
                 text = AppText.t("stats_choose_archive_date"),
                 style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
             )
         },
         text = {
@@ -943,7 +942,6 @@ private fun ArchiveCalendarDialog(
                         text = displayedMonth.format(DateTimeFormatter.ofPattern(AppText.t("stats_mmmm_yyyy"), Locale.CHINA)),
                         modifier = Modifier.weight(1f),
                         style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
                     )
                     IconButton(
                         onClick = { displayedMonth = displayedMonth.plusMonths(1) },
@@ -1048,7 +1046,6 @@ private fun PlaceholderReportScreen(
                 Text(
                     text = state.placeholderTitle.orEmpty(),
                     style = MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold,
                 )
                 Text(
                     text = state.placeholderDescription.orEmpty(),
@@ -1095,7 +1092,6 @@ private fun PermissionRequiredState(
                 Text(
                     text = AppText.t("stats_report_needs_usage_records_permission"),
                     style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
                 )
                 Text(
                     text = AppText.t("stats_enable_usage_records_for_daily_report"),
@@ -1158,7 +1154,6 @@ private fun ReportTabRow(
                         text = tab.label(),
                         modifier = Modifier.fillMaxWidth(),
                         style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
                         textAlign = TextAlign.Center,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -1254,7 +1249,6 @@ private fun DeviceHeroVisualPanel(
                         Text(
                             text = data?.summary?.title ?: AppText.t("stats_archived_daily_reports"),
                             style = MaterialTheme.typography.headlineSmall,
-                            fontWeight = FontWeight.Bold,
                         )
                     }
                     if (data == null) {
@@ -1340,7 +1334,6 @@ private fun DeviceHeroMetricsPanel(
                     Text(
                         text = data.summary.message,
                         style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
                     )
                 }
                 AdaptiveRowGrid(
@@ -1426,7 +1419,6 @@ private fun DeviceHeroMetricsPanel(
                                 Text(
                                     text = topApp.label,
                                     style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                                 )
@@ -1434,7 +1426,6 @@ private fun DeviceHeroMetricsPanel(
                             Text(
                                 text = animatedTopAppValue,
                                 style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold,
                             )
                         }
                     }
@@ -1495,7 +1486,6 @@ private fun UsageGoalChart(
                     Text(
                         text = formatDuration(animatedUsageMillis),
                         style = MaterialTheme.typography.headlineMedium,
-                        fontWeight = FontWeight.Bold,
                     )
                 }
                 Text(
@@ -1507,7 +1497,6 @@ private fun UsageGoalChart(
                         },
                     style = MaterialTheme.typography.labelLarge,
                     color = if (overLimit) warning else MaterialTheme.colorScheme.onSurfaceVariant,
-                    fontWeight = FontWeight.SemiBold,
                 )
             }
             Canvas(modifier = Modifier.fillMaxWidth().height(42.dp)) {
@@ -1561,7 +1550,7 @@ private fun UsageGoalChart(
                     text = "${((usageMillis.toFloat() / capMillis.coerceAtLeast(1L).toFloat()) * 100f).roundToInt()}%",
                     style = MaterialTheme.typography.labelMedium,
                     color = if (overLimit) warning else primary,
-                    fontWeight = FontWeight.Bold,
+                    fontWeight = FontWeight.SemiBold,
                 )
             }
         }
@@ -1785,9 +1774,9 @@ private fun YearScopePanel(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Text(summary.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+            Text(summary.title, style = MaterialTheme.typography.titleMedium)
             Text(summary.rangeLabel, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(summary.totalUsage, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
+            Text(summary.totalUsage, style = MaterialTheme.typography.headlineSmall)
             AdaptiveRowGrid(itemCount = 4, compactColumns = 2, expandedColumns = 2, verticalSpacing = 8.dp) { childModifier, index ->
                 val metric =
                     when (index) {
@@ -1860,7 +1849,7 @@ private fun HeatmapGrid(data: HeatmapSectionData) {
                     Text(
                         text = day.label,
                         style = MaterialTheme.typography.labelSmall,
-                        fontWeight = if (day.selected) FontWeight.Bold else FontWeight.Medium,
+                        fontWeight = if (day.selected) FontWeight.SemiBold else FontWeight.Normal,
                         color = MaterialTheme.colorScheme.onSurface,
                     )
                 }
@@ -1918,7 +1907,7 @@ private fun ShareReportCard(
                     modifier = Modifier.padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
-                    Text(data.title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.Bold)
+                    Text(data.title, style = MaterialTheme.typography.titleLarge)
                     Text(data.insight, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                     Button(
                         onClick = { generatePreview() },
@@ -1986,8 +1975,8 @@ internal fun CompactShareReportRow(
 
     Surface(
         shape = RoundedCornerShape(20.dp),
-        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.28f),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.2f)),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
     ) {
         if (shareState == SectionState.Loading) {
             Row(
@@ -2030,7 +2019,7 @@ internal fun CompactShareReportRow(
                     Text(
                         text = AppText.t("stats_share_report"),
                         style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold,
+                        fontWeight = FontWeight.SemiBold,
                     )
                     Text(
                         text = data?.insight ?: AppText.t("stats_preview_the_poster_then_share_it_with_friends"),
@@ -2103,7 +2092,6 @@ private fun SharePreviewDialog(
                     Text(
                         text = AppText.t("stats_share_preview"),
                         style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
                     )
                     TextButton(onClick = onDismiss) { Text(AppText.t("group_close")) }
                 }
@@ -2159,8 +2147,9 @@ internal fun DailyModeSummaryCard(
     val reportColors = LocalReportColors.current
     val accent =
         when {
-            summary.isWarning -> reportColors.warning
+            summary.title == AppText.t("stats_control_results") -> reportColors.danger
             summary.title == AppText.t("stats_encourage_progress") -> reportColors.positive
+            summary.isWarning -> reportColors.warning
             else -> MaterialTheme.colorScheme.primary
         }
     val animatedPrimaryValue = animateMetricDisplayText(
@@ -2201,22 +2190,14 @@ internal fun DailyModeSummaryCard(
                         )
                     }
                 }
-                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(
-                        text = summary.title,
-                        style = if (compact) MaterialTheme.typography.titleSmall else MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Text(
-                        text = summary.description,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = if (compact) 1 else 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
+                Text(
+                    text = summary.title,
+                    modifier = Modifier.weight(1f),
+                    style = if (compact) MaterialTheme.typography.titleSmall else MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(
@@ -2227,7 +2208,7 @@ internal fun DailyModeSummaryCard(
                 Text(
                     text = animatedPrimaryValue,
                     style = if (compact) MaterialTheme.typography.titleLarge else MaterialTheme.typography.headlineSmall,
-                    fontWeight = FontWeight.Bold,
+                    fontWeight = FontWeight.SemiBold,
                     color = accent,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -2300,7 +2281,7 @@ internal fun DailyModeSummaryCard(
                     Text(
                         text = summary.spotlightValue,
                         style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.SemiBold,
+                        fontWeight = FontWeight.Medium,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -2350,7 +2331,7 @@ private fun FocusProgressRing(
         Text(
             text = label,
             style = MaterialTheme.typography.labelLarge,
-            fontWeight = FontWeight.Bold,
+            fontWeight = FontWeight.SemiBold,
             color = color,
         )
     }
@@ -2394,7 +2375,7 @@ private fun FocusMetricPill(
                     Text(
                         text = valueParts.number,
                         style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.Bold,
+                        fontWeight = FontWeight.SemiBold,
                         color = valueColor,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -2404,7 +2385,7 @@ private fun FocusMetricPill(
                             text = valueParts.unit,
                             modifier = Modifier.padding(start = 2.dp, bottom = 2.dp),
                             style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.SemiBold,
+                            fontWeight = FontWeight.Medium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
@@ -2427,7 +2408,7 @@ private fun FocusMetricPill(
                 Text(
                     text = animatedValue,
                     style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.Bold,
+                    fontWeight = FontWeight.SemiBold,
                     color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -2496,7 +2477,7 @@ private fun HeroMetricChip(
             Text(
                 text = animatedValue,
                 style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
+                fontWeight = FontWeight.SemiBold,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -2755,7 +2736,6 @@ private fun PeriodDistributionCard(
                 Text(
                     text = AppText.t("stats_time_heatmap"),
                     style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
                 )
                 Box(
                     modifier = Modifier.fillMaxWidth(),
@@ -2776,7 +2756,7 @@ private fun PeriodDistributionCard(
                             Text(
                                 text = dominantItem?.label ?: "--",
                                 style = MaterialTheme.typography.titleLarge,
-                                fontWeight = FontWeight.Bold,
+                                fontWeight = FontWeight.SemiBold,
                             )
                             Text(
                                 text = dominantItem?.let { formatDuration(animatedDominantMillis) } ?: "--",
@@ -2893,7 +2873,7 @@ private fun PeriodLegendRow(
         Text(
             text = value,
             style = MaterialTheme.typography.labelMedium,
-            fontWeight = FontWeight.Bold,
+            fontWeight = FontWeight.SemiBold,
             color = color,
         )
     }
@@ -2918,7 +2898,7 @@ private fun PeakMomentsCard(
             Text(
                 text = AppText.t("stats_peak_time"),
                 style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
+                fontWeight = FontWeight.SemiBold,
             )
             if (timelineState == null) {
                 Text(
@@ -2985,10 +2965,10 @@ private fun TopUsageBarRow(
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(18.dp),
-        color = if (isTopRank) color.copy(alpha = 0.08f) else MaterialTheme.colorScheme.surface.copy(alpha = 0.36f),
+        color = color.copy(alpha = if (isTopRank) 0.08f else 0.05f),
         border = BorderStroke(
             1.dp,
-            if (isTopRank) color.copy(alpha = 0.24f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.18f),
+            color.copy(alpha = if (isTopRank) 0.28f else 0.18f),
         ),
     ) {
         Row(
@@ -3010,7 +2990,7 @@ private fun TopUsageBarRow(
                     Text(
                         text = rank.toString(),
                         style = MaterialTheme.typography.labelMedium,
-                        fontWeight = FontWeight.Bold,
+                        fontWeight = FontWeight.SemiBold,
                         color = color,
                     )
                 }
@@ -3020,7 +3000,7 @@ private fun TopUsageBarRow(
                 Text(
                     text = item.label,
                     style = MaterialTheme.typography.bodyMedium,
-                    fontWeight = if (isTopRank) FontWeight.Bold else FontWeight.SemiBold,
+                    fontWeight = if (isTopRank) FontWeight.SemiBold else FontWeight.Medium,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -3034,13 +3014,13 @@ private fun TopUsageBarRow(
                 Text(
                     text = formatDuration(animatedDuration),
                     style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
+                    fontWeight = FontWeight.SemiBold,
                 )
                 Text(
                     text = "${(animatedShare * 100).roundToInt()}%",
                     style = MaterialTheme.typography.labelMedium,
                     color = color,
-                    fontWeight = FontWeight.SemiBold,
+                    fontWeight = FontWeight.Medium,
                 )
             }
         }
@@ -3142,7 +3122,6 @@ internal fun AppUsageShareCard(
                 Text(
                     text = AppText.t("stats_app_duration"),
                     style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
                 )
                 if (items.isEmpty()) {
                     Text(
@@ -3189,7 +3168,7 @@ internal fun AppUsageShareCard(
                                 Text(
                                     text = formatDuration(animatedTotal),
                                     style = if (compact) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleLarge,
-                                    fontWeight = FontWeight.Bold,
+                                    fontWeight = FontWeight.SemiBold,
                                 )
                                 Text(
                                     text = AppText.t("stats_top_10_total_usage"),
@@ -3203,20 +3182,19 @@ internal fun AppUsageShareCard(
                     Text(
                         text = AppText.t("stats_duration_ranking"),
                         style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold,
+                        fontWeight = FontWeight.SemiBold,
                     )
                     val maxUsage = items.maxOfOrNull { it.value }?.coerceAtLeast(1L) ?: 1L
-                    items.forEachIndexed { index, item ->
-                        val color = appColors[item.packageName] ?: fallbackChartColor(index)
-                        TopUsageBarRow(
-                            rank = index + 1,
-                            item = item,
-                            maxUsage = maxUsage,
-                            totalUsage = total,
-                            color = color,
-                        )
-                        if (index != items.lastIndex) {
-                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.28f))
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        items.forEachIndexed { index, item ->
+                            val color = appColors[item.packageName] ?: fallbackChartColor(index)
+                            TopUsageBarRow(
+                                rank = index + 1,
+                                item = item,
+                                maxUsage = maxUsage,
+                                totalUsage = total,
+                                color = color,
+                            )
                         }
                     }
                 }
@@ -3263,7 +3241,7 @@ private fun AppShareChip(
             Text(
                 text = "${(animatedShare * 100).roundToInt()}%",
                 style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.Bold,
+                fontWeight = FontWeight.SemiBold,
                 color = color,
                 maxLines = 1,
             )
@@ -3290,21 +3268,19 @@ private fun TopUsageRankingCard(
             Text(
                 text = AppText.t("stats_duration_ranking"),
                 style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
             )
             val maxUsage = items.maxOfOrNull { it.value }?.coerceAtLeast(1L) ?: 1L
             val totalUsage = items.sumOf { it.value }.coerceAtLeast(1L)
-            items.forEachIndexed { index, item ->
-                val color = appColors[item.packageName] ?: fallbackChartColor(index)
-                TopUsageBarRow(
-                    rank = index + 1,
-                    item = item,
-                    maxUsage = maxUsage,
-                    totalUsage = totalUsage,
-                    color = color,
-                )
-                if (index != items.lastIndex) {
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                items.forEachIndexed { index, item ->
+                    val color = appColors[item.packageName] ?: fallbackChartColor(index)
+                    TopUsageBarRow(
+                        rank = index + 1,
+                        item = item,
+                        maxUsage = maxUsage,
+                        totalUsage = totalUsage,
+                        color = color,
+                    )
                 }
             }
         }
@@ -3365,7 +3341,7 @@ internal fun MiniInsightCard(
                     Text(
                         text = animatedValue,
                         style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.Bold,
+                        fontWeight = FontWeight.SemiBold,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
@@ -3390,7 +3366,7 @@ internal fun MiniInsightCard(
                     modifier = Modifier.size(16.dp),
                 )
                 Text(text = label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Text(text = animatedValue, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
+                Text(text = animatedValue, style = MaterialTheme.typography.titleMedium)
                 if (visualRatio != null) {
                     GradientProgressBar(
                         progress = visualRatio.coerceIn(0f, 1f),
@@ -3626,7 +3602,7 @@ private fun BehaviorMomentCard(
                 Text(
                     text = appLabel,
                     style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold,
+                    fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -3717,8 +3693,8 @@ internal fun ComparisonRow(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text(text = item.label, style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.Bold)
-                Text(text = animatedTodayValue, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold)
+                Text(text = item.label, style = MaterialTheme.typography.titleSmall)
+                Text(text = animatedTodayValue, style = MaterialTheme.typography.headlineSmall)
             }
             item.chartData?.let { data ->
                 ComparisonMiniBars(
@@ -3831,7 +3807,7 @@ private fun ComparisonBar(
         Text(
             text = display ?: "--",
             style = MaterialTheme.typography.labelSmall,
-            fontWeight = FontWeight.SemiBold,
+            fontWeight = FontWeight.Medium,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.width(58.dp),
@@ -3870,7 +3846,7 @@ internal fun SectionHeader(
             Text(
                 text = title,
                 style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
+                fontWeight = FontWeight.SemiBold,
             )
         }
         if (subtitle != null) {

@@ -67,13 +67,4 @@ internal val BUILTIN_REWARD_DEFINITIONS =
             stock = -1,
             payload = RewardPayload(shieldTarget = StreakShieldTarget.ENCOURAGE_STREAK),
         ),
-        BuiltinRewardDefinition(
-            builtinKey = "reward_double_points_day",
-            title = "Daily double points",
-            description = "Use on one encourage group. Points are doubled until today ends.",
-            rewardType = RewardType.DOUBLE_POINTS_DAY,
-            pointCost = 10,
-            stock = -1,
-            payload = RewardPayload(pointsMultiplier = 2.0),
-        ),
     )

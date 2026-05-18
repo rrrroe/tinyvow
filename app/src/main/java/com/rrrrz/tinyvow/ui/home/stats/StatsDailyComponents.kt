@@ -1,5 +1,6 @@
 ﻿package com.rrrrz.tinyvow.ui.home
 
+import com.rrrrz.tinyvow.BuildConfig
 import com.rrrrz.tinyvow.i18n.AppText
 
 import android.content.Context
@@ -50,7 +51,6 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.CallSplit
 import androidx.compose.material.icons.automirrored.filled.CompareArrows
-import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.CalendarMonth
@@ -67,7 +67,6 @@ import androidx.compose.material.icons.filled.WbSunny
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -135,7 +134,6 @@ import java.time.temporal.IsoFields
 import java.time.temporal.TemporalAdjusters
 import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
-import java.util.Locale
 import java.io.File
 import java.io.FileOutputStream
 import kotlin.math.ceil
@@ -176,72 +174,45 @@ internal fun DailyBattleHeroCard(
                     SkeletonLine(width = 156.dp, height = 28.dp)
                     SkeletonLine(fill = true, height = 18.dp)
                     AdaptiveRowGrid(
-                        itemCount = 4,
+                        itemCount = 2,
                         compactColumns = 2,
-                        expandedColumns = 4,
+                        expandedColumns = 2,
                         horizontalSpacing = 8.dp,
                         verticalSpacing = 8.dp,
                     ) { modifier, _ ->
                         SkeletonMetricChip(modifier = modifier)
                     }
                 } else {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.Top,
-                    ) {
-                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text(
-                                text = summary.title,
-                                style = MaterialTheme.typography.labelLarge,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                            Text(
-                                text = summary.subtitle,
-                                style = MaterialTheme.typography.titleLarge,
-                                fontWeight = FontWeight.Bold,
-                            )
-                        }
-                        Surface(
-                            shape = RoundedCornerShape(999.dp),
-                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
-                        ) {
-                            Text(
-                                text = summary.capturedAt,
-                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
-                                style = MaterialTheme.typography.labelMedium,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                    }
+                    Text(
+                        text = summary.title,
+                        style = MaterialTheme.typography.titleLarge,
+                    )
                     Text(
                         text = summary.primaryValue,
                         style = MaterialTheme.typography.displaySmall,
-                        fontWeight = FontWeight.Black,
                         color = MaterialTheme.colorScheme.primary,
                     )
                     Text(
                         text = summary.message,
                         style = MaterialTheme.typography.titleSmall,
                         color = MaterialTheme.colorScheme.onSurface,
-                        fontWeight = FontWeight.SemiBold,
                     )
                     AdaptiveRowGrid(
                         itemCount = 2,
-                        compactColumns = 1,
+                        compactColumns = 2,
                         expandedColumns = 2,
                         horizontalSpacing = 8.dp,
                         verticalSpacing = 8.dp,
                     ) { modifier, index ->
                         when (index) {
                             0 -> BattleHeadlineChip(
-                                label = AppText.t("stats_vs_previous_archive"),
+                                label = AppText.t("stats_vs_previous_day_decreased"),
                                 value = summary.secondaryValue,
-                                accent = reportColors.warning,
+                                accent = reportColors.danger,
                                 modifier = modifier,
                             )
                             else -> BattleHeadlineChip(
-                                label = AppText.t("stats_daily_average"),
+                                label = AppText.t("stats_last_7_days_daily_average"),
                                 value = summary.tertiaryValue,
                                 accent = reportColors.positive,
                                 modifier = modifier,
@@ -249,9 +220,9 @@ internal fun DailyBattleHeroCard(
                         }
                     }
                     AdaptiveRowGrid(
-                        itemCount = 4,
+                        itemCount = 2,
                         compactColumns = 2,
-                        expandedColumns = 4,
+                        expandedColumns = 2,
                         horizontalSpacing = 8.dp,
                         verticalSpacing = 8.dp,
                     ) { modifier, index ->
@@ -259,26 +230,13 @@ internal fun DailyBattleHeroCard(
                             0 -> BattleMetricTile(
                                 label = AppText.t("stats_launches"),
                                 value = AppText.t("stats_value_times_12", overview.openCount),
-                                accent = MaterialTheme.colorScheme.primary,
-                                modifier = modifier,
-                            )
-                            1 -> BattleMetricTile(
-                                label = AppText.t("stats_night_use"),
-                                value = formatDuration(data.nightUsageMillis),
-                                accent = reportColors.warning,
-                                modifier = modifier,
-                            )
-                            2 -> BattleMetricTile(
-                                label = AppText.t("stats_target_complete"),
-                                value = data.goalCompletionProgress?.let { "${(it * 100f).roundToInt()}%" }
-                                    ?: AppText.t("stats_none"),
-                                accent = reportColors.positive,
+                                accent = reportColors.danger,
                                 modifier = modifier,
                             )
                             else -> BattleMetricTile(
-                                label = AppText.t("stats_top_app_of_the_day"),
-                                value = overview.topApp?.label ?: AppText.t("stats_none"),
-                                accent = MaterialTheme.colorScheme.secondary,
+                                label = AppText.t("stats_night_use"),
+                                value = formatDuration(data.nightUsageMillis),
+                                accent = reportColors.positive,
                                 modifier = modifier,
                             )
                         }
@@ -302,6 +260,7 @@ internal fun BattleHeadlineChip(
     label: String,
     value: String,
     accent: Color,
+    showValue: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     Surface(
@@ -319,14 +278,15 @@ internal fun BattleHeadlineChip(
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Text(
-                text = value,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = accent,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
-            )
+            if (showValue) {
+                Text(
+                    text = value,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = accent,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
     }
 }
@@ -362,7 +322,6 @@ internal fun BattleMetricTile(
             Text(
                 text = animatedValue,
                 style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.Bold,
                 color = accent,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
@@ -485,44 +444,46 @@ internal fun DailyAppsAndAnalysisCard(
                     )
                 }
             }
-            if (isProActive) {
-                DailyAnalysisPanel(
-                    behaviorState = behaviorState,
-                    comparisonState = comparisonState,
-                    shareState = shareState,
-                )
-            } else {
-                CompactLockedAnalysisPanel(
-                    onClick = { onShowProUpsell(ProUpsellSource.ADVANCED_REPORT) },
-                )
-            }
         }
     }
+    if (isProActive) {
+        DailyAnalysisPanel(
+            behaviorState = behaviorState,
+            comparisonState = comparisonState,
+        )
+        if (BuildConfig.DEBUG) {
+            DailyShareReportCard(shareState = shareState)
+        }
+    } else {
+        CompactLockedAnalysisPanel(
+            onClick = { onShowProUpsell(ProUpsellSource.ADVANCED_REPORT) },
+        )
+    }
+}
+
+@Composable
+internal fun DailyShareReportCard(
+    shareState: SectionState<ShareReportData>,
+) {
+    CompactShareReportRow(shareState = shareState)
 }
 
 @Composable
 internal fun DailyAnalysisPanel(
     behaviorState: SectionState<BehaviorSectionData>,
     comparisonState: SectionState<ComparisonSectionData>,
-    shareState: SectionState<ShareReportData>,
 ) {
-    val insight = (behaviorState as? SectionState.Ready)?.data?.behaviorInsight
-    val comparisons = (comparisonState as? SectionState.Ready)?.data?.comparisons.orEmpty().take(3)
-    Surface(
-        shape = RoundedCornerShape(24.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.66f),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.24f)),
-    ) {
+    val structure = (behaviorState as? SectionState.Ready)?.data?.structure
+    ReportCard {
         Column(
-            modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             SectionHeader(
                 icon = Icons.Default.Insights,
                 title = AppText.t("stats_behavior_analysis"),
-                subtitle = AppText.t("stats_compare_current_day_with_previous_archive"),
+                subtitle = AppText.t("stats_behavior_structure_description"),
             )
-            if (behaviorState == SectionState.Loading || comparisonState == SectionState.Loading) {
+            if (behaviorState == SectionState.Loading) {
                 AdaptiveRowGrid(
                     itemCount = 4,
                     compactColumns = 2,
@@ -539,73 +500,35 @@ internal fun DailyAnalysisPanel(
                         shape = RoundedCornerShape(18.dp),
                     )
                 }
-            } else if (insight == null && comparisons.isEmpty()) {
+            } else if (structure == null || structure.metrics.isEmpty()) {
                 Text(
                     text = AppText.t("stats_this_archived_day_does_not_have_enough_behavior"),
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             } else {
-                insight?.let {
-                    AdaptiveRowGrid(
-                        itemCount = 4,
-                        compactColumns = 2,
-                        expandedColumns = 2,
-                        horizontalSpacing = 10.dp,
-                        verticalSpacing = 10.dp,
-                    ) { modifier, index ->
-                        when (index) {
-                            0 -> MiniInsightCard(
-                                icon = Icons.Default.Schedule,
-                                label = AppText.t("stats_label_11"),
-                                value = it.longestSession?.let { session ->
-                                    "${session.label} · ${formatDuration(session.value)}"
-                                } ?: AppText.t("stats_none"),
-                                visualRatio = ((it.longestSession?.value ?: 0L).toFloat() / (2 * 60 * 60_000L).toFloat()).coerceIn(0f, 1f),
-                                modifier = modifier,
-                            )
-                            1 -> MiniInsightCard(
-                                icon = Icons.Default.AccessTime,
-                                label = AppText.t("stats_average_session"),
-                                value = formatDuration(it.averageSessionMillis),
-                                visualRatio = (it.averageSessionMillis.toFloat() / (30 * 60_000L).toFloat()).coerceIn(0f, 1f),
-                                modifier = modifier,
-                            )
-                            2 -> MiniInsightCard(
-                                icon = Icons.Default.Timeline,
-                                label = AppText.t("stats_peak_time"),
-                                value = "${it.peakHourLabel} · ${formatDuration(it.peakHourMillis)}",
-                                visualRatio = (it.peakHourMillis.toFloat() / (2 * 60 * 60_000L).toFloat()).coerceIn(0f, 1f),
-                                modifier = modifier,
-                            )
-                            else -> MiniInsightCard(
-                                icon = Icons.Default.TouchApp,
-                                label = AppText.t("stats_launch_intensity"),
-                                value = String.format(Locale.CHINA, AppText.t("stats_launches_per_active_hour_format"), it.reopenIntensity),
-                                visualRatio = (it.reopenIntensity / 6f).coerceIn(0f, 1f),
-                                modifier = modifier,
-                            )
-                        }
-                    }
-                }
-                if (comparisons.isEmpty()) {
-                    Text(
-                        text = AppText.t("stats_not_enough_earlier_archive_samples"),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                AdaptiveRowGrid(
+                    itemCount = structure.metrics.size,
+                    compactColumns = 2,
+                    expandedColumns = 2,
+                    horizontalSpacing = 10.dp,
+                    verticalSpacing = 10.dp,
+                ) { modifier, index ->
+                    val metric = structure.metrics[index]
+                    MiniInsightCard(
+                        icon = when (index) {
+                            0 -> Icons.Default.TouchApp
+                            1 -> Icons.Default.BarChart
+                            2 -> Icons.Default.Schedule
+                            else -> Icons.Default.NightsStay
+                        },
+                        label = metric.label,
+                        value = metric.value,
+                        visualRatio = metric.visualRatio,
+                        modifier = modifier,
                     )
-                } else {
-                    comparisons.forEachIndexed { index, item ->
-                        ComparisonRow(
-                            item = item,
-                            delayMillis = 700 + index * 40,
-                            averageBarLabel = AppText.t("stats_seven_day"),
-                            showChips = false,
-                        )
-                    }
                 }
             }
-            CompactShareReportRow(shareState = shareState)
         }
     }
 }
@@ -614,13 +537,8 @@ internal fun DailyAnalysisPanel(
 internal fun CompactLockedAnalysisPanel(
     onClick: () -> Unit,
 ) {
-    Surface(
-        shape = RoundedCornerShape(24.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.66f),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.24f)),
-    ) {
+    ReportCard {
         Column(
-            modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             SectionHeader(

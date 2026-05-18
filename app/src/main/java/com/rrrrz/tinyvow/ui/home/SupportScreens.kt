@@ -129,7 +129,6 @@ fun ContactUsScreen(
                     Text(
                         text = AppText.t("support_tiny_vow_support_email"),
                         style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
                     )
                     Text(
                         text = SUPPORT_EMAIL,
@@ -185,7 +184,6 @@ private fun HelpCard(
             Text(
                 text = title,
                 style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
             )
             Text(
                 text = body,
