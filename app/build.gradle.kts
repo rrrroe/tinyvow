@@ -5,7 +5,7 @@ plugins {
 }
 
 val tinyVowVersionName = providers.gradleProperty("TINYVOW_VERSION_NAME")
-    .orElse("1.0.0")
+    .orElse("1.0.1")
     .get()
     .also {
         require(Regex("""\d+\.\d+\.\d+""").matches(it)) {
@@ -13,7 +13,7 @@ val tinyVowVersionName = providers.gradleProperty("TINYVOW_VERSION_NAME")
         }
     }
 val tinyVowVersionCode = providers.gradleProperty("TINYVOW_VERSION_CODE")
-    .orElse("1")
+    .orElse("2")
     .get()
     .toIntOrNull()
     ?.also {
