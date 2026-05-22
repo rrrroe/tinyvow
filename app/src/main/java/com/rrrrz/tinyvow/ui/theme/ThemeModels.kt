@@ -42,6 +42,10 @@ data class ThemeTokens(
     val pageGradient: List<Color>,
     val chartPalette: List<Color>,
     val achievementPalette: List<Color>,
+    /** 半透明玻璃叠层色：surface 65% + 主题 base 色调 10%，用于卡片内嵌面板 */
+    val glassOverlay: Color,
+    /** 次要强调色：base 与 controlContainer 混合，用于 icon 底板、次要标记 */
+    val subtleAccent: Color,
 )
 
 val ThemePresets = listOf(
@@ -151,6 +155,13 @@ fun themeTokensFromSeed(seed: ThemeSeed): ThemeTokens {
         lerp(base, Color.Black, 0.10f),
     )
 
+    val glassOverlay = lerp(
+        Color.White.copy(alpha = 0.65f),
+        lerp(baseContainer, Color.White, 0.55f),
+        0.30f,
+    )
+    val subtleAccent = lerp(baseContainer, controlContainer, 0.36f)
+
     return ThemeTokens(
         seed = seed,
         colorScheme = scheme,
@@ -178,6 +189,8 @@ fun themeTokensFromSeed(seed: ThemeSeed): ThemeTokens {
             encourage,
             lerp(base, Color.White, 0.20f),
         ),
+        glassOverlay = glassOverlay,
+        subtleAccent = subtleAccent,
     )
 }
 

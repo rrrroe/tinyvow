@@ -1,4 +1,4 @@
-﻿package com.rrrrz.tinyvow.ui.home
+package com.rrrrz.tinyvow.ui.home
 
 import com.rrrrz.tinyvow.i18n.AppText
 
@@ -462,7 +462,7 @@ private fun DailyReportScreen(
                     DailyBattleHeroCard(heroState = state.heroState)
                     DailyFocusCard(
                         focusState = state.dailyFocusState,
-                        compactLayout = true,
+                        compactLayout = false,
                     )
                     DailyRhythmCard(timelineState = state.timelineState)
                     DailyAppsAndAnalysisCard(
@@ -2384,28 +2384,38 @@ private fun DailyGroupProgressRow(
             }
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
+                horizontalArrangement = Arrangement.End,
                 verticalAlignment = Alignment.Top,
             ) {
                 GroupProgressMetric(
-                    label = item.leadingLabel,
-                    value = item.leadingValue,
-                    modifier = Modifier.weight(1f),
-                )
-                GroupProgressMetric(
                     label = item.trailingLabel,
                     value = item.trailingValue,
-                    modifier = Modifier.weight(1f),
                     alignEnd = true,
                     valueColor = toneColor,
                 )
             }
-            LinearProgressIndicator(
-                progress = { animatedProgress },
-                modifier = Modifier.fillMaxWidth(),
-                color = toneColor,
-                trackColor = toneColor.copy(alpha = 0.14f),
-            )
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(6.dp)
+                    .clip(RoundedCornerShape(3.dp))
+                    .background(toneColor.copy(alpha = 0.14f))
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth(fraction = animatedProgress)
+                        .fillMaxHeight()
+                        .clip(RoundedCornerShape(3.dp))
+                        .background(
+                            brush = Brush.horizontalGradient(
+                                colors = listOf(
+                                    toneColor.copy(alpha = 0.6f),
+                                    toneColor
+                                )
+                            )
+                        )
+                )
+            }
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,

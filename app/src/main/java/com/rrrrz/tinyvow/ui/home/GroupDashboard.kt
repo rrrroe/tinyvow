@@ -1,4 +1,4 @@
-﻿package com.rrrrz.tinyvow.ui.home
+package com.rrrrz.tinyvow.ui.home
 
 import com.rrrrz.tinyvow.i18n.AppText
 
@@ -315,13 +315,13 @@ private fun SectionCard(
 ) {
     ElevatedCard(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(18.dp),
+        shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.elevatedCardColors(
             containerColor = MaterialTheme.colorScheme.surface
         )
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 10.dp),
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Row(
@@ -335,14 +335,14 @@ private fun SectionCard(
                 ) {
                     Text(
                         text = title,
-                        style = MaterialTheme.typography.titleSmall,
+                        style = MaterialTheme.typography.titleMedium,
                         color = MaterialTheme.colorScheme.onSurface,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
                         text = subtitle,
-                        style = MaterialTheme.typography.labelSmall,
+                        style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -453,9 +453,9 @@ private fun GroupCard(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
+            .clip(RoundedCornerShape(16.dp))
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
-            .padding(vertical = 8.dp),
+            .padding(horizontal = 4.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
         Row(
@@ -530,15 +530,15 @@ private fun GroupCard(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(8.dp)
-                    .clip(CircleShape)
+                    .height(6.dp)
+                    .clip(RoundedCornerShape(3.dp))
                     .background(trackColor)
             ) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth(fraction = animatedProgress.coerceIn(0f, 1f))
                         .fillMaxHeight()
-                        .clip(CircleShape)
+                        .clip(RoundedCornerShape(3.dp))
                         .background(
                             brush = androidx.compose.ui.graphics.Brush.horizontalGradient(
                                 colors = listOf(
@@ -552,8 +552,6 @@ private fun GroupCard(
         }
     }
 }
-
-
 @Composable
 private fun GroupSortDialog(
     title: String,

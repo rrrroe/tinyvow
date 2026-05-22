@@ -73,6 +73,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.painterResource
@@ -224,12 +225,13 @@ fun MeScreen(
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(200.dp)
+                .height(220.dp)
                 .background(
                     Brush.verticalGradient(
                         colors = listOf(
                             themeColors.base,
-                            themeColors.base.copy(alpha = 0.82f),
+                            lerp(themeColors.base, themeColors.encourage, 0.22f),
+                            themeColors.base.copy(alpha = 0.88f),
                         )
                     )
                 )
@@ -284,15 +286,6 @@ fun MeScreen(
                     }
                 }
                 when {
-                    isLocalActivationEnabled && !userSession?.userId.isNullOrBlank() -> {
-                        OutlinedButton(
-                            onClick = {
-                                clipboard.setText(AnnotatedString(userSession?.userId.orEmpty()))
-                            },
-                        ) {
-                            Text(AppText.t("activation_copy_user_id"), color = themeColors.onBase)
-                        }
-                    }
                     isGoogleSignInEnabled && userSession != null -> {
                         Row(
                             horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -1628,11 +1621,19 @@ private fun MeInfoItem(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(16.dp),
+            .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(icon, contentDescription = null, modifier = Modifier.size(24.dp), tint = color)
-        Spacer(Modifier.width(16.dp))
+        Box(
+            modifier = Modifier
+                .size(36.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(MaterialTheme.colorScheme.surfaceContainerHigh),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(icon, contentDescription = null, modifier = Modifier.size(20.dp), tint = color)
+        }
+        Spacer(Modifier.width(14.dp))
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
             Text(title, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface)
             Text(
@@ -1655,16 +1656,29 @@ fun MeMenuItem(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(onClick = onClick)
-            .padding(16.dp),
+            .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(icon, contentDescription = null, modifier = Modifier.size(24.dp), tint = color)
-        Spacer(Modifier.width(16.dp))
-        Text(title, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface)
-        Spacer(Modifier.weight(1f))
+        Box(
+            modifier = Modifier
+                .size(36.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.70f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                icon,
+                contentDescription = null,
+                modifier = Modifier.size(20.dp),
+                tint = if (color == MaterialTheme.colorScheme.onSurface) MaterialTheme.colorScheme.primary else color,
+            )
+        }
+        Spacer(Modifier.width(14.dp))
+        Text(title, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
         Icon(
             Icons.AutoMirrored.Filled.KeyboardArrowRight,
             contentDescription = null,
+            modifier = Modifier.size(18.dp),
             tint = MaterialTheme.colorScheme.outlineVariant,
         )
     }

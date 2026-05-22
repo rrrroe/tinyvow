@@ -1,4 +1,4 @@
-﻿package com.rrrrz.tinyvow.ui.home
+package com.rrrrz.tinyvow.ui.home
 
 import com.rrrrz.tinyvow.i18n.AppText
 
@@ -324,10 +324,15 @@ private fun RewardsSwitchButton(
 ) {
     Surface(
         modifier = modifier.clickable(onClick = onClick),
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(20.dp),
         color =
             if (selected) MaterialTheme.colorScheme.primaryContainer
-            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.44f),
+            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.34f),
+        border = if (selected) {
+            BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.20f))
+        } else {
+            null
+        },
     ) {
         Box(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
@@ -794,28 +799,53 @@ fun HomeRoute(
         },
         bottomBar = {
             if (currentScreen == Screen.HOME || currentScreen == Screen.REWARDS || currentScreen == Screen.STATS || currentScreen == Screen.ME) {
-                NavigationBar(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    tonalElevation = 8.dp
-                ) {
-                    val screens = listOf(
-                        Triple(Screen.HOME, AppText.t("home_home"), Icons.Default.Home),
-                        Triple(Screen.STATS, AppText.t("home_report"), Icons.Default.BarChart),
-                        Triple(Screen.REWARDS, AppText.t("home_rewards"), Icons.Default.CardGiftcard),
-                        Triple(Screen.ME, AppText.t("home_me"), Icons.Default.Person)
+                Column {
+                    HorizontalDivider(
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                        thickness = 0.5.dp,
                     )
-                    screens.forEach { (screen, label, icon) ->
-                        NavigationBarItem(
-                            selected = currentScreen == screen || (screen == Screen.REWARDS && (currentScreen == Screen.REWARDS)),
-                            onClick = {
-                                if (screen == Screen.REWARDS) {
-                                    rewardsSection = RewardsSection.STORE
-                                }
-                                currentScreen = screen
-                            },
-                            icon = { Icon(icon, contentDescription = label) },
-                            label = { Text(label) }
+                    NavigationBar(
+                        containerColor = MaterialTheme.colorScheme.surface,
+                        tonalElevation = 0.dp,
+                    ) {
+                        val screens = listOf(
+                            Triple(Screen.HOME, AppText.t("home_home"), Icons.Default.Home),
+                            Triple(Screen.STATS, AppText.t("home_report"), Icons.Default.BarChart),
+                            Triple(Screen.REWARDS, AppText.t("home_rewards"), Icons.Default.CardGiftcard),
+                            Triple(Screen.ME, AppText.t("home_me"), Icons.Default.Person)
                         )
+                        screens.forEach { (screen, label, icon) ->
+                            val selected = currentScreen == screen || (screen == Screen.REWARDS && (currentScreen == Screen.REWARDS))
+                            NavigationBarItem(
+                                selected = selected,
+                                onClick = {
+                                    if (screen == Screen.REWARDS) {
+                                        rewardsSection = RewardsSection.STORE
+                                    }
+                                    currentScreen = screen
+                                },
+                                icon = {
+                                    Icon(
+                                        imageVector = icon,
+                                        contentDescription = label,
+                                        modifier = Modifier.size(22.dp),
+                                    )
+                                },
+                                label = {
+                                    Text(
+                                        text = label,
+                                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                                    )
+                                },
+                                colors = NavigationBarItemDefaults.colors(
+                                    selectedIconColor = MaterialTheme.colorScheme.primary,
+                                    selectedTextColor = MaterialTheme.colorScheme.primary,
+                                    unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+                                ),
+                            )
+                        }
                     }
                 }
             }
@@ -2090,7 +2120,7 @@ fun HomeScreen(
                         Modifier
                             .fillMaxWidth()
                             .padding(start = 16.dp, end = 16.dp, top = dashboardTopSpacing),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     GroupDashboard(
                         groupsWithApps = groupsWithApps,
@@ -2256,8 +2286,8 @@ private fun HomeOverviewCard(
         HomeOverviewBackdrop(modifier = Modifier.matchParentSize())
 
         Column(
-            modifier = Modifier.padding(horizontal = 18.dp, vertical = 18.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 20.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             HomeOverviewHeader(
                 dateLabel = state.dateLabel,
@@ -2317,58 +2347,56 @@ private fun HomeOverviewCard(
                 }
             }
 
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(24.dp),
-                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.50f),
-                border = BorderStroke(1.dp, themeColors.base.copy(alpha = 0.12f)),
+            // 历史数据区：细分割线 + 透明背景，更通透简洁
+            HorizontalDivider(
+                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.12f),
+                thickness = 0.5.dp,
+            )
+            Row(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 2.dp, vertical = 4.dp),
+                horizontalArrangement = Arrangement.spacedBy(42.dp),
+                verticalAlignment = Alignment.Top,
             ) {
-                Row(
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 18.dp, vertical = 9.dp),
-                    horizontalArrangement = Arrangement.spacedBy(42.dp),
-                    verticalAlignment = Alignment.Top,
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(7.dp),
                 ) {
-                    Column(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(7.dp),
-                    ) {
-                        HomeHistoryMetric(
-                            label = AppText.t("home_total_saved"),
-                            value = state.history.totalSavedMinutes.toString(),
-                            unit = AppText.t("group_minutes"),
-                            accent = MaterialTheme.colorScheme.secondary,
-                        )
-                        HomeHistoryMetric(
-                            label = AppText.t("home_equivalent_live_more"),
-                            value = roundedDaysValue(state.history.extendedLifeMinutes).toString(),
-                            unit = AppText.t("home_day_unit"),
-                            accent = MaterialTheme.colorScheme.secondary,
-                        )
-                    }
-                    Column(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(7.dp),
-                    ) {
-                        HomeHistoryMetric(
-                            label = AppText.t("home_total_earned"),
-                            value = formatHomePointValue(state.history.totalEarnedPoints),
-                            unit = AppText.t("group_points"),
-                            accent = MaterialTheme.colorScheme.tertiary,
-                            alignEnd = true,
-                            unitBefore = true,
-                        )
-                        HomeHistoryMetric(
-                            label = AppText.t("home_current_remaining"),
-                            value = formatHomePointValue(state.history.currentPoints),
-                            unit = AppText.t("group_points"),
-                            accent = MaterialTheme.colorScheme.tertiary,
-                            alignEnd = true,
-                            unitBefore = true,
-                        )
-                    }
+                    HomeHistoryMetric(
+                        label = AppText.t("home_total_saved"),
+                        value = state.history.totalSavedMinutes.toString(),
+                        unit = AppText.t("group_minutes"),
+                        accent = MaterialTheme.colorScheme.secondary,
+                    )
+                    HomeHistoryMetric(
+                        label = AppText.t("home_equivalent_live_more"),
+                        value = roundedDaysValue(state.history.extendedLifeMinutes).toString(),
+                        unit = AppText.t("home_day_unit"),
+                        accent = MaterialTheme.colorScheme.secondary,
+                    )
+                }
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(7.dp),
+                ) {
+                    HomeHistoryMetric(
+                        label = AppText.t("home_total_earned"),
+                        value = formatHomePointValue(state.history.totalEarnedPoints),
+                        unit = AppText.t("group_points"),
+                        accent = MaterialTheme.colorScheme.tertiary,
+                        alignEnd = true,
+                        unitBefore = true,
+                    )
+                    HomeHistoryMetric(
+                        label = AppText.t("home_current_remaining"),
+                        value = formatHomePointValue(state.history.currentPoints),
+                        unit = AppText.t("group_points"),
+                        accent = MaterialTheme.colorScheme.tertiary,
+                        alignEnd = true,
+                        unitBefore = true,
+                    )
                 }
             }
 
@@ -2478,7 +2506,7 @@ private fun HomeOverviewClockWatermark(
         val hourAngle = (((time.hour % 12) + time.minute / 60.0) / 12.0) * 2.0 * PI - PI / 2.0
         val handColor = lerp(themeColors.base, themeColors.encourage, 0.30f)
         drawLine(
-            color = handColor.copy(alpha = 0.46f),
+            color = handColor.copy(alpha = 0.36f),
             start = center,
             end = Offset(
                 x = center.x + cos(hourAngle).toFloat() * radius * 0.48f,
@@ -2488,7 +2516,7 @@ private fun HomeOverviewClockWatermark(
             cap = StrokeCap.Round,
         )
         drawLine(
-            color = handColor.copy(alpha = 0.38f),
+            color = handColor.copy(alpha = 0.28f),
             start = center,
             end = Offset(
                 x = center.x + cos(minuteAngle).toFloat() * radius * 0.68f,
