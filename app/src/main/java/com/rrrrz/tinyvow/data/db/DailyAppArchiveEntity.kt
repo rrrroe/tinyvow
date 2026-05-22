@@ -97,6 +97,10 @@ data class DailyAppArchiveEntity(
     val hour22Millis: Long = 0L,
     @ColumnInfo(name = "hour_23_millis")
     val hour23Millis: Long = 0L,
+    @ColumnInfo(name = "usage_source")
+    val usageSource: String? = null,
+    @ColumnInfo(name = "usage_source_synced_at")
+    val usageSourceSyncedAt: Long? = null,
     @ColumnInfo(name = "created_at")
     val createdAt: Long,
     @ColumnInfo(name = "updated_at")

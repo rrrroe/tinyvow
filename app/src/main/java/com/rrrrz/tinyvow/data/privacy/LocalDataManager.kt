@@ -68,6 +68,9 @@ class LocalDataManager(
             LocalDataTable("achievements", "Local achievement progress and unlock state."),
             LocalDataTable("block_events", "Local records of app blocking events."),
             LocalDataTable("daily_archive_state", "Local archive job state."),
+            LocalDataTable("special_app_configs", "Local special app data-source settings without API keys."),
+            LocalDataTable("special_app_usage_snapshots", "Local cached special app WeRead reading durations and phone foreground durations."),
+            LocalDataTable("special_app_point_credits", "Local counters preventing duplicate special app point credits."),
         )
     }
 }

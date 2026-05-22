@@ -6,6 +6,7 @@ import androidx.activity.compose.LocalActivityResultRegistryOwner
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import com.rrrrz.tinyvow.data.notification.TinyVowNotifier
+import com.rrrrz.tinyvow.data.special.SpecialAppHistoryScheduler
 import com.rrrrz.tinyvow.ui.home.HomeRoute
 import com.rrrrz.tinyvow.ui.theme.TinyVowTheme
 
@@ -29,6 +30,7 @@ class MainActivity : ComponentActivity() {
         AppText.attach(this)
         enableEdgeToEdge()
         TinyVowNotifier(this).ensureChannel()
+        SpecialAppHistoryScheduler(this).schedule()
         setContent {
             val lifecycle = LocalLifecycleOwner.current.lifecycle
             val prefs = remember { ManagedAppPreferences(this@MainActivity) }

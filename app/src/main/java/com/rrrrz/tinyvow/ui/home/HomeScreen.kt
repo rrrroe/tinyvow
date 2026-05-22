@@ -145,7 +145,7 @@ import kotlin.math.cos
 import kotlin.math.min
 import kotlin.math.roundToLong
 import kotlin.math.sin
-import com.rrrrz.tinyvow.data.usage.UsageStatsUsageRepository
+import com.rrrrz.tinyvow.data.usage.MergedUsageRepository
 import com.rrrrz.tinyvow.data.usage.UsageRepository
 
 import com.rrrrz.tinyvow.data.db.GroupType
@@ -162,7 +162,7 @@ import com.rrrrz.tinyvow.ui.rewards.RewardInventoryScreen
 import com.rrrrz.tinyvow.ui.theme.DefaultThemeSeed
 import com.rrrrz.tinyvow.ui.theme.LocalThemeColors
 
-enum class Screen { HOME, REWARDS, STATS, ME, LABORATORY, HISTORY, THEME, HELP_FEEDBACK, CONTACT_US }
+enum class Screen { HOME, REWARDS, STATS, ME, LABORATORY, HISTORY, THEME, HELP_FEEDBACK, CONTACT_US, SPECIAL_APPS, WEREAD_SPECIAL_APP }
 enum class RewardsSection { STORE, INVENTORY, ACHIEVEMENTS }
 
 private const val CONTACT_EMAIL = "rrrr.zhao@gmail.com"
@@ -425,7 +425,7 @@ fun HomeRoute(
     
     val database = remember(context) { AppDatabase.getDatabase(context) }
     val appLimitRepository = remember(database, context) { AppLimitRepository(context, database) }
-    val usageRepository = remember(context) { UsageStatsUsageRepository(context) }
+    val usageRepository = remember(context) { MergedUsageRepository(context) }
     val pointsRepository = remember(database, context) { PointsRepository(context, database) }
     val dailyArchiveRepository = remember(database, context) { DailyArchiveRepository(context, database) }
     val localDataManager = remember(database, context, preferences) {
@@ -752,7 +752,8 @@ fun HomeRoute(
                     rewardsSection = RewardsSection.STORE
                 }
                 currentScreen = when (currentScreen) {
-                    Screen.LABORATORY, Screen.HISTORY, Screen.THEME, Screen.HELP_FEEDBACK, Screen.CONTACT_US -> Screen.ME
+                    Screen.WEREAD_SPECIAL_APP -> Screen.SPECIAL_APPS
+                    Screen.LABORATORY, Screen.HISTORY, Screen.THEME, Screen.HELP_FEEDBACK, Screen.CONTACT_US, Screen.SPECIAL_APPS -> Screen.ME
                     else -> Screen.HOME
                 }
             }
@@ -1093,6 +1094,7 @@ fun HomeRoute(
                         onNavigateToThemeSettings = { currentScreen = Screen.THEME },
                         onNavigateToHelpFeedback = { currentScreen = Screen.HELP_FEEDBACK },
                         onNavigateToContactUs = { currentScreen = Screen.CONTACT_US },
+                        onNavigateToSpecialAppSettings = { currentScreen = Screen.SPECIAL_APPS },
                         onExportLocalData = {
                             coroutineScope.launch {
                                 runCatching {
@@ -1249,6 +1251,17 @@ fun HomeRoute(
                         },
                         onShowProUpsell = { proUpsellSource = it },
                         onBack = { currentScreen = Screen.ME },
+                    )
+                }
+                Screen.SPECIAL_APPS -> {
+                    SpecialAppsScreen(
+                        onBack = { currentScreen = Screen.ME },
+                        onOpenWeRead = { currentScreen = Screen.WEREAD_SPECIAL_APP },
+                    )
+                }
+                Screen.WEREAD_SPECIAL_APP -> {
+                    SpecialAppSettingsScreen(
+                        onBack = { currentScreen = Screen.SPECIAL_APPS },
                     )
                 }
                 Screen.HELP_FEEDBACK -> {
@@ -1961,14 +1974,14 @@ fun HomeScreen(
             usageMap = emptyMap()
             return@LaunchedEffect
         }
-        val usageRepo = UsageStatsUsageRepository(context)
+        val usageRepo = MergedUsageRepository(context)
         while (true) {
             val todayStart = java.time.LocalDate.now(java.time.ZoneId.systemDefault())
                 .atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
             // 涓€娆℃€ц幏寰楁墍鏈夊寘鍚嶇殑鐢ㄩ噺 Map
-            val allUsage = usageRepo.getUsageStats(todayStart, System.currentTimeMillis())
             val newMap = mutableMapOf<String, Long>()
             groupsWithApps.forEach { groupWithApps ->
+                val allUsage = usageRepo.getUsageStats(todayStart, System.currentTimeMillis(), groupWithApps.group.type)
                 newMap[groupWithApps.group.id] =
                     groupWithApps.packageNames.sumOf { allUsage[it] ?: 0L }
             }

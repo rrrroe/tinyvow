@@ -11,7 +11,7 @@ import com.rrrrz.tinyvow.data.notification.TinyVowNotifier
 import com.rrrrz.tinyvow.data.settings.ManagedAppPreferences
 import com.rrrrz.tinyvow.data.usage.UsageAccessStateChecker
 import com.rrrrz.tinyvow.data.usage.UsageAccessStatus
-import com.rrrrz.tinyvow.data.usage.UsageStatsUsageRepository
+import com.rrrrz.tinyvow.data.usage.MergedUsageRepository
 import com.rrrrz.tinyvow.domain.limit.DailyTimeLimitPolicy
 import java.time.LocalDate
 import java.time.ZoneId
@@ -37,7 +37,7 @@ class LimitReminderWorker(
         val dailyLimitMinutes =
             preferences.getDailyLimitMinutesOnce(selectedPackageName) ?: return Result.success()
         val usageMillis =
-            UsageStatsUsageRepository(applicationContext).getTodayUsageMillis(selectedPackageName)
+            MergedUsageRepository(applicationContext).getTodayUsageMillis(selectedPackageName)
         val evaluation = DailyTimeLimitPolicy().evaluate(
             usageMillis = usageMillis,
             limitMillis = dailyLimitMinutes * 60_000L,

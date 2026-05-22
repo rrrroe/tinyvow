@@ -1,62 +1,62 @@
-# Tiny Vow Release Process
+# Tiny Vow 发布流程
 
-This project uses one shared release version for both store flavors.
+本项目的两个商店渠道默认共用同一套基础版本号。
 
-## Version Source
+## 版本来源
 
-- Edit `TINYVOW_VERSION_NAME` and `TINYVOW_VERSION_CODE` in `gradle.properties`.
-- `TINYVOW_VERSION_NAME` must use SemVer: `MAJOR.MINOR.PATCH`.
-- `TINYVOW_VERSION_CODE` must be a positive integer and must increase before every external APK/AAB release.
-- Do not put channel suffixes in `TINYVOW_VERSION_NAME`. The `china` flavor appends `-cn`; `googlePlay` uses the base version.
+- 在根目录 `gradle.properties` 修改 `TINYVOW_VERSION_NAME` 和 `TINYVOW_VERSION_CODE`。
+- `TINYVOW_VERSION_NAME` 必须使用 SemVer 三段式：`MAJOR.MINOR.PATCH`，例如 `1.0.0`。
+- `TINYVOW_VERSION_CODE` 必须是正整数。每次对外发布 APK/AAB 前必须递增。
+- 不要把渠道后缀写进 `TINYVOW_VERSION_NAME`。`china` flavor 会自动追加 `-cn`；`googlePlay` flavor 使用基础版本名。
 
-## Channel Outputs
+## 渠道产物
 
-- Google Play package: `com.rrrrz.tinyvow`.
-- China package: `com.rrrrz.tinyvow.cn`.
-- Google Play release upload target: `:app:bundleGooglePlayRelease`.
-- Day-to-day local debug target: `:app:assembleDefaultDebug`, currently mapped to `chinaDebug`.
-- Suggested artifact name: `tinyvow-{channel}-{versionName}-vc{versionCode}-{buildType}.{apk|aab}`.
+- Google Play 包名：`com.rrrrz.tinyvow`。
+- 国内版包名：`com.rrrrz.tinyvow.cn`。
+- Google Play 发布包：`:app:bundleGooglePlayRelease`。
+- 日常本地调试包：`:app:assembleDefaultDebug`，当前指向 `chinaDebug`。
+- 建议产物命名：`tinyvow-{channel}-{versionName}-vc{versionCode}-{buildType}.{apk|aab}`。
 
-## Release Checklist
+## 发布检查
 
-1. Decide the release version and update `gradle.properties`.
-2. Add a matching entry to `CHANGELOG.md`.
-3. Run unit tests:
+1. 确定本次发布版本，并更新 `gradle.properties`。
+2. 在 `CHANGELOG.md` 增加对应版本记录。
+3. 运行国内 debug 单测：
 
    ```powershell
    .\gradlew.bat testChinaDebugUnitTest
    ```
 
-4. Run the default debug build:
+4. 运行默认 debug 构建：
 
    ```powershell
    .\gradlew.bat assembleDefaultDebug
    ```
 
-5. Install the default debug build for a local smoke check:
+5. 需要本机安装验证时运行：
 
    ```powershell
    .\gradlew.bat installDefaultDebug
    ```
 
-6. For Google Play release validation, build the release bundle:
+6. Google Play 发布前构建 release bundle：
 
    ```powershell
    .\gradlew.bat :app:bundleGooglePlayRelease
    ```
 
-7. For China release validation, build the China release APK:
+7. 国内版发布前构建 release APK：
 
    ```powershell
    .\gradlew.bat :app:assembleChinaRelease
    ```
 
-8. In the app, open the Me screen and verify the localized version row:
-   - China build: `1.0.0-cn`, build `1`, China channel.
-   - Google Play build: `1.0.0`, build `1`, Google Play channel.
+8. 打开应用“我的”页，确认版本信息行：
+   - 国内版：`1.0.0-cn`、构建 `1`、国内版。
+   - Google Play 版：`1.0.0`、构建 `1`、Google Play。
 
-## Git Tags
+## Git 标签
 
-- China release tag: `china-v{versionName}+{versionCode}`.
-- Google Play release tag: `googleplay-v{versionName}+{versionCode}`.
-- If both channels ship from the same commit, create both tags on that commit.
+- 国内版标签：`china-v{versionName}+{versionCode}`。
+- Google Play 标签：`googleplay-v{versionName}+{versionCode}`。
+- 如果两个渠道从同一个 commit 发布，可以在同一个 commit 上打两个标签。

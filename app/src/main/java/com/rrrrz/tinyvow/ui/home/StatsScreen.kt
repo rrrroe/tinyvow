@@ -1610,7 +1610,7 @@ private fun DailyFocusCard(
         SectionState.Loading -> {
             AdaptiveRowGrid(
                 itemCount = 2,
-                compactColumns = 2,
+                compactColumns = if (compactLayout) 1 else 2,
                 expandedColumns = 2,
                 horizontalSpacing = 8.dp,
                 verticalSpacing = 8.dp,
@@ -1625,7 +1625,7 @@ private fun DailyFocusCard(
         is SectionState.Ready -> {
             AdaptiveRowGrid(
                 itemCount = 2,
-                compactColumns = 2,
+                compactColumns = if (compactLayout) 1 else 2,
                 expandedColumns = 2,
                 horizontalSpacing = 8.dp,
                 verticalSpacing = 8.dp,
@@ -2146,6 +2146,13 @@ internal fun DailyModeSummaryCard(
         label = "daily_focus_${summary.title}_${summary.primaryLabel}",
         delayMillis = 120,
     )
+    var showAllGroups by remember(summary.title, summary.groupItems.size) { mutableStateOf(false) }
+    val visibleGroupItems =
+        if (showAllGroups || summary.groupItems.size <= 4) {
+            summary.groupItems
+        } else {
+            summary.groupItems.take(4)
+        }
     Surface(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(24.dp),
@@ -2276,7 +2283,184 @@ internal fun DailyModeSummaryCard(
                     )
                 }
             }
+            if (summary.groupItems.isNotEmpty()) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Text(
+                            text = AppText.t("stats_group_details"),
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Text(
+                            text = AppText.t("stats_value_groups_short", summary.groupItems.size),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    visibleGroupItems.forEach { item ->
+                        DailyGroupProgressRow(
+                            item = item,
+                            accent = accent,
+                        )
+                    }
+                    if (summary.groupItems.size > 4) {
+                        TextButton(
+                            onClick = { showAllGroups = !showAllGroups },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text(
+                                text =
+                                    if (showAllGroups) {
+                                        AppText.t("stats_collapse_groups")
+                                    } else {
+                                        AppText.t("stats_show_all_groups", summary.groupItems.size)
+                                    },
+                            )
+                        }
+                    }
+                }
+            }
         }
+    }
+}
+
+@Composable
+private fun DailyGroupProgressRow(
+    item: DailyGroupProgressItem,
+    accent: Color,
+    modifier: Modifier = Modifier,
+) {
+    val toneColor =
+        when {
+            item.isWarning -> LocalReportColors.current.warning
+            item.isMuted -> MaterialTheme.colorScheme.onSurfaceVariant
+            else -> accent
+        }
+    val animatedProgress = animateFractionValue(
+        targetValue = item.progress.coerceIn(0f, 1f),
+        label = "daily_group_progress_${item.groupName}_${item.statusLabel}",
+        delayMillis = 180,
+    )
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = if (item.isMuted) 0.28f else 0.42f),
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(
+                    text = item.groupName,
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Surface(
+                    shape = RoundedCornerShape(999.dp),
+                    color = toneColor.copy(alpha = 0.14f),
+                ) {
+                    Text(
+                        text = item.statusLabel,
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Medium,
+                        color = toneColor,
+                        maxLines = 1,
+                    )
+                }
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.Top,
+            ) {
+                GroupProgressMetric(
+                    label = item.leadingLabel,
+                    value = item.leadingValue,
+                    modifier = Modifier.weight(1f),
+                )
+                GroupProgressMetric(
+                    label = item.trailingLabel,
+                    value = item.trailingValue,
+                    modifier = Modifier.weight(1f),
+                    alignEnd = true,
+                    valueColor = toneColor,
+                )
+            }
+            LinearProgressIndicator(
+                progress = { animatedProgress },
+                modifier = Modifier.fillMaxWidth(),
+                color = toneColor,
+                trackColor = toneColor.copy(alpha = 0.14f),
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = item.progressLabel,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = toneColor,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                item.helperLabel?.let { helper ->
+                    Text(
+                        text = helper,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun GroupProgressMetric(
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier,
+    alignEnd: Boolean = false,
+    valueColor: Color = MaterialTheme.colorScheme.onSurface,
+) {
+    Column(
+        modifier = modifier,
+        horizontalAlignment = if (alignEnd) Alignment.End else Alignment.Start,
+        verticalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = valueColor,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = if (alignEnd) TextAlign.End else TextAlign.Start,
+        )
     }
 }
 

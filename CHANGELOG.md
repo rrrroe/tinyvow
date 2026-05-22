@@ -1,10 +1,10 @@
-# Changelog
+# 更新日志
 
-All notable user-visible changes are recorded here.
+这里记录 Tiny Vow 每个版本的用户可见变化。
 
 ## 1.0.0-cn - 2026-05-18
 
-- Established the first China-channel baseline release for local testing.
-- Added CONTROL groups for usage limits and ENCOURAGE groups for point earning.
-- Added local rewards, inventory, achievements, usage reports, themes, language settings, local activation, and privacy data management.
-- Standardized release versioning on SemVer with a shared manual `versionCode`.
+- 建立国内渠道本地测试的首个基线版本。
+- 支持 `CONTROL` 管控分组和 `ENCOURAGE` 鼓励分组，分别用于使用限额和积分累计。
+- 支持本地奖励、库存、成就、使用战报、主题、语言设置、本地激活和隐私数据管理。
+- 规范版本管理：使用 SemVer 版本名，并通过手动递增的共享 `versionCode` 管理构建号。

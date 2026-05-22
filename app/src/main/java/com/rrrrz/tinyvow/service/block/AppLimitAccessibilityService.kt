@@ -24,7 +24,9 @@ import com.rrrrz.tinyvow.data.repository.parseRewardPayload
 import com.rrrrz.tinyvow.data.settings.ManagedAppPreferences
 import com.rrrrz.tinyvow.data.usage.UsageAccessStateChecker
 import com.rrrrz.tinyvow.data.usage.UsageAccessStatus
-import com.rrrrz.tinyvow.data.usage.UsageStatsUsageRepository
+import com.rrrrz.tinyvow.data.special.SpecialAppUsageRepository
+import com.rrrrz.tinyvow.data.special.WEREAD_PACKAGE_NAME
+import com.rrrrz.tinyvow.data.usage.MergedUsageRepository
 import com.rrrrz.tinyvow.domain.limit.GroupExceededResult
 import com.rrrrz.tinyvow.domain.limit.GroupLimitEnforcer
 import com.rrrrz.tinyvow.ui.theme.DefaultThemeSeed
@@ -49,7 +51,8 @@ class AppLimitAccessibilityService : AccessibilityService() {
     private lateinit var appLimitRepository: AppLimitRepository
     private val database by lazy { AppDatabase.getDatabase(applicationContext) }
     private val usageAccessStateChecker by lazy { UsageAccessStateChecker(applicationContext) }
-    private val usageRepository by lazy { UsageStatsUsageRepository(applicationContext) }
+    private val usageRepository by lazy { MergedUsageRepository(applicationContext) }
+    private val specialAppUsageRepository by lazy { SpecialAppUsageRepository(applicationContext) }
     private val preferences by lazy { ManagedAppPreferences(applicationContext) }
     @Volatile private var overlayPalette: OverlayPalette = overlayPaletteForSeed(DefaultThemeSeed)
     @Volatile private var accessibilityDisclosureAccepted: Boolean = false
@@ -190,7 +193,7 @@ class AppLimitAccessibilityService : AccessibilityService() {
                 
                 var usage = 0L
                 for (p in pkgs) {
-                    usage += usageRepository.getTodayUsageMillis(p)
+                    usage += usageRepository.getUsageInPeriod(p, com.rrrrz.tinyvow.data.db.LimitPeriod.DAILY, GroupType.ENCOURAGE)
                 }
                 encourageGroupsInfo.add(EncourageGroupCache(
                     groupName = g.name,
@@ -340,6 +343,11 @@ class AppLimitAccessibilityService : AccessibilityService() {
         serviceScope.launch(Dispatchers.IO) {
             val groupIds = database.crossRefDao().getGroupIdsForPackageSync(packageName)
             val nowMillis = System.currentTimeMillis()
+            if (packageName == WEREAD_PACKAGE_NAME &&
+                specialAppUsageRepository.shouldUseSyncBasedEncouragePoints()
+            ) {
+                return@launch
+            }
             for (gid in groupIds) {
                 val group = database.appGroupDao().getGroupByIdSync(gid) ?: continue
                 if (group.type == GroupType.ENCOURAGE && group.pointsPerMinute > 0) {
@@ -368,7 +376,15 @@ class AppLimitAccessibilityService : AccessibilityService() {
 
         var totalTodayUsageMs = 0L
         for (pkg in packages) {
-            totalTodayUsageMs += usageRepository.getTodayUsageMillis(pkg)
+            totalTodayUsageMs +=
+                if (pkg == WEREAD_PACKAGE_NAME &&
+                    specialAppUsageRepository.shouldUseSyncBasedEncouragePoints() &&
+                    specialAppUsageRepository.getWeReadConfig().lastSuccessAt <= 0L
+                ) {
+                    0L
+                } else {
+                    usageRepository.getUsageInPeriod(pkg, com.rrrrz.tinyvow.data.db.LimitPeriod.DAILY, GroupType.ENCOURAGE)
+                }
         }
 
         val targetMs = group.limitMinutes * 60_000L

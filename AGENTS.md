@@ -17,6 +17,7 @@
 
 - `CONTROL` 分组：按日/周/月限额统计使用量，超额后软阻断。
 - `ENCOURAGE` 分组：按使用时长累计积分，并支持目标达成奖励。
+- 特殊应用设置：当前支持微信读书双源时长，分别缓存微信读书阅读时长和本机前台时长，并按用户配置决定替换口径。
 - 使用情况访问权限：读取应用用量和使用周期统计。
 - 无障碍服务：监听前台窗口变化，显示全屏阻断 overlay，并承担一部分积分结算。
 - 奖励/库存/使用/成就：Room 持久化，积分通过 ledger 记录来源。
@@ -96,11 +97,41 @@
 - 实时阻断和统计达标是两套语义：阻断页在 `CONTROL` 分组超过有效限额时立即弹出；统计归档允许 5 分钟裕度，超过有效限额 5 分钟以内仍按完成处理。
 - `blockEventCount` 独立记录阻断发生次数，即使统计上仍处于 5 分钟裕度内，也可以看到当天发生过阻断。
 
+### 特殊应用双源口径
+
+- 当前只支持 `WEREAD`，包名固定为 `com.tencent.weread`。
+- `special_app_usage_snapshots` 同时保存两类日粒度历史：
+  - `usageMillis` + `readingBucketAvailable`：微信读书 API 返回的阅读时长桶。
+  - `phoneUsageMillis` + `phoneCollectedAt`：本机 UsageStats 前台时长。
+- `SpecialAppConfigEntity.usagePreference` 决定有效时长：
+  - `READING_FIRST`：优先用阅读时长；当天无阅读桶时回退到本机前台时长。
+  - `PHONE_FIRST`：优先用本机前台时长；如果当天/历史缺手机快照，再回退到阅读时长。
+- 当天口径和历史口径不要拆成两套规则：
+  - 当天如果有效来源是手机时长，应直接读取最新 UsageStats，不能只依赖较早同步时写入的手机快照。
+  - 历史已完成日期使用 `special_app_usage_snapshots` 中已保存的日快照。
+- `MergedUsageRepository` 是唯一替换入口：
+  - `GroupType.CONTROL` 只在 `enabledForControl` 时替换。
+  - `GroupType.ENCOURAGE` 只在 `enabledForEncourage` 时替换。
+  - `groupType = null` 的设备总量也要走统一有效口径，不能简单把 `CONTROL` 和 `ENCOURAGE` 两张 map 直接覆盖合并。
+  - 时长替换要求该 provider 至少有一次成功同步；首次成功同步前仍以本机 UsageStats 为主，避免把空快照当成真实历史。
+- 微信读书详细行为数据不完整：
+  - 替换的只有日粒度使用/阅读时长。
+  - `openCount`、`sessionCount`、`longestSessionMillis`、`nightUsageMillis`、小时热力图仍保留本机 UsageStats 结果。
+- 鼓励积分要跟有效来源保持一致：
+  - `READING_FIRST` 时，微信读书鼓励积分改为同步后按有效时长增量入账，避免与无障碍实时积分重复。
+  - `READING_FIRST` 在首次成功同步前也不要先发无障碍实时积分；否则同一天切到远端口径后会重复。
+  - `PHONE_FIRST` 时，继续走无障碍实时手机前台积分，不要额外发同步积分。
+- 归档、统计、成就、兑换的影响边界：
+  - `DailyArchiveEntity.controlUsageMillis` / `encourageUsageMillis` 分别按对应组类型的有效口径计算。
+  - `DailyArchiveEntity.totalUsageMillis`、周/月/年总览、Top Apps、趋势等设备总量要按 `groupType = null` 的统一有效口径去重。
+  - 成就里的 `control_days` / `encourage_days` / streak 仍只依赖归档结果，不直接看实时快照。
+  - 兑换和双倍积分判断依赖当前分组有效时长；如果改双源口径，需同步检查 `AppLimitRepository` 和 `AppLimitAccessibilityService`。
+
 ## 目录和模块
 
 - `app/src/main/java/com/rrrrz/tinyvow/MainActivity.kt`：应用入口、主题、语言 context 注入。
 - `app/src/main/java/com/rrrrz/tinyvow/TinyVowApplication.kt`：Application 初始化。
-- `data/db`：Room entity、dao、migration，当前数据库版本是 `19`，schema 导出到 `app/schemas`。
+- `data/db`：Room entity、dao、migration，当前数据库版本是 `21`，schema 导出到 `app/schemas`。
 - `data/repository`：分组、奖励、积分、每日归档等主要业务仓库。
 - `data/activation`：国内版本地激活码、到期解析、时间回拨检测和激活 DataStore。
 - `data/billing`：Google Play Billing、Noop 仓库和统一 `ProEntitlementState`。
@@ -119,6 +150,7 @@
 ## 开发原则
 
 - 小步改动。优先修明确问题或补完整闭环，不要为了“架构更好看”大范围重构。
+- 面向项目维护者的文档默认使用中文，包括 `AGENTS.md`、`CHANGELOG.md` 和 `docs/*.md`。只有外部平台要求、API 原文、代码标识符或用户明确要求时才使用英文。
 - 不随意拆分或重写 `AppLimitAccessibilityService`、`GroupLimitEnforcer`、阻断 overlay 时序；这些是核心链路。
 - UI 改动跟随现有 Compose + Material 3 风格，避免引入新的设计体系。
 - 业务逻辑优先写在 repository/domain 层；Compose 里避免堆积复杂计算和数据库细节。
@@ -152,7 +184,7 @@
 
 ## Room 和数据迁移
 
-- 数据库定义在 `AppDatabase`，当前 `version = 19`，`exportSchema = true`。
+- 数据库定义在 `AppDatabase`，当前 `version = 21`，`exportSchema = true`。
 - 改 entity/dao/schema 时必须：
   - 增加数据库版本号。
   - 添加从上一版本到新版本的 `Migration`。
@@ -267,6 +299,29 @@ Get-Content -Raw -Encoding UTF8 AGENTS.md
 
 如果只是文档改动，可以不跑 Gradle，但最终说明里要明确“未运行测试，因为只改文档”。
 
+## 版本管理和发布维护
+
+- 应用版本统一由根目录 `gradle.properties` 维护：
+  - `TINYVOW_VERSION_NAME`：基础版本名，必须是 SemVer 三段式，例如 `1.0.0`。
+  - `TINYVOW_VERSION_CODE`：Android 构建号，必须是正整数。
+- 不要在 `TINYVOW_VERSION_NAME` 里写渠道后缀。`china` flavor 通过 `versionNameSuffix = "-cn"` 自动显示为 `1.0.0-cn`；`googlePlay` flavor 使用基础版本名，例如 `1.0.0`。
+- Google Play 和国内版默认共享同一个基础 `versionName` 和 `versionCode`。除非用户明确要求渠道独立发版，不要拆成两套版本号。
+- 每次对外发布 APK/AAB 前必须手动递增 `TINYVOW_VERSION_CODE`。仅本机调试构建可以不递增。
+- 每次调整对外版本时同步更新 `CHANGELOG.md`，记录用户可见变化；版本发布流程和 tag 规则同步维护 `docs/release.md`。
+- 应用内版本展示应继续从 `BuildConfig.VERSION_NAME` / `BuildConfig.VERSION_CODE` 读取，不要把版本号写入 DataStore、Room 或普通字符串资源。
+- 涉及版本、Gradle、渠道或发布文档变更时，至少运行：
+
+```powershell
+.\gradlew.bat testChinaDebugUnitTest
+.\gradlew.bat assembleDefaultDebug
+```
+
+- 需要安装验证时再运行 `.\gradlew.bat installDefaultDebug`。如果没有连接设备导致安装失败，最终说明里要明确失败原因。
+- 发布前建议确认生成值：
+  - `chinaDebug/chinaRelease` 应显示 `基础版本-cn`，例如 `1.0.0-cn`。
+  - `googlePlayDebug/googlePlayRelease` 应显示基础版本，例如 `1.0.0`。
+  - 两个渠道的 `VERSION_CODE` 应一致，除非用户明确要求独立版本线。
+
 ## 优先阅读文件
 
 处理相关任务前优先看这些文件：
@@ -276,6 +331,7 @@ Get-Content -Raw -Encoding UTF8 AGENTS.md
 - `app/src/main/java/com/rrrrz/tinyvow/data/repository/AppLimitRepository.kt`
 - `app/src/main/java/com/rrrrz/tinyvow/data/repository/DailyArchiveRepository.kt`
 - `app/src/main/java/com/rrrrz/tinyvow/data/repository/PointsRepository.kt`
+- `app/src/main/java/com/rrrrz/tinyvow/data/special/SpecialAppUsageRepository.kt`
 - `app/src/main/java/com/rrrrz/tinyvow/data/settings/ManagedAppPreferences.kt`
 - `app/src/main/java/com/rrrrz/tinyvow/i18n/AppText.kt`
 - `app/src/main/java/com/rrrrz/tinyvow/ui/home/HomeScreen.kt`
@@ -287,6 +343,7 @@ Get-Content -Raw -Encoding UTF8 AGENTS.md
 ## 渠道包规则
 
 - 项目拆分为 `googlePlay` 和 `china` 两个 product flavor。
+- 渠道版本规则见“版本管理和发布维护”；不要在渠道逻辑里另起一套版本号。
 - Google Play 版使用 `com.rrrrz.tinyvow`，只上传 `:app:bundleGooglePlayRelease` 到 Play Console。
 - 国内版使用 `com.rrrrz.tinyvow.cn`，用于国内测试和后续激活码能力，可与 Google Play 版同时安装，但本地数据不互通。
 - 国内版启动时会确保存在本地账号，并在“我的 > Tiny Vow Pro”显示用户 ID 复制与激活码输入入口。

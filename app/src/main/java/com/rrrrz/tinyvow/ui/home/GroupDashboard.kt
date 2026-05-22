@@ -114,7 +114,7 @@ import com.rrrrz.tinyvow.data.repository.AppGroupWithApps
 import com.rrrrz.tinyvow.data.repository.DailyArchiveRepository
 import com.rrrrz.tinyvow.data.pro.ProFeatureGate
 import com.rrrrz.tinyvow.data.supermode.GuardedAction
-import com.rrrrz.tinyvow.data.usage.UsageStatsUsageRepository
+import com.rrrrz.tinyvow.data.usage.MergedUsageRepository
 import com.rrrrz.tinyvow.ui.theme.LocalThemeColors
 import java.io.File
 import java.io.FileOutputStream
@@ -677,14 +677,14 @@ private fun GroupDetailDialog(
     }
 
     LaunchedEffect(groupData.group.id, groupData.packageNames) {
-        val usageRepository = UsageStatsUsageRepository(context)
+        val usageRepository = MergedUsageRepository(context)
         weekUsageByDay = withContext(Dispatchers.IO) {
             val result = mutableListOf<Pair<LocalDate, Long>>()
             var date = weekStart
             while (!date.isAfter(today)) {
                 val start = date.atStartOfDay(zoneId).toInstant().toEpochMilli()
                 val end = date.plusDays(1).atStartOfDay(zoneId).toInstant().toEpochMilli()
-                val usage = usageRepository.getUsageStats(start, end)
+                val usage = usageRepository.getUsageStats(start, end, groupData.group.type)
                 result += date to groupData.packageNames.sumOf { usage[it] ?: 0L }
                 date = date.plusDays(1)
             }

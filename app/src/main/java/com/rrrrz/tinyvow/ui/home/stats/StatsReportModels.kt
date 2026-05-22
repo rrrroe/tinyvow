@@ -164,6 +164,21 @@ internal data class DailyModeSummary(
     val spotlightLabel: String,
     val spotlightValue: String,
     val isWarning: Boolean = false,
+    val groupItems: List<DailyGroupProgressItem> = emptyList(),
+)
+
+internal data class DailyGroupProgressItem(
+    val groupName: String,
+    val statusLabel: String,
+    val leadingLabel: String,
+    val leadingValue: String,
+    val trailingLabel: String,
+    val trailingValue: String,
+    val progress: Float,
+    val progressLabel: String,
+    val helperLabel: String? = null,
+    val isWarning: Boolean = false,
+    val isMuted: Boolean = false,
 )
 
 internal data class DailyFocusMetric(

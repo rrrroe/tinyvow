@@ -57,6 +57,7 @@ class ManagedAppPreferences(
         val superModeLastActiveAtMillis = longPreferencesKey("super_mode_last_active_at_millis")
         val superModeWindowStartMinutes = intPreferencesKey("super_mode_window_start_minutes")
         val superModeWindowEndMinutes = intPreferencesKey("super_mode_window_end_minutes")
+        val encryptedWeReadApiKey = stringPreferencesKey("encrypted_weread_api_key")
     }
 
     val selectedPackageName: Flow<String?> = context.managedAppDataStore.data.map { preferences ->
@@ -156,6 +157,10 @@ class ManagedAppPreferences(
             customWindowStartMinutes = preferences[Keys.superModeWindowStartMinutes],
             customWindowEndMinutes = preferences[Keys.superModeWindowEndMinutes],
         )
+    }
+
+    val encryptedWeReadApiKey: Flow<String?> = context.managedAppDataStore.data.map { preferences ->
+        preferences[Keys.encryptedWeReadApiKey]?.takeIf { it.isNotBlank() }
     }
 
     suspend fun addUserPoints(points: Double) {
@@ -405,6 +410,16 @@ class ManagedAppPreferences(
         }
     }
 
+    suspend fun setEncryptedWeReadApiKey(value: String?) {
+        context.managedAppDataStore.edit { preferences ->
+            if (value.isNullOrBlank()) {
+                preferences.remove(Keys.encryptedWeReadApiKey)
+            } else {
+                preferences[Keys.encryptedWeReadApiKey] = value
+            }
+        }
+    }
+
     suspend fun setDailyLimitMinutes(packageName: String, minutes: Int) {
         context.managedAppDataStore.edit { preferences ->
             preferences[intPreferencesKey("daily_limit_minutes_$packageName")] = minutes
@@ -427,6 +442,10 @@ class ManagedAppPreferences(
 
     suspend fun getSuperModeStateOnce(): SuperModeStoredState {
         return superModeState.first()
+    }
+
+    suspend fun getEncryptedWeReadApiKeyOnce(): String? {
+        return encryptedWeReadApiKey.first()
     }
 
     suspend fun getDailyLimitMinutesOnce(packageName: String): Int? {

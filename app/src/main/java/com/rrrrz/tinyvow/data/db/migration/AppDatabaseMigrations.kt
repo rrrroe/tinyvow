@@ -696,6 +696,92 @@ object AppDatabaseMigrations {
             }
         }
 
+    val MIGRATION_19_20 =
+        object : Migration(19, 20) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `daily_app_archives` ADD COLUMN `usage_source` TEXT")
+                db.execSQL("ALTER TABLE `daily_app_archives` ADD COLUMN `usage_source_synced_at` INTEGER")
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `special_app_configs` (
+                        `provider` TEXT NOT NULL,
+                        `package_name` TEXT NOT NULL,
+                        `enabled_for_control` INTEGER NOT NULL,
+                        `enabled_for_encourage` INTEGER NOT NULL,
+                        `sync_enabled` INTEGER NOT NULL,
+                        `last_sync_at` INTEGER NOT NULL,
+                        `last_success_at` INTEGER NOT NULL,
+                        `last_error` TEXT,
+                        `created_at` INTEGER NOT NULL,
+                        `updated_at` INTEGER NOT NULL,
+                        PRIMARY KEY(`provider`)
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `special_app_usage_snapshots` (
+                        `id` TEXT NOT NULL,
+                        `provider` TEXT NOT NULL,
+                        `package_name` TEXT NOT NULL,
+                        `usage_date` TEXT NOT NULL,
+                        `usage_millis` INTEGER NOT NULL,
+                        `source_synced_at` INTEGER NOT NULL,
+                        `created_at` INTEGER NOT NULL,
+                        `updated_at` INTEGER NOT NULL,
+                        PRIMARY KEY(`id`)
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS `index_special_app_usage_snapshots_provider_usage_date` ON `special_app_usage_snapshots` (`provider`, `usage_date`)"
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_special_app_usage_snapshots_package_name_usage_date` ON `special_app_usage_snapshots` (`package_name`, `usage_date`)"
+                )
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `special_app_point_credits` (
+                        `id` TEXT NOT NULL,
+                        `provider` TEXT NOT NULL,
+                        `group_id` TEXT NOT NULL,
+                        `credit_date` TEXT NOT NULL,
+                        `credited_usage_millis` INTEGER NOT NULL,
+                        `updated_at` INTEGER NOT NULL,
+                        PRIMARY KEY(`id`)
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS `index_special_app_point_credits_provider_group_id_credit_date` ON `special_app_point_credits` (`provider`, `group_id`, `credit_date`)"
+                )
+            }
+        }
+
+    val MIGRATION_20_21 =
+        object : Migration(20, 21) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE `special_app_configs` ADD COLUMN `usage_preference` TEXT NOT NULL DEFAULT 'READING_FIRST'"
+                )
+                db.execSQL(
+                    "ALTER TABLE `special_app_usage_snapshots` ADD COLUMN `reading_bucket_available` INTEGER NOT NULL DEFAULT 0"
+                )
+                db.execSQL(
+                    "ALTER TABLE `special_app_usage_snapshots` ADD COLUMN `phone_usage_millis` INTEGER NOT NULL DEFAULT 0"
+                )
+                db.execSQL(
+                    "ALTER TABLE `special_app_usage_snapshots` ADD COLUMN `phone_collected_at` INTEGER NOT NULL DEFAULT 0"
+                )
+                db.execSQL(
+                    """
+                    UPDATE `special_app_usage_snapshots`
+                    SET `reading_bucket_available` = CASE WHEN `usage_millis` > 0 THEN 1 ELSE 0 END
+                    """.trimIndent()
+                )
+            }
+        }
+
     val ALL: Array<Migration> = arrayOf(
         MIGRATION_9_10,
         MIGRATION_10_11,
@@ -707,5 +793,7 @@ object AppDatabaseMigrations {
         MIGRATION_16_17,
         MIGRATION_17_18,
         MIGRATION_18_19,
+        MIGRATION_19_20,
+        MIGRATION_20_21,
     )
 }

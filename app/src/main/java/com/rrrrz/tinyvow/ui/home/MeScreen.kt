@@ -155,6 +155,7 @@ fun MeScreen(
     onNavigateToThemeSettings: () -> Unit,
     onNavigateToHelpFeedback: () -> Unit,
     onNavigateToContactUs: () -> Unit,
+    onNavigateToSpecialAppSettings: () -> Unit,
     onExportLocalData: () -> Unit,
     onClearLocalData: () -> Unit,
     onOpenPrivacyPolicy: () -> Unit,
@@ -409,6 +410,12 @@ fun MeScreen(
                         icon = Icons.Default.VerifiedUser,
                         title = "${AppText.t("super_mode_title")} · ${describeSuperModeStatus(superModeStatus)}",
                         onClick = onOpenSuperModeSettings,
+                    )
+                    SettingsDivider()
+                    MeMenuItem(
+                        icon = Icons.Default.Settings,
+                        title = AppText.t("special_app_settings_title"),
+                        onClick = onNavigateToSpecialAppSettings,
                     )
                     SettingsDivider()
                     MeMenuItem(

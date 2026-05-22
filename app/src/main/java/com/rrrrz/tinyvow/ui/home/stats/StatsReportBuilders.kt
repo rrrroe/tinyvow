@@ -987,6 +987,7 @@ internal fun buildDailyFocusSectionData(
                         else -> AppText.t("stats_no_group_archive")
                     },
                 isWarning = archive.controlExceededGroupCount > 0 || archive.controlBlockEventCount > 0,
+                groupItems = buildControlGroupProgressItems(controlGroups),
             ),
         encourage =
             DailyModeSummary(
@@ -1010,9 +1011,145 @@ internal fun buildDailyFocusSectionData(
                         AppText.t("stats_no_group_archive")
                     },
                 isWarning = archive.pointsNet < 0.0,
+                groupItems = buildEncourageGroupProgressItems(encourageGroups),
             ),
     )
 }
+
+private fun buildControlGroupProgressItems(
+    groups: List<DailyGroupArchiveEntity>,
+): List<DailyGroupProgressItem> =
+    groups
+        .sortedWith(
+            compareBy<DailyGroupArchiveEntity> { controlGroupSortRank(it) }
+                .thenBy { it.remainingMillisAtClose.takeIf { remaining -> remaining > 0L } ?: Long.MAX_VALUE }
+                .thenByDescending { it.dailyUsageMillis },
+        )
+        .map { group ->
+            val targetMillis = controlTargetMillis(group)
+            val periodUsage = group.periodUsageMillisAtClose.coerceAtLeast(0L)
+            val progress =
+                when {
+                    targetMillis > 0L -> periodUsage.toFloat() / targetMillis.toFloat()
+                    periodUsage > 0L -> 1f
+                    else -> 0f
+                }.coerceIn(0f, 1f)
+            val exceeded = group.exceededMillisAtClose > 0L
+            val atRisk = !exceeded && targetMillis > 0L && group.remainingMillisAtClose in 1L..(targetMillis * 15L / 100L).coerceAtLeast(1L)
+            val started = group.dailyUsageMillis > 0L || periodUsage > 0L
+            DailyGroupProgressItem(
+                groupName = group.groupName,
+                statusLabel =
+                    when {
+                        exceeded -> AppText.t("stats_over_limit")
+                        atRisk -> AppText.t("stats_status_tight")
+                        group.completed -> AppText.t("stats_met")
+                        started -> AppText.t("stats_status_in_progress")
+                        else -> AppText.t("stats_status_not_started")
+                    },
+                leadingLabel = AppText.t("stats_period_usage"),
+                leadingValue = AppText.t("stats_value_slash_value", formatDuration(periodUsage), formatDuration(targetMillis)),
+                trailingLabel = AppText.t("stats_today_usage"),
+                trailingValue = formatDuration(group.dailyUsageMillis),
+                progress = progress,
+                progressLabel =
+                    when {
+                        exceeded -> AppText.t("stats_over_by_value_3", formatDuration(group.exceededMillisAtClose))
+                        group.remainingMillisAtClose > 0L -> AppText.t("stats_remaining_value", formatDuration(group.remainingMillisAtClose))
+                        else -> AppText.t("stats_met")
+                    },
+                helperLabel = controlGroupHelperLabel(group),
+                isWarning = exceeded || atRisk || group.blockEventCount > 0,
+                isMuted = !started,
+            )
+        }
+
+private fun buildEncourageGroupProgressItems(
+    groups: List<DailyGroupArchiveEntity>,
+): List<DailyGroupProgressItem> =
+    groups
+        .sortedWith(
+            compareBy<DailyGroupArchiveEntity> { encourageGroupSortRank(it) }
+                .thenByDescending { encourageTargetMillis(it).let { target -> if (target > 0L) it.dailyUsageMillis.toFloat() / target.toFloat() else 0f } }
+                .thenByDescending { it.earnedPoints + it.rewardBonusPoints },
+        )
+        .map { group ->
+            val targetMillis = encourageTargetMillis(group)
+            val usage = group.dailyUsageMillis.coerceAtLeast(0L)
+            val progress =
+                when {
+                    targetMillis > 0L -> usage.toFloat() / targetMillis.toFloat()
+                    usage > 0L -> 1f
+                    else -> 0f
+                }.coerceIn(0f, 1f)
+            val shortMillis = (targetMillis - usage).coerceAtLeast(0L)
+            val overMillis = (usage - targetMillis).coerceAtLeast(0L)
+            val points = group.earnedPoints + group.rewardBonusPoints
+            DailyGroupProgressItem(
+                groupName = group.groupName,
+                statusLabel =
+                    when {
+                        group.completed -> AppText.t("stats_target_complete")
+                        usage > 0L -> AppText.t("stats_status_in_progress")
+                        else -> AppText.t("stats_status_not_started")
+                    },
+                leadingLabel = AppText.t("stats_goal_usage"),
+                leadingValue = AppText.t("stats_value_slash_value", formatDuration(usage), formatDuration(targetMillis)),
+                trailingLabel = AppText.t("stats_points_earned"),
+                trailingValue = formatSignedPointsLocal(points),
+                progress = progress,
+                progressLabel =
+                    when {
+                        group.completed && overMillis > 0L -> AppText.t("stats_over_by_value_3", formatDuration(overMillis))
+                        group.completed -> AppText.t("stats_met")
+                        shortMillis > 0L -> AppText.t("stats_short_by_value", formatDuration(shortMillis))
+                        else -> AppText.t("stats_status_not_started")
+                    },
+                helperLabel =
+                    group.rewardBonusPoints
+                        .takeIf { it > 0.0 }
+                        ?.let { AppText.t("stats_bonus_points_value", formatSignedPointsLocal(it)) },
+                isWarning = false,
+                isMuted = usage <= 0L,
+            )
+        }
+
+private fun controlTargetMillis(group: DailyGroupArchiveEntity): Long =
+    group.effectiveLimitMillisAtClose.takeIf { it > 0L }
+        ?: ((group.limitMinutes + group.bonusMinutes).coerceAtLeast(0).toLong() * 60_000L)
+
+private fun encourageTargetMillis(group: DailyGroupArchiveEntity): Long =
+    group.effectiveLimitMillisAtClose.takeIf { it > 0L }
+        ?: (group.limitMinutes.coerceAtLeast(0).toLong() * 60_000L)
+
+private fun controlGroupSortRank(group: DailyGroupArchiveEntity): Int {
+    val targetMillis = controlTargetMillis(group)
+    val atRisk =
+        group.exceededMillisAtClose <= 0L &&
+            targetMillis > 0L &&
+            group.remainingMillisAtClose in 1L..(targetMillis * 15L / 100L).coerceAtLeast(1L)
+    return when {
+        group.exceededMillisAtClose > 0L -> 0
+        atRisk || group.blockEventCount > 0 -> 1
+        group.completed -> 2
+        group.dailyUsageMillis > 0L || group.periodUsageMillisAtClose > 0L -> 3
+        else -> 4
+    }
+}
+
+private fun encourageGroupSortRank(group: DailyGroupArchiveEntity): Int =
+    when {
+        !group.completed && group.dailyUsageMillis > 0L -> 0
+        group.completed -> 1
+        else -> 2
+    }
+
+private fun controlGroupHelperLabel(group: DailyGroupArchiveEntity): String? =
+    when {
+        group.rewardExempted -> AppText.t("stats_reward_pass_used")
+        group.bonusMinutes > 0 -> AppText.t("stats_bonus_time_value", formatDuration(group.bonusMinutes.toLong() * 60_000L))
+        else -> null
+    }
 
 internal fun buildWindowFocusSectionData(
     selectedTab: ReportTab,

@@ -37,7 +37,9 @@ import com.rrrrz.tinyvow.data.db.StreakShieldPendingEntity
 import com.rrrrz.tinyvow.data.db.StreakShieldPendingStatus
 import com.rrrrz.tinyvow.data.db.StreakShieldTarget
 import com.rrrrz.tinyvow.data.settings.ManagedAppPreferences
-import com.rrrrz.tinyvow.data.usage.UsageStatsUsageRepository
+import com.rrrrz.tinyvow.data.special.SpecialAppUsageRepository
+import com.rrrrz.tinyvow.data.special.WEREAD_PACKAGE_NAME
+import com.rrrrz.tinyvow.data.usage.MergedUsageRepository
 import com.rrrrz.tinyvow.i18n.AppText
 import java.time.LocalDate
 import java.time.ZoneId
@@ -195,7 +197,8 @@ class AppLimitRepository(
     private val rewardUseHistoryDao: RewardUseHistoryDao = database.rewardUseHistoryDao()
     private val bonusTimeDao = database.bonusTimeDao()
     private val preferences = ManagedAppPreferences(context)
-    private val usageRepository = UsageStatsUsageRepository(context)
+    private val usageRepository = MergedUsageRepository(context)
+    private val specialAppUsageRepository = SpecialAppUsageRepository(context, database)
     private val rewardIconStorage = RewardIconStorage.fromContext(context)
     private val rewardActionMutex = Mutex()
     private val zoneId = ZoneId.systemDefault()
@@ -954,7 +957,16 @@ class AppLimitRepository(
         val totalUsage =
             crossRefDao
                 .getPackageNamesForGroupSync(group.id)
-                .sumOf { usageRepository.getUsageInPeriod(it, group.limitPeriod) }
+                .sumOf { packageName ->
+                    if (packageName == WEREAD_PACKAGE_NAME &&
+                        specialAppUsageRepository.shouldUseSyncBasedEncouragePoints() &&
+                        specialAppUsageRepository.getWeReadConfig().lastSuccessAt <= 0L
+                    ) {
+                        0L
+                    } else {
+                        usageRepository.getUsageInPeriod(packageName, group.limitPeriod, GroupType.ENCOURAGE)
+                    }
+                }
         return totalUsage >= group.limitMinutes * 60_000L
     }
 

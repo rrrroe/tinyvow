@@ -20,8 +20,9 @@ import com.rrrrz.tinyvow.data.db.PointLedgerEntryType
 import com.rrrrz.tinyvow.data.db.RewardType
 import com.rrrrz.tinyvow.data.db.TopAppArchiveSummary
 import com.rrrrz.tinyvow.data.settings.ManagedAppPreferences
+import com.rrrrz.tinyvow.data.special.SpecialAppUsageRepository
 import com.rrrrz.tinyvow.data.usage.UsageRepository
-import com.rrrrz.tinyvow.data.usage.UsageStatsUsageRepository
+import com.rrrrz.tinyvow.data.usage.MergedUsageRepository
 import com.rrrrz.tinyvow.domain.limit.isControlTimeoutForStats
 import java.time.LocalDate
 import java.time.ZoneId
@@ -35,7 +36,7 @@ import kotlin.math.max
 class DailyArchiveRepository(
     private val context: Context,
     private val database: AppDatabase,
-    private val usageRepository: UsageRepository = UsageStatsUsageRepository(context),
+    private val usageRepository: UsageRepository = MergedUsageRepository(context),
 ) {
     private companion object {
         private const val MIN_UNGROUPED_APP_ARCHIVE_USAGE_MILLIS = 60_000L
@@ -56,6 +57,7 @@ class DailyArchiveRepository(
     private val stateDao = database.dailyArchiveStateDao()
     private val blockEventDao = database.blockEventDao()
     private val preferences = ManagedAppPreferences(context)
+    private val specialAppUsageRepository = SpecialAppUsageRepository(context, database)
 
     fun getRecentArchives(limit: Int = 90): Flow<List<DailyArchiveEntity>> = dailyArchiveDao.getRecent(limit)
 
@@ -236,6 +238,11 @@ class DailyArchiveRepository(
                 .getGroupedByDateSync(archiveDate)
                 .groupBy { it.groupId.orEmpty() }
         val archiveTime = System.currentTimeMillis()
+        val dailyUsageByType =
+            mapOf(
+                GroupType.CONTROL to usageRepository.getUsageStats(dayStart, nextDayStart, GroupType.CONTROL),
+                GroupType.ENCOURAGE to usageRepository.getUsageStats(dayStart, nextDayStart, GroupType.ENCOURAGE),
+            )
         val dailyUsageByPackage = usageRepository.getUsageStats(dayStart, nextDayStart)
         val dailyOpenCountByPackage = usageRepository.getAppOpenCount(dayStart, nextDayStart)
         val groupedPackageNames =
@@ -274,24 +281,25 @@ class DailyArchiveRepository(
             )
         val periodUsageByStart =
             groupConfigs
-                .map { ArchiveDateUtils.periodStart(date, it.limitPeriod) }
+                .map { ArchiveDateUtils.periodStart(date, it.limitPeriod) to it.type }
                 .distinct()
-                .associateWith { periodStart ->
+                .associateWith { (periodStart, groupType) ->
                     usageRepository.getUsageStats(
                         ArchiveDateUtils.startOfDayMillis(periodStart, zoneId),
                         nextDayStart,
+                        groupType,
                     )
                 }
         val periodUsageBeforeDayByStart =
             groupConfigs
-                .map { ArchiveDateUtils.periodStart(date, it.limitPeriod) }
+                .map { ArchiveDateUtils.periodStart(date, it.limitPeriod) to it.type }
                 .distinct()
-                .associateWith { periodStart ->
+                .associateWith { (periodStart, groupType) ->
                     val periodStartMillis = ArchiveDateUtils.startOfDayMillis(periodStart, zoneId)
                     if (periodStartMillis >= dayStart) {
                         emptyMap()
                     } else {
-                        usageRepository.getUsageStats(periodStartMillis, dayStart)
+                        usageRepository.getUsageStats(periodStartMillis, dayStart, groupType)
                     }
                 }
 
@@ -306,14 +314,14 @@ class DailyArchiveRepository(
                     nextDayStart = nextDayStart,
                     archiveTime = archiveTime,
                     sortOrder = index,
-                    dailyUsageByPackage = dailyUsageByPackage,
+                    dailyUsageByPackage = dailyUsageByType[group.type].orEmpty(),
                     periodUsageByPackage =
                         periodUsageByStart[
-                            ArchiveDateUtils.periodStart(date, group.limitPeriod)
+                            ArchiveDateUtils.periodStart(date, group.limitPeriod) to group.type
                         ].orEmpty(),
                     periodUsageBeforeDayByPackage =
                         periodUsageBeforeDayByStart[
-                            ArchiveDateUtils.periodStart(date, group.limitPeriod)
+                            ArchiveDateUtils.periodStart(date, group.limitPeriod) to group.type
                         ].orEmpty(),
                     sessionsByPackage = sessionsByPackage,
                     blockEventCount = blockEventDao.countByDateAndGroup(archiveDate, group.id),
@@ -326,7 +334,7 @@ class DailyArchiveRepository(
                     allocateGroupEarnedPoints(
                         totalPoints = groupResult.archive.earnedPoints,
                         packageNames = groupResult.packageNames,
-                        usageByPackage = dailyUsageByPackage,
+                        usageByPackage = groupResult.dailyUsageByPackage,
                     )
                 groupResult.packageNames.map { packageName ->
                     val behaviorSummary =
@@ -341,9 +349,14 @@ class DailyArchiveRepository(
                         appLabel = packageLabels[packageName] ?: packageName,
                         groupArchive = groupResult.archive,
                         behaviorSummary = behaviorSummary,
-                        dailyUsageMillis = dailyUsageByPackage[packageName] ?: 0L,
+                        dailyUsageMillis = groupResult.dailyUsageByPackage[packageName] ?: 0L,
                         openCount = dailyOpenCountByPackage[packageName] ?: 0,
                         earnedPoints = allocatedEarnedPoints[packageName] ?: 0.0,
+                        usageSource = specialAppUsageRepository.usageSourceForDate(
+                            packageName = packageName,
+                            date = archiveDate,
+                            groupType = groupResult.archive.groupType,
+                        ),
                         archiveTime = archiveTime,
                     )
                 }
@@ -365,6 +378,11 @@ class DailyArchiveRepository(
                     dailyUsageMillis = dailyUsageByPackage[packageName] ?: 0L,
                     openCount = dailyOpenCountByPackage[packageName] ?: 0,
                     earnedPoints = 0.0,
+                    usageSource = specialAppUsageRepository.usageSourceForDate(
+                        packageName = packageName,
+                        date = archiveDate,
+                        groupType = null,
+                    ),
                     archiveTime = archiveTime,
                 )
             }
@@ -412,8 +430,8 @@ class DailyArchiveRepository(
                 archiveDate = archiveDate,
                 dayStartAt = dayStart,
                 dayEndAt = dayEnd,
-                controlUsageMillis = controlPackageNames.sumOf { packageName -> dailyUsageByPackage[packageName] ?: 0L },
-                encourageUsageMillis = encouragePackageNames.sumOf { packageName -> dailyUsageByPackage[packageName] ?: 0L },
+                controlUsageMillis = controlPackageNames.sumOf { packageName -> dailyUsageByType[GroupType.CONTROL]?.get(packageName) ?: 0L },
+                encourageUsageMillis = encouragePackageNames.sumOf { packageName -> dailyUsageByType[GroupType.ENCOURAGE]?.get(packageName) ?: 0L },
                 totalUsageMillis = packagesToArchive.sumOf { packageName -> dailyUsageByPackage[packageName] ?: 0L },
                 savedMillis =
                     groupSnapshots
@@ -659,6 +677,7 @@ class DailyArchiveRepository(
                     updatedAt = archiveTime,
                 ),
             packageNames = packageNames,
+            dailyUsageByPackage = dailyUsageByPackage,
             rewardBonusPoints = rewardBonusPoints,
         )
     }
@@ -672,6 +691,7 @@ class DailyArchiveRepository(
         dailyUsageMillis: Long,
         openCount: Int,
         earnedPoints: Double,
+        usageSource: com.rrrrz.tinyvow.data.special.SpecialAppUsageSource?,
         archiveTime: Long,
     ): DailyAppArchiveEntity {
         val hourlyUsage = behaviorSummary.hourlyUsageMillis
@@ -717,6 +737,8 @@ class DailyArchiveRepository(
             hour21Millis = hourlyUsage[21],
             hour22Millis = hourlyUsage[22],
             hour23Millis = hourlyUsage[23],
+            usageSource = usageSource?.provider,
+            usageSourceSyncedAt = usageSource?.syncedAt,
             createdAt = archiveTime,
             updatedAt = archiveTime,
         )
@@ -769,6 +791,7 @@ class DailyArchiveRepository(
     private data class GroupArchiveBuildResult(
         val archive: DailyGroupArchiveEntity,
         val packageNames: List<String>,
+        val dailyUsageByPackage: Map<String, Long>,
         val rewardBonusPoints: Double = 0.0,
     )
 

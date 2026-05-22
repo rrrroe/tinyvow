@@ -7,7 +7,7 @@ import com.rrrrz.tinyvow.data.db.GroupType
 import com.rrrrz.tinyvow.data.db.LimitPeriod
 import com.rrrrz.tinyvow.data.db.RewardType
 import com.rrrrz.tinyvow.data.repository.parseRewardPayload
-import com.rrrrz.tinyvow.data.usage.UsageStatsUsageRepository
+import com.rrrrz.tinyvow.data.usage.MergedUsageRepository
 
 /**
  * 多分组交叉短板效应评估器 (升级版：支持周期时长与加时包)
@@ -19,7 +19,7 @@ class GroupLimitEnforcer(context: Context) {
     private val groupDao = database.appGroupDao()
     private val bonusTimeDao = database.bonusTimeDao()
     private val activeRewardEffectDao = database.activeRewardEffectDao()
-    private val usageRepository = UsageStatsUsageRepository(context)
+    private val usageRepository = MergedUsageRepository(context)
 
     private data class ConfigCacheEntry(val groupIds: List<String>, val fetchedAt: Long)
     private val configCache = mutableMapOf<String, ConfigCacheEntry>()
@@ -97,7 +97,7 @@ class GroupLimitEnforcer(context: Context) {
             val packages = crossRefDao.getPackageNamesForGroupSync(groupId)
             return packages.sumOf { cached.usageByPackage[it] ?: 0L }
         }
-        val fresh = usageRepository.getUsageStatsInPeriod(period)
+        val fresh = usageRepository.getUsageStatsInPeriod(period, GroupType.CONTROL)
         periodUsageCache[period] = PeriodUsageCacheEntry(fresh, now)
         val packages = crossRefDao.getPackageNamesForGroupSync(groupId)
         return packages.sumOf { fresh[it] ?: 0L }
