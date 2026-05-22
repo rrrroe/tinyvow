@@ -13,6 +13,8 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
@@ -2087,19 +2089,11 @@ fun HomeScreen(
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 if (usageAccessGranted) {
-                    ElevatedCard(
+                    HomeOverviewHeader(dateLabel = overviewState.dateLabel)
+                    HomeOverviewSplitCards(
+                        state = overviewState,
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(32.dp),
-                        colors = CardDefaults.elevatedCardColors(
-                            containerColor = Color.Transparent,
-                        ),
-                        elevation = CardDefaults.elevatedCardElevation(defaultElevation = 1.dp)
-                    ) {
-                        HomeOverviewCard(
-                            state = overviewState,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                    }
+                    )
                 }
                 
                 if (pendingPermissionPrompts.isNotEmpty()) {
@@ -2260,146 +2254,346 @@ private fun CompactPermissionBanner(
 }
 
 @Composable
-private fun HomeOverviewCard(
+private fun HomeOverviewSplitCards(
     state: HomeOverviewUiState,
     modifier: Modifier = Modifier,
 ) {
     val themeColors = LocalThemeColors.current
     Box(
-        modifier =
-            modifier
-                .clip(RoundedCornerShape(32.dp))
-                .background(
-                    brush =
-                        Brush.linearGradient(
-                            colors =
-                                listOf(
-                                    lerp(MaterialTheme.colorScheme.surface, themeColors.controlContainer, 0.28f),
-                                    lerp(MaterialTheme.colorScheme.surface, themeColors.baseContainer, 0.34f),
-                                    lerp(MaterialTheme.colorScheme.surface, themeColors.encourageContainer, 0.30f),
-                                ),
-                            start = Offset(0f, 0f),
-                            end = Offset(920f, 720f),
-                        )
-                )
+        modifier = modifier.fillMaxWidth()
     ) {
-        HomeOverviewBackdrop(modifier = Modifier.matchParentSize())
-
-        Column(
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 20.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(236.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            HomeOverviewHeader(
-                dateLabel = state.dateLabel,
-            )
-
+            // Left Card (CONTROL)
             Box(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .height(170.dp),
-            ) {
-                HomeOverviewClockWatermark(
-                    modifier =
-                        Modifier
-                            .size(176.dp)
-                            .align(Alignment.BottomCenter)
-                            .offset(y = 4.dp),
-                )
-
-                Row(
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .align(Alignment.TopCenter)
-                            .padding(top = 7.dp),
-                    horizontalArrangement = Arrangement.spacedBy(18.dp),
-                    verticalAlignment = Alignment.Top,
-                ) {
-                    HomeOverviewSideMetric(
-                        title = AppText.t("home_commitment_panel"),
-                        headlineLabel = AppText.t("home_saved_today"),
-                        headlineValue = state.control.todaySavedMinutes.toString(),
-                        headlineUnit = AppText.t("group_minutes"),
-                        accent = MaterialTheme.colorScheme.secondary,
-                        tags =
-                            listOf(
-                                AppText.t("home_commitment_progress_value", state.control.completedGroups, state.control.totalGroups),
-                                AppText.t("home_control_streak_value", state.control.streakDays),
-                        ),
-                        modifier = Modifier.weight(1f),
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .clip(RoundedCornerShape(32.dp))
+                    .background(themeColors.control)
+                    .border(
+                        width = 1.dp,
+                        color = Color.White.copy(alpha = 0.12f),
+                        shape = RoundedCornerShape(32.dp)
                     )
-                    HomeOverviewSideMetric(
-                        title = AppText.t("home_encouragement_panel"),
-                        headlineLabel = AppText.t("home_earned_today"),
-                        headlineValue = formatHomePointWholeValue(state.encourage.todayEarnedPoints),
-                        headlineUnit = AppText.t("group_points"),
-                        accent = MaterialTheme.colorScheme.tertiary,
-                        tags =
-                            listOf(
-                                AppText.t("home_encouragement_progress_value", state.encourage.completedGroups, state.encourage.totalGroups),
-                                AppText.t("home_encourage_streak_value", state.encourage.streakDays),
+                    .padding(horizontal = 16.dp, vertical = 16.dp)
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.SpaceBetween
+                ) {
+                    // Header (Title) - Dots removed, enlarged to 18.sp
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.Start,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = AppText.t("home_commitment_panel"),
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.ExtraBold
                             ),
-                        alignEnd = true,
-                        unitBefore = true,
-                        modifier = Modifier.weight(1f),
+                            color = Color.White
+                        )
+                    }
+
+                    // Today Metric
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(1.dp)
+                    ) {
+                        Text(
+                            text = AppText.t("home_saved_today"),
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold
+                            ),
+                            color = Color.White.copy(alpha = 0.70f)
+                        )
+                        Row(
+                            verticalAlignment = Alignment.Bottom
+                        ) {
+                            Text(
+                                text = state.control.todaySavedMinutes.toString(),
+                                style = MaterialTheme.typography.displaySmall.copy(
+                                    fontSize = 36.sp,
+                                    fontWeight = FontWeight.Black,
+                                    letterSpacing = (-1).sp
+                                ),
+                                color = Color.White
+                            )
+                            Spacer(modifier = Modifier.width(3.dp))
+                            Text(
+                                text = AppText.t("group_minutes"),
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold
+                                ),
+                                color = Color.White.copy(alpha = 0.80f),
+                                modifier = Modifier.padding(bottom = 4.dp)
+                            )
+                        }
+                    }
+
+                    // Progress Pills
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        HomeOverviewSplitPill(text = AppText.t("home_commitment_progress_value", state.control.completedGroups, state.control.totalGroups))
+                        HomeOverviewSplitPill(text = AppText.t("home_control_streak_value", state.control.streakDays))
+                    }
+
+                    // Divider
+                    HorizontalDivider(
+                        color = Color.White.copy(alpha = 0.15f),
+                        thickness = 0.5.dp
                     )
+
+                    // Stacked history complications
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        HomeHistoryMetricSplit(
+                            label = AppText.t("home_total_saved"),
+                            value = state.history.totalSavedMinutes.toString(),
+                            unit = AppText.t("group_minutes")
+                        )
+                        HomeHistoryMetricSplit(
+                            label = AppText.t("home_equivalent_live_more"),
+                            value = roundedDaysValue(state.history.extendedLifeMinutes).toString(),
+                            unit = AppText.t("home_day_unit")
+                        )
+                    }
                 }
             }
 
-            // 历史数据区：细分割线 + 透明背景，更通透简洁
-            HorizontalDivider(
-                color = MaterialTheme.colorScheme.outline.copy(alpha = 0.12f),
-                thickness = 0.5.dp,
-            )
-            Row(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 2.dp, vertical = 4.dp),
-                horizontalArrangement = Arrangement.spacedBy(42.dp),
-                verticalAlignment = Alignment.Top,
+            // Right Card (ENCOURAGE)
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .clip(RoundedCornerShape(32.dp))
+                    .background(themeColors.encourage)
+                    .border(
+                        width = 1.dp,
+                        color = Color.White.copy(alpha = 0.12f),
+                        shape = RoundedCornerShape(32.dp)
+                    )
+                    .padding(horizontal = 16.dp, vertical = 16.dp)
             ) {
                 Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(7.dp),
+                    modifier = Modifier.fillMaxSize(),
+                    verticalArrangement = Arrangement.SpaceBetween,
+                    horizontalAlignment = Alignment.End
                 ) {
-                    HomeHistoryMetric(
-                        label = AppText.t("home_total_saved"),
-                        value = state.history.totalSavedMinutes.toString(),
-                        unit = AppText.t("group_minutes"),
-                        accent = MaterialTheme.colorScheme.secondary,
+                    // Header (Title) - Dots removed, enlarged to 18.sp
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = AppText.t("home_encouragement_panel"),
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.ExtraBold
+                            ),
+                            color = Color.White
+                        )
+                    }
+
+                    // Today Metric
+                    Column(
+                        horizontalAlignment = Alignment.End,
+                        verticalArrangement = Arrangement.spacedBy(1.dp)
+                    ) {
+                        Text(
+                            text = AppText.t("home_earned_today"),
+                            style = MaterialTheme.typography.labelSmall.copy(
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold
+                            ),
+                            color = Color.White.copy(alpha = 0.70f)
+                        )
+                        Row(
+                            verticalAlignment = Alignment.Bottom,
+                            horizontalArrangement = Arrangement.End
+                        ) {
+                            Text(
+                                text = AppText.t("group_points"),
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold
+                                ),
+                                color = Color.White.copy(alpha = 0.80f),
+                                modifier = Modifier.padding(bottom = 4.dp)
+                            )
+                            Spacer(modifier = Modifier.width(3.dp))
+                            Text(
+                                text = formatHomePointWholeValue(state.encourage.todayEarnedPoints),
+                                style = MaterialTheme.typography.displaySmall.copy(
+                                    fontSize = 36.sp,
+                                    fontWeight = FontWeight.Black,
+                                    letterSpacing = (-1).sp
+                                ),
+                                color = Color.White
+                            )
+                        }
+                    }
+
+                    // Progress Pills
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        HomeOverviewSplitPill(text = AppText.t("home_encouragement_progress_value", state.encourage.completedGroups, state.encourage.totalGroups))
+                        HomeOverviewSplitPill(text = AppText.t("home_encourage_streak_value", state.encourage.streakDays))
+                    }
+
+                    // Divider
+                    HorizontalDivider(
+                        color = Color.White.copy(alpha = 0.15f),
+                        thickness = 0.5.dp
                     )
-                    HomeHistoryMetric(
-                        label = AppText.t("home_equivalent_live_more"),
-                        value = roundedDaysValue(state.history.extendedLifeMinutes).toString(),
-                        unit = AppText.t("home_day_unit"),
-                        accent = MaterialTheme.colorScheme.secondary,
-                    )
-                }
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(7.dp),
-                ) {
-                    HomeHistoryMetric(
-                        label = AppText.t("home_total_earned"),
-                        value = formatHomePointValue(state.history.totalEarnedPoints),
-                        unit = AppText.t("group_points"),
-                        accent = MaterialTheme.colorScheme.tertiary,
-                        alignEnd = true,
-                        unitBefore = true,
-                    )
-                    HomeHistoryMetric(
-                        label = AppText.t("home_current_remaining"),
-                        value = formatHomePointValue(state.history.currentPoints),
-                        unit = AppText.t("group_points"),
-                        accent = MaterialTheme.colorScheme.tertiary,
-                        alignEnd = true,
-                        unitBefore = true,
-                    )
+
+                    // Stacked history complications
+                    Column(
+                        horizontalAlignment = Alignment.End,
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        HomeHistoryMetricSplit(
+                            label = AppText.t("home_total_earned"),
+                            value = formatHomePointValue(state.history.totalEarnedPoints),
+                            unit = AppText.t("group_points"),
+                            alignEnd = true,
+                            unitBefore = true
+                        )
+                        HomeHistoryMetricSplit(
+                            label = AppText.t("home_current_remaining"),
+                            value = formatHomePointValue(state.history.currentPoints),
+                            unit = AppText.t("group_points"),
+                            alignEnd = true,
+                            unitBefore = true
+                        )
+                    }
                 }
             }
+        }
 
+        // Center White Clock Watermark
+        HomeOverviewClockWatermark(
+            modifier = Modifier
+                .size(136.dp)
+                .align(Alignment.Center)
+                .offset(y = 4.dp),
+        )
+    }
+}
+
+@Composable
+private fun HomeOverviewSplitPill(
+    text: String,
+    modifier: Modifier = Modifier,
+) {
+    if (text.isBlank()) return
+    Box(
+        modifier = modifier
+            .clip(RoundedCornerShape(50))
+            .background(Color.White.copy(alpha = 0.10f))
+            .border(1.dp, Color.White.copy(alpha = 0.15f), RoundedCornerShape(50))
+            .padding(horizontal = 8.dp, vertical = 3.dp)
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Bold
+            ),
+            color = Color.White.copy(alpha = 0.90f),
+            maxLines = 1
+        )
+    }
+}
+
+@Composable
+private fun HomeHistoryMetricSplit(
+    label: String,
+    value: String,
+    unit: String,
+    alignEnd: Boolean = false,
+    unitBefore: Boolean = false,
+) {
+    val horizontalAlignment = if (alignEnd) Alignment.End else Alignment.Start
+    val textAlign = if (alignEnd) androidx.compose.ui.text.style.TextAlign.End else androidx.compose.ui.text.style.TextAlign.Start
+    
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalAlignment = horizontalAlignment,
+        verticalArrangement = Arrangement.spacedBy(1.dp)
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                letterSpacing = 0.2.sp
+            ),
+            color = Color.White.copy(alpha = 0.65f),
+            textAlign = textAlign,
+            maxLines = 1,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+        )
+        
+        Row(
+            verticalAlignment = Alignment.Bottom,
+            horizontalArrangement = if (alignEnd) Arrangement.End else Arrangement.Start
+        ) {
+            if (unitBefore) {
+                Text(
+                    text = unit,
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
+                    ),
+                    color = Color.White.copy(alpha = 0.85f),
+                    modifier = Modifier.padding(bottom = 1.dp)
+                )
+                Spacer(modifier = Modifier.width(2.dp))
+                Text(
+                    text = value,
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.ExtraBold
+                    ),
+                    color = Color.White,
+                    maxLines = 1
+                )
+            } else {
+                Text(
+                    text = value,
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.ExtraBold
+                    ),
+                    color = Color.White,
+                    maxLines = 1
+                )
+                Spacer(modifier = Modifier.width(2.dp))
+                Text(
+                    text = unit,
+                    style = MaterialTheme.typography.labelSmall.copy(
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
+                    ),
+                    color = Color.White.copy(alpha = 0.85f),
+                    modifier = Modifier.padding(bottom = 1.dp)
+                )
+            }
         }
     }
 }
@@ -2447,9 +2641,6 @@ private fun HomeOverviewBackdrop(
 private fun HomeOverviewClockWatermark(
     modifier: Modifier = Modifier,
 ) {
-    val themeColors = LocalThemeColors.current
-    val surfaceColor = MaterialTheme.colorScheme.surface
-    val outlineColor = MaterialTheme.colorScheme.outlineVariant
     val time by produceState(initialValue = LocalTime.now()) {
         while (true) {
             val current = LocalTime.now()
@@ -2461,78 +2652,60 @@ private fun HomeOverviewClockWatermark(
     Canvas(modifier = modifier) {
         val center = Offset(size.width / 2f, size.height / 2f)
         val radius = min(size.width, size.height) * 0.36f
-        val outerRadius = radius * 1.10f
-        val ringGradient =
-            Brush.horizontalGradient(
-                colors =
-                    listOf(
-                        themeColors.control.copy(alpha = 0.58f),
-                        themeColors.base.copy(alpha = 0.22f),
-                        themeColors.encourage.copy(alpha = 0.58f),
-                    ),
-                startX = center.x - outerRadius,
-                endX = center.x + outerRadius,
-            )
-
+        
+        // Outer ring (alpha = 0.18f)
         drawCircle(
-            brush =
-                Brush.radialGradient(
-                    colors =
-                        listOf(
-                            surfaceColor.copy(alpha = 0.18f),
-                            themeColors.baseContainer.copy(alpha = 0.06f),
-                            Color.Transparent,
-                        ),
-                    center = center,
-                    radius = outerRadius * 1.12f,
-                ),
-            radius = outerRadius * 1.12f,
-            center = center,
-        )
-        drawCircle(
-            brush = ringGradient,
+            color = Color.White.copy(alpha = 0.18f),
             radius = radius,
             center = center,
             style = Stroke(width = 3.2.dp.toPx(), cap = StrokeCap.Round),
         )
+        
+        // Inner thin ring (alpha = 0.08f)
         drawCircle(
-            color = surfaceColor.copy(alpha = 0.34f),
+            color = Color.White.copy(alpha = 0.08f),
             radius = radius * 0.90f,
             center = center,
-            style = Stroke(width = 1.dp.toPx()),
+            style = Stroke(width = 0.8.dp.toPx()),
         )
 
+        // Hands
         val minuteAngle = (time.minute / 60.0) * 2.0 * PI - PI / 2.0
         val hourAngle = (((time.hour % 12) + time.minute / 60.0) / 12.0) * 2.0 * PI - PI / 2.0
-        val handColor = lerp(themeColors.base, themeColors.encourage, 0.30f)
+        
+        // Hour hand
         drawLine(
-            color = handColor.copy(alpha = 0.36f),
+            color = Color.White.copy(alpha = 0.40f),
             start = center,
             end = Offset(
                 x = center.x + cos(hourAngle).toFloat() * radius * 0.48f,
                 y = center.y + sin(hourAngle).toFloat() * radius * 0.48f,
             ),
-            strokeWidth = 5.dp.toPx(),
+            strokeWidth = 4.2.dp.toPx(),
             cap = StrokeCap.Round,
         )
+        
+        // Minute hand
         drawLine(
-            color = handColor.copy(alpha = 0.28f),
+            color = Color.White.copy(alpha = 0.28f),
             start = center,
             end = Offset(
                 x = center.x + cos(minuteAngle).toFloat() * radius * 0.68f,
                 y = center.y + sin(minuteAngle).toFloat() * radius * 0.68f,
             ),
-            strokeWidth = 3.4.dp.toPx(),
+            strokeWidth = 2.6.dp.toPx(),
             cap = StrokeCap.Round,
         )
+        
+        // Center cap
         drawCircle(
-            color = surfaceColor.copy(alpha = 0.56f),
-            radius = 5.8.dp.toPx(),
+            color = Color.White.copy(alpha = 0.50f),
+            radius = 5.dp.toPx(),
             center = center,
         )
         drawCircle(
-            color = outlineColor.copy(alpha = 0.34f),
-            radius = 3.2.dp.toPx(),
+            color = Color.White.copy(alpha = 0.70f),
+            radius = 2.5.dp.toPx(),
             center = center,
         )
     }
