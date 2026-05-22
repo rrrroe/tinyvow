@@ -69,6 +69,10 @@ import com.rrrrz.tinyvow.data.special.WeReadHistoryRefreshSummary
 import com.rrrrz.tinyvow.data.special.WeReadSettingsState
 import com.rrrrz.tinyvow.data.special.WeReadSyncSummary
 import com.rrrrz.tinyvow.i18n.AppText
+import com.rrrrz.tinyvow.ui.theme.LocalThemeColors
+import com.rrrrz.tinyvow.ui.theme.TinyVowCard
+import com.rrrrz.tinyvow.ui.theme.TinyVowRadius
+import com.rrrrz.tinyvow.ui.theme.TinyVowSpacing
 import java.text.DateFormat
 import java.time.LocalDate
 import java.time.YearMonth
@@ -83,6 +87,7 @@ fun SpecialAppsScreen(
     onBack: () -> Unit,
     onOpenWeRead: () -> Unit,
 ) {
+    val themeColors = LocalThemeColors.current
     val context = LocalContext.current
     val repository = remember(context) { SpecialAppUsageRepository(context) }
     var state by remember { mutableStateOf<WeReadSettingsState?>(null) }
@@ -94,7 +99,14 @@ fun SpecialAppsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(AppText.t("special_app_list_title")) },
+                title = {
+                    Text(
+                        text = AppText.t("special_app_list_title"),
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        color = themeColors.inkStrong,
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = AppText.t("group_back"))
@@ -109,28 +121,29 @@ fun SpecialAppsScreen(
                 .background(MaterialTheme.colorScheme.background)
                 .padding(innerPadding)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+                .padding(
+                    horizontal = TinyVowSpacing.PageHorizontal,
+                    vertical = TinyVowSpacing.PageTop,
+                ),
+            verticalArrangement = Arrangement.spacedBy(TinyVowSpacing.SectionGap),
         ) {
-            Surface(
+            TinyVowCard(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(28.dp),
+                shape = RoundedCornerShape(TinyVowRadius.FeaturedCard),
                 color = MaterialTheme.colorScheme.primaryContainer,
+                borderAlpha = 0.18f,
             ) {
                 Column(
-                    modifier = Modifier.padding(18.dp),
+                    modifier = Modifier.padding(
+                        horizontal = TinyVowSpacing.CardHorizontal,
+                        vertical = TinyVowSpacing.CardVertical,
+                    ),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     Text(
-                        text = AppText.t("special_app_list_title"),
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer,
-                    )
-                    Text(
                         text = AppText.t("special_app_list_description"),
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.78f),
+                        color = themeColors.ink.copy(alpha = 0.78f),
                     )
                 }
             }
@@ -151,7 +164,7 @@ fun SpecialAppsScreen(
             Text(
                 text = AppText.t("special_app_list_future_hint"),
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = themeColors.inkMuted,
                 modifier = Modifier.padding(horizontal = 4.dp),
             )
         }
@@ -163,6 +176,7 @@ fun SpecialAppsScreen(
 fun SpecialAppSettingsScreen(
     onBack: () -> Unit,
 ) {
+    val themeColors = LocalThemeColors.current
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val repository = remember(context) { SpecialAppUsageRepository(context) }
@@ -260,7 +274,14 @@ fun SpecialAppSettingsScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(AppText.t("special_app_weread_title")) },
+                title = {
+                    Text(
+                        text = AppText.t("special_app_weread_title"),
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        color = themeColors.inkStrong,
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = AppText.t("group_back"))
@@ -275,8 +296,11 @@ fun SpecialAppSettingsScreen(
                 .background(MaterialTheme.colorScheme.background)
                 .padding(innerPadding)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+                .padding(
+                    horizontal = TinyVowSpacing.PageHorizontal,
+                    vertical = TinyVowSpacing.PageTop,
+                ),
+            verticalArrangement = Arrangement.spacedBy(TinyVowSpacing.SectionGap),
         ) {
             SpecialAppHero(state)
 
@@ -680,14 +704,18 @@ private fun SpecialAppListItem(
 @Composable
 private fun SpecialAppHero(state: WeReadSettingsState?) {
     val connected = state?.hasApiKey == true && (state.config?.lastSuccessAt ?: 0L) > 0L
-    Surface(
+    TinyVowCard(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(28.dp),
+        shape = RoundedCornerShape(TinyVowRadius.FeaturedCard),
         color = MaterialTheme.colorScheme.primaryContainer,
+        borderAlpha = 0.18f,
     ) {
         Column(
-            modifier = Modifier.padding(18.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.padding(
+                horizontal = TinyVowSpacing.CardHorizontal,
+                vertical = TinyVowSpacing.CardVertical,
+            ),
+            verticalArrangement = Arrangement.spacedBy(TinyVowSpacing.CardGap),
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -1055,6 +1083,7 @@ private fun SettingsCard(
     title: String,
     content: @Composable ColumnScope.() -> Unit,
 ) {
+    val themeColors = LocalThemeColors.current
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(22.dp),
@@ -1069,6 +1098,7 @@ private fun SettingsCard(
                 text = title,
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
+                color = themeColors.inkStrong,
             )
             content()
         }
@@ -1168,6 +1198,7 @@ private fun SwitchRow(
     enabled: Boolean,
     onCheckedChange: (Boolean) -> Unit,
 ) {
+    val themeColors = LocalThemeColors.current
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -1177,11 +1208,16 @@ private fun SwitchRow(
             modifier = Modifier.weight(1f),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            Text(text = title, style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.Medium)
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                color = themeColors.ink,
+            )
             Text(
                 text = subtitle,
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = themeColors.inkMuted,
             )
         }
         Switch(
@@ -1194,6 +1230,7 @@ private fun SwitchRow(
 
 @Composable
 private fun MetricRow(label: String, value: String) {
+    val themeColors = LocalThemeColors.current
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -1202,13 +1239,14 @@ private fun MetricRow(label: String, value: String) {
         Text(
             text = label,
             style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = themeColors.inkMuted,
             modifier = Modifier.weight(1f),
         )
         Text(
             text = value,
-            style = MaterialTheme.typography.bodyMedium,
+            style = MaterialTheme.typography.titleSmall,
             fontWeight = FontWeight.SemiBold,
+            color = themeColors.inkStrong,
         )
     }
 }

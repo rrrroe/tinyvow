@@ -1041,16 +1041,25 @@ private fun buildControlGroupProgressItems(
                 groupName = group.groupName,
                 statusLabel =
                     when {
-                        exceeded -> AppText.t("stats_over_limit")
-                        atRisk -> AppText.t("stats_status_tight")
                         group.completed -> AppText.t("stats_met")
+                        atRisk -> AppText.t("stats_status_tight")
                         started -> AppText.t("stats_status_in_progress")
                         else -> AppText.t("stats_status_not_started")
                     },
                 leadingLabel = AppText.t("stats_period_usage"),
                 leadingValue = AppText.t("stats_value_slash_value", formatDuration(periodUsage), formatDuration(targetMillis)),
-                trailingLabel = AppText.t("stats_today_usage"),
-                trailingValue = formatDuration(group.dailyUsageMillis),
+                trailingLabel =
+                    if (exceeded) {
+                        AppText.t("stats_over_short")
+                    } else {
+                        AppText.t("stats_remaining_short")
+                    },
+                trailingValue =
+                    if (exceeded) {
+                        formatDuration(group.exceededMillisAtClose)
+                    } else {
+                        formatDuration(group.remainingMillisAtClose.coerceAtLeast(0L))
+                    },
                 progress = progress,
                 progressLabel =
                     when {
@@ -1059,7 +1068,7 @@ private fun buildControlGroupProgressItems(
                         else -> AppText.t("stats_met")
                     },
                 helperLabel = controlGroupHelperLabel(group),
-                isWarning = exceeded || atRisk || group.blockEventCount > 0,
+                isWarning = exceeded,
                 isMuted = !started,
             )
         }

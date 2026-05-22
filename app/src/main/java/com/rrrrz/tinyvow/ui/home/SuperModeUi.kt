@@ -1,12 +1,14 @@
 package com.rrrrz.tinyvow.ui.home
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -18,24 +20,25 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -50,6 +53,10 @@ import androidx.compose.ui.unit.dp
 import com.rrrrz.tinyvow.data.supermode.SuperModeController
 import com.rrrrz.tinyvow.data.supermode.SuperModeStatus
 import com.rrrrz.tinyvow.i18n.AppText
+import com.rrrrz.tinyvow.ui.theme.LocalThemeColors
+import com.rrrrz.tinyvow.ui.theme.TinyVowCard
+import com.rrrrz.tinyvow.ui.theme.TinyVowRadius
+import com.rrrrz.tinyvow.ui.theme.TinyVowSpacing
 
 @Composable
 fun SuperModeHomeActionChip(
@@ -57,6 +64,7 @@ fun SuperModeHomeActionChip(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val themeColors = LocalThemeColors.current
     val accent =
         when {
             status.isActive -> MaterialTheme.colorScheme.primary
@@ -103,13 +111,13 @@ fun SuperModeHomeActionChip(
                     text = AppText.t("super_mode_title"),
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurface,
+                    color = themeColors.inkStrong,
                     maxLines = 1,
                 )
                 Text(
                     text = describeSuperModeStatus(status),
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = themeColors.inkMuted,
                     maxLines = 1,
                 )
             }
@@ -134,32 +142,65 @@ fun SuperModeSettingsSheet(
     onRecoveryReset: () -> Unit,
     onDisable: () -> Unit,
 ) {
-    ModalBottomSheet(onDismissRequest = onDismiss) {
+    val themeColors = LocalThemeColors.current
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = {
+                    Text(
+                        text = AppText.t("super_mode_title"),
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        color = themeColors.inkStrong,
+                    )
+                },
+                navigationIcon = {
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = AppText.t("group_back"))
+                    }
+                },
+            )
+        },
+    ) { innerPadding ->
         Column(
             modifier =
                 Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 16.dp)
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.background)
+                    .padding(innerPadding)
+                    .padding(
+                        horizontal = TinyVowSpacing.PageHorizontal,
+                        vertical = TinyVowSpacing.PageTop,
+                    )
                     .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+            verticalArrangement = Arrangement.spacedBy(TinyVowSpacing.SectionGap),
         ) {
-            Text(
-                text = AppText.t("super_mode_title"),
-                style = MaterialTheme.typography.titleLarge,
-            )
-            Text(
-                text = AppText.t("super_mode_sheet_summary"),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+            TinyVowCard(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(TinyVowRadius.FeaturedCard),
+                color = MaterialTheme.colorScheme.primaryContainer,
+                borderAlpha = 0.18f,
+            ) {
+                Text(
+                    text = AppText.t("super_mode_sheet_summary"),
+                    modifier = Modifier.padding(
+                        horizontal = TinyVowSpacing.CardHorizontal,
+                        vertical = TinyVowSpacing.CardVertical,
+                    ),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.82f),
+                )
+            }
 
-            ElevatedCard(
-                colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface),
-                shape = RoundedCornerShape(20.dp),
+            TinyVowCard(
+                shape = RoundedCornerShape(TinyVowRadius.Card),
             ) {
                 Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.padding(
+                        horizontal = TinyVowSpacing.CardHorizontal,
+                        vertical = TinyVowSpacing.CardVertical,
+                    ),
+                    verticalArrangement = Arrangement.spacedBy(TinyVowSpacing.CardGap),
                 ) {
                     SuperModeStatusRow(
                         label = AppText.t("super_mode_status_label"),
@@ -179,12 +220,12 @@ fun SuperModeSettingsSheet(
                                 Text(
                                     text = AppText.t("super_mode_protection_toggle_label"),
                                     style = MaterialTheme.typography.labelLarge,
-                                    color = MaterialTheme.colorScheme.onSurface,
+                                    color = themeColors.ink,
                                 )
                                 Text(
                                     text = AppText.t("super_mode_protection_toggle_summary"),
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    color = themeColors.inkMuted,
                                 )
                             }
                             Switch(
@@ -293,6 +334,7 @@ private fun SuperModeStatusRow(
     label: String,
     value: String,
 ) {
+    val themeColors = LocalThemeColors.current
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -301,13 +343,14 @@ private fun SuperModeStatusRow(
         Text(
             text = label,
             style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = themeColors.inkMuted,
         )
         Spacer(modifier = Modifier.width(12.dp))
         Text(
             text = value,
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurface,
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold,
+            color = themeColors.inkStrong,
         )
     }
 }

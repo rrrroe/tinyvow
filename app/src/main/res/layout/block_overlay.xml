@@ -22,7 +22,7 @@
             android:id="@+id/blockOverlayTitle"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:text="Today's limit is used up"
+            android:text="@string/block_title"
             android:textColor="#101828"
             android:textSize="26sp"
             android:textStyle="bold" />
@@ -33,7 +33,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
             android:lineSpacingExtra="4dp"
-            android:text="Leave it for now."
+            android:text="@string/block_overlay_body_default"
             android:textColor="#475467"
             android:textSize="16sp" />
 
@@ -42,21 +42,21 @@
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="20dp"
-            android:text="Open Tiny Vow" />
+            android:text="@string/block_overlay_open_app" />
 
         <Button
             android:id="@+id/blockOverlayGoHomeButton"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
-            android:text="Go Home" />
+            android:text="@string/block_overlay_go_home" />
 
         <Button
             android:id="@+id/blockOverlayOpenSettingsButton"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
-            android:text="Accessibility settings" />
+            android:text="@string/accessibility_card_action" />
 
     </LinearLayout>
 

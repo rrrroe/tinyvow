@@ -11,6 +11,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.unit.dp
+import com.rrrrz.tinyvow.ui.theme.LocalThemeColors
 
 enum class ProUpsellSource {
     GROUP_LIMIT,
@@ -27,12 +28,14 @@ fun ProUpsellDialog(
     onViewBenefits: () -> Unit,
     onDismiss: () -> Unit,
 ) {
+    val themeColors = LocalThemeColors.current
     AlertDialog(
         onDismissRequest = onDismiss,
         title = {
             Text(
                 text = AppText.t("pro_upsell_title"),
                 style = MaterialTheme.typography.titleLarge,
+                color = themeColors.inkStrong,
             )
         },
         text = {
@@ -40,11 +43,12 @@ fun ProUpsellDialog(
                 Text(
                     text = proUpsellMessage(source),
                     style = MaterialTheme.typography.bodyMedium,
+                    color = themeColors.ink,
                 )
                 Text(
                     text = AppText.t("pro_upsell_common_benefits"),
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = themeColors.inkMuted,
                 )
             }
         },

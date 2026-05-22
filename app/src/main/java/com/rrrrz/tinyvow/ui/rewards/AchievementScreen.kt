@@ -30,6 +30,11 @@ import androidx.compose.ui.unit.sp
 import com.rrrrz.tinyvow.data.db.AchievementEntity
 import com.rrrrz.tinyvow.data.db.AchievementTier
 import com.rrrrz.tinyvow.data.repository.AchievementProgress
+import com.rrrrz.tinyvow.ui.theme.LocalThemeColors
+import com.rrrrz.tinyvow.ui.theme.TinyVowCard
+import com.rrrrz.tinyvow.ui.theme.TinyVowElevation
+import com.rrrrz.tinyvow.ui.theme.TinyVowRadius
+import com.rrrrz.tinyvow.ui.theme.TinyVowSpacing
 import kotlinx.coroutines.launch
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -234,8 +239,11 @@ private fun TierPage(
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
+        contentPadding = PaddingValues(
+            horizontal = TinyVowSpacing.PageHorizontal,
+            vertical = TinyVowSpacing.PageTop,
+        ),
+        verticalArrangement = Arrangement.spacedBy(TinyVowSpacing.CardGap)
     ) {
         // 等级头图
         item {
@@ -296,6 +304,7 @@ private fun AchievementSectionHeader(
     subdued: Boolean,
 ) {
     val colors = MaterialTheme.colorScheme
+    val themeColors = LocalThemeColors.current
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -306,7 +315,8 @@ private fun AchievementSectionHeader(
         Text(
             text = title,
             style = MaterialTheme.typography.titleSmall,
-            color = if (subdued) colors.onSurfaceVariant else colors.onSurface
+            fontWeight = FontWeight.SemiBold,
+            color = if (subdued) themeColors.inkMuted else themeColors.inkStrong,
         )
         Surface(
             shape = RoundedCornerShape(999.dp),
@@ -320,7 +330,7 @@ private fun AchievementSectionHeader(
                 text = count.toString(),
                 modifier = Modifier.padding(horizontal = 7.dp, vertical = 2.dp),
                 style = MaterialTheme.typography.labelSmall,
-                color = if (subdued) colors.onSurfaceVariant else palette.accent
+                color = if (subdued) themeColors.inkMuted else palette.accent,
             )
         }
         HorizontalDivider(
@@ -336,6 +346,7 @@ private fun AchievementSectionHeader(
 private fun TierHeader(tab: TierTab, unlocked: Int, total: Int) {
     val progress = if (total > 0) unlocked.toFloat() / total else 0f
     val colors = MaterialTheme.colorScheme
+    val themeColors = LocalThemeColors.current
 
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -361,7 +372,8 @@ private fun TierHeader(tab: TierTab, unlocked: Int, total: Int) {
                 Text(
                     text = AppText.t("achievement_value_achievements", tab.label),
                     style = MaterialTheme.typography.titleMedium,
-                    color = colors.onSurface,
+                    fontWeight = FontWeight.SemiBold,
+                    color = themeColors.inkStrong,
                 )
                 Spacer(modifier = Modifier.height(2.dp))
                 Text(
@@ -374,7 +386,7 @@ private fun TierHeader(tab: TierTab, unlocked: Int, total: Int) {
                         else -> ""
                     },
                     style = MaterialTheme.typography.bodySmall,
-                    color = colors.onSurfaceVariant
+                    color = themeColors.inkMuted,
                 )
                 Spacer(modifier = Modifier.height(8.dp))
 
@@ -389,7 +401,7 @@ private fun TierHeader(tab: TierTab, unlocked: Int, total: Int) {
                 Text(
                     text = AppText.t("achievement_value_value_completed", unlocked, total),
                     style = MaterialTheme.typography.labelSmall,
-                    color = colors.onSurfaceVariant
+                    color = themeColors.inkFaint,
                 )
             }
         }
@@ -445,19 +457,22 @@ private fun AchievementCard(
 private fun UnlockedAchievementCard(achievement: AchievementEntity) {
     val palette = remember(achievement.tier) { tierPaletteFor(achievement.tier) }
     val colors = MaterialTheme.colorScheme
-    Surface(
+    val themeColors = LocalThemeColors.current
+    TinyVowCard(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(18.dp),
+        shape = RoundedCornerShape(TinyVowRadius.ItemCard),
         color = colors.surface,
-        border = androidx.compose.foundation.BorderStroke(1.dp, colors.outlineVariant.copy(alpha = 0.72f)),
-        tonalElevation = 0.dp,
-        shadowElevation = 0.dp
+        borderAlpha = 0.28f,
+        shadowElevation = TinyVowElevation.Card,
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(IntrinsicSize.Min)
-                .padding(horizontal = 14.dp, vertical = 13.dp),
+                .padding(
+                    horizontal = TinyVowSpacing.CardHorizontal,
+                    vertical = TinyVowSpacing.CompactCardVertical,
+                ),
             verticalAlignment = Alignment.Top,
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
@@ -476,13 +491,14 @@ private fun UnlockedAchievementCard(achievement: AchievementEntity) {
             ) {
                 Text(
                     text = achievement.localizedTitle(),
-                    style = MaterialTheme.typography.titleMedium,
-                    color = colors.onSurface
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = themeColors.ink,
                 )
                 Text(
                     text = achievement.localizedDescription(),
                     style = MaterialTheme.typography.bodySmall,
-                    color = colors.onSurfaceVariant,
+                    color = themeColors.inkMuted,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -516,7 +532,7 @@ private fun UnlockedAchievementCard(achievement: AchievementEntity) {
                             SimpleDateFormat("yyyy/MM/dd HH:mm", Locale.getDefault()).format(Date(millis))
                         },
                         style = MaterialTheme.typography.labelSmall,
-                        color = colors.onSurfaceVariant,
+                        color = themeColors.inkFaint,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -535,6 +551,7 @@ private fun LockedAchievementCard(
 ) {
     val palette = remember(achievement.tier) { tierPaletteFor(achievement.tier) }
     val colors = MaterialTheme.colorScheme
+    val themeColors = LocalThemeColors.current
     // 解析目标进度
     val (type, targetValue) = remember(achievement.requirement) {
         try {
@@ -560,19 +577,22 @@ private fun LockedAchievementCard(
 
     val progressRatio = (currentValue / targetValue).toFloat().coerceIn(0f, 1f)
 
-    Surface(
+    TinyVowCard(
         modifier = Modifier
             .fillMaxWidth(),
-        shape = RoundedCornerShape(18.dp),
+        shape = RoundedCornerShape(TinyVowRadius.ItemCard),
         color = colors.surfaceContainerLow,
-        border = androidx.compose.foundation.BorderStroke(1.dp, colors.outlineVariant.copy(alpha = 0.72f)),
-        tonalElevation = 0.dp
+        borderAlpha = 0.24f,
+        shadowElevation = TinyVowElevation.Flat,
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(IntrinsicSize.Min)
-                .padding(horizontal = 14.dp, vertical = 13.dp),
+                .padding(
+                    horizontal = TinyVowSpacing.CardHorizontal,
+                    vertical = TinyVowSpacing.CompactCardVertical,
+                ),
             verticalAlignment = Alignment.Top,
             horizontalArrangement = Arrangement.spacedBy(12.dp)
         ) {
@@ -598,14 +618,15 @@ private fun LockedAchievementCard(
             ) {
                 Text(
                     text = achievement.localizedTitle(),
-                    style = MaterialTheme.typography.titleMedium,
-                    color = colors.onSurface
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Medium,
+                    color = themeColors.inkMuted,
                 )
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text(
                         text = achievement.localizedDescription(),
                         style = MaterialTheme.typography.bodySmall,
-                        color = colors.onSurfaceVariant,
+                        color = themeColors.inkFaint,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -644,7 +665,7 @@ private fun LockedAchievementCard(
                 Text(
                     text = "${formatAchievementValue(currentValue)} / ${formatAchievementValue(targetValue)}",
                     style = MaterialTheme.typography.labelSmall,
-                    color = colors.onSurfaceVariant,
+                    color = themeColors.inkFaint,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )

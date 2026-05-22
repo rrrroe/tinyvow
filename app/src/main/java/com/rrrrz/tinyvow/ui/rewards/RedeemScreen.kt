@@ -23,9 +23,7 @@ import androidx.compose.material.icons.filled.LockClock
 import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
-import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -40,7 +38,6 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.window.Dialog
@@ -74,6 +71,10 @@ import com.rrrrz.tinyvow.data.repository.validateCustomRewardInput
 import com.rrrrz.tinyvow.data.supermode.GuardedAction
 import com.rrrrz.tinyvow.i18n.AppText
 import com.rrrrz.tinyvow.ui.home.ProUpsellSource
+import com.rrrrz.tinyvow.ui.theme.LocalThemeColors
+import com.rrrrz.tinyvow.ui.theme.TinyVowCard
+import com.rrrrz.tinyvow.ui.theme.TinyVowRadius
+import com.rrrrz.tinyvow.ui.theme.TinyVowSpacing
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -153,8 +154,11 @@ fun RedeemScreen(
     } else {
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            contentPadding = PaddingValues(
+                horizontal = TinyVowSpacing.PageHorizontal,
+                vertical = TinyVowSpacing.PageTop,
+            ),
+            verticalArrangement = Arrangement.spacedBy(TinyVowSpacing.CardGap),
         ) {
             item { CompactPointsSummaryCard(userPoints = userPoints) }
 
@@ -315,8 +319,11 @@ private fun RewardConfigScreen(
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+        contentPadding = PaddingValues(
+            horizontal = TinyVowSpacing.PageHorizontal,
+            vertical = TinyVowSpacing.PageTop,
+        ),
+        verticalArrangement = Arrangement.spacedBy(TinyVowSpacing.CardGap),
     ) {
         item {
             Surface(
@@ -404,8 +411,11 @@ fun RewardInventoryScreen(
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp),
+        contentPadding = PaddingValues(
+            horizontal = TinyVowSpacing.PageHorizontal,
+            vertical = TinyVowSpacing.PageTop,
+        ),
+        verticalArrangement = Arrangement.spacedBy(TinyVowSpacing.CardGap),
     ) {
         item {
             SubsectionSwitcher(
@@ -580,69 +590,73 @@ private fun InventorySwitchButton(
 
 @Composable
 private fun CompactPointsSummaryCard(userPoints: Double) {
-    Surface(
+    val themeColors = LocalThemeColors.current
+    TinyVowCard(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(18.dp),
-        color = Color.Transparent,
-        shadowElevation = 2.dp,
+        shape = RoundedCornerShape(TinyVowRadius.Card),
     ) {
         Row(
-            modifier =
-                Modifier
-                    .background(
-                        brush =
-                            Brush.linearGradient(
-                                listOf(
-                                    MaterialTheme.colorScheme.primary,
-                                    MaterialTheme.colorScheme.secondary,
-                                ),
-                            ),
-                        shape = RoundedCornerShape(18.dp),
-                    )
-                    .padding(horizontal = 16.dp, vertical = 14.dp),
+            modifier = Modifier.padding(
+                horizontal = TinyVowSpacing.CardHorizontal,
+                vertical = TinyVowSpacing.CardVertical,
+            ),
             verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
             Column(modifier = Modifier.weight(1f)) {
                 Text(
                     text = AppText.t("redeem_current_points"),
                     style = MaterialTheme.typography.labelMedium,
-                    color = Color.White.copy(alpha = 0.84f),
+                    color = themeColors.inkMuted,
                 )
                 Text(
                     text = "%.1f PT".format(userPoints),
                     style = MaterialTheme.typography.titleLarge,
-                    color = Color.White,
+                    fontWeight = FontWeight.SemiBold,
+                    color = themeColors.base,
                 )
             }
-            Text(
-                text = AppText.t("redeem_store_manual_use_hint"),
-                style = MaterialTheme.typography.bodySmall,
-                color = Color.White.copy(alpha = 0.82f),
-            )
+            Surface(
+                shape = RoundedCornerShape(999.dp),
+                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.64f),
+            ) {
+                Text(
+                    text = AppText.t("redeem_store_manual_use_hint"),
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = themeColors.inkStrong,
+                )
+            }
         }
     }
 }
 
 @Composable
 private fun RewardSectionTitle(title: String) {
+    val themeColors = LocalThemeColors.current
     Text(
         text = title,
         style = MaterialTheme.typography.titleSmall,
+        color = themeColors.inkStrong,
     )
 }
 
 @Composable
 private fun EmptyRewardsCard(text: String) {
+    val themeColors = LocalThemeColors.current
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(TinyVowRadius.ItemCard),
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.36f),
     ) {
         Text(
             text = text,
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            modifier = Modifier.padding(
+                horizontal = TinyVowSpacing.CardHorizontal,
+                vertical = TinyVowSpacing.CompactCardVertical,
+            ),
             style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = themeColors.inkMuted,
         )
     }
 }
@@ -657,6 +671,7 @@ private fun StoreRewardItemCard(
     onEdit: (() -> Unit)?,
     onArchive: (() -> Unit)?,
 ) {
+    val themeColors = LocalThemeColors.current
     val reward = item.reward
     val canAfford = userPoints >= reward.pointCost
     val inStock = reward.stock == -1 || reward.stock > 0
@@ -665,14 +680,17 @@ private fun StoreRewardItemCard(
         (reward.rewardType == RewardType.TIME_ADD || reward.rewardType == RewardType.PERIOD_PASS) && controlGroupCount == 0
     val needsEncourageGroups = reward.rewardType == RewardType.DOUBLE_POINTS_DAY && encourageGroupCount == 0
 
-    ElevatedCard(
+    TinyVowCard(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface),
+        shape = RoundedCornerShape(TinyVowRadius.Card),
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 10.dp),
+                .padding(
+                    horizontal = TinyVowSpacing.CardHorizontal,
+                    vertical = TinyVowSpacing.CompactCardVertical,
+                ),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
@@ -684,11 +702,12 @@ private fun StoreRewardItemCard(
                 Text(
                     text = reward.localizedTitle(),
                     style = MaterialTheme.typography.titleSmall,
+                    color = themeColors.ink,
                 )
                 Text(
                     text = reward.localizedDescription(),
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = themeColors.inkMuted,
                     maxLines = 2,
                 )
             }
@@ -731,25 +750,6 @@ private fun StoreRewardItemCard(
             }
         }
 
-        if (needsControlGroups) {
-            Text(
-                text = AppText.t("redeem_no_control_group_for_time_pack"),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.error,
-            )
-        } else if (needsEncourageGroups) {
-            Text(
-                text = AppText.t("redeem_no_encourage_group_for_double_points"),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.error,
-            )
-        } else if (dailyLimitReached) {
-            Text(
-                text = AppText.t("redeem_store_daily_limit_reached"),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.error,
-            )
-        }
     }
 }
 
@@ -763,12 +763,17 @@ private fun RewardConfigItemCard(
     secondaryActionDescription: String? = null,
     onSecondaryAction: (() -> Unit)? = null,
 ) {
-    ElevatedCard(
+    TinyVowCard(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface),
+        shape = RoundedCornerShape(TinyVowRadius.Card),
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(
+                    horizontal = TinyVowSpacing.CardHorizontal,
+                    vertical = TinyVowSpacing.CompactCardVertical,
+                ),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
@@ -825,12 +830,15 @@ private fun InventoryRewardCard(
         reward.rewardType == RewardType.TIME_ADD ||
             reward.rewardType == RewardType.PERIOD_PASS ||
             reward.rewardType == RewardType.DOUBLE_POINTS_DAY
-    ElevatedCard(
+    TinyVowCard(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface),
+        shape = RoundedCornerShape(TinyVowRadius.Card),
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
+            modifier = Modifier.padding(
+                horizontal = TinyVowSpacing.CardHorizontal,
+                vertical = TinyVowSpacing.CompactCardVertical,
+            ),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
@@ -875,12 +883,15 @@ private fun PendingShieldCard(
     onUse: () -> Unit,
     onDismiss: () -> Unit,
 ) {
-    ElevatedCard(
+    TinyVowCard(
         modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface),
+        shape = RoundedCornerShape(TinyVowRadius.Card),
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
+            modifier = Modifier.padding(
+                horizontal = TinyVowSpacing.CardHorizontal,
+                vertical = TinyVowSpacing.CompactCardVertical,
+            ),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Text(item.title, style = MaterialTheme.typography.titleSmall)
@@ -1022,13 +1033,14 @@ fun RewardEditDialog(
 
     if (!builtinCostOnly && showingIconPicker) {
         Dialog(onDismissRequest = { showingIconPicker = false }) {
-            Surface(
-                shape = RoundedCornerShape(28.dp),
-                color = MaterialTheme.colorScheme.surface,
-                tonalElevation = 6.dp,
+            TinyVowCard(
+                shape = RoundedCornerShape(TinyVowRadius.FeaturedCard),
             ) {
                 Column(
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
+                    modifier = Modifier.padding(
+                        horizontal = TinyVowSpacing.CompactCardHorizontal,
+                        vertical = TinyVowSpacing.CompactCardVertical,
+                    ),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     FlowRow(

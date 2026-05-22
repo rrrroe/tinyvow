@@ -1,6 +1,5 @@
 ﻿package com.rrrrz.tinyvow.ui.home
 
-import com.rrrrz.tinyvow.BuildConfig
 import com.rrrrz.tinyvow.i18n.AppText
 
 import android.content.Context
@@ -88,7 +87,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.asImageBitmap
@@ -121,6 +119,7 @@ import com.rrrrz.tinyvow.data.usage.AppSession
 import com.rrrrz.tinyvow.data.usage.UsageAccessStatus
 import com.rrrrz.tinyvow.data.usage.UsageRepository
 import com.rrrrz.tinyvow.data.usage.UsageStatsUsageRepository
+import com.rrrrz.tinyvow.ui.theme.LocalThemeColors
 import com.rrrrz.tinyvow.ui.theme.LocalReportColors
 import com.rrrrz.tinyvow.ui.theme.ReportColors
 import kotlinx.coroutines.isActive
@@ -150,20 +149,13 @@ internal fun DailyBattleHeroCard(
     val summary = data?.summary
     val overview = data?.overview
     val reportColors = LocalReportColors.current
+    val themeColors = LocalThemeColors.current
     ReportCard {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(26.dp))
-                .background(
-                    Brush.linearGradient(
-                        colors = listOf(
-                            MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.52f),
-                            MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
-                            reportColors.positive.copy(alpha = 0.12f),
-                        ),
-                    ),
-                ),
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(22.dp),
+            color = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.78f),
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.26f)),
         ) {
             Column(
                 modifier = Modifier.padding(horizontal = 18.dp, vertical = 18.dp),
@@ -186,16 +178,19 @@ internal fun DailyBattleHeroCard(
                     Text(
                         text = summary.title,
                         style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        color = themeColors.inkStrong,
                     )
                     Text(
                         text = summary.primaryValue,
                         style = MaterialTheme.typography.displaySmall,
+                        fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary,
                     )
                     Text(
                         text = summary.message,
                         style = MaterialTheme.typography.titleSmall,
-                        color = MaterialTheme.colorScheme.onSurface,
+                        color = themeColors.ink,
                     )
                     AdaptiveRowGrid(
                         itemCount = 2,
@@ -263,11 +258,12 @@ internal fun BattleHeadlineChip(
     showValue: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
+    val themeColors = LocalThemeColors.current
     Surface(
         modifier = modifier,
         shape = RoundedCornerShape(20.dp),
-        color = accent.copy(alpha = 0.12f),
-        border = BorderStroke(1.dp, accent.copy(alpha = 0.18f)),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, accent.copy(alpha = 0.20f)),
     ) {
         Column(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
@@ -276,12 +272,13 @@ internal fun BattleHeadlineChip(
             Text(
                 text = label,
                 style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = themeColors.inkMuted,
             )
             if (showValue) {
                 Text(
                     text = value,
                     style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
                     color = accent,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
@@ -298,6 +295,7 @@ internal fun BattleMetricTile(
     accent: Color,
     modifier: Modifier = Modifier,
 ) {
+    val themeColors = LocalThemeColors.current
     val animatedValue = animateMetricDisplayText(
         rawText = value,
         label = "battle_metric_${label.hashCode()}",
@@ -306,7 +304,8 @@ internal fun BattleMetricTile(
     Surface(
         modifier = modifier,
         shape = RoundedCornerShape(18.dp),
-        color = accent.copy(alpha = 0.1f),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.24f)),
     ) {
         Column(
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 10.dp),
@@ -315,13 +314,14 @@ internal fun BattleMetricTile(
             Text(
                 text = label,
                 style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = themeColors.inkFaint,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
                 text = animatedValue,
                 style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
                 color = accent,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
@@ -413,7 +413,6 @@ internal fun DailyAppsAndAnalysisCard(
     topAppsState: SectionState<TopAppsSectionData>,
     behaviorState: SectionState<BehaviorSectionData>,
     comparisonState: SectionState<ComparisonSectionData>,
-    shareState: SectionState<ShareReportData>,
     isProActive: Boolean,
     onShowProUpsell: (ProUpsellSource) -> Unit,
 ) {
@@ -451,21 +450,11 @@ internal fun DailyAppsAndAnalysisCard(
             behaviorState = behaviorState,
             comparisonState = comparisonState,
         )
-        if (BuildConfig.DEBUG) {
-            DailyShareReportCard(shareState = shareState)
-        }
     } else {
         CompactLockedAnalysisPanel(
             onClick = { onShowProUpsell(ProUpsellSource.ADVANCED_REPORT) },
         )
     }
-}
-
-@Composable
-internal fun DailyShareReportCard(
-    shareState: SectionState<ShareReportData>,
-) {
-    CompactShareReportRow(shareState = shareState)
 }
 
 @Composable

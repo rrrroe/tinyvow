@@ -3,19 +3,17 @@ package com.rrrrz.tinyvow.ui.home
 import com.rrrrz.tinyvow.i18n.AppText
 
 import android.content.Intent
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -28,11 +26,10 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ContentCopy
-import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.History
@@ -49,19 +46,18 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Slider
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -72,7 +68,6 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -91,12 +86,12 @@ import com.rrrrz.tinyvow.data.billing.SubscriptionOffer
 import com.rrrrz.tinyvow.data.pro.ProFeatureGate
 import com.rrrrz.tinyvow.data.supermode.SuperModeStatus
 import com.rrrrz.tinyvow.i18n.AppLanguage
-import com.rrrrz.tinyvow.ui.theme.DefaultThemeSeed
 import com.rrrrz.tinyvow.ui.theme.LocalThemeColors
-import com.rrrrz.tinyvow.ui.theme.ThemePresets
 import com.rrrrz.tinyvow.ui.theme.ThemeSeed
-import com.rrrrz.tinyvow.ui.theme.argbToHex
-import com.rrrrz.tinyvow.ui.theme.createCustomTheme
+import com.rrrrz.tinyvow.ui.theme.TinyVowCard
+import com.rrrrz.tinyvow.ui.theme.TinyVowElevation
+import com.rrrrz.tinyvow.ui.theme.TinyVowRadius
+import com.rrrrz.tinyvow.ui.theme.TinyVowSpacing
 import java.text.DateFormat
 import java.text.NumberFormat
 import java.util.Date
@@ -105,6 +100,12 @@ import java.time.LocalDate
 import java.time.ZoneId
 import java.time.temporal.ChronoUnit
 import kotlin.math.roundToLong
+
+private enum class MeSubPage {
+    PERMISSIONS,
+    DATA_PRIVACY,
+    VERSION,
+}
 
 @Composable
 fun MeScreen(
@@ -135,7 +136,6 @@ fun MeScreen(
     isIgnoringBattery: Boolean,
     notificationPermissionGranted: Boolean,
     dismissedPermissionPrompts: Set<String>,
-    onSelectAppLanguage: (AppLanguage) -> Unit,
     onUpdateProfileName: (String?) -> Unit,
     onUpdateProfileAvatar: (String) -> Unit,
     onClearProfileAvatar: () -> Unit,
@@ -154,6 +154,7 @@ fun MeScreen(
     onNavigateToLaboratory: () -> Unit,
     onNavigateToHistory: () -> Unit,
     onNavigateToThemeSettings: () -> Unit,
+    onNavigateToLanguageSettings: () -> Unit,
     onNavigateToHelpFeedback: () -> Unit,
     onNavigateToContactUs: () -> Unit,
     onNavigateToSpecialAppSettings: () -> Unit,
@@ -184,9 +185,7 @@ fun MeScreen(
         onUpdateProfileAvatar(uri.toString())
     }
 
-    var showPermissionSettings by remember { mutableStateOf(false) }
-    var showDataPrivacy by remember { mutableStateOf(false) }
-    var showLanguageSettings by remember { mutableStateOf(false) }
+    var activeSubPage by remember { mutableStateOf<MeSubPage?>(null) }
     var showDeleteAccountConfirm by remember { mutableStateOf(false) }
     var showProfileEditor by remember { mutableStateOf(false) }
 
@@ -194,6 +193,7 @@ fun MeScreen(
     val canTapToSignIn = isGoogleSignInEnabled && userSession == null && isGoogleSignInConfigured
     val isProMember = isProActive
     val appUsageDays = remember(context) { calculateInstalledDays(context) }
+    val hasCustomDisplayName = !profileDisplayName.isNullOrBlank()
     val displayName =
         profileDisplayName
             ?: userSession?.displayName
@@ -205,17 +205,48 @@ fun MeScreen(
     val subtitle: String? =
         when {
             !userSession?.email.isNullOrBlank() -> userSession?.email.orEmpty()
-            isLocalActivationEnabled -> AppText.t("me_local_account_subtitle")
+            isLocalActivationEnabled && !hasCustomDisplayName -> AppText.t("me_local_account_subtitle")
+            isLocalActivationEnabled -> null
             isGoogleSignInEnabled -> null
             else -> AppText.t("me_china_local_mode_subtitle")
         }
-    val channelName =
-        if (isLocalActivationEnabled) {
-            AppText.t("me_release_channel_china")
-        } else {
-            AppText.t("me_release_channel_google_play")
+    val displayAppVersion = userFacingVersionName(appVersionName)
+
+    activeSubPage?.let { page ->
+        BackHandler {
+            activeSubPage = null
         }
-    val versionSummary = AppText.t("me_version_summary", appVersionName, appVersionCode, channelName)
+        when (page) {
+            MeSubPage.PERMISSIONS -> PermissionSettingsPage(
+                usageAccessGranted = usageAccessGranted,
+                accessibilityServiceEnabled = accessibilityServiceEnabled,
+                isAutoStartDismissed = isAutoStartDismissed,
+                isIgnoringBattery = isIgnoringBattery,
+                notificationPermissionGranted = notificationPermissionGranted,
+                dismissedPermissionPrompts = dismissedPermissionPrompts,
+                onBack = { activeSubPage = null },
+                onOpenUsageAccessSettings = onOpenUsageAccessSettings,
+                onOpenAccessibilitySettings = onOpenAccessibilitySettings,
+                onOpenAutoStartSettings = onOpenAutoStartSettings,
+                onSetAutoStartDismissed = onSetAutoStartDismissed,
+                onRequestBatteryOptimization = onRequestBatteryOptimization,
+                onRequestNotificationPermission = onRequestNotificationPermission,
+                onClearDismissedPermissionPrompts = onClearDismissedPermissionPrompts,
+            )
+            MeSubPage.DATA_PRIVACY -> DataPrivacyPage(
+                onBack = { activeSubPage = null },
+                onExportLocalData = onExportLocalData,
+                onClearLocalData = onClearLocalData,
+                onOpenPrivacyPolicy = onOpenPrivacyPolicy,
+            )
+            MeSubPage.VERSION -> VersionInfoPage(
+                versionName = displayAppVersion,
+                onBack = { activeSubPage = null },
+            )
+        }
+        return
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -315,18 +346,20 @@ fun MeScreen(
 
         Column(
             modifier = Modifier
-                .padding(horizontal = 16.dp)
+                .padding(horizontal = TinyVowSpacing.PageHorizontal)
                 .offset(y = (-40).dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+            verticalArrangement = Arrangement.spacedBy(TinyVowSpacing.SectionGap),
         ) {
-            Surface(
+            TinyVowCard(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(24.dp),
-                color = MaterialTheme.colorScheme.surface,
-                shadowElevation = 4.dp,
+                shape = RoundedCornerShape(TinyVowRadius.Card),
+                shadowElevation = TinyVowElevation.FeaturedCard,
             ) {
                 Row(
-                    modifier = Modifier.padding(20.dp),
+                    modifier = Modifier.padding(
+                        horizontal = TinyVowSpacing.CardHorizontal,
+                        vertical = TinyVowSpacing.CardVertical,
+                    ),
                     horizontalArrangement = Arrangement.SpaceAround,
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
@@ -360,11 +393,10 @@ fun MeScreen(
                 }
             }
 
-            Surface(
+            TinyVowCard(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(24.dp),
-                color = MaterialTheme.colorScheme.surface,
-                shadowElevation = 1.dp,
+                shape = RoundedCornerShape(TinyVowRadius.Card),
+                shadowElevation = TinyVowElevation.Card,
             ) {
                 SubscriptionStatusPanel(
                     entitlement = proEntitlement,
@@ -381,27 +413,29 @@ fun MeScreen(
                 )
             }
 
-            Surface(
+            TinyVowCard(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(24.dp),
-                color = MaterialTheme.colorScheme.surface,
+                shape = RoundedCornerShape(TinyVowRadius.Card),
+                shadowElevation = TinyVowElevation.Card,
             ) {
                 Column {
                     MeMenuItem(
                         icon = Icons.Default.Settings,
                         title = AppText.t("me_permission_settings"),
-                        onClick = { showPermissionSettings = true },
+                        onClick = { activeSubPage = MeSubPage.PERMISSIONS },
                     )
                     SettingsDivider()
                     MeMenuItem(
                         icon = Icons.Default.Person,
-                        title = "${AppText.t("selected_language_title")} · ${selectedAppLanguage.displayName()}",
-                        onClick = { showLanguageSettings = true },
+                        title = AppText.t("selected_language_title"),
+                        trailingText = selectedAppLanguage.displayName(),
+                        onClick = onNavigateToLanguageSettings,
                     )
                     SettingsDivider()
                     MeMenuItem(
                         icon = Icons.Default.VerifiedUser,
-                        title = "${AppText.t("super_mode_title")} · ${describeSuperModeStatus(superModeStatus)}",
+                        title = AppText.t("super_mode_title"),
+                        trailingText = describeSuperModeStatus(superModeStatus),
                         onClick = onOpenSuperModeSettings,
                     )
                     SettingsDivider()
@@ -426,7 +460,7 @@ fun MeScreen(
                     MeMenuItem(
                         icon = Icons.Default.Settings,
                         title = AppText.t("me_local_data_management"),
-                        onClick = { showDataPrivacy = true },
+                        onClick = { activeSubPage = MeSubPage.DATA_PRIVACY },
                     )
                     SettingsDivider()
                     MeMenuItem(
@@ -450,53 +484,15 @@ fun MeScreen(
                         )
                     }
                     SettingsDivider()
-                    MeInfoItem(
+                    MeMenuItem(
                         icon = Icons.Default.Info,
                         title = AppText.t("me_app_version"),
-                        subtitle = versionSummary,
+                        trailingText = displayAppVersion,
+                        onClick = { activeSubPage = MeSubPage.VERSION },
                     )
                 }
             }
         }
-    }
-
-    if (showPermissionSettings) {
-        PermissionSettingsSheet(
-            usageAccessGranted = usageAccessGranted,
-            accessibilityServiceEnabled = accessibilityServiceEnabled,
-            isAutoStartDismissed = isAutoStartDismissed,
-            isIgnoringBattery = isIgnoringBattery,
-            notificationPermissionGranted = notificationPermissionGranted,
-            dismissedPermissionPrompts = dismissedPermissionPrompts,
-            onDismiss = { showPermissionSettings = false },
-            onOpenUsageAccessSettings = onOpenUsageAccessSettings,
-            onOpenAccessibilitySettings = onOpenAccessibilitySettings,
-            onOpenAutoStartSettings = onOpenAutoStartSettings,
-            onSetAutoStartDismissed = onSetAutoStartDismissed,
-            onRequestBatteryOptimization = onRequestBatteryOptimization,
-            onRequestNotificationPermission = onRequestNotificationPermission,
-            onClearDismissedPermissionPrompts = onClearDismissedPermissionPrompts,
-        )
-    }
-
-    if (showDataPrivacy) {
-        DataPrivacySheet(
-            onDismiss = { showDataPrivacy = false },
-            onExportLocalData = onExportLocalData,
-            onClearLocalData = onClearLocalData,
-            onOpenPrivacyPolicy = onOpenPrivacyPolicy,
-        )
-    }
-
-    if (showLanguageSettings) {
-        LanguageSettingsDialog(
-            selected = selectedAppLanguage,
-            onSelect = {
-                onSelectAppLanguage(it)
-                showLanguageSettings = false
-            },
-            onDismiss = { showLanguageSettings = false },
-        )
     }
 
     if (showDeleteAccountConfirm) {
@@ -693,97 +689,36 @@ private fun ProfileEditorDialog(
     )
 }
 
-@Composable
-private fun LanguageSettingsDialog(
-    selected: AppLanguage,
-    onSelect: (AppLanguage) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(AppText.t("selected_language_title")) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                AppLanguage.entries.forEach { language ->
-                    TextButton(
-                        onClick = { onSelect(language) },
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Text(
-                            text = language.displayName(),
-                            fontWeight = if (language == selected) FontWeight.SemiBold else FontWeight.Normal,
-                        )
-                    }
-                }
-            }
-        },
-        confirmButton = {},
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(AppText.t("group_cancel"))
-            }
-        },
-    )
-}
-
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun DataPrivacySheet(
-    onDismiss: () -> Unit,
+private fun DataPrivacyPage(
+    onBack: () -> Unit,
     onExportLocalData: () -> Unit,
     onClearLocalData: () -> Unit,
     onOpenPrivacyPolicy: () -> Unit,
 ) {
     var showClearConfirm by remember { mutableStateOf(false) }
 
-    ModalBottomSheet(onDismissRequest = onDismiss) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 16.dp)
-                .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
+    MeDetailPageScaffold(
+        title = AppText.t("me_local_data_management"),
+        description = AppText.t("me_tiny_vow_stores_the_apps_you_manage_usage"),
+        onBack = onBack,
+    ) {
+        MeSettingsCard(title = AppText.t("me_local_data_management")) {
             Text(
-                text = AppText.t("me_local_data_management"),
-                style = MaterialTheme.typography.titleLarge,
-            )
-            Text(
-                text = AppText.t("me_tiny_vow_stores_the_apps_you_manage_usage"),
-                style = MaterialTheme.typography.bodyMedium,
+                text = AppText.t("me_export_files_are_created_only_in_local_cache"),
+                style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-                color = MaterialTheme.colorScheme.surfaceContainerHigh,
-            ) {
-                Text(
-                    text = AppText.t("me_export_files_are_created_only_in_local_cache"),
-                    modifier = Modifier.padding(14.dp),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
-            Button(
-                onClick = onExportLocalData,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
+            Button(onClick = onExportLocalData, modifier = Modifier.fillMaxWidth()) {
                 Text(AppText.t("home_export_local_data"))
             }
-            TextButton(
-                onClick = onOpenPrivacyPolicy,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
+            TextButton(onClick = onOpenPrivacyPolicy, modifier = Modifier.fillMaxWidth()) {
                 Text(AppText.t("me_view_privacy_policy"))
             }
-            TextButton(
-                onClick = { showClearConfirm = true },
-                modifier = Modifier.fillMaxWidth(),
-            ) {
+            TextButton(onClick = { showClearConfirm = true }, modifier = Modifier.fillMaxWidth()) {
                 Text(AppText.t("me_clear_local_data"), color = MaterialTheme.colorScheme.error)
             }
-            Spacer(modifier = Modifier.height(48.dp))
         }
     }
 
@@ -797,7 +732,7 @@ private fun DataPrivacySheet(
                     onClick = {
                         showClearConfirm = false
                         onClearLocalData()
-                        onDismiss()
+                        onBack()
                     },
                 ) {
                     Text(AppText.t("me_clear"), color = MaterialTheme.colorScheme.error)
@@ -814,14 +749,14 @@ private fun DataPrivacySheet(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun PermissionSettingsSheet(
+private fun PermissionSettingsPage(
     usageAccessGranted: Boolean,
     accessibilityServiceEnabled: Boolean,
     isAutoStartDismissed: Boolean,
     isIgnoringBattery: Boolean,
     notificationPermissionGranted: Boolean,
     dismissedPermissionPrompts: Set<String>,
-    onDismiss: () -> Unit,
+    onBack: () -> Unit,
     onOpenUsageAccessSettings: () -> Unit,
     onOpenAccessibilitySettings: () -> Unit,
     onOpenAutoStartSettings: () -> Unit,
@@ -833,30 +768,23 @@ private fun PermissionSettingsSheet(
     val themeColors = LocalThemeColors.current
     val statusColor = if (usageAccessGranted) themeColors.encourage else themeColors.control
 
-    ModalBottomSheet(onDismissRequest = onDismiss) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 20.dp, vertical = 16.dp)
-                .verticalScroll(rememberScrollState()),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
-        ) {
+    MeDetailPageScaffold(
+        title = AppText.t("me_permission_settings"),
+        description = AppText.t("me_check_permission_status_or_restore_permission_prompts_dismiss"),
+        onBack = onBack,
+    ) {
+        MeSettingsCard(title = AppText.t("me_permission_settings")) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text(
-                        text = AppText.t("me_permission_settings"),
-                        style = MaterialTheme.typography.titleLarge,
-                    )
-                    Text(
-                        text = AppText.t("me_check_permission_status_or_restore_permission_prompts_dismiss"),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
+                Text(
+                    text = AppText.t("me_check_permission_status_or_restore_permission_prompts_dismiss"),
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
                 if (dismissedPermissionPrompts.isNotEmpty()) {
                     Button(onClick = onClearDismissedPermissionPrompts) {
                         Text(AppText.t("me_undismiss"))
@@ -895,268 +823,234 @@ private fun PermissionSettingsSheet(
                 onRequestNotificationPermission = onRequestNotificationPermission,
             )
 
-            Spacer(modifier = Modifier.height(48.dp))
         }
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ThemeManager(
-    selectedThemeId: String,
-    customThemes: List<ThemeSeed>,
-    onSelectTheme: (String) -> Unit,
-    onSaveCustomTheme: (ThemeSeed) -> Unit,
-    onDeleteCustomTheme: (String) -> Unit,
+fun LanguageSettingsScreen(
+    selected: AppLanguage,
+    onSelect: (AppLanguage) -> Unit,
+    onBack: () -> Unit,
 ) {
-    var editingTheme by remember { mutableStateOf<ThemeSeed?>(null) }
-    val allThemes = ThemePresets + customThemes
-
-    Column(modifier = Modifier.padding(vertical = 14.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        Row(
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = { Text(AppText.t("selected_language_title")) },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = AppText.t("group_back"))
+                    }
+                },
+            )
+        },
+    ) { innerPadding ->
+        Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .horizontalScroll(rememberScrollState())
-                .padding(horizontal = 14.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background)
+                .padding(innerPadding)
+                .verticalScroll(rememberScrollState())
+                .padding(
+                    horizontal = TinyVowSpacing.PageHorizontal,
+                    vertical = TinyVowSpacing.PageTop,
+                ),
+            verticalArrangement = Arrangement.spacedBy(TinyVowSpacing.SectionGap),
         ) {
-            allThemes.forEach { theme ->
-                ThemePreviewCard(
-                    theme = theme,
-                    selected = selectedThemeId == theme.id,
-                    onSelect = { onSelectTheme(theme.id) },
-                    onEdit = {
-                        editingTheme = if (theme.isCustom) {
-                            theme
-                        } else {
-                            createCustomTheme(
-                                name = AppText.t("me_value_custom", theme.name),
-                                controlColor = theme.controlColor,
-                                encourageColor = theme.encourageColor,
-                                baseColor = theme.baseColor,
+            TinyVowCard(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(TinyVowRadius.FeaturedCard),
+                color = MaterialTheme.colorScheme.primaryContainer,
+                borderAlpha = 0.18f,
+            ) {
+                Column(
+                    modifier = Modifier.padding(
+                        horizontal = TinyVowSpacing.CardHorizontal,
+                        vertical = TinyVowSpacing.CardVertical,
+                    ),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(
+                        text = AppText.t("me_language_settings_description"),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.78f),
+                    )
+                }
+            }
+
+            MeSettingsCard(title = AppText.t("selected_language_title")) {
+                AppLanguage.entries.forEachIndexed { index, language ->
+                    if (index > 0) {
+                        SettingsDivider()
+                    }
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onSelect(language) }
+                            .padding(vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        Text(
+                            text = language.displayName(),
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight = if (language == selected) FontWeight.SemiBold else FontWeight.Normal,
+                        )
+                        if (language == selected) {
+                            Text(
+                                text = AppText.t("home_enabled"),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = LocalThemeColors.current.encourage,
                             )
                         }
-                    },
-                    onCopy = {
-                        editingTheme = createCustomTheme(
-                            name = AppText.t("me_value_copy", theme.name),
-                            controlColor = theme.controlColor,
-                            encourageColor = theme.encourageColor,
-                            baseColor = theme.baseColor,
-                        )
-                    },
-                    onDelete = if (theme.isCustom) {
-                        { onDeleteCustomTheme(theme.id) }
-                    } else {
-                        null
-                    },
-                )
-            }
-            AddThemeCard {
-                editingTheme = createCustomTheme(
-                    name = AppText.t("settings_custom_theme"),
-                    controlColor = DefaultThemeSeed.controlColor,
-                    encourageColor = DefaultThemeSeed.encourageColor,
-                    baseColor = DefaultThemeSeed.baseColor,
-                )
-            }
-        }
-
-        Row(
-            modifier = Modifier.padding(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            ThemeLegendDot(AppText.t("me_limit"), LocalThemeColors.current.control)
-            ThemeLegendDot(AppText.t("me_encourage"), LocalThemeColors.current.encourage)
-            ThemeLegendDot(AppText.t("me_base"), LocalThemeColors.current.base)
-        }
-    }
-
-    editingTheme?.let { theme ->
-        ThemeEditorDialog(
-            initialTheme = theme,
-            onDismiss = { editingTheme = null },
-            onSave = {
-                onSaveCustomTheme(it.copy(isCustom = true))
-                editingTheme = null
-            },
-        )
-    }
-}
-
-@Composable
-private fun RowScope.ThemePreviewCard(
-    theme: ThemeSeed,
-    selected: Boolean,
-    onSelect: () -> Unit,
-    onEdit: () -> Unit,
-    onCopy: () -> Unit,
-    onDelete: (() -> Unit)?,
-) {
-    val borderColor = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant
-    Surface(
-        modifier = Modifier
-            .width(156.dp)
-            .clickable(onClick = onSelect),
-        shape = RoundedCornerShape(18.dp),
-        color = if (selected) MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.36f) else MaterialTheme.colorScheme.surface,
-        tonalElevation = if (selected) 2.dp else 0.dp,
-        border = androidx.compose.foundation.BorderStroke(1.dp, borderColor.copy(alpha = if (selected) 0.72f else 0.46f)),
-    ) {
-        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(modifier = Modifier.height(26.dp).clip(RoundedCornerShape(8.dp))) {
-                ThemeStrip(Color(theme.controlColor))
-                ThemeStrip(Color(theme.encourageColor))
-                ThemeStrip(Color(theme.baseColor))
-            }
-            Text(
-                text = theme.name,
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(2.dp)) {
-                IconButton(onClick = onCopy, modifier = Modifier.size(30.dp)) {
-                    Icon(Icons.Default.ContentCopy, contentDescription = AppText.t("me_copy"), modifier = Modifier.size(16.dp))
-                }
-                IconButton(onClick = onEdit, modifier = Modifier.size(30.dp)) {
-                    Icon(Icons.Default.Edit, contentDescription = AppText.t("me_edit"), modifier = Modifier.size(16.dp))
-                }
-                if (onDelete != null) {
-                    IconButton(onClick = onDelete, modifier = Modifier.size(30.dp)) {
-                        Icon(Icons.Default.Delete, contentDescription = AppText.t("group_delete"), modifier = Modifier.size(16.dp), tint = LocalThemeColors.current.control)
                     }
                 }
             }
+            Spacer(modifier = Modifier.height(24.dp))
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun VersionInfoPage(
+    versionName: String,
+    onBack: () -> Unit,
+) {
+    MeDetailPageScaffold(
+        title = AppText.t("me_app_version"),
+        description = AppText.t("me_version_page_description"),
+        onBack = onBack,
+    ) {
+        MeSettingsCard(title = AppText.t("me_app_version")) {
+            MetricInfoRow(
+                label = AppText.t("me_current_version"),
+                value = versionName,
+            )
+        }
+        MeSettingsCard(title = AppText.t("me_changelog")) {
+            Text(
+                text = AppText.t("me_changelog_empty"),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun MeDetailPageScaffold(
+    title: String,
+    description: String,
+    onBack: () -> Unit,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        color = LocalThemeColors.current.inkStrong,
+                    )
+                },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = AppText.t("group_back"))
+                    }
+                },
+            )
+        },
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background)
+                .padding(innerPadding)
+                .verticalScroll(rememberScrollState())
+                .padding(
+                    horizontal = TinyVowSpacing.PageHorizontal,
+                    vertical = TinyVowSpacing.PageTop,
+                ),
+            verticalArrangement = Arrangement.spacedBy(TinyVowSpacing.SectionGap),
+        ) {
+            TinyVowCard(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(TinyVowRadius.FeaturedCard),
+                color = MaterialTheme.colorScheme.primaryContainer,
+                borderAlpha = 0.18f,
+            ) {
+                Text(
+                    text = description,
+                    modifier = Modifier.padding(
+                        horizontal = TinyVowSpacing.CardHorizontal,
+                        vertical = TinyVowSpacing.CardVertical,
+                    ),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.82f),
+                )
+            }
+            content()
+            Spacer(modifier = Modifier.height(24.dp))
         }
     }
 }
 
 @Composable
-private fun RowScope.AddThemeCard(onClick: () -> Unit) {
-    Surface(
-        modifier = Modifier
-            .width(126.dp)
-            .height(118.dp)
-            .clickable(onClick = onClick),
-        shape = RoundedCornerShape(18.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerHigh,
-        border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.48f)),
+private fun MeSettingsCard(
+    title: String,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    val themeColors = LocalThemeColors.current
+    TinyVowCard(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(TinyVowRadius.Card),
+        color = MaterialTheme.colorScheme.surface,
+        borderAlpha = 0.26f,
+        shadowElevation = TinyVowElevation.Card,
     ) {
         Column(
-            modifier = Modifier.padding(12.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
+            modifier = Modifier.padding(
+                horizontal = TinyVowSpacing.CardHorizontal,
+                vertical = TinyVowSpacing.CardVertical,
+            ),
+            verticalArrangement = Arrangement.spacedBy(TinyVowSpacing.CardGap),
         ) {
-            Icon(Icons.Default.Add, contentDescription = AppText.t("me_new"), tint = MaterialTheme.colorScheme.primary)
-            Text(AppText.t("me_new_theme"), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        }
-    }
-}
-
-@Composable
-private fun ThemeEditorDialog(
-    initialTheme: ThemeSeed,
-    onDismiss: () -> Unit,
-    onSave: (ThemeSeed) -> Unit,
-) {
-    var name by remember(initialTheme.id) { mutableStateOf(initialTheme.name) }
-    var control by remember(initialTheme.id) { mutableStateOf(initialTheme.controlColor) }
-    var encourage by remember(initialTheme.id) { mutableStateOf(initialTheme.encourageColor) }
-    var base by remember(initialTheme.id) { mutableStateOf(initialTheme.baseColor) }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(AppText.t("me_edit_theme"), style = MaterialTheme.typography.titleLarge) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                OutlinedTextField(
-                    value = name,
-                    onValueChange = { name = it },
-                    label = { Text(AppText.t("me_theme_name")) },
-                    singleLine = true,
-                )
-                ColorSliderGroup(AppText.t("me_limit_color"), control, onColorChange = { control = it })
-                ColorSliderGroup(AppText.t("me_encourage_color"), encourage, onColorChange = { encourage = it })
-                ColorSliderGroup(AppText.t("me_base_color"), base, onColorChange = { base = it })
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = {
-                    onSave(
-                        initialTheme.copy(
-                            name = name.ifBlank { AppText.t("settings_custom_theme") },
-                            controlColor = control,
-                            encourageColor = encourage,
-                            baseColor = base,
-                            isCustom = true,
-                        )
-                    )
-                }
-            ) {
-                Text(AppText.t("group_save"))
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text(AppText.t("group_cancel")) }
-        },
-    )
-}
-
-@Composable
-private fun ColorSliderGroup(
-    label: String,
-    color: Int,
-    onColorChange: (Int) -> Unit,
-) {
-    var hue by remember { mutableFloatStateOf(0f) }
-    var saturation by remember { mutableFloatStateOf(1f) }
-    var value by remember { mutableFloatStateOf(1f) }
-
-    LaunchedEffect(color) {
-        val hsv = FloatArray(3)
-        android.graphics.Color.colorToHSV(color, hsv)
-        hue = hsv[0]
-        saturation = hsv[1]
-        value = hsv[2]
-    }
-
-    fun emit() {
-        onColorChange(android.graphics.Color.HSVToColor(floatArrayOf(hue, saturation, value)))
-    }
-
-    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            Box(
-                modifier = Modifier
-                    .size(28.dp)
-                    .clip(CircleShape)
-                    .background(Color(color))
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = themeColors.inkStrong,
             )
-            Text("$label ${argbToHex(color)}", style = MaterialTheme.typography.labelMedium)
+            content()
         }
-        Slider(value = hue, onValueChange = { hue = it; emit() }, valueRange = 0f..360f)
-        Slider(value = saturation, onValueChange = { saturation = it; emit() }, valueRange = 0.12f..0.82f)
-        Slider(value = value, onValueChange = { value = it; emit() }, valueRange = 0.36f..0.92f)
     }
 }
 
 @Composable
-private fun RowScope.ThemeStrip(color: Color) {
-    Box(
-        modifier = Modifier
-            .weight(1f)
-            .fillMaxHeight()
-            .background(color)
-    )
-}
-
-@Composable
-private fun ThemeLegendDot(label: String, color: Color) {
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-        Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(color))
-        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+private fun MetricInfoRow(label: String, value: String) {
+    val themeColors = LocalThemeColors.current
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyMedium,
+            color = themeColors.inkMuted,
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = themeColors.inkStrong,
+        )
     }
 }
 
@@ -1355,11 +1249,6 @@ private fun ProBenefitsComparisonDialog(
             AppText.t("pro_compare_custom_rewards"),
             freeLimits.customRewardLimit.toString(),
             AppText.t("pro_compare_unlimited"),
-        ),
-        Triple(
-            AppText.t("pro_compare_custom_themes"),
-            freeLimits.customThemeLimit.toString(),
-            proLimits.customThemeLimit.toString(),
         ),
         Triple(
             AppText.t("pro_compare_member_themes"),
@@ -1574,13 +1463,17 @@ private fun ActivationCodeDialog(
 
 @Composable
 fun MeStatItem(value: String, label: String, color: Color) {
+    val themeColors = LocalThemeColors.current
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
         Text(value, style = MaterialTheme.typography.headlineSmall, color = color)
-        Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(label, style = MaterialTheme.typography.labelSmall, color = themeColors.inkMuted)
     }
 }
 
 private fun formatMetricNumber(value: Long): String = NumberFormat.getIntegerInstance().format(value)
+
+private fun userFacingVersionName(versionName: String): String =
+    versionName.removeSuffix("-cn")
 
 private fun calculateInstalledDays(context: android.content.Context): Long {
     val firstInstallTime =
@@ -1594,17 +1487,17 @@ private fun calculateInstalledDays(context: android.content.Context): Long {
 
 @Composable
 fun MeMenuSection(title: String, content: @Composable ColumnScope.() -> Unit) {
+    val themeColors = LocalThemeColors.current
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(
             title,
             modifier = Modifier.padding(start = 8.dp, bottom = 4.dp),
             style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = themeColors.inkFaint,
         )
-        Surface(
+        TinyVowCard(
             modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(20.dp),
-            color = MaterialTheme.colorScheme.surface,
+            shape = RoundedCornerShape(TinyVowRadius.Card),
         ) {
             Column(content = content)
         }
@@ -1618,6 +1511,7 @@ private fun MeInfoItem(
     subtitle: String,
     color: Color = MaterialTheme.colorScheme.onSurfaceVariant,
 ) {
+    val themeColors = LocalThemeColors.current
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -1635,11 +1529,11 @@ private fun MeInfoItem(
         }
         Spacer(Modifier.width(14.dp))
         Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-            Text(title, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface)
+            Text(title, style = MaterialTheme.typography.bodyLarge, color = themeColors.ink)
             Text(
                 text = subtitle,
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = themeColors.inkMuted,
             )
         }
     }
@@ -1651,7 +1545,9 @@ fun MeMenuItem(
     title: String,
     onClick: () -> Unit,
     color: Color = MaterialTheme.colorScheme.onSurface,
+    trailingText: String? = null,
 ) {
+    val themeColors = LocalThemeColors.current
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -1670,11 +1566,20 @@ fun MeMenuItem(
                 icon,
                 contentDescription = null,
                 modifier = Modifier.size(20.dp),
-                tint = if (color == MaterialTheme.colorScheme.onSurface) MaterialTheme.colorScheme.primary else color,
+                tint = if (color == MaterialTheme.colorScheme.onSurface) themeColors.base else color,
             )
         }
         Spacer(Modifier.width(14.dp))
-        Text(title, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface, modifier = Modifier.weight(1f))
+        Text(title, style = MaterialTheme.typography.bodyLarge, color = themeColors.ink, modifier = Modifier.weight(1f))
+        trailingText?.takeIf { it.isNotBlank() }?.let {
+            Text(
+                text = it,
+                style = MaterialTheme.typography.labelMedium,
+                color = themeColors.inkFaint,
+                maxLines = 1,
+            )
+            Spacer(Modifier.width(8.dp))
+        }
         Icon(
             Icons.AutoMirrored.Filled.KeyboardArrowRight,
             contentDescription = null,

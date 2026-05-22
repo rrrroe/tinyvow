@@ -42,6 +42,7 @@ class ManagedAppPreferences(
         val dismissedPermissionPrompts = stringSetPreferencesKey("dismissed_permission_prompts")
         val usageAccessDisclosureAccepted = booleanPreferencesKey("usage_access_disclosure_accepted")
         val accessibilityDisclosureAccepted = booleanPreferencesKey("accessibility_disclosure_accepted")
+        val welcomeIntroCompleted = booleanPreferencesKey("welcome_intro_completed")
         val selectedAppLanguage = stringPreferencesKey("selected_app_language")
         val profileDisplayName = stringPreferencesKey("profile_display_name")
         val profileAvatarUri = stringPreferencesKey("profile_avatar_uri")
@@ -125,6 +126,10 @@ class ManagedAppPreferences(
 
     val accessibilityDisclosureAccepted: Flow<Boolean> = context.managedAppDataStore.data.map { preferences ->
         preferences[Keys.accessibilityDisclosureAccepted] ?: false
+    }
+
+    val welcomeIntroCompleted: Flow<Boolean> = context.managedAppDataStore.data.map { preferences ->
+        preferences[Keys.welcomeIntroCompleted] ?: false
     }
 
     val selectedAppLanguage: Flow<AppLanguage> = context.managedAppDataStore.data.map { preferences ->
@@ -276,6 +281,12 @@ class ManagedAppPreferences(
     suspend fun setAccessibilityDisclosureAccepted(accepted: Boolean) {
         context.managedAppDataStore.edit { preferences ->
             preferences[Keys.accessibilityDisclosureAccepted] = accepted
+        }
+    }
+
+    suspend fun setWelcomeIntroCompleted(completed: Boolean) {
+        context.managedAppDataStore.edit { preferences ->
+            preferences[Keys.welcomeIntroCompleted] = completed
         }
     }
 
@@ -489,9 +500,16 @@ class ManagedAppPreferences(
                         ThemeSeed(
                             id = id,
                             name = name,
+                            backgroundColor = item.getLong("backgroundColor").toInt(),
+                            surfaceColor = item.getLong("surfaceColor").toInt(),
+                            textColor = item.getLong("textColor").toInt(),
+                            mutedTextColor = item.getLong("mutedTextColor").toInt(),
+                            primaryColor = item.getLong("primaryColor").toInt(),
+                            progressColor = item.getLong("progressColor").toInt(),
                             controlColor = item.getLong("controlColor").toInt(),
                             encourageColor = item.getLong("encourageColor").toInt(),
                             baseColor = item.getLong("baseColor").toInt(),
+                            neutralAccentColor = item.getLong("neutralAccentColor").toInt(),
                             isCustom = true,
                         )
                     )
@@ -507,9 +525,16 @@ class ManagedAppPreferences(
                 JSONObject()
                     .put("id", theme.id)
                     .put("name", theme.name)
+                    .put("backgroundColor", theme.backgroundColor.toLong())
+                    .put("surfaceColor", theme.surfaceColor.toLong())
+                    .put("textColor", theme.textColor.toLong())
+                    .put("mutedTextColor", theme.mutedTextColor.toLong())
+                    .put("primaryColor", theme.primaryColor.toLong())
+                    .put("progressColor", theme.progressColor.toLong())
                     .put("controlColor", theme.controlColor.toLong())
                     .put("encourageColor", theme.encourageColor.toLong())
                     .put("baseColor", theme.baseColor.toLong())
+                    .put("neutralAccentColor", theme.neutralAccentColor.toLong())
             )
         }
         return array.toString()

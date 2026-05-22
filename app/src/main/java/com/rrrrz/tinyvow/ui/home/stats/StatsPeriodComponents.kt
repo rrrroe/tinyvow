@@ -122,6 +122,7 @@ import com.rrrrz.tinyvow.data.usage.AppSession
 import com.rrrrz.tinyvow.data.usage.UsageAccessStatus
 import com.rrrrz.tinyvow.data.usage.UsageRepository
 import com.rrrrz.tinyvow.data.usage.UsageStatsUsageRepository
+import com.rrrrz.tinyvow.ui.theme.LocalThemeColors
 import com.rrrrz.tinyvow.ui.theme.LocalReportColors
 import com.rrrrz.tinyvow.ui.theme.ReportColors
 import kotlinx.coroutines.isActive
@@ -792,6 +793,7 @@ internal fun MetricTileCompact(
     metric: DailyFocusMetric,
     modifier: Modifier = Modifier,
 ) {
+    val themeColors = LocalThemeColors.current
     Surface(
         modifier = modifier,
         shape = RoundedCornerShape(18.dp),
@@ -804,11 +806,13 @@ internal fun MetricTileCompact(
             Text(
                 text = metric.label,
                 style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = themeColors.inkMuted,
             )
             Text(
                 text = metric.value,
                 style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                color = themeColors.inkStrong,
             )
         }
     }

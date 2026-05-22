@@ -9,34 +9,34 @@ private val AppRegular = FontWeight.Normal
 private val AppMedium = FontWeight.Medium
 private val AppSemiBold = FontWeight.SemiBold
 private val AppBold = FontWeight.Bold
+private val AppExtraBold = FontWeight.ExtraBold
 
 private fun appTextStyle(
     fontSize: Int,
     lineHeight: Int,
     fontWeight: FontWeight,
-    letterSpacing: Float = 0f,
 ) = TextStyle(
     fontWeight = fontWeight,
     fontSize = fontSize.sp,
     lineHeight = lineHeight.sp,
-    letterSpacing = letterSpacing.sp,
+    letterSpacing = 0.sp,
 )
 
 val Typography =
     Typography(
-        displayLarge = appTextStyle(fontSize = 56, lineHeight = 60, fontWeight = AppBold),
-        displayMedium = appTextStyle(fontSize = 46, lineHeight = 52, fontWeight = AppSemiBold),
-        displaySmall = appTextStyle(fontSize = 36, lineHeight = 42, fontWeight = AppSemiBold),
-        headlineLarge = appTextStyle(fontSize = 30, lineHeight = 36, fontWeight = AppSemiBold),
-        headlineMedium = appTextStyle(fontSize = 26, lineHeight = 32, fontWeight = AppSemiBold),
-        headlineSmall = appTextStyle(fontSize = 22, lineHeight = 28, fontWeight = AppSemiBold),
-        titleLarge = appTextStyle(fontSize = 20, lineHeight = 26, fontWeight = AppMedium),
-        titleMedium = appTextStyle(fontSize = 18, lineHeight = 24, fontWeight = AppMedium),
-        titleSmall = appTextStyle(fontSize = 16, lineHeight = 22, fontWeight = AppMedium),
+        displayLarge = appTextStyle(fontSize = 58, lineHeight = 62, fontWeight = AppExtraBold),
+        displayMedium = appTextStyle(fontSize = 48, lineHeight = 54, fontWeight = AppBold),
+        displaySmall = appTextStyle(fontSize = 38, lineHeight = 44, fontWeight = AppBold),
+        headlineLarge = appTextStyle(fontSize = 32, lineHeight = 38, fontWeight = AppBold),
+        headlineMedium = appTextStyle(fontSize = 27, lineHeight = 33, fontWeight = AppBold),
+        headlineSmall = appTextStyle(fontSize = 23, lineHeight = 29, fontWeight = AppSemiBold),
+        titleLarge = appTextStyle(fontSize = 21, lineHeight = 28, fontWeight = AppSemiBold),
+        titleMedium = appTextStyle(fontSize = 17, lineHeight = 24, fontWeight = AppSemiBold),
+        titleSmall = appTextStyle(fontSize = 15, lineHeight = 21, fontWeight = AppMedium),
         bodyLarge = appTextStyle(fontSize = 16, lineHeight = 24, fontWeight = AppRegular),
         bodyMedium = appTextStyle(fontSize = 14, lineHeight = 22, fontWeight = AppRegular),
-        bodySmall = appTextStyle(fontSize = 13, lineHeight = 19, fontWeight = AppRegular),
-        labelLarge = appTextStyle(fontSize = 14, lineHeight = 20, fontWeight = AppMedium, letterSpacing = 0.04f),
-        labelMedium = appTextStyle(fontSize = 12, lineHeight = 16, fontWeight = AppMedium, letterSpacing = 0.04f),
-        labelSmall = appTextStyle(fontSize = 11, lineHeight = 14, fontWeight = AppRegular, letterSpacing = 0.08f),
+        bodySmall = appTextStyle(fontSize = 12, lineHeight = 18, fontWeight = AppRegular),
+        labelLarge = appTextStyle(fontSize = 14, lineHeight = 20, fontWeight = AppSemiBold),
+        labelMedium = appTextStyle(fontSize = 12, lineHeight = 17, fontWeight = AppMedium),
+        labelSmall = appTextStyle(fontSize = 10, lineHeight = 14, fontWeight = AppMedium),
     )

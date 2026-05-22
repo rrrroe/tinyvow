@@ -3,11 +3,7 @@ package com.rrrrz.tinyvow.ui.home
 import com.rrrrz.tinyvow.i18n.AppText
 
 import android.content.Context
-import android.content.ClipData
 import android.content.Intent
-import android.graphics.Bitmap
-import android.graphics.Paint
-import android.graphics.RectF
 import android.provider.Settings
 import android.widget.Toast
 import androidx.compose.animation.Crossfade
@@ -20,7 +16,6 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -40,6 +35,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -82,20 +78,23 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.graphics.luminance
-import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.graphics.layer.drawLayer
+import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
@@ -106,8 +105,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import androidx.core.graphics.drawable.toBitmap
-import androidx.core.content.FileProvider
+import androidx.compose.ui.zIndex
 import coil.compose.AsyncImage
 import com.rrrrz.tinyvow.data.apps.InstalledAppRepository
 import com.rrrrz.tinyvow.data.apps.ManagedApp
@@ -122,11 +120,16 @@ import com.rrrrz.tinyvow.data.usage.AppSession
 import com.rrrrz.tinyvow.data.usage.UsageAccessStatus
 import com.rrrrz.tinyvow.data.usage.UsageRepository
 import com.rrrrz.tinyvow.data.usage.UsageStatsUsageRepository
+import com.rrrrz.tinyvow.ui.theme.LocalThemeColors
 import com.rrrrz.tinyvow.ui.theme.LocalReportColors
-import com.rrrrz.tinyvow.ui.theme.ReportColors
+import com.rrrrz.tinyvow.ui.theme.TinyVowCard
+import com.rrrrz.tinyvow.ui.theme.TinyVowElevation
+import com.rrrrz.tinyvow.ui.theme.TinyVowRadius
+import com.rrrrz.tinyvow.ui.theme.TinyVowSpacing
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import java.time.YearMonth
@@ -136,8 +139,6 @@ import java.time.temporal.TemporalAdjusters
 import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
 import java.util.Locale
-import java.io.File
-import java.io.FileOutputStream
 import kotlin.math.ceil
 import kotlin.math.max
 import kotlin.math.roundToInt
@@ -342,15 +343,10 @@ private fun StatsScreenLayout(
     onRequestUsageAccess: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val reportColors = LocalReportColors.current
-    val background = Brush.verticalGradient(
-        colors = reportColors.pageGradient,
-    )
-
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(background),
+            .background(MaterialTheme.colorScheme.background),
     ) {
         when {
             !state.isPermissionGranted -> PermissionRequiredState(
@@ -401,17 +397,19 @@ private fun DailyReportScreen(
     isProActive: Boolean,
     onShowProUpsell: (ProUpsellSource) -> Unit,
 ) {
-    val isDayReport = state.selectedTab == ReportTab.DAY
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+        verticalArrangement = Arrangement.spacedBy(TinyVowSpacing.SectionGap),
     ) {
         item {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 20.dp, vertical = 18.dp),
-                verticalArrangement = Arrangement.spacedBy(16.dp),
+                    .padding(
+                        horizontal = TinyVowSpacing.PageHorizontal,
+                        vertical = TinyVowSpacing.CardVertical,
+                    ),
+                verticalArrangement = Arrangement.spacedBy(TinyVowSpacing.SectionGap),
             ) {
                 ReportTabRow(selectedTab = state.selectedTab, onTabSelected = onTabSelected)
                 if (state.selectedTab == ReportTab.DAY && state.selectedArchiveDate != null) {
@@ -453,31 +451,51 @@ private fun DailyReportScreen(
                 if (state.isRefreshing) {
                     LoadingHintChip(selectedTab = state.selectedTab)
                 }
-                if (!isProActive && !isDayReport) {
-                    LockedAdvancedReportCard(onClick = { onShowProUpsell(ProUpsellSource.ADVANCED_REPORT) })
-                    Spacer(modifier = Modifier.height(24.dp))
-                    return@Column
-                }
-                if (isDayReport) {
-                    DailyBattleHeroCard(heroState = state.heroState)
-                    DailyFocusCard(
-                        focusState = state.dailyFocusState,
-                        compactLayout = false,
-                    )
-                    DailyRhythmCard(timelineState = state.timelineState)
-                    DailyAppsAndAnalysisCard(
-                        topAppsState = state.topAppsState,
-                        behaviorState = state.behaviorState,
-                        comparisonState = state.comparisonState,
-                        shareState = state.shareState,
-                        isProActive = isProActive,
-                        onShowProUpsell = onShowProUpsell,
-                    )
-                } else {
-                    PeriodReportScreen(state = state)
-                }
+                ReportPageContent(
+                    state = state,
+                    isProActive = isProActive,
+                    onShowProUpsell = onShowProUpsell,
+                )
+                ReportShareActionCard(
+                    state = state,
+                    isProActive = isProActive,
+                )
                 Spacer(modifier = Modifier.height(24.dp))
             }
+        }
+    }
+}
+
+@Composable
+private fun ReportPageContent(
+    state: DailyReportUiState,
+    isProActive: Boolean,
+    onShowProUpsell: (ProUpsellSource) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val isDayReport = state.selectedTab == ReportTab.DAY
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(TinyVowSpacing.SectionGap),
+    ) {
+        if (!isProActive && !isDayReport) {
+            LockedAdvancedReportCard(onClick = { onShowProUpsell(ProUpsellSource.ADVANCED_REPORT) })
+        } else if (isDayReport) {
+            DailyBattleHeroCard(heroState = state.heroState)
+            DailyFocusCard(
+                focusState = state.dailyFocusState,
+                compactLayout = false,
+            )
+            DailyRhythmCard(timelineState = state.timelineState)
+            DailyAppsAndAnalysisCard(
+                topAppsState = state.topAppsState,
+                behaviorState = state.behaviorState,
+                comparisonState = state.comparisonState,
+                isProActive = isProActive,
+                onShowProUpsell = onShowProUpsell,
+            )
+        } else {
+            PeriodReportScreen(state = state)
         }
     }
 }
@@ -538,8 +556,8 @@ private fun PeriodNavigator(
         }
     Surface(
         shape = RoundedCornerShape(18.dp),
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.84f),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.28f)),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.32f)),
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
@@ -562,7 +580,7 @@ private fun PeriodNavigator(
             Surface(
                 modifier = Modifier.weight(1f).clickable { showDialog = true },
                 shape = RoundedCornerShape(14.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f),
+                color = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.86f),
             ) {
                 Row(
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
@@ -808,8 +826,8 @@ private fun ArchiveDateNavigator(
     val availableDates = remember(availableArchiveDates) { availableArchiveDates.map(LocalDate::parse).toSet() }
     Surface(
         shape = RoundedCornerShape(18.dp),
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.84f),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.28f)),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.32f)),
     ) {
         Row(
             modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
@@ -831,7 +849,7 @@ private fun ArchiveDateNavigator(
                         .weight(1f)
                         .clickable { showCalendar = true },
                 shape = RoundedCornerShape(14.dp),
-                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f),
+                color = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.86f),
             ) {
                 Row(
                     modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
@@ -1026,8 +1044,11 @@ private fun PlaceholderReportScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(horizontal = 20.dp, vertical = 18.dp),
-        verticalArrangement = Arrangement.spacedBy(16.dp),
+            .padding(
+                horizontal = TinyVowSpacing.PageHorizontal,
+                vertical = TinyVowSpacing.CardVertical,
+            ),
+        verticalArrangement = Arrangement.spacedBy(TinyVowSpacing.SectionGap),
     ) {
         ReportTabRow(selectedTab = state.selectedTab, onTabSelected = onTabSelected)
         ReportCard {
@@ -1066,7 +1087,7 @@ private fun PermissionRequiredState(
         ReportCard(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 20.dp),
+                .padding(horizontal = TinyVowSpacing.PageHorizontal),
         ) {
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -1119,7 +1140,7 @@ private fun ReportTabRow(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(20.dp))
-            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.82f))
+            .background(MaterialTheme.colorScheme.surface)
             .padding(6.dp),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
@@ -1129,9 +1150,9 @@ private fun ReportTabRow(
                 modifier = Modifier.weight(1f),
                 shape = RoundedCornerShape(16.dp),
                 color = if (selected) {
-                    MaterialTheme.colorScheme.primary
+                    MaterialTheme.colorScheme.primaryContainer
                 } else {
-                    MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.5f)
+                    Color.Transparent
                 },
                 onClick = { onTabSelected(tab) },
             ) {
@@ -1146,7 +1167,7 @@ private fun ReportTabRow(
                         textAlign = TextAlign.Center,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
-                        color = if (selected) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
@@ -1208,8 +1229,9 @@ private fun DeviceHeroVisualPanel(
     )
     Surface(
         modifier = modifier,
-        shape = RoundedCornerShape(28.dp),
-        color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.42f),
+        shape = RoundedCornerShape(TinyVowRadius.FeaturedCard),
+        color = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.78f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.26f)),
     ) {
         BoxWithConstraints {
             val compact = maxWidth < 360.dp
@@ -1258,7 +1280,7 @@ private fun DeviceHeroVisualPanel(
                         SkeletonBlock(
                             modifier = Modifier.fillMaxWidth(),
                             height = chartHeight,
-                            shape = RoundedCornerShape(24.dp),
+                            shape = RoundedCornerShape(TinyVowRadius.Card),
                         )
                     } else {
                         UsageGoalChart(
@@ -1306,8 +1328,9 @@ private fun DeviceHeroMetricsPanel(
     )
     Surface(
         modifier = modifier,
-        shape = RoundedCornerShape(28.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.72f),
+        shape = RoundedCornerShape(TinyVowRadius.FeaturedCard),
+        color = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.78f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.26f)),
     ) {
         BoxWithConstraints {
             val compact = maxWidth < 360.dp
@@ -1449,11 +1472,13 @@ private fun UsageGoalChart(
     val primary = MaterialTheme.colorScheme.primary
     val warning = reportColors.warning
     val overLimit = usageMillis > capMillis && capMillis > 0L
+    val goalTrackColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.42f)
+    val goalProgressColor = if (overLimit) warning.copy(alpha = 0.88f) else primary.copy(alpha = 0.88f)
     Surface(
         modifier = modifier,
-        shape = RoundedCornerShape(24.dp),
-        color = primary.copy(alpha = 0.08f),
-        border = BorderStroke(1.dp, primary.copy(alpha = 0.12f)),
+        shape = RoundedCornerShape(TinyVowRadius.Card),
+        color = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.82f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.28f)),
     ) {
         Column(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
@@ -1493,19 +1518,14 @@ private fun UsageGoalChart(
                 val top = (size.height - trackHeight) / 2f
                 val radius = trackHeight / 2f
                 drawRoundRect(
-                    color = primary.copy(alpha = 0.12f),
+                    color = goalTrackColor,
                     topLeft = Offset(0f, top),
                     size = Size(size.width, trackHeight),
                     cornerRadius = CornerRadius(radius, radius),
                 )
                 val cappedProgress = animatedProgress.coerceIn(0f, 1f)
                 drawRoundRect(
-                    brush = Brush.horizontalGradient(
-                        colors = listOf(
-                            primary.copy(alpha = 0.72f),
-                            if (overLimit) warning.copy(alpha = 0.92f) else primary,
-                        ),
-                    ),
+                    color = goalProgressColor,
                     topLeft = Offset(0f, top),
                     size = Size(size.width * cappedProgress, trackHeight),
                     cornerRadius = CornerRadius(radius, radius),
@@ -1559,7 +1579,8 @@ private fun usageDialCapMillis(selectedTab: ReportTab): Long =
 internal fun SummaryTagChip(tag: String) {
     Surface(
         shape = RoundedCornerShape(999.dp),
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.28f)),
     ) {
         Text(
             text = tag,
@@ -1618,7 +1639,7 @@ private fun DailyFocusCard(
                 SkeletonBlock(
                     modifier = modifier,
                     height = 208.dp,
-                    shape = RoundedCornerShape(28.dp),
+                    shape = RoundedCornerShape(TinyVowRadius.FeaturedCard),
                 )
             }
         }
@@ -1661,7 +1682,7 @@ private fun WindowFocusCard(
             ReportCard {
                 SkeletonSectionHeader()
                 AdaptiveRowGrid(itemCount = 2, compactColumns = 1, expandedColumns = 2) { modifier, _ ->
-                    SkeletonBlock(modifier = modifier, height = 210.dp, shape = RoundedCornerShape(24.dp))
+                    SkeletonBlock(modifier = modifier, height = 210.dp, shape = RoundedCornerShape(TinyVowRadius.Card))
                 }
             }
         }
@@ -1755,7 +1776,7 @@ private fun YearScopePanel(
 ) {
     Surface(
         modifier = modifier,
-        shape = RoundedCornerShape(24.dp),
+        shape = RoundedCornerShape(TinyVowRadius.Card),
         color = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.76f),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.24f)),
     ) {
@@ -1793,7 +1814,7 @@ private fun HeatmapCard(
         when (heatmapState) {
             SectionState.Loading -> {
                 SkeletonSectionHeader()
-                SkeletonBlock(modifier = Modifier.fillMaxWidth(), height = 180.dp, shape = RoundedCornerShape(24.dp))
+                SkeletonBlock(modifier = Modifier.fillMaxWidth(), height = 180.dp, shape = RoundedCornerShape(TinyVowRadius.Card))
             }
             SectionState.Empty -> {
                 SectionHeader(Icons.Default.CalendarMonth, AppText.t("stats_heatmap"), AppText.t("stats_not_enough_archived_data_to_build_a_heatmap"))
@@ -1848,118 +1869,13 @@ private fun HeatmapGrid(data: HeatmapSectionData) {
 }
 
 @Composable
-private fun ShareReportCard(
-    selectedTab: ReportTab,
-    shareState: SectionState<ShareReportData>,
+private fun ReportShareActionCard(
+    state: DailyReportUiState,
+    isProActive: Boolean,
 ) {
-    val context = LocalContext.current
-    val reportColors = LocalReportColors.current
-    val primary = MaterialTheme.colorScheme.primary
-    val surface = MaterialTheme.colorScheme.surface
-    val onSurface = MaterialTheme.colorScheme.onSurface
-    val onSurfaceVariant = MaterialTheme.colorScheme.onSurfaceVariant
-    val data = (shareState as? SectionState.Ready)?.data
-    var previewBitmap by remember(data) { mutableStateOf<Bitmap?>(null) }
-    fun generatePreview() {
-        val readyData = data ?: return
-        runCatching {
-            renderShareReportBitmapV2(
-                context = context,
-                data = readyData,
-                primary = primary,
-                surface = surface,
-                onSurface = onSurface,
-                onSurfaceVariant = onSurfaceVariant,
-                palette = reportColors.appChartPalette,
-            )
-        }.onSuccess { bitmap ->
-            previewBitmap = bitmap
-        }.onFailure { error ->
-            Toast.makeText(context, error.message ?: AppText.t("stats_failed_to_generate_share_image"), Toast.LENGTH_SHORT).show()
-        }
-    }
-    ReportCard {
-        SectionHeader(
-            icon = Icons.Default.Share,
-            title = AppText.t("stats_share_report"),
-            subtitle = AppText.t("stats_preview_the_poster_then_share_it_with_friends"),
-        )
-        if (data == null) {
-            SkeletonBlock(modifier = Modifier.fillMaxWidth(), height = 126.dp, shape = RoundedCornerShape(24.dp))
-        } else {
-            Surface(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(24.dp),
-                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.42f),
-            ) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp),
-                ) {
-                    Text(data.title, style = MaterialTheme.typography.titleLarge)
-                    Text(data.insight, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    Button(
-                        onClick = { generatePreview() },
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(18.dp))
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(AppText.t("stats_preview_share_poster"))
-                    }
-                }
-            }
-        }
-    }
-    previewBitmap?.let { bitmap ->
-        SharePreviewDialog(
-            bitmap = bitmap,
-            onDismiss = { previewBitmap = null },
-            onRegenerate = { generatePreview() },
-            onShare = {
-                runCatching {
-                    shareReportBitmap(context = context, bitmap = bitmap)
-                }.onFailure { error ->
-                    Toast.makeText(context, error.message ?: AppText.t("stats_failed_to_generate_share_image"), Toast.LENGTH_SHORT).show()
-                }
-            },
-        )
-    }
-}
-
-@Composable
-internal fun CompactShareReportRow(
-    shareState: SectionState<ShareReportData>,
-) {
-    val context = LocalContext.current
-    val reportColors = LocalReportColors.current
-    val primary = MaterialTheme.colorScheme.primary
-    val surface = MaterialTheme.colorScheme.surface
-    val onSurface = MaterialTheme.colorScheme.onSurface
-    val onSurfaceVariant = MaterialTheme.colorScheme.onSurfaceVariant
-    val data = (shareState as? SectionState.Ready)?.data
-    var previewBitmap by remember(data) { mutableStateOf<Bitmap?>(null) }
-
-    fun generatePreview() {
-        val readyData = data ?: return
-        runCatching {
-            renderShareReportBitmapV2(
-                context = context,
-                data = readyData,
-                primary = primary,
-                surface = surface,
-                onSurface = onSurface,
-                onSurfaceVariant = onSurfaceVariant,
-                palette = reportColors.appChartPalette,
-            )
-        }.onSuccess { bitmap ->
-            previewBitmap = bitmap
-        }.onFailure { error ->
-            Toast.makeText(
-                context,
-                error.message ?: AppText.t("stats_failed_to_generate_share_image"),
-                Toast.LENGTH_SHORT,
-            ).show()
-        }
+    val canShare = isReportShareReady(state = state, isProActive = isProActive)
+    var showPreview by remember(state.selectedTab, state.selectedArchiveDate, state.selectedWeekStart, state.selectedMonth, state.selectedYear) {
+        mutableStateOf(false)
     }
 
     Surface(
@@ -1967,95 +1883,101 @@ internal fun CompactShareReportRow(
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
     ) {
-        if (shareState == SectionState.Loading) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 14.dp, vertical = 14.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Surface(
+                modifier = Modifier.size(38.dp),
+                shape = RoundedCornerShape(14.dp),
+                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
             ) {
-                SkeletonCircle(18.dp)
-                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    SkeletonLine(width = 96.dp, height = 12.dp)
-                    SkeletonLine(fill = true, height = 10.dp)
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.Default.Share,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(18.dp),
+                    )
                 }
-                SkeletonPill(width = 74.dp)
             }
-        } else {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 14.dp, vertical = 14.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    text = AppText.t("stats_share_report"),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                )
+                Text(
+                    text = AppText.t("stats_preview_the_poster_then_share_it_with_friends"),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Button(
+                onClick = { showPreview = true },
+                enabled = canShare,
             ) {
-                Surface(
-                    modifier = Modifier.size(38.dp),
-                    shape = RoundedCornerShape(14.dp),
-                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
-                ) {
-                    Box(contentAlignment = Alignment.Center) {
-                        Icon(
-                            imageVector = Icons.Default.Share,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(18.dp),
-                        )
-                    }
-                }
-                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(
-                        text = AppText.t("stats_share_report"),
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold,
-                    )
-                    Text(
-                        text = data?.insight ?: AppText.t("stats_preview_the_poster_then_share_it_with_friends"),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-                Button(
-                    onClick = { generatePreview() },
-                    enabled = data != null,
-                ) {
-                    Text(AppText.t("stats_preview_share_poster"))
-                }
+                Text(AppText.t("stats_preview_share_poster"))
             }
         }
     }
 
-    previewBitmap?.let { bitmap ->
-        SharePreviewDialog(
-            bitmap = bitmap,
-            onDismiss = { previewBitmap = null },
-            onRegenerate = { generatePreview() },
-            onShare = {
-                runCatching {
-                    shareReportBitmap(context = context, bitmap = bitmap)
-                }.onFailure { error ->
-                    Toast.makeText(
-                        context,
-                        error.message ?: AppText.t("stats_failed_to_generate_share_image"),
-                        Toast.LENGTH_SHORT,
-                    ).show()
-                }
-            },
+    if (showPreview) {
+        ReportPageSharePreviewDialog(
+            state = state,
+            isProActive = isProActive,
+            onDismiss = { showPreview = false },
         )
     }
 }
 
+private fun isReportShareReady(
+    state: DailyReportUiState,
+    isProActive: Boolean,
+): Boolean {
+    if (state.isRefreshing) return false
+    return when (state.selectedTab) {
+        ReportTab.DAY -> state.heroState is SectionState.Ready
+        ReportTab.WEEK, ReportTab.MONTH, ReportTab.YEAR -> isProActive && state.periodReportState is SectionState.Ready
+    }
+}
+
 @Composable
-private fun SharePreviewDialog(
-    bitmap: Bitmap,
+private fun ReportPageSharePreviewDialog(
+    state: DailyReportUiState,
+    isProActive: Boolean,
     onDismiss: () -> Unit,
-    onRegenerate: () -> Unit,
-    onShare: () -> Unit,
 ) {
+    val context = LocalContext.current
     val scrollState = rememberScrollState()
+    val graphicsLayer = rememberGraphicsLayer()
+    val scope = rememberCoroutineScope()
+    val posterWidth = 390.dp
+    var isSharing by remember { mutableStateOf(false) }
+
+    fun shareCurrentPreview() {
+        if (isSharing) return
+        scope.launch {
+            isSharing = true
+            runCatching {
+                val bitmap = graphicsLayer.toImageBitmap().asAndroidBitmap()
+                shareReportBitmap(context = context, bitmap = bitmap)
+            }.onFailure { error ->
+                Toast.makeText(
+                    context,
+                    error.message ?: AppText.t("stats_failed_to_generate_share_image"),
+                    Toast.LENGTH_SHORT,
+                ).show()
+            }
+            isSharing = false
+        }
+    }
+
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(usePlatformDefaultWidth = false),
@@ -2065,7 +1987,7 @@ private fun SharePreviewDialog(
                 .fillMaxWidth()
                 .fillMaxHeight(0.94f)
                 .padding(16.dp),
-            shape = RoundedCornerShape(28.dp),
+            shape = RoundedCornerShape(TinyVowRadius.FeaturedCard),
             color = MaterialTheme.colorScheme.surface,
             border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.28f)),
         ) {
@@ -2090,34 +2012,81 @@ private fun SharePreviewDialog(
                     color = MaterialTheme.colorScheme.surfaceContainerLow,
                     border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)),
                 ) {
-                    Column(
+                    BoxWithConstraints(
                         modifier = Modifier
                             .fillMaxSize()
                             .verticalScroll(scrollState)
                             .padding(8.dp),
+                        contentAlignment = Alignment.TopCenter,
                     ) {
-                        Image(
-                            bitmap = bitmap.asImageBitmap(),
-                            contentDescription = AppText.t("stats_report_poster_preview"),
+                        val previewScale = (maxWidth / posterWidth).coerceAtMost(1f)
+                        Box(
                             modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(18.dp)),
-                            contentScale = ContentScale.FillWidth,
-                        )
+                                .requiredWidth(posterWidth)
+                                .graphicsLayer {
+                                    scaleX = previewScale
+                                    scaleY = previewScale
+                                    transformOrigin = TransformOrigin(0.5f, 0f)
+                                },
+                            contentAlignment = Alignment.TopCenter,
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .requiredWidth(posterWidth)
+                                    .drawWithContent {
+                                        graphicsLayer.record {
+                                            this@drawWithContent.drawContent()
+                                        }
+                                        drawLayer(graphicsLayer)
+                                    }
+                                    .clip(RoundedCornerShape(18.dp))
+                                    .background(MaterialTheme.colorScheme.background)
+                                    .padding(
+                                        horizontal = TinyVowSpacing.PageHorizontal,
+                                        vertical = TinyVowSpacing.CardVertical,
+                                    ),
+                                verticalArrangement = Arrangement.spacedBy(TinyVowSpacing.SectionGap),
+                            ) {
+                                ReportPageContent(
+                                    state = state,
+                                    isProActive = isProActive,
+                                    onShowProUpsell = {},
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = AppText.t("stats_share_footer"),
+                                    modifier = Modifier.fillMaxWidth(),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    textAlign = TextAlign.Center,
+                                )
+                            }
+                        }
                     }
                 }
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    TextButton(onClick = onRegenerate) {
-                        Text(AppText.t("stats_regenerate"))
-                    }
                     Spacer(modifier = Modifier.weight(1f))
-                    OutlinedButton(onClick = onDismiss) {
+                    OutlinedButton(
+                        onClick = onDismiss,
+                        enabled = !isSharing,
+                    ) {
                         Text(AppText.t("group_close"))
                     }
-                    Button(onClick = onShare) {
+                    Button(
+                        onClick = { shareCurrentPreview() },
+                        enabled = !isSharing,
+                    ) {
+                        if (isSharing) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(16.dp),
+                                strokeWidth = 2.dp,
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
+                        }
                         Text(AppText.t("group_share"))
                     }
                 }
@@ -2134,10 +2103,11 @@ internal fun DailyModeSummaryCard(
     modifier: Modifier = Modifier,
 ) {
     val reportColors = LocalReportColors.current
+    val themeColors = LocalThemeColors.current
     val accent =
         when {
-            summary.title == AppText.t("stats_control_results") -> reportColors.danger
-            summary.title == AppText.t("stats_encourage_progress") -> reportColors.positive
+            summary.title == AppText.t("stats_control_results") -> themeColors.control
+            summary.title == AppText.t("stats_encourage_progress") -> themeColors.encourage
             summary.isWarning -> reportColors.warning
             else -> MaterialTheme.colorScheme.primary
         }
@@ -2153,19 +2123,18 @@ internal fun DailyModeSummaryCard(
         } else {
             summary.groupItems.take(4)
         }
-    Surface(
+    TinyVowCard(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp),
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.3f)),
-        shadowElevation = 0.dp,
+        shape = RoundedCornerShape(TinyVowRadius.Card),
+        borderAlpha = 0.28f,
+        shadowElevation = TinyVowElevation.Card,
     ) {
         Column(
             modifier = Modifier.padding(
-                horizontal = if (compact) 12.dp else 14.dp,
-                vertical = if (compact) 12.dp else 14.dp,
+                horizontal = if (compact) TinyVowSpacing.CompactCardHorizontal else TinyVowSpacing.CardHorizontal,
+                vertical = if (compact) TinyVowSpacing.CompactCardVertical else TinyVowSpacing.CardVertical,
             ),
-            verticalArrangement = Arrangement.spacedBy(if (compact) 8.dp else 10.dp),
+            verticalArrangement = Arrangement.spacedBy(if (compact) 8.dp else TinyVowSpacing.CardGap),
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -2335,12 +2304,10 @@ private fun DailyGroupProgressRow(
     accent: Color,
     modifier: Modifier = Modifier,
 ) {
-    val toneColor =
-        when {
-            item.isWarning -> LocalReportColors.current.warning
-            item.isMuted -> MaterialTheme.colorScheme.onSurfaceVariant
-            else -> accent
-        }
+    val themeColors = LocalThemeColors.current
+    val resultColor = if (item.isWarning) accent else themeColors.inkMuted
+    val quietColor = if (item.isMuted) themeColors.inkFaint else themeColors.inkMuted
+    val progressFillColor = if (item.isWarning) accent else themeColors.inkFaint
     val animatedProgress = animateFractionValue(
         targetValue = item.progress.coerceIn(0f, 1f),
         label = "daily_group_progress_${item.groupName}_${item.statusLabel}",
@@ -2348,8 +2315,9 @@ private fun DailyGroupProgressRow(
     )
     Surface(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(16.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = if (item.isMuted) 0.28f else 0.42f),
+        shape = RoundedCornerShape(15.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = if (item.isMuted) 0.46f else 0.76f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.20f)),
     ) {
         Column(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
@@ -2357,86 +2325,81 @@ private fun DailyGroupProgressRow(
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.Top,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                Text(
-                    text = item.groupName,
+                Column(
                     modifier = Modifier.weight(1f),
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.SemiBold,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                Surface(
-                    shape = RoundedCornerShape(999.dp),
-                    color = toneColor.copy(alpha = 0.14f),
+                    verticalArrangement = Arrangement.spacedBy(3.dp),
                 ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Text(
+                            text = item.groupName,
+                            modifier = Modifier.weight(1f, fill = false),
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                            color = themeColors.inkStrong,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            text = item.statusLabel,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = FontWeight.Medium,
+                            color = quietColor,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                     Text(
-                        text = item.statusLabel,
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                        text = item.leadingValue,
                         style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Medium,
-                        color = toneColor,
+                        color = quietColor,
                         maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
-            }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.End,
-                verticalAlignment = Alignment.Top,
-            ) {
-                GroupProgressMetric(
-                    label = item.trailingLabel,
-                    value = item.trailingValue,
-                    alignEnd = true,
-                    valueColor = toneColor,
-                )
+                Column(
+                    horizontalAlignment = Alignment.End,
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                    modifier = Modifier.width(66.dp),
+                ) {
+                    Text(
+                        text = item.trailingLabel,
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Medium,
+                        color = resultColor,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        text = item.trailingValue,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = resultColor,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        textAlign = TextAlign.End,
+                    )
+                }
             }
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(6.dp)
+                    .height(5.dp)
                     .clip(RoundedCornerShape(3.dp))
-                    .background(toneColor.copy(alpha = 0.14f))
+                    .background(themeColors.inkFaint.copy(alpha = 0.18f))
             ) {
                 Box(
                     modifier = Modifier
                         .fillMaxWidth(fraction = animatedProgress)
                         .fillMaxHeight()
                         .clip(RoundedCornerShape(3.dp))
-                        .background(
-                            brush = Brush.horizontalGradient(
-                                colors = listOf(
-                                    toneColor.copy(alpha = 0.6f),
-                                    toneColor
-                                )
-                            )
-                        )
+                        .background(progressFillColor.copy(alpha = if (item.isWarning) 0.86f else 0.56f))
                 )
-            }
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = item.progressLabel,
-                    style = MaterialTheme.typography.labelSmall,
-                    color = toneColor,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
-                item.helperLabel?.let { helper ->
-                    Text(
-                        text = helper,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
             }
         }
     }
@@ -2529,6 +2492,7 @@ private fun FocusMetricPill(
     emphasizeValue: Boolean = false,
     valueColor: Color = MaterialTheme.colorScheme.onSurface,
 ) {
+    val themeColors = LocalThemeColors.current
     val animatedValue = animateMetricDisplayText(
         rawText = metric.value,
         label = "daily_focus_metric_${metric.label}_${metric.value}",
@@ -2550,7 +2514,7 @@ private fun FocusMetricPill(
                 Text(
                     text = metric.label,
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = themeColors.inkFaint,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -2558,7 +2522,7 @@ private fun FocusMetricPill(
                     Text(
                         text = valueParts.number,
                         style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.SemiBold,
+                        fontWeight = FontWeight.Bold,
                         color = valueColor,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
@@ -2569,7 +2533,7 @@ private fun FocusMetricPill(
                             modifier = Modifier.padding(start = 2.dp, bottom = 2.dp),
                             style = MaterialTheme.typography.labelMedium,
                             fontWeight = FontWeight.Medium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = themeColors.inkMuted,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
@@ -2584,7 +2548,7 @@ private fun FocusMetricPill(
                 Text(
                     text = metric.label,
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = themeColors.inkFaint,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -2592,7 +2556,7 @@ private fun FocusMetricPill(
                     text = animatedValue,
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.SemiBold,
-                    color = MaterialTheme.colorScheme.onSurface,
+                    color = themeColors.ink,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
@@ -2632,6 +2596,7 @@ private fun HeroMetricChip(
     },
     modifier: Modifier = Modifier,
 ) {
+    val themeColors = LocalThemeColors.current
     val animatedValue = animateMetricDisplayText(
         rawText = value,
         label = "hero_metric_${label.hashCode()}",
@@ -2640,7 +2605,8 @@ private fun HeroMetricChip(
     Surface(
         modifier = modifier,
         shape = RoundedCornerShape(20.dp),
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.8f),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.24f)),
     ) {
         Column(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
@@ -2655,12 +2621,13 @@ private fun HeroMetricChip(
             Text(
                 text = label,
                 style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = themeColors.inkMuted,
             )
             Text(
                 text = animatedValue,
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.SemiBold,
+                color = themeColors.inkStrong,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
@@ -2906,7 +2873,7 @@ private fun PeriodDistributionCard(
     val colors = reportColors.periodPalette
     Surface(
         modifier = modifier,
-        shape = RoundedCornerShape(24.dp),
+        shape = RoundedCornerShape(TinyVowRadius.Card),
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.82f),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.26f)),
     ) {
@@ -3291,21 +3258,31 @@ internal fun AppUsageShareCard(
 ) {
     Surface(
         modifier = modifier,
-        shape = RoundedCornerShape(24.dp),
+        shape = RoundedCornerShape(TinyVowRadius.Card),
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.82f),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.26f)),
     ) {
         BoxWithConstraints {
             val compact = maxWidth < 360.dp
             val donutSize = if (compact) 176.dp else 216.dp
+            val visibleItems = items.take(6)
             Column(
                 modifier = Modifier.padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Text(
-                    text = AppText.t("stats_app_duration"),
-                    style = MaterialTheme.typography.titleMedium,
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = AppText.t("stats_app_duration"),
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    AppIconStack(
+                        packages = visibleItems.map { it.packageName },
+                    )
+                }
                 if (items.isEmpty()) {
                     Text(
                         text = AppText.t("stats_no_usage_records"),
@@ -3314,7 +3291,6 @@ internal fun AppUsageShareCard(
                     )
                 } else {
                     val total = items.sumOf { it.value }.coerceAtLeast(1L)
-                    val visibleItems = items.take(6)
                     val otherUsage = items.drop(6).sumOf { it.value }
                     val donutValues =
                         if (otherUsage > 0L) {
@@ -3440,7 +3416,7 @@ private fun TopUsageRankingCard(
 ) {
     Surface(
         modifier = modifier,
-        shape = RoundedCornerShape(24.dp),
+        shape = RoundedCornerShape(TinyVowRadius.Card),
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.82f),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.26f)),
     ) {
@@ -3750,12 +3726,15 @@ private fun BehaviorMomentCard(
 ) {
     Surface(
         modifier = modifier,
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(TinyVowRadius.ItemCard),
         color = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.76f),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.24f)),
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 14.dp),
+            modifier = Modifier.padding(
+                horizontal = TinyVowSpacing.CompactCardHorizontal,
+                vertical = TinyVowSpacing.CompactCardVertical,
+            ),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(12.dp),
         ) {
@@ -4018,6 +3997,7 @@ internal fun SectionHeader(
     title: String,
     subtitle: String? = null,
 ) {
+    val themeColors = LocalThemeColors.current
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Icon(
@@ -4030,13 +4010,14 @@ internal fun SectionHeader(
                 text = title,
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.SemiBold,
+                color = themeColors.inkStrong,
             )
         }
         if (subtitle != null) {
             Text(
                 text = subtitle,
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = themeColors.inkMuted,
             )
         }
     }
@@ -4047,16 +4028,18 @@ internal fun ReportCard(
     modifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    Surface(
+    TinyVowCard(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(28.dp),
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
-        shadowElevation = 0.dp,
+        shape = RoundedCornerShape(TinyVowRadius.Card),
+        borderAlpha = 0.28f,
+        shadowElevation = TinyVowElevation.Card,
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 20.dp, vertical = 20.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.padding(
+                horizontal = TinyVowSpacing.CardHorizontal,
+                vertical = TinyVowSpacing.CardVertical,
+            ),
+            verticalArrangement = Arrangement.spacedBy(TinyVowSpacing.CardGap),
             content = content,
         )
     }
@@ -4067,7 +4050,7 @@ fun AppIconCircle(
     pkg: String,
     modifier: Modifier = Modifier,
     size: Dp = 34.dp,
-    iconPadding: Dp = 6.dp,
+    iconPadding: Dp = 0.dp,
 ) {
     val context = LocalContext.current
     val icon = remember(pkg) {
@@ -4079,21 +4062,53 @@ fun AppIconCircle(
     }
     Surface(
         modifier = modifier.size(size),
-        shape = CircleShape,
-        color = MaterialTheme.colorScheme.surfaceVariant,
+        shape = RoundedCornerShape((size.value * 0.32f).dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.95f)),
     ) {
         if (icon != null) {
             AsyncImage(
                 model = icon,
                 contentDescription = null,
-                modifier = Modifier.padding(iconPadding),
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(iconPadding)
+                    .clip(RoundedCornerShape((size.value * 0.32f).dp))
+                    .graphicsLayer {
+                        scaleX = 1.08f
+                        scaleY = 1.08f
+                    },
             )
         }
     }
 }
 
+@Composable
+internal fun AppIconStack(
+    packages: List<String>,
+    modifier: Modifier = Modifier,
+    size: Dp = 30.dp,
+) {
+    val visiblePackages = packages.take(3)
+    if (visiblePackages.isEmpty()) return
 
-
-
-
-
+    val offset = size / 2f
+    val width = size + offset * (visiblePackages.size - 1).toFloat()
+    Box(
+        modifier = modifier
+            .width(width)
+            .height(size),
+        contentAlignment = Alignment.CenterStart,
+    ) {
+        visiblePackages.forEachIndexed { index, packageName ->
+            AppIconCircle(
+                pkg = packageName,
+                size = size,
+                modifier = Modifier
+                    .padding(start = offset * index.toFloat())
+                    .zIndex((visiblePackages.size - index).toFloat()),
+            )
+        }
+    }
+}

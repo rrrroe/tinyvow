@@ -29,6 +29,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.rrrrz.tinyvow.ui.theme.LocalThemeColors
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -37,6 +38,7 @@ fun LaboratoryScreen(
     onTriggerAchievementPopupTest: () -> Unit,
     onResetSummary: () -> Unit,
     onTriggerSummary: () -> Unit,
+    onTriggerWelcomeIntro: () -> Unit,
     showDebugProControls: Boolean,
     onExtendDebugPro: (Int) -> Unit,
     onClearDebugPro: () -> Unit,
@@ -44,10 +46,18 @@ fun LaboratoryScreen(
     onEnterSuperMode: () -> Unit,
     onBack: () -> Unit,
 ) {
+    val themeColors = LocalThemeColors.current
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(AppText.t("lab_laboratory_debug_tools")) },
+                title = {
+                    Text(
+                        text = AppText.t("lab_laboratory_debug_tools"),
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        color = themeColors.inkStrong,
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = AppText.t("group_back"))
@@ -64,7 +74,12 @@ fun LaboratoryScreen(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
-            Text(AppText.t("lab_points_simulation"), style = MaterialTheme.typography.titleLarge)
+            Text(
+                AppText.t("lab_points_simulation"),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = themeColors.inkStrong,
+            )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = { onAddPoints(10.0) }, modifier = Modifier.weight(1f)) { Text("+10") }
                 Button(onClick = { onAddPoints(100.0) }, modifier = Modifier.weight(1f)) { Text("+100") }
@@ -72,11 +87,16 @@ fun LaboratoryScreen(
 
             HorizontalDivider()
 
-            Text(AppText.t("lab_achievement_test"), style = MaterialTheme.typography.titleLarge)
+            Text(
+                AppText.t("lab_achievement_test"),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = themeColors.inkStrong,
+            )
             Text(
                 AppText.t("lab_achievement_test_description"),
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = themeColors.inkMuted,
             )
             Button(
                 onClick = onTriggerAchievementPopupTest,
@@ -85,14 +105,39 @@ fun LaboratoryScreen(
                 Text(AppText.t("lab_trigger_achievement_popup"))
             }
 
+            HorizontalDivider()
+
+            Text(
+                AppText.t("lab_welcome_intro_test"),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = themeColors.inkStrong,
+            )
+            Text(
+                AppText.t("lab_welcome_intro_test_description"),
+                style = MaterialTheme.typography.bodySmall,
+                color = themeColors.inkMuted,
+            )
+            Button(
+                onClick = onTriggerWelcomeIntro,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(AppText.t("lab_trigger_welcome_intro"))
+            }
+
             if (showDebugProControls) {
                 HorizontalDivider()
 
-                Text(AppText.t("lab_pro_debug"), style = MaterialTheme.typography.titleLarge)
+                Text(
+                    AppText.t("lab_pro_debug"),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = themeColors.inkStrong,
+                )
                 Text(
                     AppText.t("lab_pro_debug_description"),
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = themeColors.inkMuted,
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     Button(onClick = { onExtendDebugPro(1) }, modifier = Modifier.weight(1f)) {
@@ -117,11 +162,16 @@ fun LaboratoryScreen(
             if (showDebugSuperModeControls) {
                 HorizontalDivider()
 
-                Text(AppText.t("lab_super_mode_debug"), style = MaterialTheme.typography.titleLarge)
+                Text(
+                    AppText.t("lab_super_mode_debug"),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = themeColors.inkStrong,
+                )
                 Text(
                     AppText.t("lab_super_mode_debug_description"),
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = themeColors.inkMuted,
                 )
                 Button(
                     onClick = onEnterSuperMode,
@@ -133,7 +183,12 @@ fun LaboratoryScreen(
 
             HorizontalDivider()
 
-            Text(AppText.t("lab_report_test"), style = MaterialTheme.typography.titleLarge)
+            Text(
+                AppText.t("lab_report_test"),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = themeColors.inkStrong,
+            )
             Button(
                 onClick = onResetSummary,
                 modifier = Modifier.fillMaxWidth(),
@@ -153,7 +208,7 @@ fun LaboratoryScreen(
             Text(
                 AppText.t("lab_tip_after_resetting_restart_the_app_to_verify"),
                 style = MaterialTheme.typography.bodySmall,
-                color = Color.Gray,
+                color = themeColors.inkFaint,
             )
         }
     }

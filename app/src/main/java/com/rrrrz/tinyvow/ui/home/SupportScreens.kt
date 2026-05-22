@@ -32,6 +32,10 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.rrrrz.tinyvow.ui.theme.LocalThemeColors
+import com.rrrrz.tinyvow.ui.theme.TinyVowCard
+import com.rrrrz.tinyvow.ui.theme.TinyVowRadius
+import com.rrrrz.tinyvow.ui.theme.TinyVowSpacing
 
 private const val SUPPORT_EMAIL = "rrrr.zhao@gmail.com"
 
@@ -41,10 +45,18 @@ fun HelpFeedbackScreen(
     onBack: () -> Unit,
     onSendFeedback: () -> Unit,
 ) {
+    val themeColors = LocalThemeColors.current
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(AppText.t("me_help_and_feedback")) },
+                title = {
+                    Text(
+                        text = AppText.t("me_help_and_feedback"),
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        color = themeColors.inkStrong,
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = AppText.t("group_back"))
@@ -58,8 +70,11 @@ fun HelpFeedbackScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
+                .padding(
+                    horizontal = TinyVowSpacing.PageHorizontal,
+                    vertical = TinyVowSpacing.PageTop,
+                ),
+            verticalArrangement = Arrangement.spacedBy(TinyVowSpacing.SectionGap),
         ) {
             HelpCard(
                 title = AppText.t("support_why_do_permissions_need_to_be_enabled_manually"),
@@ -96,10 +111,18 @@ fun ContactUsScreen(
     onSendEmail: () -> Unit,
     onCopyEmail: () -> Unit,
 ) {
+    val themeColors = LocalThemeColors.current
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(AppText.t("me_contact_us")) },
+                title = {
+                    Text(
+                        text = AppText.t("me_contact_us"),
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        color = themeColors.inkStrong,
+                    )
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) {
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = AppText.t("group_back"))
@@ -113,32 +136,39 @@ fun ContactUsScreen(
                 .fillMaxSize()
                 .padding(innerPadding)
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp, vertical = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+                .padding(
+                    horizontal = TinyVowSpacing.PageHorizontal,
+                    vertical = TinyVowSpacing.CardVertical,
+                ),
+            verticalArrangement = Arrangement.spacedBy(TinyVowSpacing.SectionGap),
         ) {
-            Surface(
+            TinyVowCard(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(18.dp),
-                color = MaterialTheme.colorScheme.surface,
-                tonalElevation = 1.dp,
+                shape = RoundedCornerShape(TinyVowRadius.Card),
             ) {
                 Column(
-                    modifier = Modifier.padding(18.dp),
+                    modifier = Modifier.padding(
+                        horizontal = TinyVowSpacing.CardHorizontal,
+                        vertical = TinyVowSpacing.CardVertical,
+                    ),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     Text(
                         text = AppText.t("support_tiny_vow_support_email"),
                         style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = themeColors.inkStrong,
                     )
                     Text(
                         text = SUPPORT_EMAIL,
                         style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.SemiBold,
                         color = MaterialTheme.colorScheme.primary,
                     )
                     Text(
                         text = AppText.t("support_you_can_send_email_for_bugs_suggestions_subscription"),
                         style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = themeColors.inkMuted,
                     )
                 }
             }
@@ -171,24 +201,28 @@ private fun HelpCard(
     title: String,
     body: String,
 ) {
-    Surface(
+    val themeColors = LocalThemeColors.current
+    TinyVowCard(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(18.dp),
-        color = MaterialTheme.colorScheme.surface,
-        tonalElevation = 1.dp,
+        shape = RoundedCornerShape(TinyVowRadius.Card),
     ) {
         Column(
-            modifier = Modifier.padding(16.dp),
+            modifier = Modifier.padding(
+                horizontal = TinyVowSpacing.CardHorizontal,
+                vertical = TinyVowSpacing.CardVertical,
+            ),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
             Text(
                 text = title,
                 style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = themeColors.inkStrong,
             )
             Text(
                 text = body,
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = themeColors.inkMuted,
             )
         }
     }

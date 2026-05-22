@@ -23,9 +23,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.animation.core.*
 import androidx.compose.ui.unit.sp
 import androidx.compose.animation.*
@@ -33,6 +35,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -49,16 +52,15 @@ import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.GenericShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
@@ -82,9 +84,13 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Popup
@@ -142,11 +148,13 @@ import androidx.compose.foundation.BorderStroke
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.ZoneId
+import kotlin.math.atan2
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.min
 import kotlin.math.roundToLong
 import kotlin.math.sin
+import kotlin.math.sqrt
 import com.rrrrz.tinyvow.data.usage.MergedUsageRepository
 import com.rrrrz.tinyvow.data.usage.UsageRepository
 
@@ -163,8 +171,12 @@ import com.rrrrz.tinyvow.ui.rewards.AchievementBadge
 import com.rrrrz.tinyvow.ui.rewards.RewardInventoryScreen
 import com.rrrrz.tinyvow.ui.theme.DefaultThemeSeed
 import com.rrrrz.tinyvow.ui.theme.LocalThemeColors
+import com.rrrrz.tinyvow.ui.theme.TinyVowCard
+import com.rrrrz.tinyvow.ui.theme.TinyVowElevation
+import com.rrrrz.tinyvow.ui.theme.TinyVowRadius
+import com.rrrrz.tinyvow.ui.theme.TinyVowSpacing
 
-enum class Screen { HOME, REWARDS, STATS, ME, LABORATORY, HISTORY, THEME, HELP_FEEDBACK, CONTACT_US, SPECIAL_APPS, WEREAD_SPECIAL_APP }
+enum class Screen { HOME, REWARDS, STATS, ME, LABORATORY, HISTORY, THEME, LANGUAGE, HELP_FEEDBACK, CONTACT_US, SPECIAL_APPS, WEREAD_SPECIAL_APP, PERMISSION_DIAGNOSTICS }
 enum class RewardsSection { STORE, INVENTORY, ACHIEVEMENTS }
 
 private const val CONTACT_EMAIL = "rrrr.zhao@gmail.com"
@@ -173,6 +185,107 @@ private data class PendingSuperModeRequest(
     val message: String,
     val onAllowed: (() -> Unit)?,
 )
+
+private data class BottomNavDestination(
+    val screen: Screen,
+    val label: String,
+    val icon: ImageVector,
+)
+
+@Composable
+private fun QuietBottomNavigation(
+    currentScreen: Screen,
+    onSelect: (Screen) -> Unit,
+) {
+    val themeColors = LocalThemeColors.current
+    val destinations =
+        listOf(
+            BottomNavDestination(Screen.HOME, AppText.t("home_home"), Icons.Default.Home),
+            BottomNavDestination(Screen.STATS, AppText.t("home_report"), Icons.Default.BarChart),
+            BottomNavDestination(Screen.REWARDS, AppText.t("home_rewards"), Icons.Default.CardGiftcard),
+            BottomNavDestination(Screen.ME, AppText.t("home_me"), Icons.Default.Person),
+        )
+
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp,
+    ) {
+        Column {
+            HorizontalDivider(
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.28f),
+                thickness = 0.5.dp,
+            )
+            Row(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .height(76.dp)
+                        .padding(horizontal = 20.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                destinations.forEach { destination ->
+                    val selected = currentScreen == destination.screen
+                    QuietBottomNavigationItem(
+                        destination = destination,
+                        selected = selected,
+                        selectedContainer = themeColors.navSelectedContainer,
+                        selectedColor = themeColors.base,
+                        unselectedColor = themeColors.navUnselected,
+                        onClick = { onSelect(destination.screen) },
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun QuietBottomNavigationItem(
+    destination: BottomNavDestination,
+    selected: Boolean,
+    selectedContainer: Color,
+    selectedColor: Color,
+    unselectedColor: Color,
+    onClick: () -> Unit,
+) {
+    Column(
+        modifier =
+            Modifier
+                .width(64.dp)
+                .clip(RoundedCornerShape(18.dp))
+                .clickable(onClick = onClick)
+                .padding(vertical = 2.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(3.dp),
+    ) {
+        Box(
+            modifier =
+                Modifier
+                    .size(width = 38.dp, height = 32.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(if (selected) selectedContainer else Color.Transparent),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = destination.icon,
+                contentDescription = destination.label,
+                modifier = Modifier.size(22.dp),
+                tint = if (selected) selectedColor else unselectedColor,
+            )
+        }
+        Text(
+            text = destination.label,
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+            color = if (selected) selectedColor else unselectedColor,
+            maxLines = 1,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+        )
+    }
+}
 
 private object PermissionPromptIds {
     const val USAGE_ACCESS = "usage_access"
@@ -464,6 +577,7 @@ fun HomeRoute(
     val dismissedPermissionPrompts by preferences.dismissedPermissionPrompts.collectAsStateWithLifecycle(initialValue = emptySet(), lifecycle = lifecycle)
     val usageAccessDisclosureAccepted by preferences.usageAccessDisclosureAccepted.collectAsStateWithLifecycle(initialValue = false, lifecycle = lifecycle)
     val accessibilityDisclosureAccepted by preferences.accessibilityDisclosureAccepted.collectAsStateWithLifecycle(initialValue = false, lifecycle = lifecycle)
+    val welcomeIntroCompleted by preferences.welcomeIntroCompleted.collectAsStateWithLifecycle(initialValue = true, lifecycle = lifecycle)
     val superModeStoredState by preferences.superModeState.collectAsStateWithLifecycle(initialValue = SuperModeStoredState(), lifecycle = lifecycle)
     val userSession by authRepository.session.collectAsStateWithLifecycle(initialValue = null, lifecycle = lifecycle)
     val subscriptionEntitlement by subscriptionRepository.entitlement.collectAsStateWithLifecycle(lifecycle = lifecycle)
@@ -517,6 +631,7 @@ fun HomeRoute(
     }
 
     var showYesterdaySummary by remember { mutableStateOf(false) }
+    var showWelcomeIntro by remember { mutableStateOf(false) }
     var yesterdaySavedMinutes by remember { mutableIntStateOf(0) }
     var showSuperModeSettings by remember { mutableStateOf(false) }
     var showSuperModeCredentialDialog by remember { mutableStateOf(false) }
@@ -750,7 +865,20 @@ fun HomeRoute(
         }
     }
 
-    if (currentScreen != Screen.HOME) {
+    LaunchedEffect(welcomeIntroCompleted) {
+        if (!welcomeIntroCompleted) {
+            showWelcomeIntro = true
+        }
+    }
+
+    if (showWelcomeIntro) {
+        BackHandler {
+            coroutineScope.launch {
+                preferences.setWelcomeIntroCompleted(true)
+                showWelcomeIntro = false
+            }
+        }
+    } else if (currentScreen != Screen.HOME) {
         BackHandler {
             if (currentScreen == Screen.REWARDS && rewardsSection != RewardsSection.STORE) {
                 rewardsSection = RewardsSection.STORE
@@ -760,7 +888,8 @@ fun HomeRoute(
                 }
                 currentScreen = when (currentScreen) {
                     Screen.WEREAD_SPECIAL_APP -> Screen.SPECIAL_APPS
-                    Screen.LABORATORY, Screen.HISTORY, Screen.THEME, Screen.HELP_FEEDBACK, Screen.CONTACT_US, Screen.SPECIAL_APPS -> Screen.ME
+                    Screen.PERMISSION_DIAGNOSTICS -> Screen.HOME
+                    Screen.LABORATORY, Screen.HISTORY, Screen.THEME, Screen.LANGUAGE, Screen.HELP_FEEDBACK, Screen.CONTACT_US, Screen.SPECIAL_APPS -> Screen.ME
                     else -> Screen.HOME
                 }
             }
@@ -801,55 +930,15 @@ fun HomeRoute(
         },
         bottomBar = {
             if (currentScreen == Screen.HOME || currentScreen == Screen.REWARDS || currentScreen == Screen.STATS || currentScreen == Screen.ME) {
-                Column {
-                    HorizontalDivider(
-                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
-                        thickness = 0.5.dp,
-                    )
-                    NavigationBar(
-                        containerColor = MaterialTheme.colorScheme.surface,
-                        tonalElevation = 0.dp,
-                    ) {
-                        val screens = listOf(
-                            Triple(Screen.HOME, AppText.t("home_home"), Icons.Default.Home),
-                            Triple(Screen.STATS, AppText.t("home_report"), Icons.Default.BarChart),
-                            Triple(Screen.REWARDS, AppText.t("home_rewards"), Icons.Default.CardGiftcard),
-                            Triple(Screen.ME, AppText.t("home_me"), Icons.Default.Person)
-                        )
-                        screens.forEach { (screen, label, icon) ->
-                            val selected = currentScreen == screen || (screen == Screen.REWARDS && (currentScreen == Screen.REWARDS))
-                            NavigationBarItem(
-                                selected = selected,
-                                onClick = {
-                                    if (screen == Screen.REWARDS) {
-                                        rewardsSection = RewardsSection.STORE
-                                    }
-                                    currentScreen = screen
-                                },
-                                icon = {
-                                    Icon(
-                                        imageVector = icon,
-                                        contentDescription = label,
-                                        modifier = Modifier.size(22.dp),
-                                    )
-                                },
-                                label = {
-                                    Text(
-                                        text = label,
-                                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-                                    )
-                                },
-                                colors = NavigationBarItemDefaults.colors(
-                                    selectedIconColor = MaterialTheme.colorScheme.primary,
-                                    selectedTextColor = MaterialTheme.colorScheme.primary,
-                                    unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    indicatorColor = MaterialTheme.colorScheme.primaryContainer,
-                                ),
-                            )
+                QuietBottomNavigation(
+                    currentScreen = currentScreen,
+                    onSelect = { screen ->
+                        if (screen == Screen.REWARDS) {
+                            rewardsSection = RewardsSection.STORE
                         }
-                    }
-                }
+                        currentScreen = screen
+                    },
+                )
             }
         }
     ) { innerPadding ->
@@ -895,6 +984,7 @@ fun HomeRoute(
                         onRequestBatteryOptimization = {
                             pendingSensitiveDisclosure = SensitivePermissionDisclosure.BATTERY_OPTIMIZATION
                         },
+                        onOpenPermissionDiagnostics = { currentScreen = Screen.PERMISSION_DIAGNOSTICS },
                         isAutoStartDismissed = isAutoStartDismissed,
                         dismissedPermissionPrompts = dismissedPermissionPrompts,
                         onSetAutoStartDismissed = {
@@ -1024,6 +1114,43 @@ fun HomeRoute(
                         )
                     }
                 }
+                Screen.PERMISSION_DIAGNOSTICS -> {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(bottom = innerPadding.calculateBottomPadding()),
+                    ) {
+                        DiagnosticSettingsPage(
+                            usageAccessGranted = effectiveUsageAccessStatus == UsageAccessStatus.GRANTED,
+                            accessibilityServiceEnabled = effectiveAccessibilityServiceEnabled,
+                            isAutoStartDismissed = isAutoStartDismissed,
+                            isIgnoringBattery = isIgnoringBattery,
+                            notificationPermissionGranted = notificationPermissionGranted,
+                            statusColor = if (effectiveUsageAccessStatus == UsageAccessStatus.GRANTED) {
+                                MaterialTheme.colorScheme.primary
+                            } else {
+                                MaterialTheme.colorScheme.error
+                            },
+                            onBack = { currentScreen = Screen.HOME },
+                            onOpenUsageAccessSettings = { requestUsageAccessSettings() },
+                            onOpenAccessibilitySettings = { requestAccessibilitySettings() },
+                            onOpenAutoStartSettings = {
+                                pendingSensitiveDisclosure = SensitivePermissionDisclosure.BACKGROUND_START
+                            },
+                            onSetAutoStartDismissed = {
+                                coroutineScope.launch { preferences.setAutoStartDismissed(true) }
+                            },
+                            onRequestBatteryOptimization = {
+                                pendingSensitiveDisclosure = SensitivePermissionDisclosure.BATTERY_OPTIMIZATION
+                            },
+                            onRequestNotificationPermission = {
+                                if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.TIRAMISU) {
+                                    pendingSensitiveDisclosure = SensitivePermissionDisclosure.NOTIFICATION
+                                }
+                            },
+                        )
+                    }
+                }
                 Screen.ME -> {
                     Box(
                         modifier = Modifier
@@ -1058,11 +1185,6 @@ fun HomeRoute(
                         isIgnoringBattery = isIgnoringBattery,
                         notificationPermissionGranted = notificationPermissionGranted,
                         dismissedPermissionPrompts = dismissedPermissionPrompts,
-                        onSelectAppLanguage = { language ->
-                            coroutineScope.launch {
-                                preferences.setSelectedAppLanguage(language)
-                            }
-                        },
                         onUpdateProfileName = { displayName ->
                             coroutineScope.launch {
                                 preferences.setProfileDisplayName(displayName)
@@ -1124,6 +1246,7 @@ fun HomeRoute(
                         onNavigateToLaboratory = { currentScreen = Screen.LABORATORY },
                         onNavigateToHistory = { currentScreen = Screen.HISTORY },
                         onNavigateToThemeSettings = { currentScreen = Screen.THEME },
+                        onNavigateToLanguageSettings = { currentScreen = Screen.LANGUAGE },
                         onNavigateToHelpFeedback = { currentScreen = Screen.HELP_FEEDBACK },
                         onNavigateToContactUs = { currentScreen = Screen.CONTACT_US },
                         onNavigateToSpecialAppSettings = { currentScreen = Screen.SPECIAL_APPS },
@@ -1285,6 +1408,17 @@ fun HomeRoute(
                         onBack = { currentScreen = Screen.ME },
                     )
                 }
+                Screen.LANGUAGE -> {
+                    LanguageSettingsScreen(
+                        selected = selectedAppLanguage,
+                        onSelect = { language ->
+                            coroutineScope.launch {
+                                preferences.setSelectedAppLanguage(language)
+                            }
+                        },
+                        onBack = { currentScreen = Screen.ME },
+                    )
+                }
                 Screen.SPECIAL_APPS -> {
                     SpecialAppsScreen(
                         onBack = { currentScreen = Screen.ME },
@@ -1362,6 +1496,7 @@ fun HomeRoute(
                         },
                         onResetSummary = { coroutineScope.launch { preferences.setLastSummaryShownDate("reset") } },
                         onTriggerSummary = { showYesterdaySummary = true },
+                        onTriggerWelcomeIntro = { showWelcomeIntro = true },
                         showDebugProControls = BuildConfig.DEBUG,
                         onExtendDebugPro = { days ->
                             coroutineScope.launch {
@@ -1387,6 +1522,23 @@ fun HomeRoute(
                 }
             }
         }
+    }
+
+    if (showWelcomeIntro) {
+        WelcomeIntroScreen(
+            onComplete = {
+                coroutineScope.launch {
+                    preferences.setWelcomeIntroCompleted(true)
+                    showWelcomeIntro = false
+                }
+            },
+            onDismiss = {
+                coroutineScope.launch {
+                    preferences.setWelcomeIntroCompleted(true)
+                    showWelcomeIntro = false
+                }
+            },
+        )
     }
 
     if (showSuperModeSettings) {
@@ -1972,6 +2124,7 @@ fun HomeScreen(
     onRequestNotificationPermission: () -> Unit,
     onOpenAutoStartSettings: () -> Unit,
     onRequestBatteryOptimization: () -> Unit,
+    onOpenPermissionDiagnostics: () -> Unit,
     isAutoStartDismissed: Boolean,
     dismissedPermissionPrompts: Set<String>,
     onSetAutoStartDismissed: () -> Unit,
@@ -2024,7 +2177,6 @@ fun HomeScreen(
     val usageAccessGranted = usageAccessStatus == UsageAccessStatus.GRANTED
     val statusColor = if (usageAccessGranted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
 
-    var showDiagnosticMenu by remember { mutableStateOf(false) }
     val overviewState =
         remember(
             context,
@@ -2085,12 +2237,16 @@ fun HomeScreen(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = 16.dp, end = 16.dp, top = 10.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+                    .padding(
+                        start = TinyVowSpacing.PageHorizontal,
+                        end = TinyVowSpacing.PageHorizontal,
+                        top = TinyVowSpacing.PageTop,
+                    ),
+                verticalArrangement = Arrangement.spacedBy(TinyVowSpacing.CardGap)
             ) {
                 if (usageAccessGranted) {
                     HomeOverviewHeader(dateLabel = overviewState.dateLabel)
-                    HomeOverviewSplitCards(
+                    HomeOverviewPaperCard(
                         state = overviewState,
                         modifier = Modifier.fillMaxWidth(),
                     )
@@ -2099,7 +2255,7 @@ fun HomeScreen(
                 if (pendingPermissionPrompts.isNotEmpty()) {
                     CompactPermissionBanner(
                         prompts = pendingPermissionPrompts,
-                        onOpen = { showDiagnosticMenu = true },
+                        onOpen = onOpenPermissionDiagnostics,
                         onDismiss = {
                             onDismissPermissionPrompts(pendingPermissionPrompts.map { it.first })
                         },
@@ -2113,8 +2269,12 @@ fun HomeScreen(
                     modifier =
                         Modifier
                             .fillMaxWidth()
-                            .padding(start = 16.dp, end = 16.dp, top = dashboardTopSpacing),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                            .padding(
+                                start = TinyVowSpacing.PageHorizontal,
+                                end = TinyVowSpacing.PageHorizontal,
+                                top = dashboardTopSpacing,
+                            ),
+                    verticalArrangement = Arrangement.spacedBy(TinyVowSpacing.CardGap),
                 ) {
                     GroupDashboard(
                         groupsWithApps = groupsWithApps,
@@ -2168,49 +2328,7 @@ fun HomeScreen(
 
             Spacer(modifier = Modifier.height(20.dp))
         }
-
-        if (showDiagnosticMenu) {
-            @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
-            androidx.compose.material3.ModalBottomSheet(
-                onDismissRequest = { showDiagnosticMenu = false }
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 20.dp, vertical = 16.dp)
-                        .verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(16.dp),
-                ) {
-                    Text(
-                        text = stringResource(R.string.action_diagnostic_settings),
-                        style = MaterialTheme.typography.titleLarge,
-                    )
-                    Text(
-                        text = stringResource(R.string.settings_menu_subtitle),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                    PermissionProcessList(
-                        isMenuMode = true,
-                        usageAccessGranted = usageAccessGranted,
-                        accessibilityServiceEnabled = accessibilityServiceEnabled,
-                        isAutoStartDismissed = isAutoStartDismissed,
-                        isIgnoringBattery = isIgnoringBattery,
-                        notificationPermissionGranted = notificationPermissionGranted,
-                        statusColor = statusColor,
-                        onOpenUsageAccessSettings = onOpenUsageAccessSettings,
-                        onOpenAccessibilitySettings = onOpenAccessibilitySettings,
-                        onOpenAutoStartSettings = onOpenAutoStartSettings,
-                        onSetAutoStartDismissed = onSetAutoStartDismissed,
-                        onRequestBatteryOptimization = onRequestBatteryOptimization,
-                        onRequestNotificationPermission = onRequestNotificationPermission,
-                    )
-
-                    Spacer(modifier = Modifier.height(48.dp))
-                }
-        }
     }
-}
 }
 
 @Composable
@@ -2219,6 +2337,7 @@ private fun CompactPermissionBanner(
     onOpen: () -> Unit,
     onDismiss: () -> Unit,
 ) {
+    val themeColors = LocalThemeColors.current
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
@@ -2239,7 +2358,7 @@ private fun CompactPermissionBanner(
                 text = AppText.t("home_permission_suggestions_count", prompts.size),
                 modifier = Modifier.weight(1f),
                 style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSurface,
+                color = themeColors.ink,
                 maxLines = 1,
                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
             )
@@ -2249,6 +2368,586 @@ private fun CompactPermissionBanner(
             TextButton(onClick = onDismiss, contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp)) {
                 Text(AppText.t("home_dismiss"), maxLines = 1)
             }
+        }
+    }
+}
+
+@Composable
+private fun HomeOverviewPaperCard(
+    state: HomeOverviewUiState,
+    modifier: Modifier = Modifier,
+) {
+    val themeColors = LocalThemeColors.current
+    val controlRatio =
+        if (state.control.totalGroups <= 0) 1f else state.control.completedGroups.toFloat() / state.control.totalGroups
+    val encourageRatio =
+        if (state.encourage.totalGroups <= 0) 1f else state.encourage.completedGroups.toFloat() / state.encourage.totalGroups
+    val score =
+        ((controlRatio.coerceIn(0f, 1f) * 52f) +
+            (encourageRatio.coerceIn(0f, 1f) * 34f) +
+            min(state.control.todaySavedMinutes / 60f, 1f) * 14f)
+            .toInt()
+            .coerceIn(0, 100)
+    val ringTrackColor = themeColors.inkFaint.copy(alpha = 0.30f)
+
+    TinyVowCard(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(TinyVowRadius.FeaturedCard),
+        borderAlpha = 0.30f,
+        shadowElevation = TinyVowElevation.FeaturedCard,
+    ) {
+        BoxWithConstraints(
+            modifier = Modifier.padding(
+                horizontal = TinyVowSpacing.CardHorizontal,
+                vertical = TinyVowSpacing.CardVertical,
+            ),
+        ) {
+            val centerSize = if (maxWidth < 360.dp) 108.dp else 116.dp
+            val wingHeight = if (maxWidth < 360.dp) 232.dp else 242.dp
+            val centerGap = centerSize - 38.dp
+            val density = LocalDensity.current
+            val centerGapPx = with(density) { centerGap.toPx() }
+            val notchRadiusPx = with(density) { (centerSize / 2 + 26.dp).toPx() }
+            val compact = maxWidth < 380.dp
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(wingHeight),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(wingHeight),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        HomeOverviewWingPanel(
+                            isLeft = true,
+                            title = AppText.t("home_commitment_panel"),
+                            label = AppText.t("home_saved_today"),
+                            value = state.control.todaySavedMinutes.toString(),
+                            unit = AppText.t("group_minutes"),
+                            progress = AppText.t("home_commitment_progress_value", state.control.completedGroups, state.control.totalGroups),
+                            streak = AppText.t("home_control_streak_value", state.control.streakDays),
+                            primaryMetricLabel = AppText.t("home_total_saved"),
+                            primaryMetricValue = state.history.totalSavedMinutes.toString(),
+                            primaryMetricUnit = AppText.t("group_minutes"),
+                            secondaryMetricLabel = AppText.t("home_equivalent_live_more"),
+                            secondaryMetricValue = roundedDaysValue(state.history.extendedLifeMinutes).toString(),
+                            secondaryMetricUnit = AppText.t("home_day_unit"),
+                            color = themeColors.controlContainer,
+                            contentColor = themeColors.onControlContainer,
+                            accent = themeColors.control,
+                            compact = compact,
+                            centerGapPx = centerGapPx,
+                            notchRadiusPx = notchRadiusPx,
+                            modifier = Modifier.weight(1f),
+                        )
+                        Spacer(modifier = Modifier.width(centerGap))
+                        HomeOverviewWingPanel(
+                            isLeft = false,
+                            title = AppText.t("home_encouragement_panel"),
+                            label = AppText.t("home_earned_today"),
+                            value = formatHomePointWholeValue(state.encourage.todayEarnedPoints),
+                            unit = AppText.t("group_points"),
+                            progress = AppText.t("home_encouragement_progress_value", state.encourage.completedGroups, state.encourage.totalGroups),
+                            streak = AppText.t("home_encourage_streak_value", state.encourage.streakDays),
+                            primaryMetricLabel = AppText.t("home_total_earned"),
+                            primaryMetricValue = formatHomePointValue(state.history.totalEarnedPoints),
+                            primaryMetricUnit = AppText.t("group_points"),
+                            secondaryMetricLabel = AppText.t("home_current_remaining"),
+                            secondaryMetricValue = formatHomePointValue(state.history.currentPoints),
+                            secondaryMetricUnit = AppText.t("group_points"),
+                            color = themeColors.encourageContainer,
+                            contentColor = themeColors.onEncourageContainer,
+                            accent = themeColors.encourage,
+                            compact = compact,
+                            centerGapPx = centerGapPx,
+                            notchRadiusPx = notchRadiusPx,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+
+                    HomeOverviewScoreDial(
+                        score = score,
+                        controlRatio = controlRatio,
+                        ringTrackColor = ringTrackColor,
+                        progressColor = themeColors.progressAccent,
+                        controlColor = themeColors.base.copy(alpha = 0.82f),
+                        scoreColor = themeColors.inkStrong,
+                        modifier = Modifier.size(centerSize),
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun HomeOverviewScoreDial(
+    score: Int,
+    controlRatio: Float,
+    ringTrackColor: Color,
+    progressColor: Color,
+    controlColor: Color,
+    scoreColor: Color,
+    modifier: Modifier = Modifier,
+) {
+    Box(
+        modifier = modifier,
+        contentAlignment = Alignment.Center,
+    ) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val strokeWidth = 16.dp.toPx()
+            drawArc(
+                color = ringTrackColor,
+                startAngle = -90f,
+                sweepAngle = 360f,
+                useCenter = false,
+                style = Stroke(width = strokeWidth, cap = StrokeCap.Round),
+            )
+            drawArc(
+                color = progressColor,
+                startAngle = -90f,
+                sweepAngle = 360f * (score / 100f),
+                useCenter = false,
+                style = Stroke(width = strokeWidth, cap = StrokeCap.Round),
+            )
+            drawArc(
+                color = controlColor,
+                startAngle = -90f,
+                sweepAngle = 360f * controlRatio.coerceIn(0f, 1f) * 0.28f,
+                useCenter = false,
+                style = Stroke(width = strokeWidth, cap = StrokeCap.Round),
+            )
+        }
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(
+                text = score.toString(),
+                style = MaterialTheme.typography.displaySmall.copy(fontSize = 44.sp),
+                fontWeight = FontWeight.ExtraBold,
+                color = scoreColor,
+            )
+            Text(
+                text = AppText.t(homeOverviewScoreStatusKey(score, LocalDate.now())),
+                modifier = Modifier.padding(top = 0.dp),
+                style = MaterialTheme.typography.labelLarge.copy(fontSize = 14.sp),
+                fontWeight = FontWeight.Bold,
+                color = progressColor,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+private const val HOME_SCORE_STATUS_VARIANTS_PER_STAGE = 20
+
+private fun homeOverviewScoreStatusKey(score: Int, date: LocalDate): String {
+    val stage =
+        when (score.coerceIn(0, 100)) {
+            in 0..19 -> 1
+            in 20..39 -> 2
+            in 40..59 -> 3
+            in 60..79 -> 4
+            else -> 5
+        }
+    val variant =
+        (((date.toEpochDay() * 31L) + (stage * 17L)).floorMod(HOME_SCORE_STATUS_VARIANTS_PER_STAGE.toLong()) + 1L).toInt()
+    return "home_score_status_stage%d_%02d".format(java.util.Locale.US, stage, variant)
+}
+
+@Composable
+private fun HomeOverviewWingPanel(
+    isLeft: Boolean,
+    title: String,
+    label: String,
+    value: String,
+    unit: String,
+    progress: String,
+    streak: String,
+    primaryMetricLabel: String,
+    primaryMetricValue: String,
+    primaryMetricUnit: String,
+    secondaryMetricLabel: String,
+    secondaryMetricValue: String,
+    secondaryMetricUnit: String,
+    color: Color,
+    contentColor: Color,
+    accent: Color,
+    compact: Boolean,
+    centerGapPx: Float,
+    notchRadiusPx: Float,
+    modifier: Modifier = Modifier,
+) {
+    val panelShape = remember(isLeft, centerGapPx, notchRadiusPx) {
+        homeOverviewWingShape(
+            isLeft = isLeft,
+            centerGapPx = centerGapPx,
+            notchRadiusPx = notchRadiusPx,
+        )
+    }
+    val horizontalAlignment = if (isLeft) Alignment.Start else Alignment.End
+    val textAlign =
+        if (isLeft) {
+            androidx.compose.ui.text.style.TextAlign.Start
+        } else {
+            androidx.compose.ui.text.style.TextAlign.End
+        }
+    Surface(
+        modifier = modifier.fillMaxHeight(),
+        shape = panelShape,
+        color = color,
+        border = BorderStroke(1.dp, accent.copy(alpha = 0.10f)),
+    ) {
+        Column(
+            modifier = Modifier.padding(
+                start = if (isLeft) 14.dp else if (compact) 18.dp else 22.dp,
+                end = if (isLeft) if (compact) 18.dp else 22.dp else 14.dp,
+                top = 14.dp,
+                bottom = 14.dp,
+            ),
+            horizontalAlignment = horizontalAlignment,
+            verticalArrangement = Arrangement.spacedBy(if (compact) 7.dp else 8.dp),
+        ) {
+            Column(horizontalAlignment = horizontalAlignment, verticalArrangement = Arrangement.spacedBy(1.dp)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium.copy(
+                        fontSize = if (compact) 17.sp else 18.sp,
+                        lineHeight = if (compact) 20.sp else 21.sp,
+                    ),
+                    fontWeight = FontWeight.Bold,
+                    color = contentColor,
+                    textAlign = textAlign,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.labelMedium.copy(
+                        fontSize = if (compact) 11.sp else 12.sp,
+                        lineHeight = 15.sp,
+                    ),
+                    color = contentColor.copy(alpha = 0.66f),
+                    textAlign = textAlign,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+
+            Column(horizontalAlignment = horizontalAlignment, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = if (isLeft) Arrangement.Start else Arrangement.End,
+                    verticalAlignment = Alignment.Bottom,
+                ) {
+                    Text(
+                        text = value,
+                        style =
+                            if (compact) {
+                                MaterialTheme.typography.headlineMedium.copy(fontSize = 30.sp, lineHeight = 34.sp)
+                            } else {
+                                MaterialTheme.typography.headlineLarge.copy(fontSize = 34.sp, lineHeight = 38.sp)
+                            },
+                        fontWeight = FontWeight.ExtraBold,
+                        color = contentColor,
+                        maxLines = 1,
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = unit,
+                        style = MaterialTheme.typography.labelLarge.copy(
+                            fontSize = if (compact) 11.5.sp else 12.5.sp,
+                            lineHeight = 15.sp,
+                        ),
+                        fontWeight = FontWeight.SemiBold,
+                        color = contentColor.copy(alpha = 0.72f),
+                        modifier = Modifier.padding(bottom = 5.dp),
+                        maxLines = 1,
+                    )
+                }
+                HomeOverviewWingPillRow(
+                    first = progress,
+                    second = streak,
+                    contentColor = contentColor,
+                    alignEnd = !isLeft,
+                )
+            }
+
+            Column(horizontalAlignment = horizontalAlignment, verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                HomeOverviewWingMiniMetric(
+                    label = primaryMetricLabel,
+                    value = primaryMetricValue,
+                    unit = primaryMetricUnit,
+                    contentColor = contentColor,
+                    alignEnd = !isLeft,
+                )
+                HomeOverviewWingMiniMetric(
+                    label = secondaryMetricLabel,
+                    value = secondaryMetricValue,
+                    unit = secondaryMetricUnit,
+                    contentColor = contentColor,
+                    alignEnd = !isLeft,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun HomeOverviewWingPillRow(
+    first: String,
+    second: String,
+    contentColor: Color,
+    alignEnd: Boolean,
+) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalAlignment = if (alignEnd) Alignment.End else Alignment.Start,
+        verticalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        HomeOverviewWingPill(text = first, contentColor = contentColor, alignEnd = alignEnd)
+        HomeOverviewWingPill(text = second, contentColor = contentColor, alignEnd = alignEnd)
+    }
+}
+
+@Composable
+private fun HomeOverviewWingPill(
+    text: String,
+    contentColor: Color,
+    alignEnd: Boolean,
+) {
+    if (text.isBlank()) return
+    Text(
+        text = homeOverviewEmphasizedNumberText(text, contentColor),
+        modifier = Modifier.fillMaxWidth(),
+        style = MaterialTheme.typography.labelMedium.copy(
+            fontSize = 11.5.sp,
+            lineHeight = 16.sp,
+        ),
+        fontWeight = FontWeight.Medium,
+        color = contentColor.copy(alpha = 0.68f),
+        textAlign =
+            if (alignEnd) {
+                androidx.compose.ui.text.style.TextAlign.End
+            } else {
+                androidx.compose.ui.text.style.TextAlign.Start
+            },
+        maxLines = 1,
+        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+    )
+}
+
+private fun homeOverviewEmphasizedNumberText(
+    text: String,
+    contentColor: Color,
+) = buildAnnotatedString {
+    var cursor = 0
+    Regex("""[\d.,/]+""").findAll(text).forEach { match ->
+        append(text.substring(cursor, match.range.first))
+        withStyle(
+            SpanStyle(
+                fontWeight = FontWeight.Bold,
+                color = contentColor.copy(alpha = 0.88f),
+            ),
+        ) {
+            append(match.value)
+        }
+        cursor = match.range.last + 1
+    }
+    append(text.substring(cursor))
+}
+
+@Composable
+private fun HomeOverviewWingMiniMetric(
+    label: String,
+    value: String,
+    unit: String,
+    contentColor: Color,
+    alignEnd: Boolean,
+) {
+    val textAlign =
+        if (alignEnd) {
+            androidx.compose.ui.text.style.TextAlign.End
+        } else {
+            androidx.compose.ui.text.style.TextAlign.Start
+        }
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalAlignment = if (alignEnd) Alignment.End else Alignment.Start,
+        verticalArrangement = Arrangement.spacedBy(0.dp),
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall.copy(
+                fontSize = 10.5.sp,
+                lineHeight = 14.sp,
+            ),
+            color = contentColor.copy(alpha = 0.58f),
+            textAlign = textAlign,
+            maxLines = 1,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Text(
+            text = "$value $unit",
+            style = MaterialTheme.typography.labelLarge.copy(
+                fontSize = 13.sp,
+                lineHeight = 17.sp,
+            ),
+            fontWeight = FontWeight.Bold,
+            color = contentColor.copy(alpha = 0.88f),
+            textAlign = textAlign,
+            maxLines = 1,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            modifier = Modifier.fillMaxWidth(),
+        )
+    }
+}
+
+private fun homeOverviewWingShape(
+    isLeft: Boolean,
+    centerGapPx: Float,
+    notchRadiusPx: Float,
+) =
+    GenericShape { size, _ ->
+        val outerRadius = min(size.width * 0.18f, size.height * 0.11f)
+        val circleCenterOffset = centerGapPx / 2f
+        val radius = notchRadiusPx.coerceAtLeast(circleCenterOffset + 1f)
+        val halfArcHeight = sqrt((radius * radius - circleCenterOffset * circleCenterOffset).coerceAtLeast(0f))
+            .coerceAtMost(size.height / 2f - outerRadius)
+        val centerY = size.height / 2f
+        val notchTop = centerY - halfArcHeight
+        val notchBottom = centerY + halfArcHeight
+        if (isLeft) {
+            val circleCenterX = size.width + circleCenterOffset
+            val startAngle = homeOverviewAngleDegrees(
+                x = size.width - circleCenterX,
+                y = notchTop - centerY,
+            )
+            val endAngle = homeOverviewAngleDegrees(
+                x = size.width - circleCenterX,
+                y = notchBottom - centerY,
+            )
+            val sweepAngle = homeOverviewCounterClockwiseSweep(startAngle, endAngle)
+            val circleBounds = Rect(
+                left = circleCenterX - radius,
+                top = centerY - radius,
+                right = circleCenterX + radius,
+                bottom = centerY + radius,
+            )
+            moveTo(0f, 0f)
+            lineTo(size.width - outerRadius, 0f)
+            quadraticTo(size.width, 0f, size.width, outerRadius)
+            lineTo(size.width, notchTop)
+            arcTo(circleBounds, startAngle, sweepAngle, false)
+            lineTo(size.width, size.height - outerRadius)
+            quadraticTo(size.width, size.height, size.width - outerRadius, size.height)
+            lineTo(outerRadius, size.height)
+            quadraticTo(0f, size.height, 0f, size.height - outerRadius)
+            lineTo(0f, outerRadius)
+            quadraticTo(0f, 0f, outerRadius, 0f)
+            close()
+        } else {
+            val circleCenterX = -circleCenterOffset
+            val startAngle = homeOverviewAngleDegrees(
+                x = -circleCenterX,
+                y = notchBottom - centerY,
+            )
+            val endAngle = homeOverviewAngleDegrees(
+                x = -circleCenterX,
+                y = notchTop - centerY,
+            )
+            val sweepAngle = homeOverviewCounterClockwiseSweep(startAngle, endAngle)
+            val circleBounds = Rect(
+                left = circleCenterX - radius,
+                top = centerY - radius,
+                right = circleCenterX + radius,
+                bottom = centerY + radius,
+            )
+            moveTo(outerRadius, 0f)
+            lineTo(size.width - outerRadius, 0f)
+            quadraticTo(size.width, 0f, size.width, outerRadius)
+            lineTo(size.width, size.height - outerRadius)
+            quadraticTo(size.width, size.height, size.width - outerRadius, size.height)
+            lineTo(outerRadius, size.height)
+            quadraticTo(0f, size.height, 0f, size.height - outerRadius)
+            lineTo(0f, notchBottom)
+            arcTo(circleBounds, startAngle, sweepAngle, false)
+            lineTo(0f, outerRadius)
+            quadraticTo(0f, 0f, outerRadius, 0f)
+            close()
+        }
+    }
+
+private fun homeOverviewAngleDegrees(x: Float, y: Float): Float =
+    (atan2(y, x) * 180f / PI.toFloat())
+
+private fun homeOverviewCounterClockwiseSweep(startAngle: Float, endAngle: Float): Float {
+    var sweep = endAngle - startAngle
+    while (sweep >= 0f) sweep -= 360f
+    return sweep
+}
+
+@Composable
+private fun HomeOverviewPaperMetric(
+    label: String,
+    value: String,
+    unit: String,
+    supporting: String,
+    color: Color,
+    contentColor: Color,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(20.dp),
+        color = color,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.22f)),
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(5.dp),
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelMedium,
+                color = contentColor.copy(alpha = 0.78f),
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            )
+            Row(verticalAlignment = Alignment.Bottom) {
+                Text(
+                    text = value,
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = contentColor,
+                    maxLines = 1,
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text(
+                    text = unit,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = contentColor.copy(alpha = 0.72f),
+                    modifier = Modifier.padding(bottom = 3.dp),
+                    maxLines = 1,
+                )
+            }
+            Text(
+                text = supporting,
+                style = MaterialTheme.typography.labelSmall,
+                color = contentColor.copy(alpha = 0.68f),
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            )
         }
     }
 }
@@ -2286,7 +2985,6 @@ private fun HomeOverviewSplitCards(
                     modifier = Modifier.fillMaxSize(),
                     verticalArrangement = Arrangement.SpaceBetween
                 ) {
-                    // Header (Title) - Dots removed, enlarged to 18.sp
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.Start,
@@ -2321,8 +3019,8 @@ private fun HomeOverviewSplitCards(
                                 text = state.control.todaySavedMinutes.toString(),
                                 style = MaterialTheme.typography.displaySmall.copy(
                                     fontSize = 36.sp,
-                                    fontWeight = FontWeight.Black,
-                                    letterSpacing = (-1).sp
+                                    fontWeight = FontWeight.ExtraBold,
+                                    letterSpacing = 0.sp
                                 ),
                                 color = Color.White
                             )
@@ -2391,7 +3089,6 @@ private fun HomeOverviewSplitCards(
                     verticalArrangement = Arrangement.SpaceBetween,
                     horizontalAlignment = Alignment.End
                 ) {
-                    // Header (Title) - Dots removed, enlarged to 18.sp
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.End,
@@ -2438,8 +3135,8 @@ private fun HomeOverviewSplitCards(
                                 text = formatHomePointWholeValue(state.encourage.todayEarnedPoints),
                                 style = MaterialTheme.typography.displaySmall.copy(
                                     fontSize = 36.sp,
-                                    fontWeight = FontWeight.Black,
-                                    letterSpacing = (-1).sp
+                                    fontWeight = FontWeight.ExtraBold,
+                                    letterSpacing = 0.sp
                                 ),
                                 color = Color.White
                             )
@@ -2907,13 +3604,16 @@ private fun HomeEnginePanel(
 
     Surface(
         modifier = modifier,
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(TinyVowRadius.ItemCard),
         color = containerColor,
         tonalElevation = 0.dp,
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 14.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.padding(
+                horizontal = TinyVowSpacing.CompactCardHorizontal,
+                vertical = TinyVowSpacing.CompactCardVertical,
+            ),
+            verticalArrangement = Arrangement.spacedBy(TinyVowSpacing.CardGap),
             horizontalAlignment = horizontalAlignment,
         ) {
             Text(
@@ -3188,6 +3888,92 @@ private fun buildHomeOverviewUiState(
     )
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DiagnosticSettingsPage(
+    usageAccessGranted: Boolean,
+    accessibilityServiceEnabled: Boolean,
+    isAutoStartDismissed: Boolean,
+    isIgnoringBattery: Boolean,
+    notificationPermissionGranted: Boolean,
+    statusColor: androidx.compose.ui.graphics.Color,
+    onBack: () -> Unit,
+    onOpenUsageAccessSettings: () -> Unit,
+    onOpenAccessibilitySettings: () -> Unit,
+    onOpenAutoStartSettings: () -> Unit,
+    onSetAutoStartDismissed: () -> Unit,
+    onRequestBatteryOptimization: () -> Unit,
+    onRequestNotificationPermission: () -> Unit,
+) {
+    val themeColors = LocalThemeColors.current
+    BackHandler(onBack = onBack)
+    Scaffold(
+        topBar = {
+            TopAppBar(
+                title = {
+                    Text(
+                        text = stringResource(R.string.action_diagnostic_settings),
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        color = themeColors.inkStrong,
+                    )
+                },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = AppText.t("group_back"))
+                    }
+                },
+            )
+        },
+    ) { innerPadding ->
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background)
+                .padding(innerPadding)
+                .verticalScroll(rememberScrollState())
+                .padding(
+                    horizontal = TinyVowSpacing.PageHorizontal,
+                    vertical = 0.dp,
+                ),
+            verticalArrangement = Arrangement.spacedBy(TinyVowSpacing.SectionGap),
+        ) {
+            TinyVowCard(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(TinyVowRadius.FeaturedCard),
+                color = MaterialTheme.colorScheme.primaryContainer,
+                borderAlpha = 0.18f,
+            ) {
+                Text(
+                    text = stringResource(R.string.settings_menu_subtitle),
+                    modifier = Modifier.padding(
+                        horizontal = TinyVowSpacing.CardHorizontal,
+                        vertical = TinyVowSpacing.CardVertical,
+                    ),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = themeColors.ink.copy(alpha = 0.78f),
+                )
+            }
+            PermissionProcessList(
+                isMenuMode = true,
+                usageAccessGranted = usageAccessGranted,
+                accessibilityServiceEnabled = accessibilityServiceEnabled,
+                isAutoStartDismissed = isAutoStartDismissed,
+                isIgnoringBattery = isIgnoringBattery,
+                notificationPermissionGranted = notificationPermissionGranted,
+                statusColor = statusColor,
+                onOpenUsageAccessSettings = onOpenUsageAccessSettings,
+                onOpenAccessibilitySettings = onOpenAccessibilitySettings,
+                onOpenAutoStartSettings = onOpenAutoStartSettings,
+                onSetAutoStartDismissed = onSetAutoStartDismissed,
+                onRequestBatteryOptimization = onRequestBatteryOptimization,
+                onRequestNotificationPermission = onRequestNotificationPermission,
+            )
+            Spacer(modifier = Modifier.height(32.dp))
+        }
+    }
+}
+
 @Composable
 fun PermissionProcessList(
     isMenuMode: Boolean,
@@ -3283,17 +4069,15 @@ private fun AccessibilityStatusCard(
         MaterialTheme.colorScheme.error
     }
 
-    ElevatedCard(
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.elevatedCardColors(
-            containerColor = MaterialTheme.colorScheme.surface,
-        ),
-    ) {
+    TinyVowCard {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+                .padding(
+                    horizontal = TinyVowSpacing.CardHorizontal,
+                    vertical = TinyVowSpacing.CardVertical,
+                ),
+            verticalArrangement = Arrangement.spacedBy(TinyVowSpacing.CardGap),
         ) {
             Text(
                 text = stringResource(R.string.accessibility_card_title),
@@ -3337,17 +4121,15 @@ private fun ReminderStatusCard(
         MaterialTheme.colorScheme.error
     }
 
-    ElevatedCard(
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.elevatedCardColors(
-            containerColor = MaterialTheme.colorScheme.surface,
-        ),
-    ) {
+    TinyVowCard {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+                .padding(
+                    horizontal = TinyVowSpacing.CardHorizontal,
+                    vertical = TinyVowSpacing.CardVertical,
+                ),
+            verticalArrangement = Arrangement.spacedBy(TinyVowSpacing.CardGap),
         ) {
             Text(
                 text = stringResource(R.string.reminder_card_title),
@@ -3385,17 +4167,18 @@ private fun PermissionCard(
     statusColor: androidx.compose.ui.graphics.Color,
     onOpenUsageAccessSettings: () -> Unit,
 ) {
-    ElevatedCard(
-        shape = RoundedCornerShape(28.dp),
-        colors = CardDefaults.elevatedCardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
-        ),
+    TinyVowCard(
+        shape = RoundedCornerShape(TinyVowRadius.FeaturedCard),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp),
+                .padding(
+                    horizontal = TinyVowSpacing.CardHorizontal,
+                    vertical = TinyVowSpacing.CardVertical,
+                ),
+            verticalArrangement = Arrangement.spacedBy(TinyVowSpacing.SectionGap),
         ) {
             Text(
                 text = AppText.t("home_usage_access_step_title"),
@@ -3445,17 +4228,15 @@ private fun AutoStartCard(
         MaterialTheme.colorScheme.error
     }
 
-    ElevatedCard(
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.elevatedCardColors(
-            containerColor = MaterialTheme.colorScheme.surface,
-        ),
-    ) {
+    TinyVowCard {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+                .padding(
+                    horizontal = TinyVowSpacing.CardHorizontal,
+                    vertical = TinyVowSpacing.CardVertical,
+                ),
+            verticalArrangement = Arrangement.spacedBy(TinyVowSpacing.CardGap),
         ) {
             Text(
                 text = stringResource(R.string.autostart_card_title),
@@ -3526,17 +4307,15 @@ private fun BatteryOptimizationCard(
         MaterialTheme.colorScheme.error
     }
 
-    ElevatedCard(
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.elevatedCardColors(
-            containerColor = MaterialTheme.colorScheme.surface,
-        ),
-    ) {
+    TinyVowCard {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(20.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+                .padding(
+                    horizontal = TinyVowSpacing.CardHorizontal,
+                    vertical = TinyVowSpacing.CardVertical,
+                ),
+            verticalArrangement = Arrangement.spacedBy(TinyVowSpacing.CardGap),
         ) {
             Text(
                 text = stringResource(R.string.battery_card_title),
@@ -3573,16 +4352,14 @@ private fun GuidanceCard(
     title: String,
     body: String,
 ) {
-    ElevatedCard(
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.elevatedCardColors(
-            containerColor = MaterialTheme.colorScheme.surface,
-        ),
-    ) {
+    TinyVowCard {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(20.dp),
+                .padding(
+                    horizontal = TinyVowSpacing.CardHorizontal,
+                    vertical = TinyVowSpacing.CardVertical,
+                ),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             Text(
@@ -3653,6 +4430,7 @@ private fun HomeScreenPreviewDenied() {
             onRequestNotificationPermission = {},
             onOpenAutoStartSettings = {},
             onRequestBatteryOptimization = {},
+            onOpenPermissionDiagnostics = {},
             onSetAutoStartDismissed = {},
             onDismissPermissionPrompts = {},
             onSaveGroup = { _, _, _, _, _, _, _ -> },
@@ -3694,6 +4472,7 @@ private fun HomeScreenPreviewGranted() {
             onRequestNotificationPermission = {},
             onOpenAutoStartSettings = {},
             onRequestBatteryOptimization = {},
+            onOpenPermissionDiagnostics = {},
             onSetAutoStartDismissed = {},
             onDismissPermissionPrompts = {},
             onSaveGroup = { _, _, _, _, _, _, _ -> },

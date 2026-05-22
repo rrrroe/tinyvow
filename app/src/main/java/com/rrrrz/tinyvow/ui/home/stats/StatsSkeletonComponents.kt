@@ -124,6 +124,8 @@ import com.rrrrz.tinyvow.data.usage.UsageRepository
 import com.rrrrz.tinyvow.data.usage.UsageStatsUsageRepository
 import com.rrrrz.tinyvow.ui.theme.LocalReportColors
 import com.rrrrz.tinyvow.ui.theme.ReportColors
+import com.rrrrz.tinyvow.ui.theme.TinyVowRadius
+import com.rrrrz.tinyvow.ui.theme.TinyVowSpacing
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
@@ -155,13 +157,16 @@ internal fun HeroSkeletonCard() {
         ) { modifier, index ->
             Surface(
                 modifier = modifier,
-                shape = RoundedCornerShape(28.dp),
+                shape = RoundedCornerShape(TinyVowRadius.FeaturedCard),
                 color = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.76f),
                 border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.22f)),
             ) {
                 Column(
-                    modifier = Modifier.padding(18.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.padding(
+                        horizontal = TinyVowSpacing.CardHorizontal,
+                        vertical = TinyVowSpacing.CardVertical,
+                    ),
+                    verticalArrangement = Arrangement.spacedBy(TinyVowSpacing.CardGap),
                 ) {
                     when (index) {
                         0 -> {
@@ -185,7 +190,7 @@ internal fun HeroSkeletonCard() {
                             SkeletonBlock(
                                 modifier = Modifier.fillMaxWidth(),
                                 height = 62.dp,
-                                shape = RoundedCornerShape(20.dp),
+                                shape = RoundedCornerShape(TinyVowRadius.ItemCard),
                             )
                         }
                     }
@@ -259,7 +264,7 @@ internal fun BehaviorSkeletonCard() {
                 SkeletonBlock(
                     modifier = modifier,
                     height = 72.dp,
-                    shape = RoundedCornerShape(20.dp),
+                    shape = RoundedCornerShape(TinyVowRadius.ItemCard),
                 )
             }
         }
@@ -301,7 +306,7 @@ internal fun SkeletonMetricChip(modifier: Modifier = Modifier) {
     SkeletonBlock(
         modifier = modifier,
         height = 86.dp,
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(TinyVowRadius.ItemCard),
     )
 }
 
@@ -405,7 +410,7 @@ internal fun SkeletonTimelineChart() {
 internal fun SkeletonDonutPanel(modifier: Modifier = Modifier) {
     Surface(
         modifier = modifier,
-        shape = RoundedCornerShape(24.dp),
+        shape = RoundedCornerShape(TinyVowRadius.Card),
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.82f),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.22f)),
     ) {
@@ -443,7 +448,7 @@ internal fun SkeletonDonutPanel(modifier: Modifier = Modifier) {
 internal fun SkeletonPeakPanel(modifier: Modifier = Modifier) {
     Surface(
         modifier = modifier,
-        shape = RoundedCornerShape(24.dp),
+        shape = RoundedCornerShape(TinyVowRadius.Card),
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.82f),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.22f)),
     ) {
@@ -462,7 +467,7 @@ internal fun SkeletonPeakPanel(modifier: Modifier = Modifier) {
 @Composable
 internal fun SkeletonUsageSharePanel() {
     Surface(
-        shape = RoundedCornerShape(24.dp),
+        shape = RoundedCornerShape(TinyVowRadius.Card),
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.82f),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.22f)),
     ) {
@@ -505,7 +510,7 @@ internal fun SkeletonUsageSharePanel() {
 @Composable
 internal fun SkeletonRankingPanel() {
     Surface(
-        shape = RoundedCornerShape(24.dp),
+        shape = RoundedCornerShape(TinyVowRadius.Card),
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.82f),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.22f)),
     ) {

@@ -53,14 +53,11 @@ import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
-import androidx.compose.material.icons.filled.Sort
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -100,9 +97,11 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.DialogWindowProvider
+import androidx.compose.ui.zIndex
 import androidx.core.content.FileProvider
 import androidx.core.view.WindowCompat
 import coil.compose.AsyncImage
@@ -116,6 +115,10 @@ import com.rrrrz.tinyvow.data.pro.ProFeatureGate
 import com.rrrrz.tinyvow.data.supermode.GuardedAction
 import com.rrrrz.tinyvow.data.usage.MergedUsageRepository
 import com.rrrrz.tinyvow.ui.theme.LocalThemeColors
+import com.rrrrz.tinyvow.ui.theme.TinyVowCard
+import com.rrrrz.tinyvow.ui.theme.TinyVowElevation
+import com.rrrrz.tinyvow.ui.theme.TinyVowRadius
+import com.rrrrz.tinyvow.ui.theme.TinyVowSpacing
 import java.io.File
 import java.io.FileOutputStream
 import java.time.DayOfWeek
@@ -166,16 +169,15 @@ fun GroupDashboard(
 
     Column(
         modifier = modifier,
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        verticalArrangement = Arrangement.spacedBy(TinyVowSpacing.CardGap)
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            horizontalArrangement = Arrangement.spacedBy(TinyVowSpacing.CardGap),
             verticalAlignment = Alignment.Top,
         ) {
             SectionCard(
                 title = AppText.t("group_commitment"),
-                subtitle = AppText.t("group_limit_type"),
                 groups = controlGroups,
                 usageMap = usageMap,
                 accent = themeColors.control,
@@ -207,7 +209,6 @@ fun GroupDashboard(
 
             SectionCard(
                 title = AppText.t("group_small_encouragement"),
-                subtitle = AppText.t("group_points_target"),
                 groups = encourageGroups,
                 usageMap = usageMap,
                 accent = themeColors.encourage,
@@ -300,10 +301,10 @@ fun GroupDashboard(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun SectionCard(
     title: String,
-    subtitle: String,
     groups: List<AppGroupWithApps>,
     usageMap: Map<String, Long>,
     accent: Color,
@@ -313,16 +314,19 @@ private fun SectionCard(
     onEdit: (AppGroupWithApps) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    ElevatedCard(
+    val themeColors = LocalThemeColors.current
+    TinyVowCard(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.elevatedCardColors(
-            containerColor = MaterialTheme.colorScheme.surface
-        )
+        shape = RoundedCornerShape(TinyVowRadius.Card),
+        borderAlpha = 0.30f,
+        shadowElevation = TinyVowElevation.Card,
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            modifier = Modifier.padding(
+                horizontal = 14.dp,
+                vertical = 16.dp,
+            ),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -336,38 +340,27 @@ private fun SectionCard(
                     Text(
                         text = title,
                         style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Text(
-                        text = subtitle,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = themeColors.inkStrong,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-                IconButton(
-                    onClick = onSort,
-                    modifier = Modifier.size(32.dp),
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Sort,
-                        contentDescription = AppText.t("group_sort"),
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(18.dp),
-                    )
-                }
-                IconButton(
-                    onClick = onAdd,
-                    modifier = Modifier.size(32.dp),
+                Box(
+                    modifier = Modifier
+                        .size(30.dp)
+                        .clip(RoundedCornerShape(11.dp))
+                        .background(accent.copy(alpha = 0.13f))
+                        .combinedClickable(
+                            onClick = onAdd,
+                            onLongClick = onSort,
+                        ),
+                    contentAlignment = Alignment.Center,
                 ) {
                     Icon(
                         imageVector = Icons.Default.Add,
                         contentDescription = AppText.t("group_add_group"),
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(18.dp),
+                        tint = accent,
+                        modifier = Modifier.size(17.dp),
                     )
                 }
             }
@@ -376,11 +369,14 @@ private fun SectionCard(
                 Text(
                     text = AppText.t("group_no_groups_yet"),
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = themeColors.inkMuted,
                     modifier = Modifier.padding(top = 2.dp, bottom = 4.dp)
                 )
             } else {
                 groups.forEachIndexed { index, item ->
+                    if (index > 0) {
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.24f))
+                    }
                     GroupCard(
                         groupData = item,
                         usedMinutes = ((usageMap[item.group.id] ?: 0L) / 60_000L).toInt(),
@@ -388,9 +384,6 @@ private fun SectionCard(
                         onClick = { onOpen(item) },
                         onLongClick = { onEdit(item) },
                     )
-                    if (index < groups.lastIndex) {
-                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f))
-                    }
                 }
             }
         }
@@ -414,11 +407,7 @@ private fun GroupCard(
         LimitPeriod.WEEKLY -> AppText.t("group_weekly")
         LimitPeriod.MONTHLY -> AppText.t("group_monthly")
     }
-    val detailText = if (groupData.group.type == GroupType.ENCOURAGE) {
-        AppText.t("group_value_value_value_min_value_pts_min", periodLabel, usedMinutes, groupData.group.limitMinutes, trimTrailingZero(groupData.group.pointsPerMinute))
-    } else {
-        AppText.t("group_value_value_value_min", periodLabel, usedMinutes, groupData.group.limitMinutes)
-    }
+    val detailText = AppText.t("group_value_value_value_min", periodLabel, usedMinutes, groupData.group.limitMinutes)
     val rawProgress = if (groupData.group.limitMinutes > 0) {
         usedMinutes.toFloat() / groupData.group.limitMinutes.toFloat()
     } else {
@@ -436,10 +425,10 @@ private fun GroupCard(
         else -> themeColors.control.copy(alpha = 0.14f)
     }
     val iconPackages = groupData.packageNames.take(3)
-    val iconSize = 26
-    val iconOffset = 12
+    val iconSize = 34
+    val iconOffset = iconSize / 2
     val maxIcons = 3
-    val iconWidth = iconSize + (maxIcons - 1) * iconOffset
+    val iconWidth = iconSize + (iconPackages.size.coerceIn(1, maxIcons) - 1) * iconOffset
 
     val animatedProgress by androidx.compose.animation.core.animateFloatAsState(
         targetValue = progress,
@@ -453,15 +442,15 @@ private fun GroupCard(
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
+            .clip(RoundedCornerShape(TinyVowRadius.Control))
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
-            .padding(horizontal = 4.dp, vertical = 8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
+            .padding(vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 2.dp),
+            modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
+            horizontalArrangement = Arrangement.spacedBy(11.dp),
         ) {
             Box(modifier = Modifier.width(iconWidth.dp), contentAlignment = Alignment.CenterStart) {
                 iconPackages.forEachIndexed { index, packageName ->
@@ -475,11 +464,11 @@ private fun GroupCard(
                     Surface(
                         modifier = Modifier
                             .padding(start = (index * iconOffset).dp)
-                            .size(iconSize.dp),
-                        shape = CircleShape,
-                        color = MaterialTheme.colorScheme.surfaceVariant,
-                        border = BorderStroke(2.dp, MaterialTheme.colorScheme.surface),
-                        shadowElevation = 2.dp
+                            .size(iconSize.dp)
+                            .zIndex((maxIcons - index).toFloat()),
+                        shape = RoundedCornerShape(11.dp),
+                        color = MaterialTheme.colorScheme.surface,
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.95f)),
                     ) {
                         if (icon != null) {
                             AsyncImage(
@@ -488,7 +477,7 @@ private fun GroupCard(
                                 contentScale = ContentScale.Crop,
                                 modifier = Modifier
                                     .fillMaxSize()
-                                    .clip(CircleShape)
+                                    .clip(RoundedCornerShape(11.dp))
                                     .graphicsLayer {
                                         scaleX = 1.08f
                                         scaleY = 1.08f
@@ -499,56 +488,46 @@ private fun GroupCard(
                 }
             }
 
-            Text(
-                text = groupData.group.name,
-                modifier = Modifier.weight(1f).padding(start = 8.dp),
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurface,
-                textAlign = TextAlign.End,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-        }
-
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = 2.dp),
-            verticalArrangement = Arrangement.spacedBy(5.dp)
-        ) {
-            Text(
-                text = detailText,
-                modifier = Modifier.fillMaxWidth(),
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                textAlign = TextAlign.Start,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(6.dp)
-                    .clip(RoundedCornerShape(3.dp))
-                    .background(trackColor)
+            Column(
+                modifier = Modifier.weight(1f),
+                horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.spacedBy(5.dp),
             ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth(fraction = animatedProgress.coerceIn(0f, 1f))
-                        .fillMaxHeight()
-                        .clip(RoundedCornerShape(3.dp))
-                        .background(
-                            brush = androidx.compose.ui.graphics.Brush.horizontalGradient(
-                                colors = listOf(
-                                    progressColor.copy(alpha = 0.6f),
-                                    progressColor
-                                )
-                            )
-                        )
+                Text(
+                    text = groupData.group.name,
+                    modifier = Modifier.fillMaxWidth(),
+                    style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.5.sp),
+                    fontWeight = FontWeight.SemiBold,
+                    color = themeColors.ink,
+                    textAlign = TextAlign.End,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = detailText,
+                    modifier = Modifier.fillMaxWidth(),
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.8.sp),
+                    color = themeColors.inkMuted,
+                    textAlign = TextAlign.End,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
+        }
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(5.dp)
+                .clip(RoundedCornerShape(3.dp))
+                .background(trackColor)
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth(fraction = animatedProgress.coerceIn(0f, 1f))
+                    .fillMaxHeight()
+                    .clip(RoundedCornerShape(3.dp))
+                    .background(progressColor)
+            )
         }
     }
 }

@@ -30,8 +30,6 @@ import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Insights
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -66,6 +64,10 @@ import com.rrrrz.tinyvow.data.db.GroupType
 import com.rrrrz.tinyvow.data.db.LimitPeriod
 import com.rrrrz.tinyvow.data.repository.DailyArchiveRepository
 import com.rrrrz.tinyvow.i18n.AppText
+import com.rrrrz.tinyvow.ui.theme.LocalThemeColors
+import com.rrrrz.tinyvow.ui.theme.TinyVowCard
+import com.rrrrz.tinyvow.ui.theme.TinyVowRadius
+import com.rrrrz.tinyvow.ui.theme.TinyVowSpacing
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -129,6 +131,7 @@ fun HistoryRoute(
         ?.collectAsStateWithLifecycle(initialValue = emptyList(), lifecycle = lifecycle) ?: remember { mutableStateOf(emptyList()) }
     val appArchives by (selectedDate?.let { archiveRepository.getAppArchivesByDate(it) })
         ?.collectAsStateWithLifecycle(initialValue = emptyList(), lifecycle = lifecycle) ?: remember { mutableStateOf(emptyList()) }
+    val themeColors = LocalThemeColors.current
 
     val archiveDatesDesc = remember(archives) { archives.map { it.archiveDate }.sortedDescending() }
     val selectedIndex = remember(selectedDate, archiveDatesDesc) { archiveDatesDesc.indexOf(selectedDate) }
@@ -144,11 +147,14 @@ fun HistoryRoute(
             TopAppBar(
                 title = {
                     Text(
-                        if (selectedDate == null) {
+                        text = if (selectedDate == null) {
                             "\u4f7f\u7528\u5386\u53f2"
                         } else {
                             "\u5f52\u6863\u8be6\u60c5"
                         },
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        color = themeColors.inkStrong,
                     )
                 },
                 navigationIcon = {
@@ -222,6 +228,7 @@ private fun HistoryListScreen(
     onSelectDate: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val themeColors = LocalThemeColors.current
     if (archives.isEmpty()) {
         EmptyHistoryState(
             title = "\u8fd8\u6ca1\u6709\u53ef\u67e5\u770b\u7684\u5f52\u6863",
@@ -258,22 +265,23 @@ private fun HistoryListScreen(
 
     LazyColumn(
         modifier = modifier.fillMaxSize(),
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+        contentPadding = PaddingValues(TinyVowSpacing.PageHorizontal),
+        verticalArrangement = Arrangement.spacedBy(TinyVowSpacing.CardGap),
     ) {
         item {
-            ElevatedCard(
-                shape = RoundedCornerShape(24.dp),
-                colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface),
-            ) {
+            TinyVowCard {
                 Column(
-                    modifier = Modifier.padding(18.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.padding(
+                        horizontal = TinyVowSpacing.CardHorizontal,
+                        vertical = TinyVowSpacing.CardVertical,
+                    ),
+                    verticalArrangement = Arrangement.spacedBy(TinyVowSpacing.CardGap),
                 ) {
                     Text(
                         text = "\u5386\u53f2\u603b\u89c8",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
+                        color = themeColors.inkStrong,
                     )
                     HistoryMetricRow(label = "\u5f52\u6863\u5929\u6570", value = "${sortedArchives.size} \u5929")
                     HistoryMetricRow(
@@ -289,7 +297,7 @@ private fun HistoryListScreen(
                     Text(
                         text = "\u65f6\u95f4\u8303\u56f4",
                         style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = themeColors.inkFaint,
                     )
                     FlowRow(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -307,7 +315,7 @@ private fun HistoryListScreen(
                     Text(
                         text = "\u5206\u7ec4\u8fc7\u6ee4",
                         style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = themeColors.inkFaint,
                     )
                     FlowRow(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -325,7 +333,7 @@ private fun HistoryListScreen(
                     Text(
                         text = "\u6392\u5e8f\u65b9\u5f0f",
                         style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        color = themeColors.inkFaint,
                     )
                     FlowRow(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -354,17 +362,19 @@ private fun HistoryListScreen(
         }
 
         items(sortedArchives, key = { it.id }) { archive ->
-            ElevatedCard(
+            TinyVowCard(
                 modifier =
                     Modifier
                         .fillMaxWidth()
                         .clickable { onSelectDate(archive.archiveDate) },
-                shape = RoundedCornerShape(24.dp),
-                colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface),
+                shape = RoundedCornerShape(TinyVowRadius.Card),
             ) {
                 Column(
-                    modifier = Modifier.padding(18.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                    modifier = Modifier.padding(
+                        horizontal = TinyVowSpacing.CardHorizontal,
+                        vertical = TinyVowSpacing.CardVertical,
+                    ),
+                    verticalArrangement = Arrangement.spacedBy(TinyVowSpacing.CardGap),
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -383,20 +393,21 @@ private fun HistoryListScreen(
                             Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
                                 Text(
                                     text = archive.archiveDate,
-                                    style = MaterialTheme.typography.titleMedium,
+                                    style = MaterialTheme.typography.titleSmall,
                                     fontWeight = FontWeight.SemiBold,
+                                    color = themeColors.ink,
                                 )
                                 Text(
                                     text = listCardHeadline(archive, groupFilter),
                                     style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    color = themeColors.inkMuted,
                                 )
                             }
                         }
                         Icon(
                             Icons.Default.ArrowOutward,
                             contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            tint = themeColors.inkFaint,
                         )
                     }
 
@@ -495,8 +506,8 @@ private fun HistoryDetailScreen(
             modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+                .padding(TinyVowSpacing.PageHorizontal),
+        verticalArrangement = Arrangement.spacedBy(TinyVowSpacing.CardGap),
     ) {
         DetailDateNavigator(
             currentDate = archive.archiveDate,
@@ -508,13 +519,13 @@ private fun HistoryDetailScreen(
             refreshError = refreshError,
         )
 
-        ElevatedCard(
-            shape = RoundedCornerShape(24.dp),
-            colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface),
-        ) {
+        TinyVowCard {
             Column(
-                modifier = Modifier.padding(18.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp),
+                modifier = Modifier.padding(
+                    horizontal = TinyVowSpacing.CardHorizontal,
+                    vertical = TinyVowSpacing.CardVertical,
+                ),
+                verticalArrangement = Arrangement.spacedBy(TinyVowSpacing.SectionGap),
             ) {
                 Text(
                     text = archive.archiveDate,
@@ -703,13 +714,13 @@ private fun GroupArchiveSection(
         }
     }
 
-    ElevatedCard(
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface),
-    ) {
+    TinyVowCard {
         Column(
-            modifier = Modifier.padding(18.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.padding(
+                horizontal = TinyVowSpacing.CardHorizontal,
+                vertical = TinyVowSpacing.CardVertical,
+            ),
+            verticalArrangement = Arrangement.spacedBy(TinyVowSpacing.CardGap),
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -1269,13 +1280,13 @@ private fun UngroupedAppArchiveSection(appItems: List<DailyAppArchiveEntity>) {
             }
         }
 
-    ElevatedCard(
-        shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface),
-    ) {
+    TinyVowCard {
         Column(
-            modifier = Modifier.padding(18.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.padding(
+                horizontal = TinyVowSpacing.CardHorizontal,
+                vertical = TinyVowSpacing.CardVertical,
+            ),
+            verticalArrangement = Arrangement.spacedBy(TinyVowSpacing.CardGap),
         ) {
             Row(
                 verticalAlignment = Alignment.CenterVertically,
@@ -1299,7 +1310,7 @@ private fun UngroupedAppArchiveSection(appItems: List<DailyAppArchiveEntity>) {
                     title = "\u8fd9\u4e00\u5929\u6ca1\u6709\u672a\u5206\u7ec4\u5e94\u7528",
                     body = "\u672a\u5206\u7ec4\u5e94\u7528\u4f7f\u7528\u4e0d\u8db3 1 \u5206\u949f\u65f6\u4e0d\u4f1a\u8fdb\u5165\u957f\u671f\u5f52\u6863\u3002",
                 )
-                return@ElevatedCard
+                return@TinyVowCard
             }
 
             Row(
@@ -1411,13 +1422,15 @@ private fun EmptyHistoryState(
                 .padding(24.dp),
         contentAlignment = Alignment.Center,
     ) {
-        ElevatedCard(
-            shape = RoundedCornerShape(28.dp),
-            colors = CardDefaults.elevatedCardColors(containerColor = MaterialTheme.colorScheme.surface),
+        TinyVowCard(
+            shape = RoundedCornerShape(TinyVowRadius.FeaturedCard),
         ) {
             Column(
-                modifier = Modifier.padding(24.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
+                modifier = Modifier.padding(
+                    horizontal = TinyVowSpacing.CardHorizontal,
+                    vertical = TinyVowSpacing.CardVertical,
+                ),
+                verticalArrangement = Arrangement.spacedBy(TinyVowSpacing.CardGap),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 Icon(
@@ -1445,6 +1458,7 @@ private fun ListEmptyStateCard(
     title: String,
     body: String,
 ) {
+    val themeColors = LocalThemeColors.current
     Surface(
         shape = RoundedCornerShape(20.dp),
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.28f),
@@ -1457,11 +1471,12 @@ private fun ListEmptyStateCard(
                 text = title,
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.SemiBold,
+                color = themeColors.inkStrong,
             )
             Text(
                 text = body,
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = themeColors.inkMuted,
             )
         }
     }
@@ -1472,6 +1487,7 @@ private fun HistoryMetricRow(
     label: String,
     value: String,
 ) {
+    val themeColors = LocalThemeColors.current
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.SpaceBetween,
@@ -1480,13 +1496,14 @@ private fun HistoryMetricRow(
         Text(
             text = label,
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = themeColors.inkMuted,
         )
         Spacer(modifier = Modifier.height(0.dp))
         Text(
             text = value,
             style = MaterialTheme.typography.bodyMedium,
-            fontWeight = FontWeight.Medium,
+            fontWeight = FontWeight.SemiBold,
+            color = themeColors.inkStrong,
         )
     }
 }
@@ -1497,6 +1514,7 @@ private fun CompactMetricBlock(
     value: String,
     modifier: Modifier = Modifier,
 ) {
+    val themeColors = LocalThemeColors.current
     Surface(
         modifier = modifier,
         shape = RoundedCornerShape(18.dp),
@@ -1509,12 +1527,13 @@ private fun CompactMetricBlock(
             Text(
                 text = label,
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = themeColors.inkMuted,
             )
             Text(
                 text = value,
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.SemiBold,
+                color = themeColors.inkStrong,
             )
         }
     }
