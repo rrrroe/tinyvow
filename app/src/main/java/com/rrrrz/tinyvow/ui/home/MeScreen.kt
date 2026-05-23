@@ -3,7 +3,6 @@ package com.rrrrz.tinyvow.ui.home
 import com.rrrrz.tinyvow.i18n.AppText
 
 import android.content.Intent
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -101,12 +100,6 @@ import java.time.ZoneId
 import java.time.temporal.ChronoUnit
 import kotlin.math.roundToLong
 
-private enum class MeSubPage {
-    PERMISSIONS,
-    DATA_PRIVACY,
-    VERSION,
-}
-
 @Composable
 fun MeScreen(
     userSession: UserSession?,
@@ -151,6 +144,7 @@ fun MeScreen(
     onRequestBatteryOptimization: () -> Unit,
     onRequestNotificationPermission: () -> Unit,
     onClearDismissedPermissionPrompts: () -> Unit,
+    onNavigateToPermissionSettings: () -> Unit,
     onNavigateToLaboratory: () -> Unit,
     onNavigateToHistory: () -> Unit,
     onNavigateToThemeSettings: () -> Unit,
@@ -158,9 +152,8 @@ fun MeScreen(
     onNavigateToHelpFeedback: () -> Unit,
     onNavigateToContactUs: () -> Unit,
     onNavigateToSpecialAppSettings: () -> Unit,
-    onExportLocalData: () -> Unit,
-    onClearLocalData: () -> Unit,
-    onOpenPrivacyPolicy: () -> Unit,
+    onNavigateToDataPrivacy: () -> Unit,
+    onNavigateToVersionInfo: () -> Unit,
     onSignInWithGoogle: () -> Unit,
     onSignOut: () -> Unit,
     onDeleteAccount: (clearLocalData: Boolean) -> Unit,
@@ -185,7 +178,6 @@ fun MeScreen(
         onUpdateProfileAvatar(uri.toString())
     }
 
-    var activeSubPage by remember { mutableStateOf<MeSubPage?>(null) }
     var showDeleteAccountConfirm by remember { mutableStateOf(false) }
     var showProfileEditor by remember { mutableStateOf(false) }
 
@@ -211,41 +203,6 @@ fun MeScreen(
             else -> AppText.t("me_china_local_mode_subtitle")
         }
     val displayAppVersion = userFacingVersionName(appVersionName)
-
-    activeSubPage?.let { page ->
-        BackHandler {
-            activeSubPage = null
-        }
-        when (page) {
-            MeSubPage.PERMISSIONS -> PermissionSettingsPage(
-                usageAccessGranted = usageAccessGranted,
-                accessibilityServiceEnabled = accessibilityServiceEnabled,
-                isAutoStartDismissed = isAutoStartDismissed,
-                isIgnoringBattery = isIgnoringBattery,
-                notificationPermissionGranted = notificationPermissionGranted,
-                dismissedPermissionPrompts = dismissedPermissionPrompts,
-                onBack = { activeSubPage = null },
-                onOpenUsageAccessSettings = onOpenUsageAccessSettings,
-                onOpenAccessibilitySettings = onOpenAccessibilitySettings,
-                onOpenAutoStartSettings = onOpenAutoStartSettings,
-                onSetAutoStartDismissed = onSetAutoStartDismissed,
-                onRequestBatteryOptimization = onRequestBatteryOptimization,
-                onRequestNotificationPermission = onRequestNotificationPermission,
-                onClearDismissedPermissionPrompts = onClearDismissedPermissionPrompts,
-            )
-            MeSubPage.DATA_PRIVACY -> DataPrivacyPage(
-                onBack = { activeSubPage = null },
-                onExportLocalData = onExportLocalData,
-                onClearLocalData = onClearLocalData,
-                onOpenPrivacyPolicy = onOpenPrivacyPolicy,
-            )
-            MeSubPage.VERSION -> VersionInfoPage(
-                versionName = displayAppVersion,
-                onBack = { activeSubPage = null },
-            )
-        }
-        return
-    }
 
     Column(
         modifier = Modifier
@@ -422,7 +379,7 @@ fun MeScreen(
                     MeMenuItem(
                         icon = Icons.Default.Settings,
                         title = AppText.t("me_permission_settings"),
-                        onClick = { activeSubPage = MeSubPage.PERMISSIONS },
+                        onClick = onNavigateToPermissionSettings,
                     )
                     SettingsDivider()
                     MeMenuItem(
@@ -460,7 +417,7 @@ fun MeScreen(
                     MeMenuItem(
                         icon = Icons.Default.Settings,
                         title = AppText.t("me_local_data_management"),
-                        onClick = { activeSubPage = MeSubPage.DATA_PRIVACY },
+                        onClick = onNavigateToDataPrivacy,
                     )
                     SettingsDivider()
                     MeMenuItem(
@@ -488,7 +445,7 @@ fun MeScreen(
                         icon = Icons.Default.Info,
                         title = AppText.t("me_app_version"),
                         trailingText = displayAppVersion,
-                        onClick = { activeSubPage = MeSubPage.VERSION },
+                        onClick = onNavigateToVersionInfo,
                     )
                 }
             }
@@ -691,7 +648,7 @@ private fun ProfileEditorDialog(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun DataPrivacyPage(
+internal fun DataPrivacyPage(
     onBack: () -> Unit,
     onExportLocalData: () -> Unit,
     onClearLocalData: () -> Unit,
@@ -749,7 +706,7 @@ private fun DataPrivacyPage(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun PermissionSettingsPage(
+internal fun PermissionSettingsPage(
     usageAccessGranted: Boolean,
     accessibilityServiceEnabled: Boolean,
     isAutoStartDismissed: Boolean,
@@ -853,8 +810,10 @@ fun LanguageSettingsScreen(
                 .padding(innerPadding)
                 .verticalScroll(rememberScrollState())
                 .padding(
-                    horizontal = TinyVowSpacing.PageHorizontal,
-                    vertical = TinyVowSpacing.PageTop,
+                    start = TinyVowSpacing.PageHorizontal,
+                    end = TinyVowSpacing.PageHorizontal,
+                    top = 6.dp,
+                    bottom = TinyVowSpacing.PageTop,
                 ),
             verticalArrangement = Arrangement.spacedBy(TinyVowSpacing.SectionGap),
         ) {
@@ -915,7 +874,7 @@ fun LanguageSettingsScreen(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun VersionInfoPage(
+internal fun VersionInfoPage(
     versionName: String,
     onBack: () -> Unit,
 ) {
@@ -974,8 +933,10 @@ private fun MeDetailPageScaffold(
                 .padding(innerPadding)
                 .verticalScroll(rememberScrollState())
                 .padding(
-                    horizontal = TinyVowSpacing.PageHorizontal,
-                    vertical = TinyVowSpacing.PageTop,
+                    start = TinyVowSpacing.PageHorizontal,
+                    end = TinyVowSpacing.PageHorizontal,
+                    top = 6.dp,
+                    bottom = TinyVowSpacing.PageTop,
                 ),
             verticalArrangement = Arrangement.spacedBy(TinyVowSpacing.SectionGap),
         ) {

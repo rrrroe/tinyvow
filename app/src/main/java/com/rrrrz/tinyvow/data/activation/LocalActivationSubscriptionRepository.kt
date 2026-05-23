@@ -108,7 +108,13 @@ class LocalActivationSubscriptionRepository(
     override fun openManageSubscription(context: Context) = Unit
 
     suspend fun clearActivationData() {
-        context.activationDataStore.edit { it.clear() }
+        clearStoredActivationData(context)
         _entitlement.value = ProEntitlementState.Free
+    }
+
+    companion object {
+        suspend fun clearStoredActivationData(context: Context) {
+            context.activationDataStore.edit { it.clear() }
+        }
     }
 }

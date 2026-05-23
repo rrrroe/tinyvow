@@ -52,8 +52,8 @@
    ```
 
 8. 打开应用“我的”页，确认版本信息行：
-   - 国内版：`1.0.0-cn`、构建 `1`、国内版。
-   - Google Play 版：`1.0.0`、构建 `1`、Google Play。
+   - 国内版：`{TINYVOW_VERSION_NAME}-cn`、构建 `{TINYVOW_VERSION_CODE}`、国内版。
+   - Google Play 版：`{TINYVOW_VERSION_NAME}`、构建 `{TINYVOW_VERSION_CODE}`、Google Play。
 
 ## Git 标签
 

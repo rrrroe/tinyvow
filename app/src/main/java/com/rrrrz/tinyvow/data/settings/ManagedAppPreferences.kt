@@ -505,7 +505,6 @@ class ManagedAppPreferences(
                             textColor = item.getLong("textColor").toInt(),
                             mutedTextColor = item.getLong("mutedTextColor").toInt(),
                             primaryColor = item.getLong("primaryColor").toInt(),
-                            progressColor = item.getLong("progressColor").toInt(),
                             controlColor = item.getLong("controlColor").toInt(),
                             encourageColor = item.getLong("encourageColor").toInt(),
                             baseColor = item.getLong("baseColor").toInt(),
@@ -530,7 +529,6 @@ class ManagedAppPreferences(
                     .put("textColor", theme.textColor.toLong())
                     .put("mutedTextColor", theme.mutedTextColor.toLong())
                     .put("primaryColor", theme.primaryColor.toLong())
-                    .put("progressColor", theme.progressColor.toLong())
                     .put("controlColor", theme.controlColor.toLong())
                     .put("encourageColor", theme.encourageColor.toLong())
                     .put("baseColor", theme.baseColor.toLong())

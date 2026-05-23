@@ -165,4 +165,10 @@ class LocalAuthRepository(
             )
         }.getOrNull()
     }
+
+    companion object {
+        suspend fun clearStoredSession(context: Context) {
+            context.authDataStore.edit { it.clear() }
+        }
+    }
 }

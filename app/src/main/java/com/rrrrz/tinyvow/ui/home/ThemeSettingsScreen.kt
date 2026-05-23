@@ -204,9 +204,19 @@ private fun ThemeMark(
         Box(contentAlignment = Alignment.Center) {
             Box(
                 modifier = Modifier
-                    .size(if (locked) 10.dp else 12.dp)
+                    .align(Alignment.TopStart)
+                    .padding(start = 11.dp, top = 11.dp)
+                    .size(if (locked) 8.dp else 10.dp)
                     .clip(CircleShape)
-                    .background(tokens.progressAccent),
+                    .background(tokens.control),
+            )
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(end = 11.dp, bottom = 11.dp)
+                    .size(if (locked) 8.dp else 10.dp)
+                    .clip(CircleShape)
+                    .background(tokens.encourage),
             )
         }
     }

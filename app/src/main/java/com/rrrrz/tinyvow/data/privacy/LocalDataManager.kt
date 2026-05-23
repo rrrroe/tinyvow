@@ -1,6 +1,8 @@
 package com.rrrrz.tinyvow.data.privacy
 
 import android.content.Context
+import com.rrrrz.tinyvow.data.activation.LocalActivationSubscriptionRepository
+import com.rrrrz.tinyvow.data.auth.LocalAuthRepository
 import com.rrrrz.tinyvow.data.db.AppDatabase
 import com.rrrrz.tinyvow.data.repository.RewardIconStorage
 import com.rrrrz.tinyvow.data.settings.ManagedAppPreferences
@@ -35,6 +37,8 @@ class LocalDataManager(
         withContext(Dispatchers.IO) {
             database.clearAllTables()
             preferences.clearAll()
+            LocalAuthRepository.clearStoredSession(context)
+            LocalActivationSubscriptionRepository.clearStoredActivationData(context)
             RewardIconStorage.fromContext(context).clearAll()
         }
     }

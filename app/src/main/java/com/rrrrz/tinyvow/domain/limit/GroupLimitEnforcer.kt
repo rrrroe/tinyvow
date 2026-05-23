@@ -35,7 +35,7 @@ class GroupLimitEnforcer(context: Context) {
         if (groupIds.isEmpty()) return null
 
         // 一次性批量读取所有分组，避免热路径循环查询 DB
-        val groups = groupDao.getGroupsByIdsSync(groupIds)
+        val groups = groupDao.getGroupsByIdsSync(groupIds).filter { it.type == GroupType.CONTROL }
 
         for (group in groups) {
             val activeEffects = activeRewardEffectDao.getActiveForGroup(group.id, currentTimeMillis)

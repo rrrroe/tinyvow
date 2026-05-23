@@ -4,6 +4,7 @@ import com.rrrrz.tinyvow.i18n.AppText
 
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
 import android.provider.Settings
 import android.widget.Toast
 import androidx.compose.animation.Crossfade
@@ -2260,7 +2261,11 @@ internal fun DailyModeSummaryCard(
                         horizontalArrangement = Arrangement.SpaceBetween,
                     ) {
                         Text(
-                            text = AppText.t("stats_group_details"),
+                            text = if (summary.title == AppText.t("stats_encourage_progress")) {
+                                AppText.t("stats_encourage_group_details")
+                            } else {
+                                AppText.t("stats_group_details")
+                            },
                             style = MaterialTheme.typography.labelLarge,
                             fontWeight = FontWeight.SemiBold,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -2321,70 +2326,54 @@ private fun DailyGroupProgressRow(
     ) {
         Column(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(7.dp),
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.Top,
-                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Column(
+                Text(
+                    text = item.groupName,
                     modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(3.dp),
-                ) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        Text(
-                            text = item.groupName,
-                            modifier = Modifier.weight(1f, fill = false),
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.SemiBold,
-                            color = themeColors.inkStrong,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                        Text(
-                            text = item.statusLabel,
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = FontWeight.Medium,
-                            color = quietColor,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis,
-                        )
-                    }
-                    Text(
-                        text = item.leadingValue,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = quietColor,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-                Column(
-                    horizontalAlignment = Alignment.End,
-                    verticalArrangement = Arrangement.spacedBy(2.dp),
-                    modifier = Modifier.width(66.dp),
-                ) {
-                    Text(
-                        text = item.trailingLabel,
-                        style = MaterialTheme.typography.labelSmall,
-                        fontWeight = FontWeight.Medium,
-                        color = resultColor,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Text(
-                        text = item.trailingValue,
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold,
-                        color = resultColor,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        textAlign = TextAlign.End,
-                    )
-                }
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = themeColors.inkStrong,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = "${item.trailingLabel} ${item.trailingValue}",
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Medium,
+                    color = resultColor,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = TextAlign.End,
+                )
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(
+                    text = item.leadingValue,
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = quietColor,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = item.statusLabel,
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.Medium,
+                    color = quietColor,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = TextAlign.End,
+                )
             }
             Box(
                 modifier = Modifier
@@ -3518,13 +3507,26 @@ internal fun MiniInsightCard(
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(16.dp),
-                )
-                Text(text = label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(16.dp),
+                    )
+                    Text(
+                        text = label,
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
                 Text(text = animatedValue, style = MaterialTheme.typography.titleMedium)
                 if (visualRatio != null) {
                     GradientProgressBar(

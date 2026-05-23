@@ -12,10 +12,19 @@
 
 ## 数据和迁移规则
 
-- 当前 Room 数据库版本是 `19`，导出的 schema 位于 `app/schemas/com.rrrrz.tinyvow.data.db.AppDatabase`。
+- 当前 Room 数据库版本是 `21`，导出的 schema 位于 `app/schemas/com.rrrrz.tinyvow.data.db.AppDatabase`。
 - 修改 entity、DAO 或 schema 时必须提升数据库版本，添加上一版本到新版本的 `Migration`，注册到 `Room.databaseBuilder(...).addMigrations(...)`，更新导出的 schema JSON，并补迁移测试。
 - 默认保留用户数据：分组、关联关系、积分 ledger、兑换历史、归档、自定义主题和激活状态都不应无说明地丢弃或重写。
 - 分组和分组-App 关系使用软删除。不要改成物理删除，除非已经处理所有历史引用。
+- 隐私清理必须同时覆盖 Room、`managed_app_preferences`、国内本地账号 `auth_preferences`、国内激活 `activation_preferences` 和奖励导入图标。
+
+## 特殊应用双源用量
+
+- 当前特殊应用 provider 是微信读书，固定包名 `com.tencent.weread`。
+- `special_app_usage_snapshots` 同时保存阅读 API 桶和本机前台时长；`usagePreference` 决定 `READING_FIRST` 或 `PHONE_FIRST` 的有效口径。
+- 当天如果有效来源是手机前台时长，应读取实时 UsageStats；历史已完成日期使用已保存的日快照。
+- `MergedUsageRepository` 是唯一替换入口。`CONTROL`、`ENCOURAGE` 和设备总量都要走统一替换规则，避免跨组覆盖造成总量重复或口径不一致。
+- 微信读书的 `openCount`、session、最长会话、夜间时长和小时热力图仍来自本机 UsageStats；替换的只是日粒度使用/阅读时长。
 
 ## 性能热路径
 
@@ -31,8 +40,8 @@
 
 ## 渠道和权益规则
 
-- `googlePlay` 使用包名 `com.rrrrz.tinyvow`，包含 Google 登录、Play Billing 和 Play 订阅管理。
-- `china` 使用包名 `com.rrrrz.tinyvow.cn`，走本地激活，不应触发 Google 登录或 Play Billing 流程。
+- `googlePlay` 使用包名 `com.rrrrz.tinyvow`，包含 Google 登录、Play Billing 和 Play 订阅管理，版本名使用基础 `TINYVOW_VERSION_NAME`。
+- `china` 使用包名 `com.rrrrz.tinyvow.cn`，走本地激活，不应触发 Google 登录或 Play Billing 流程，版本名自动追加 `-cn`。
 - UI 应通过 `ProEntitlementState.isProActive` 和 `ProFeatureGate` 判断权益，不要直接散落判断 Play Billing 或本地激活细节。
 - 免费用户已有超额数据不删除、不迁移、不裁剪；但超出当前权益上限的分组、兑换、主题只能展示，不能继续编辑或保存。
 

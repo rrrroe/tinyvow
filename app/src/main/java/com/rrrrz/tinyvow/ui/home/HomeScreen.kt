@@ -3,7 +3,10 @@ package com.rrrrz.tinyvow.ui.home
 import com.rrrrz.tinyvow.i18n.AppText
 
 import android.Manifest
+import android.app.Activity
 import android.content.ClipData
+import android.content.Context
+import android.content.ContextWrapper
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -80,6 +83,7 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -152,6 +156,7 @@ import kotlin.math.atan2
 import kotlin.math.PI
 import kotlin.math.cos
 import kotlin.math.min
+import kotlin.math.roundToInt
 import kotlin.math.roundToLong
 import kotlin.math.sin
 import kotlin.math.sqrt
@@ -176,7 +181,7 @@ import com.rrrrz.tinyvow.ui.theme.TinyVowElevation
 import com.rrrrz.tinyvow.ui.theme.TinyVowRadius
 import com.rrrrz.tinyvow.ui.theme.TinyVowSpacing
 
-enum class Screen { HOME, REWARDS, STATS, ME, LABORATORY, HISTORY, THEME, LANGUAGE, HELP_FEEDBACK, CONTACT_US, SPECIAL_APPS, WEREAD_SPECIAL_APP, PERMISSION_DIAGNOSTICS }
+enum class Screen { HOME, REWARDS, STATS, ME, ME_PERMISSIONS, ME_DATA_PRIVACY, ME_VERSION, LABORATORY, HISTORY, THEME, LANGUAGE, HELP_FEEDBACK, CONTACT_US, SPECIAL_APPS, WEREAD_SPECIAL_APP, PERMISSION_DIAGNOSTICS }
 enum class RewardsSection { STORE, INVENTORY, ACHIEVEMENTS }
 
 private const val CONTACT_EMAIL = "rrrr.zhao@gmail.com"
@@ -315,6 +320,7 @@ private data class HomeControlOverviewUiState(
     val todaySavedMinutes: Int,
     val completedGroups: Int,
     val totalGroups: Int,
+    val scoreRatio: Float,
     val streakDays: Int,
 )
 
@@ -322,6 +328,7 @@ private data class HomeEncourageOverviewUiState(
     val todayEarnedPoints: Double,
     val completedGroups: Int,
     val totalGroups: Int,
+    val scoreRatio: Float,
     val streakDays: Int,
 )
 
@@ -611,6 +618,7 @@ fun HomeRoute(
     var currentScreen by remember { mutableStateOf(Screen.HOME) }
     var rewardsSection by remember { mutableStateOf(RewardsSection.STORE) }
     val snackbarHostState = remember { SnackbarHostState() }
+    val screenStateHolder = rememberSaveableStateHolder()
     var proUpsellSource by remember { mutableStateOf<ProUpsellSource?>(null) }
     var openMeProBenefitsDialog by remember { mutableStateOf(false) }
     var pendingSensitiveDisclosure by remember { mutableStateOf<SensitivePermissionDisclosure?>(null) }
@@ -651,13 +659,11 @@ fun HomeRoute(
     val isAutoStartDismissed by preferences.isAutoStartDismissed.collectAsStateWithLifecycle(initialValue = false, lifecycle = lifecycle)
 
     fun openUsageAccessSettingsNow() {
-        val intent = Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        context.startActivity(intent)
+        context.startActivityKeepingCurrentTask(Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS))
     }
 
     fun openAccessibilitySettingsNow() {
-        val intent = Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        context.startActivity(intent)
+        context.startActivityKeepingCurrentTask(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS))
     }
 
     fun requestUsageAccessSettings() {
@@ -889,7 +895,7 @@ fun HomeRoute(
                 currentScreen = when (currentScreen) {
                     Screen.WEREAD_SPECIAL_APP -> Screen.SPECIAL_APPS
                     Screen.PERMISSION_DIAGNOSTICS -> Screen.HOME
-                    Screen.LABORATORY, Screen.HISTORY, Screen.THEME, Screen.LANGUAGE, Screen.HELP_FEEDBACK, Screen.CONTACT_US, Screen.SPECIAL_APPS -> Screen.ME
+                    Screen.ME_PERMISSIONS, Screen.ME_DATA_PRIVACY, Screen.ME_VERSION, Screen.LABORATORY, Screen.HISTORY, Screen.THEME, Screen.LANGUAGE, Screen.HELP_FEEDBACK, Screen.CONTACT_US, Screen.SPECIAL_APPS -> Screen.ME
                     else -> Screen.HOME
                 }
             }
@@ -897,17 +903,20 @@ fun HomeRoute(
     }
 
     LaunchedEffect(Unit) {
-        subscriptionRepository.refresh()
+        if (!BuildConfig.ENABLE_LOCAL_ACTIVATION) {
+            subscriptionRepository.refresh()
+        }
     }
 
     LaunchedEffect(BuildConfig.ENABLE_LOCAL_ACTIVATION) {
         if (BuildConfig.ENABLE_LOCAL_ACTIVATION) {
-            authRepository.ensureLocalSession()
+            val session = authRepository.ensureLocalSession()
+            localActivationRepository?.bindUser(session.userId)
         }
     }
 
     LaunchedEffect(BuildConfig.ENABLE_LOCAL_ACTIVATION, userSession?.userId) {
-        if (BuildConfig.ENABLE_LOCAL_ACTIVATION) {
+        if (BuildConfig.ENABLE_LOCAL_ACTIVATION && userSession?.userId != null) {
             localActivationRepository?.bindUser(userSession?.userId)
         }
     }
@@ -943,7 +952,8 @@ fun HomeRoute(
         }
     ) { innerPadding ->
         Box(modifier = Modifier.fillMaxSize()) {
-            when (currentScreen) {
+            screenStateHolder.SaveableStateProvider(currentScreen.name) {
+                when (currentScreen) {
                 Screen.HOME -> {
                     HomeScreen(
                         usageAccessStatus = effectiveUsageAccessStatus,
@@ -1243,6 +1253,7 @@ fun HomeRoute(
                                 }
                             }
                         },
+                        onNavigateToPermissionSettings = { currentScreen = Screen.ME_PERMISSIONS },
                         onNavigateToLaboratory = { currentScreen = Screen.LABORATORY },
                         onNavigateToHistory = { currentScreen = Screen.HISTORY },
                         onNavigateToThemeSettings = { currentScreen = Screen.THEME },
@@ -1250,56 +1261,8 @@ fun HomeRoute(
                         onNavigateToHelpFeedback = { currentScreen = Screen.HELP_FEEDBACK },
                         onNavigateToContactUs = { currentScreen = Screen.CONTACT_US },
                         onNavigateToSpecialAppSettings = { currentScreen = Screen.SPECIAL_APPS },
-                        onExportLocalData = {
-                            coroutineScope.launch {
-                                runCatching {
-                                    localDataManager.exportPrivacyReport()
-                                }.onSuccess { file ->
-                                    val uri = FileProvider.getUriForFile(
-                                        context,
-                                        "${context.packageName}.fileprovider",
-                                        file,
-                                    )
-                                    val intent = Intent(Intent.ACTION_SEND).apply {
-                                        type = "application/json"
-                                        putExtra(Intent.EXTRA_STREAM, uri)
-                                        putExtra(Intent.EXTRA_TITLE, AppText.t("home_tiny_vow_local_data_export"))
-                                        clipData = ClipData.newUri(
-                                            context.contentResolver,
-                                            AppText.t("home_tiny_vow_local_data_export"),
-                                            uri,
-                                        )
-                                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                                    }
-                                    context.startActivity(Intent.createChooser(intent, AppText.t("home_export_local_data")))
-                                }.onFailure {
-                                    snackbarHostState.showSnackbar(AppText.t("home_export_local_data_failed"))
-                                }
-                            }
-                        },
-                        onClearLocalData = {
-                            coroutineScope.launch {
-                                runCatching {
-                                    localDataManager.clearLocalData()
-                                    if (BuildConfig.ENABLE_LOCAL_ACTIVATION) {
-                                        authRepository.deleteAccount()
-                                        localActivationRepository?.clearActivationData()
-                                    }
-                                }.onSuccess {
-                                    snackbarHostState.showSnackbar(AppText.t("home_local_data_cleared"))
-                                }.onFailure {
-                                    snackbarHostState.showSnackbar(AppText.t("home_clear_local_data_failed"))
-                                }
-                            }
-                        },
-                        onOpenPrivacyPolicy = {
-                            context.startActivity(
-                                Intent(
-                                    Intent.ACTION_VIEW,
-                                    Uri.parse(PRIVACY_POLICY_URL),
-                                )
-                            )
-                        },
+                        onNavigateToDataPrivacy = { currentScreen = Screen.ME_DATA_PRIVACY },
+                        onNavigateToVersionInfo = { currentScreen = Screen.ME_VERSION },
                         onSignInWithGoogle = {
                             val activity = context as? androidx.activity.ComponentActivity
                             if (activity == null) {
@@ -1382,6 +1345,104 @@ fun HomeRoute(
                         },
                         )
                     }
+                }
+                Screen.ME_PERMISSIONS -> {
+                    PermissionSettingsPage(
+                        usageAccessGranted = effectiveUsageAccessStatus == UsageAccessStatus.GRANTED,
+                        accessibilityServiceEnabled = effectiveAccessibilityServiceEnabled,
+                        isAutoStartDismissed = isAutoStartDismissed,
+                        isIgnoringBattery = isIgnoringBattery,
+                        notificationPermissionGranted = notificationPermissionGranted,
+                        dismissedPermissionPrompts = dismissedPermissionPrompts,
+                        onBack = { currentScreen = Screen.ME },
+                        onOpenUsageAccessSettings = { requestUsageAccessSettings() },
+                        onOpenAccessibilitySettings = { requestAccessibilitySettings() },
+                        onOpenAutoStartSettings = {
+                            pendingSensitiveDisclosure = SensitivePermissionDisclosure.BACKGROUND_START
+                        },
+                        onSetAutoStartDismissed = {
+                            coroutineScope.launch { preferences.setAutoStartDismissed(true) }
+                        },
+                        onRequestBatteryOptimization = {
+                            pendingSensitiveDisclosure = SensitivePermissionDisclosure.BATTERY_OPTIMIZATION
+                        },
+                        onRequestNotificationPermission = {
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                pendingSensitiveDisclosure = SensitivePermissionDisclosure.NOTIFICATION
+                            }
+                        },
+                        onClearDismissedPermissionPrompts = {
+                            coroutineScope.launch {
+                                dismissedPermissionPrompts.forEach { id ->
+                                    preferences.setPermissionPromptDismissed(id, false)
+                                }
+                                if (PermissionPromptIds.BACKGROUND_START in dismissedPermissionPrompts) {
+                                    preferences.setAutoStartDismissed(false)
+                                }
+                            }
+                        },
+                    )
+                }
+                Screen.ME_DATA_PRIVACY -> {
+                    DataPrivacyPage(
+                        onBack = { currentScreen = Screen.ME },
+                        onExportLocalData = {
+                            coroutineScope.launch {
+                                runCatching {
+                                    localDataManager.exportPrivacyReport()
+                                }.onSuccess { file ->
+                                    val uri = FileProvider.getUriForFile(
+                                        context,
+                                        "${context.packageName}.fileprovider",
+                                        file,
+                                    )
+                                    val intent = Intent(Intent.ACTION_SEND).apply {
+                                        type = "application/json"
+                                        putExtra(Intent.EXTRA_STREAM, uri)
+                                        putExtra(Intent.EXTRA_TITLE, AppText.t("home_tiny_vow_local_data_export"))
+                                        clipData = ClipData.newUri(
+                                            context.contentResolver,
+                                            AppText.t("home_tiny_vow_local_data_export"),
+                                            uri,
+                                        )
+                                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                    }
+                                    context.startActivity(Intent.createChooser(intent, AppText.t("home_export_local_data")))
+                                }.onFailure {
+                                    snackbarHostState.showSnackbar(AppText.t("home_export_local_data_failed"))
+                                }
+                            }
+                        },
+                        onClearLocalData = {
+                            coroutineScope.launch {
+                                runCatching {
+                                    localDataManager.clearLocalData()
+                                    if (BuildConfig.ENABLE_LOCAL_ACTIVATION) {
+                                        authRepository.deleteAccount()
+                                        localActivationRepository?.clearActivationData()
+                                    }
+                                }.onSuccess {
+                                    snackbarHostState.showSnackbar(AppText.t("home_local_data_cleared"))
+                                }.onFailure {
+                                    snackbarHostState.showSnackbar(AppText.t("home_clear_local_data_failed"))
+                                }
+                            }
+                        },
+                        onOpenPrivacyPolicy = {
+                            context.startActivityKeepingCurrentTask(
+                                Intent(
+                                    Intent.ACTION_VIEW,
+                                    Uri.parse(PRIVACY_POLICY_URL),
+                                )
+                            )
+                        },
+                    )
+                }
+                Screen.ME_VERSION -> {
+                    VersionInfoPage(
+                        versionName = BuildConfig.VERSION_NAME.removeSuffix("-cn"),
+                        onBack = { currentScreen = Screen.ME },
+                    )
                 }
                 Screen.THEME -> {
                      ThemeSettingsScreen(
@@ -1522,6 +1583,7 @@ fun HomeRoute(
                 }
             }
         }
+    }
     }
 
     if (showWelcomeIntro) {
@@ -1863,13 +1925,11 @@ fun HomeRoute(
                             runCatching {
                                 val intent = Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS).apply {
                                     data = Uri.parse("package:${context.packageName}")
-                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                                 }
-                                context.startActivity(intent)
+                                context.startActivityKeepingCurrentTask(intent)
                             }.onFailure {
                                 val intent = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
-                                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                                context.startActivity(intent)
+                                context.startActivityKeepingCurrentTask(intent)
                             }
                         }
                         SensitivePermissionDisclosure.BACKGROUND_START -> {
@@ -1880,15 +1940,13 @@ fun HomeRoute(
                                         "com.miui.securitycenter",
                                         "com.miui.permcenter.autostart.AutoStartManagementActivity"
                                     )
-                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                                 }
-                                context.startActivity(intent)
+                                context.startActivityKeepingCurrentTask(intent)
                             }.onFailure {
                                 val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
                                     data = Uri.parse("package:${context.packageName}")
-                                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                                 }
-                                context.startActivity(intent)
+                                context.startActivityKeepingCurrentTask(intent)
                             }
                         }
                     }
@@ -1900,15 +1958,28 @@ fun HomeRoute(
 
 private const val PRIVACY_POLICY_URL = "https://rrrroe.github.io/tinyvow/privacy.html"
 
+private tailrec fun Context.findActivity(): Activity? =
+    when (this) {
+        is Activity -> this
+        is ContextWrapper -> baseContext.findActivity()
+        else -> null
+    }
+
+private fun Context.startActivityKeepingCurrentTask(intent: Intent) {
+    if (findActivity() == null) {
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+    }
+    startActivity(intent)
+}
+
 private fun android.content.Context.openSupportEmail(subject: String): Boolean {
     val intent = Intent(Intent.ACTION_SENDTO).apply {
         data = Uri.parse("mailto:$CONTACT_EMAIL")
         putExtra(Intent.EXTRA_EMAIL, arrayOf(CONTACT_EMAIL))
         putExtra(Intent.EXTRA_SUBJECT, subject)
-        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     }
     return runCatching {
-        startActivity(intent)
+        startActivityKeepingCurrentTask(intent)
         true
     }.getOrDefault(false)
 }
@@ -2378,16 +2449,8 @@ private fun HomeOverviewPaperCard(
     modifier: Modifier = Modifier,
 ) {
     val themeColors = LocalThemeColors.current
-    val controlRatio =
-        if (state.control.totalGroups <= 0) 1f else state.control.completedGroups.toFloat() / state.control.totalGroups
-    val encourageRatio =
-        if (state.encourage.totalGroups <= 0) 1f else state.encourage.completedGroups.toFloat() / state.encourage.totalGroups
-    val score =
-        ((controlRatio.coerceIn(0f, 1f) * 52f) +
-            (encourageRatio.coerceIn(0f, 1f) * 34f) +
-            min(state.control.todaySavedMinutes / 60f, 1f) * 14f)
-            .toInt()
-            .coerceIn(0, 100)
+    val controlRatio = state.control.scoreRatio
+    val score = homeOverviewScore(state)
     val ringTrackColor = themeColors.inkFaint.copy(alpha = 0.30f)
 
     TinyVowCard(
@@ -2477,8 +2540,8 @@ private fun HomeOverviewPaperCard(
                         score = score,
                         controlRatio = controlRatio,
                         ringTrackColor = ringTrackColor,
-                        progressColor = themeColors.progressAccent,
-                        controlColor = themeColors.base.copy(alpha = 0.82f),
+                        controlColor = themeColors.control,
+                        encourageColor = themeColors.encourage,
                         scoreColor = themeColors.inkStrong,
                         modifier = Modifier.size(centerSize),
                     )
@@ -2493,11 +2556,13 @@ private fun HomeOverviewScoreDial(
     score: Int,
     controlRatio: Float,
     ringTrackColor: Color,
-    progressColor: Color,
     controlColor: Color,
+    encourageColor: Color,
     scoreColor: Color,
     modifier: Modifier = Modifier,
 ) {
+    val boundedControl = controlRatio.coerceIn(0f, 1f)
+
     Box(
         modifier = modifier,
         contentAlignment = Alignment.Center,
@@ -2512,7 +2577,7 @@ private fun HomeOverviewScoreDial(
                 style = Stroke(width = strokeWidth, cap = StrokeCap.Round),
             )
             drawArc(
-                color = progressColor,
+                color = encourageColor,
                 startAngle = -90f,
                 sweepAngle = 360f * (score / 100f),
                 useCenter = false,
@@ -2521,7 +2586,7 @@ private fun HomeOverviewScoreDial(
             drawArc(
                 color = controlColor,
                 startAngle = -90f,
-                sweepAngle = 360f * controlRatio.coerceIn(0f, 1f) * 0.28f,
+                sweepAngle = 360f * boundedControl * 0.28f,
                 useCenter = false,
                 style = Stroke(width = strokeWidth, cap = StrokeCap.Round),
             )
@@ -2538,7 +2603,7 @@ private fun HomeOverviewScoreDial(
                 modifier = Modifier.padding(top = 0.dp),
                 style = MaterialTheme.typography.labelLarge.copy(fontSize = 14.sp),
                 fontWeight = FontWeight.Bold,
-                color = progressColor,
+                color = scoreColor,
                 maxLines = 1,
                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
             )
@@ -2549,6 +2614,7 @@ private fun HomeOverviewScoreDial(
 private const val HOME_SCORE_STATUS_VARIANTS_PER_STAGE = 20
 
 private fun homeOverviewScoreStatusKey(score: Int, date: LocalDate): String {
+    if (score >= 100) return "home_score_status_perfect"
     val stage =
         when (score.coerceIn(0, 100)) {
             in 0..19 -> 1
@@ -3812,6 +3878,41 @@ private fun homeSurpriseKeyForDate(date: LocalDate): String {
 
 private fun Long.floorMod(modulus: Long): Long = ((this % modulus) + modulus) % modulus
 
+private const val HOME_CONTROL_SCORE_TOTAL = 60f
+private const val HOME_ENCOURAGE_SCORE_TOTAL = 40f
+private const val HOME_CONTROL_BASE_RATIO = 0.60f
+private const val HOME_CONTROL_TOLERANCE_MINUTES = 5
+
+private fun homeOverviewScore(state: HomeOverviewUiState): Int {
+    val controlPoints = if (state.control.totalGroups > 0) {
+        state.control.scoreRatio.coerceAtLeast(0f) * HOME_CONTROL_SCORE_TOTAL
+    } else {
+        0f
+    }
+    val encouragePoints = if (state.encourage.totalGroups > 0) {
+        state.encourage.scoreRatio.coerceAtLeast(0f) * HOME_ENCOURAGE_SCORE_TOTAL
+    } else {
+        0f
+    }
+    return (controlPoints + encouragePoints).roundToInt().coerceIn(0, 100)
+}
+
+private fun controlGroupScore(usageMinutes: Int, limitMinutes: Int): Float {
+    val limit = limitMinutes.coerceAtLeast(1)
+    val overMinutes = usageMinutes - limit
+    return if (overMinutes <= HOME_CONTROL_TOLERANCE_MINUTES) {
+        val remainingRatio = (limit - usageMinutes).coerceAtLeast(0).toFloat() / limit
+        HOME_CONTROL_BASE_RATIO + remainingRatio.coerceIn(0f, 1f) * (1f - HOME_CONTROL_BASE_RATIO)
+    } else {
+        0f
+    }
+}
+
+private fun encourageGroupScore(usageMinutes: Int, targetMinutes: Int): Float {
+    val target = targetMinutes.coerceAtLeast(1)
+    return (usageMinutes.toFloat() / target).coerceAtLeast(0f)
+}
+
 private fun buildHomeOverviewUiState(
     context: android.content.Context,
     groupsWithApps: List<AppGroupWithApps>,
@@ -3824,19 +3925,51 @@ private fun buildHomeOverviewUiState(
     val controlGroups = groupsWithApps.filter { it.group.type == GroupType.CONTROL }
     val encourageGroups = groupsWithApps.filter { it.group.type == GroupType.ENCOURAGE }
 
+    val controlUsageMinutesByGroup =
+        controlGroups.associate { group ->
+            group.group.id to ((usageMap[group.group.id] ?: 0L) / 60_000L).toInt()
+        }
+    val encourageUsageMinutesByGroup =
+        encourageGroups.associate { group ->
+            group.group.id to ((usageMap[group.group.id] ?: 0L) / 60_000L).toInt()
+        }
     val controlCompletedGroups =
         controlGroups.count { group ->
-            val usageMinutes = ((usageMap[group.group.id] ?: 0L) / 60_000L).toInt()
-            usageMinutes <= group.group.limitMinutes
+            val usageMinutes = controlUsageMinutesByGroup[group.group.id] ?: 0
+            usageMinutes <= group.group.limitMinutes + HOME_CONTROL_TOLERANCE_MINUTES
         }
     val encourageCompletedGroups =
         encourageGroups.count { group ->
-            val usageMinutes = ((usageMap[group.group.id] ?: 0L) / 60_000L).toInt()
+            val usageMinutes = encourageUsageMinutesByGroup[group.group.id] ?: 0
             usageMinutes >= group.group.limitMinutes
         }
+    val controlScoreRatio =
+        controlGroups
+            .takeIf { it.isNotEmpty() }
+            ?.map { group ->
+                controlGroupScore(
+                    usageMinutes = controlUsageMinutesByGroup[group.group.id] ?: 0,
+                    limitMinutes = group.group.limitMinutes,
+                )
+            }
+            ?.average()
+            ?.toFloat()
+            ?: 0f
+    val encourageScoreRatio =
+        encourageGroups
+            .takeIf { it.isNotEmpty() }
+            ?.map { group ->
+                encourageGroupScore(
+                    usageMinutes = encourageUsageMinutesByGroup[group.group.id] ?: 0,
+                    targetMinutes = group.group.limitMinutes,
+                )
+            }
+            ?.average()
+            ?.toFloat()
+            ?: 0f
     val controlTodaySavedMinutes =
         controlGroups.sumOf { group ->
-            val usageMinutes = ((usageMap[group.group.id] ?: 0L) / 60_000L).toInt()
+            val usageMinutes = controlUsageMinutesByGroup[group.group.id] ?: 0
             (group.group.limitMinutes - usageMinutes).coerceAtLeast(0)
         }
     val encourageTodayEarnedPoints =
@@ -3869,6 +4002,7 @@ private fun buildHomeOverviewUiState(
                 todaySavedMinutes = controlTodaySavedMinutes,
                 completedGroups = controlCompletedGroups,
                 totalGroups = controlGroups.size,
+                scoreRatio = controlScoreRatio,
                 streakDays = achievementProgress.controlStreak,
             ),
         encourage =
@@ -3876,6 +4010,7 @@ private fun buildHomeOverviewUiState(
                 todayEarnedPoints = encourageTodayEarnedPoints,
                 completedGroups = encourageCompletedGroups,
                 totalGroups = encourageGroups.size,
+                scoreRatio = encourageScoreRatio,
                 streakDays = achievementProgress.encourageStreak,
             ),
         history =

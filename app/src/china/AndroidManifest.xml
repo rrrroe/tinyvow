@@ -36,15 +36,9 @@
             android:name="com.android.billingclient.api.ProxyBillingActivityV2"
             tools:node="remove" />
         <activity
-            android:name="com.google.android.gms.auth.api.signin.internal.SignInHubActivity"
-            tools:node="remove" />
-        <activity
             android:name="com.google.android.gms.common.api.GoogleApiActivity"
             tools:node="remove" />
 
-        <service
-            android:name="com.google.android.gms.auth.api.signin.RevocationBoundService"
-            tools:node="remove" />
         <service
             android:name="com.google.android.datatransport.runtime.backends.TransportBackendDiscovery"
             tools:node="remove" />
