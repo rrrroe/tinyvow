@@ -58,19 +58,16 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.GenericShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.material3.*
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -109,6 +106,7 @@ import com.rrrrz.tinyvow.data.auth.LocalAuthRepository
 import com.rrrrz.tinyvow.data.billing.NoopSubscriptionRepository
 import com.rrrrz.tinyvow.data.billing.PlayBillingSubscriptionRepository
 import com.rrrrz.tinyvow.data.billing.ProEntitlementState
+import com.rrrrz.tinyvow.data.billing.ProEntitlementStatus
 import com.rrrrz.tinyvow.data.billing.SubscriptionRepository
 import com.rrrrz.tinyvow.data.accessibility.AccessibilityServiceStateChecker
 import com.rrrrz.tinyvow.data.apps.InstalledAppRepository
@@ -131,6 +129,7 @@ import com.rrrrz.tinyvow.data.repository.RewardSaveResult
 import com.rrrrz.tinyvow.data.repository.RewardSaveValidationError
 import com.rrrrz.tinyvow.data.repository.UseRewardResult
 import com.rrrrz.tinyvow.data.settings.ManagedAppPreferences
+import com.rrrrz.tinyvow.data.special.SpecialAppUsageRepository
 import com.rrrrz.tinyvow.data.supermode.GuardedAction
 import com.rrrrz.tinyvow.data.supermode.SuperModeController
 import com.rrrrz.tinyvow.data.supermode.SuperModeEnterResult
@@ -167,24 +166,32 @@ import com.rrrrz.tinyvow.data.db.GroupType
 import com.rrrrz.tinyvow.data.db.LimitPeriod
 import com.rrrrz.tinyvow.data.db.AchievementEntity
 import com.rrrrz.tinyvow.data.db.AchievementTier
+import com.rrrrz.tinyvow.data.db.ActiveRewardEffectEntity
+import com.rrrrz.tinyvow.data.db.ActiveRewardEffectStatus
 import com.rrrrz.tinyvow.data.db.RedemptionEntity
 import com.rrrrz.tinyvow.data.db.RedemptionHistoryEntity
+import com.rrrrz.tinyvow.data.db.RewardType
 import com.rrrrz.tinyvow.data.db.RewardUseHistoryEntity
+import com.rrrrz.tinyvow.data.repository.parseRewardPayload
 import com.rrrrz.tinyvow.ui.rewards.RedeemScreen
 import com.rrrrz.tinyvow.ui.rewards.AchievementScreen
 import com.rrrrz.tinyvow.ui.rewards.AchievementBadge
 import com.rrrrz.tinyvow.ui.rewards.RewardInventoryScreen
 import com.rrrrz.tinyvow.ui.theme.DefaultThemeSeed
 import com.rrrrz.tinyvow.ui.theme.LocalThemeColors
+import com.rrrrz.tinyvow.ui.theme.TinyVowButton
+import com.rrrrz.tinyvow.ui.theme.TinyVowButtonTone
 import com.rrrrz.tinyvow.ui.theme.TinyVowCard
 import com.rrrrz.tinyvow.ui.theme.TinyVowElevation
 import com.rrrrz.tinyvow.ui.theme.TinyVowRadius
 import com.rrrrz.tinyvow.ui.theme.TinyVowSpacing
+import com.rrrrz.tinyvow.ui.theme.TinyVowSnackbarHost
 
-enum class Screen { HOME, REWARDS, STATS, ME, ME_PERMISSIONS, ME_DATA_PRIVACY, ME_VERSION, LABORATORY, HISTORY, THEME, LANGUAGE, HELP_FEEDBACK, CONTACT_US, SPECIAL_APPS, WEREAD_SPECIAL_APP, PERMISSION_DIAGNOSTICS }
+enum class Screen { HOME, REWARDS, STATS, ME, ME_PERMISSIONS, ME_DATA_PRIVACY, ME_VERSION, SUPER_MODE, LABORATORY, HISTORY, THEME, LANGUAGE, HELP_FEEDBACK, CONTACT_US, SPECIAL_APPS, WEREAD_SPECIAL_APP, PERMISSION_DIAGNOSTICS }
 enum class RewardsSection { STORE, INVENTORY, ACHIEVEMENTS }
 
 private const val CONTACT_EMAIL = "rrrr.zhao@gmail.com"
+private const val WEREAD_AUTO_SYNC_DEBOUNCE_MS = 60_000L
 
 private data class PendingSuperModeRequest(
     val message: String,
@@ -322,6 +329,7 @@ private data class HomeControlOverviewUiState(
     val totalGroups: Int,
     val scoreRatio: Float,
     val streakDays: Int,
+    val streakLabel: String,
 )
 
 private data class HomeEncourageOverviewUiState(
@@ -330,6 +338,8 @@ private data class HomeEncourageOverviewUiState(
     val totalGroups: Int,
     val scoreRatio: Float,
     val streakDays: Int,
+    val streakLabel: String,
+    val pointsMultiplierLabel: String?,
 )
 
 private data class HomeHistoryOverviewUiState(
@@ -444,31 +454,13 @@ private fun RewardsSwitchButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    Surface(
-        modifier = modifier.clickable(onClick = onClick),
-        shape = RoundedCornerShape(20.dp),
-        color =
-            if (selected) MaterialTheme.colorScheme.primaryContainer
-            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.34f),
-        border = if (selected) {
-            BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.20f))
-        } else {
-            null
-        },
-    ) {
-        Box(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.labelLarge,
-                color =
-                    if (selected) MaterialTheme.colorScheme.onPrimaryContainer
-                    else MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-    }
+    TinyVowButton(
+        text = title,
+        onClick = onClick,
+        selected = selected,
+        modifier = modifier,
+        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
+    )
 }
 
 private fun purchaseRewardResultMessage(result: PurchaseRewardResult): String =
@@ -516,6 +508,9 @@ private fun guardedActionLabel(action: GuardedAction): String =
         GuardedAction.ADD_CUSTOM_REWARD -> AppText.t("super_mode_action_add_custom_reward")
         GuardedAction.EDIT_CUSTOM_REWARD -> AppText.t("super_mode_action_edit_custom_reward")
         GuardedAction.EDIT_REWARD_PRICE -> AppText.t("super_mode_action_edit_reward_price")
+        GuardedAction.PURCHASE_TIME_ADD -> AppText.t("super_mode_action_purchase_time_add")
+        GuardedAction.PURCHASE_PERIOD_PASS -> AppText.t("super_mode_action_purchase_period_pass")
+        GuardedAction.PURCHASE_EMERGENCY_UNLOCK -> AppText.t("super_mode_action_purchase_emergency_unlock")
     }
 
 @Composable
@@ -553,6 +548,7 @@ fun HomeRoute(
     val database = remember(context) { AppDatabase.getDatabase(context) }
     val appLimitRepository = remember(database, context) { AppLimitRepository(context, database) }
     val usageRepository = remember(context) { MergedUsageRepository(context) }
+    val specialAppUsageRepository = remember(context) { SpecialAppUsageRepository(context) }
     val pointsRepository = remember(database, context) { PointsRepository(context, database) }
     val dailyArchiveRepository = remember(database, context) { DailyArchiveRepository(context, database) }
     val localDataManager = remember(database, context, preferences) {
@@ -577,6 +573,14 @@ fun HomeRoute(
     val storeRewardItems by appLimitRepository.observeStoreRewardsWithInventory().collectAsStateWithLifecycle(initialValue = emptyList(), lifecycle = lifecycle)
     val inventoryRewardItems by appLimitRepository.observeInventoryRewards().collectAsStateWithLifecycle(initialValue = emptyList(), lifecycle = lifecycle)
     val pendingShieldItems by appLimitRepository.observePendingStreakShields().collectAsStateWithLifecycle(initialValue = emptyList(), lifecycle = lifecycle)
+    val allRewardEffects by database.activeRewardEffectDao().observeAll().collectAsStateWithLifecycle(initialValue = emptyList(), lifecycle = lifecycle)
+    val activeRewardEffects = remember(allRewardEffects, currentTimeMillis) {
+        allRewardEffects.filter {
+            it.status == ActiveRewardEffectStatus.ACTIVE &&
+                it.startAt <= currentTimeMillis &&
+                it.expireAt > currentTimeMillis
+        }
+    }
     val achievements by appLimitRepository.getAllAchievements().collectAsStateWithLifecycle(initialValue = emptyList(), lifecycle = lifecycle)
     val achievementProgress by appLimitRepository.observeAchievementProgress().collectAsStateWithLifecycle(initialValue = AchievementProgress(), lifecycle = lifecycle)
     val redemptionHistory by appLimitRepository.getRedemptionHistory().collectAsStateWithLifecycle(initialValue = emptyList(), lifecycle = lifecycle)
@@ -641,7 +645,6 @@ fun HomeRoute(
     var showYesterdaySummary by remember { mutableStateOf(false) }
     var showWelcomeIntro by remember { mutableStateOf(false) }
     var yesterdaySavedMinutes by remember { mutableIntStateOf(0) }
-    var showSuperModeSettings by remember { mutableStateOf(false) }
     var showSuperModeCredentialDialog by remember { mutableStateOf(false) }
     var isEditingSuperModeCredentials by remember { mutableStateOf(false) }
     var showSuperModePasswordDialog by remember { mutableStateOf(false) }
@@ -655,6 +658,8 @@ fun HomeRoute(
     var superModeWindowError by remember { mutableStateOf<String?>(null) }
     var setupRequiredActionLabel by remember { mutableStateOf(AppText.t("super_mode_title")) }
     var pendingSuperModeRequest by remember { mutableStateOf<PendingSuperModeRequest?>(null) }
+    var isWeReadAutoSyncing by remember { mutableStateOf(false) }
+    var lastWeReadAutoSyncAt by remember { mutableLongStateOf(0L) }
 
     val isAutoStartDismissed by preferences.isAutoStartDismissed.collectAsStateWithLifecycle(initialValue = false, lifecycle = lifecycle)
 
@@ -750,8 +755,7 @@ fun HomeRoute(
     }
 
     fun openSuperModeSettings(configureImmediately: Boolean = false) {
-        currentScreen = Screen.ME
-        showSuperModeSettings = true
+        currentScreen = Screen.SUPER_MODE
         if (configureImmediately) {
             isEditingSuperModeCredentials = false
             showSuperModeCredentialDialog = true
@@ -762,6 +766,24 @@ fun HomeRoute(
         contract = ActivityResultContracts.RequestPermission(),
     ) {
         notificationPermissionGranted = notificationPermissionChecker.isGranted()
+    }
+
+    fun triggerWeReadAutoSync() {
+        val now = System.currentTimeMillis()
+        if (isWeReadAutoSyncing || now - lastWeReadAutoSyncAt < WEREAD_AUTO_SYNC_DEBOUNCE_MS) {
+            return
+        }
+        isWeReadAutoSyncing = true
+        lastWeReadAutoSyncAt = now
+        coroutineScope.launch {
+            try {
+                if (specialAppUsageRepository.buildSettingsState().hasApiKey) {
+                    specialAppUsageRepository.syncWeReadNow()
+                }
+            } finally {
+                isWeReadAutoSyncing = false
+            }
+        }
     }
 
     DisposableEffect(lifecycleOwner, checker, superModeStoredState.isActive) {
@@ -775,6 +797,7 @@ fun HomeRoute(
                 coroutineScope.launch {
                     subscriptionRepository.refresh()
                 }
+                triggerWeReadAutoSync()
             } else if (event == Lifecycle.Event.ON_STOP && superModeStoredState.isActive) {
                 coroutineScope.launch {
                     superModeController.exit(SuperModeExitReason.BACKGROUND)
@@ -783,6 +806,10 @@ fun HomeRoute(
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    LaunchedEffect(Unit) {
+        triggerWeReadAutoSync()
     }
 
     LaunchedEffect(superModeStoredState.isActive, superModeStatus.isActive, superModeStatus.isAvailableNow) {
@@ -895,7 +922,7 @@ fun HomeRoute(
                 currentScreen = when (currentScreen) {
                     Screen.WEREAD_SPECIAL_APP -> Screen.SPECIAL_APPS
                     Screen.PERMISSION_DIAGNOSTICS -> Screen.HOME
-                    Screen.ME_PERMISSIONS, Screen.ME_DATA_PRIVACY, Screen.ME_VERSION, Screen.LABORATORY, Screen.HISTORY, Screen.THEME, Screen.LANGUAGE, Screen.HELP_FEEDBACK, Screen.CONTACT_US, Screen.SPECIAL_APPS -> Screen.ME
+                    Screen.ME_PERMISSIONS, Screen.ME_DATA_PRIVACY, Screen.ME_VERSION, Screen.SUPER_MODE, Screen.LABORATORY, Screen.HISTORY, Screen.THEME, Screen.LANGUAGE, Screen.HELP_FEEDBACK, Screen.CONTACT_US, Screen.SPECIAL_APPS -> Screen.ME
                     else -> Screen.HOME
                 }
             }
@@ -935,7 +962,7 @@ fun HomeRoute(
 
     Scaffold(
         snackbarHost = {
-            SnackbarHost(hostState = snackbarHostState)
+            TinyVowSnackbarHost(hostState = snackbarHostState)
         },
         bottomBar = {
             if (currentScreen == Screen.HOME || currentScreen == Screen.REWARDS || currentScreen == Screen.STATS || currentScreen == Screen.ME) {
@@ -962,6 +989,7 @@ fun HomeRoute(
                         isIgnoringBattery = isIgnoringBattery,
                         installedApps = installedApps,
                         groupsWithApps = groupsWithApps,
+                        activeRewardEffects = activeRewardEffects,
                         userPoints = userPoints,
                         todayPoints = todayPoints,
                         isLoadingApps = isLoadingApps,
@@ -977,7 +1005,7 @@ fun HomeRoute(
                         onOpenSuperModeEntry = {
                             when {
                                 !superModeStatus.isConfigured -> openSuperModeSettings(configureImmediately = true)
-                                superModeStatus.isActive -> showSuperModeSettings = true
+                                superModeStatus.isActive -> openSuperModeSettings()
                                 else -> requestSuperModeSession(AppText.t("super_mode_enter_from_home"))
                             }
                         },
@@ -1052,16 +1080,23 @@ fun HomeRoute(
                             rewardUseHistory = rewardUseHistory,
                             onPurchaseReward = { reward ->
                                 coroutineScope.launch {
-                                    val result = appLimitRepository.purchaseReward(reward.id)
                                     snackbarHostState.showSnackbar(
-                                        purchaseRewardResultMessage(result)
+                                        runCatching {
+                                            purchaseRewardResultMessage(appLimitRepository.purchaseReward(reward.id))
+                                        }.getOrElse {
+                                            AppText.t("redeem_purchase_failed")
+                                        }
                                     )
                                 }
                             },
                         onUseInventoryReward = { reward, groupId ->
                             coroutineScope.launch {
                                 snackbarHostState.showSnackbar(
-                                    useRewardResultMessage(appLimitRepository.useInventoryReward(reward.id, groupId))
+                                    runCatching {
+                                        useRewardResultMessage(appLimitRepository.useInventoryReward(reward.id, groupId))
+                                    }.getOrElse {
+                                        AppText.t("redeem_purchase_failed")
+                                    }
                                 )
                             }
                         },
@@ -1136,6 +1171,19 @@ fun HomeRoute(
                             isAutoStartDismissed = isAutoStartDismissed,
                             isIgnoringBattery = isIgnoringBattery,
                             notificationPermissionGranted = notificationPermissionGranted,
+                            runtimeDiagnostics =
+                                buildRuntimeDiagnostics(
+                                    generatedAtMillis = currentTimeMillis,
+                                    usageAccessGranted = effectiveUsageAccessStatus == UsageAccessStatus.GRANTED,
+                                    accessibilityServiceEnabled = effectiveAccessibilityServiceEnabled,
+                                    notificationPermissionGranted = notificationPermissionGranted,
+                                    isIgnoringBattery = isIgnoringBattery,
+                                    groupsWithApps = groupsWithApps,
+                                    archiveCount = meHistoricalArchives.size,
+                                    latestArchiveDate = meHistoricalArchives.maxByOrNull { it.archiveDate }?.archiveDate,
+                                    proEntitlement = proEntitlement,
+                                    superModeStatus = superModeStatus,
+                                ),
                             statusColor = if (effectiveUsageAccessStatus == UsageAccessStatus.GRANTED) {
                                 MaterialTheme.colorScheme.primary
                             } else {
@@ -1226,7 +1274,7 @@ fun HomeRoute(
                             }
                         },
                         onShowProUpsell = { proUpsellSource = it },
-                        onOpenSuperModeSettings = { showSuperModeSettings = true },
+                        onOpenSuperModeSettings = { openSuperModeSettings() },
                         onOpenUsageAccessSettings = { requestUsageAccessSettings() },
                         onOpenAccessibilitySettings = { requestAccessibilitySettings() },
                         onRequestNotificationPermission = {
@@ -1389,8 +1437,20 @@ fun HomeRoute(
                         onExportLocalData = {
                             coroutineScope.launch {
                                 runCatching {
-                                    localDataManager.exportPrivacyReport()
-                                }.onSuccess { file ->
+                                    val diagnostics =
+                                        buildRuntimeDiagnostics(
+                                            generatedAtMillis = currentTimeMillis,
+                                            usageAccessGranted = effectiveUsageAccessStatus == UsageAccessStatus.GRANTED,
+                                            accessibilityServiceEnabled = effectiveAccessibilityServiceEnabled,
+                                            notificationPermissionGranted = notificationPermissionGranted,
+                                            isIgnoringBattery = isIgnoringBattery,
+                                            groupsWithApps = groupsWithApps,
+                                            archiveCount = meHistoricalArchives.size,
+                                            latestArchiveDate = meHistoricalArchives.maxByOrNull { it.archiveDate }?.archiveDate,
+                                            proEntitlement = proEntitlement,
+                                            superModeStatus = superModeStatus,
+                                        ).asPlainText(AppText.t("diagnostics_runtime_summary"))
+                                    val file = localDataManager.exportPrivacyReport(diagnostics)
                                     val uri = FileProvider.getUriForFile(
                                         context,
                                         "${context.packageName}.fileprovider",
@@ -1408,6 +1468,8 @@ fun HomeRoute(
                                         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                                     }
                                     context.startActivity(Intent.createChooser(intent, AppText.t("home_export_local_data")))
+                                }.onSuccess {
+                                    // The share sheet is now open; no snackbar needed.
                                 }.onFailure {
                                     snackbarHostState.showSnackbar(AppText.t("home_export_local_data_failed"))
                                 }
@@ -1442,6 +1504,67 @@ fun HomeRoute(
                     VersionInfoPage(
                         versionName = BuildConfig.VERSION_NAME.removeSuffix("-cn"),
                         onBack = { currentScreen = Screen.ME },
+                    )
+                }
+                Screen.SUPER_MODE -> {
+                    SuperModeSettingsSheet(
+                        status = superModeStatus,
+                        isProActive = proEntitlement.isProActive,
+                        currentTimeLabel = currentTimeLabel,
+                        recoveryQuestion = superModeStoredState.recoveryQuestion,
+                        onDismiss = { currentScreen = Screen.ME },
+                        onConfigure = {
+                            isEditingSuperModeCredentials = false
+                            showSuperModeCredentialDialog = true
+                        },
+                        onSetEnabled = { enabled ->
+                            coroutineScope.launch {
+                                preferences.setSuperModeEnabled(enabled)
+                                snackbarHostState.showSnackbar(
+                                    if (enabled) {
+                                        AppText.t("super_mode_enabled_success")
+                                    } else {
+                                        AppText.t("super_mode_disabled_toggle_success")
+                                    }
+                                )
+                            }
+                        },
+                        onEnter = {
+                            requestSuperModeSession(AppText.t("super_mode_enter_for_settings"))
+                        },
+                        onExit = {
+                            coroutineScope.launch {
+                                superModeController.exit(SuperModeExitReason.MANUAL)
+                                snackbarHostState.showSnackbar(AppText.t("super_mode_exit_success"))
+                            }
+                        },
+                        onEditCredentials = {
+                            requestSuperModeSession(AppText.t("super_mode_enter_to_edit_credentials")) {
+                                isEditingSuperModeCredentials = true
+                                showSuperModeCredentialDialog = true
+                            }
+                        },
+                        onEditWindow = {
+                            if (!proEntitlement.isProActive) {
+                                coroutineScope.launch {
+                                    snackbarHostState.showSnackbar(AppText.t("super_mode_window_pro_only"))
+                                }
+                            } else {
+                                requestSuperModeSession(AppText.t("super_mode_enter_to_edit_window")) {
+                                    superModeWindowError = null
+                                    showSuperModeWindowDialog = true
+                                }
+                            }
+                        },
+                        onRecoveryReset = {
+                            superModeRecoveryError = null
+                            showSuperModeRecoveryDialog = true
+                        },
+                        onDisable = {
+                            requestSuperModeSession(AppText.t("super_mode_enter_to_disable")) {
+                                showSuperModeDisableDialog = true
+                            }
+                        },
                     )
                 }
                 Screen.THEME -> {
@@ -1495,7 +1618,24 @@ fun HomeRoute(
                     HelpFeedbackScreen(
                         onBack = { currentScreen = Screen.ME },
                         onSendFeedback = {
-                            if (!context.openSupportEmail(AppText.t("home_feedback_subject"))) {
+                            val diagnostics =
+                                buildRuntimeDiagnostics(
+                                    generatedAtMillis = currentTimeMillis,
+                                    usageAccessGranted = effectiveUsageAccessStatus == UsageAccessStatus.GRANTED,
+                                    accessibilityServiceEnabled = effectiveAccessibilityServiceEnabled,
+                                    notificationPermissionGranted = notificationPermissionGranted,
+                                    isIgnoringBattery = isIgnoringBattery,
+                                    groupsWithApps = groupsWithApps,
+                                    archiveCount = meHistoricalArchives.size,
+                                    latestArchiveDate = meHistoricalArchives.maxByOrNull { it.archiveDate }?.archiveDate,
+                                    proEntitlement = proEntitlement,
+                                    superModeStatus = superModeStatus,
+                                ).asPlainText(AppText.t("diagnostics_runtime_summary"))
+                            if (!context.openSupportEmail(
+                                    subject = AppText.t("home_feedback_subject"),
+                                    body = AppText.t("support_feedback_email_body", diagnostics),
+                                )
+                            ) {
                                 coroutineScope.launch {
                                     snackbarHostState.showSnackbar(AppText.t("home_no_mail_app_was_found_email_address_copied"))
                                 }
@@ -1603,68 +1743,6 @@ fun HomeRoute(
         )
     }
 
-    if (showSuperModeSettings) {
-        SuperModeSettingsSheet(
-            status = superModeStatus,
-            isProActive = proEntitlement.isProActive,
-            currentTimeLabel = currentTimeLabel,
-            recoveryQuestion = superModeStoredState.recoveryQuestion,
-            onDismiss = { showSuperModeSettings = false },
-            onConfigure = {
-                isEditingSuperModeCredentials = false
-                showSuperModeCredentialDialog = true
-            },
-            onSetEnabled = { enabled ->
-                coroutineScope.launch {
-                    preferences.setSuperModeEnabled(enabled)
-                    snackbarHostState.showSnackbar(
-                        if (enabled) {
-                            AppText.t("super_mode_enabled_success")
-                        } else {
-                            AppText.t("super_mode_disabled_toggle_success")
-                        }
-                    )
-                }
-            },
-            onEnter = {
-                requestSuperModeSession(AppText.t("super_mode_enter_for_settings"))
-            },
-            onExit = {
-                coroutineScope.launch {
-                    superModeController.exit(SuperModeExitReason.MANUAL)
-                    snackbarHostState.showSnackbar(AppText.t("super_mode_exit_success"))
-                }
-            },
-            onEditCredentials = {
-                requestSuperModeSession(AppText.t("super_mode_enter_to_edit_credentials")) {
-                    isEditingSuperModeCredentials = true
-                    showSuperModeCredentialDialog = true
-                }
-            },
-            onEditWindow = {
-                if (!proEntitlement.isProActive) {
-                    coroutineScope.launch {
-                        snackbarHostState.showSnackbar(AppText.t("super_mode_window_pro_only"))
-                    }
-                } else {
-                    requestSuperModeSession(AppText.t("super_mode_enter_to_edit_window")) {
-                        superModeWindowError = null
-                        showSuperModeWindowDialog = true
-                    }
-                }
-            },
-            onRecoveryReset = {
-                superModeRecoveryError = null
-                showSuperModeRecoveryDialog = true
-            },
-            onDisable = {
-                requestSuperModeSession(AppText.t("super_mode_enter_to_disable")) {
-                    showSuperModeDisableDialog = true
-                }
-            },
-        )
-    }
-
     if (showSuperModeCredentialDialog) {
         SuperModeCredentialDialog(
             initialQuestion = superModeStoredState.recoveryQuestion.orEmpty(),
@@ -1753,7 +1831,7 @@ fun HomeRoute(
                     when (superModeController.resetWithRecovery(answer)) {
                         SuperModeRecoveryResult.Success -> {
                             showSuperModeRecoveryDialog = false
-                            showSuperModeSettings = false
+                            currentScreen = Screen.ME
                             snackbarHostState.showSnackbar(AppText.t("super_mode_reset_success"))
                         }
                         SuperModeRecoveryResult.IncorrectAnswer -> {
@@ -1804,7 +1882,7 @@ fun HomeRoute(
                         coroutineScope.launch {
                             superModeController.clearConfiguration()
                             showSuperModeDisableDialog = false
-                            showSuperModeSettings = false
+                            currentScreen = Screen.ME
                             snackbarHostState.showSnackbar(AppText.t("super_mode_disabled_success"))
                         }
                     },
@@ -1833,14 +1911,15 @@ fun HomeRoute(
     }
 
     if (showYesterdaySummary) {
-        androidx.compose.material3.AlertDialog(
+        val themeColors = LocalThemeColors.current
+        AlertDialog(
             onDismissRequest = { showYesterdaySummary = false },
             title = { 
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     androidx.compose.material3.Icon(
                         androidx.compose.material.icons.Icons.Default.Star,
                         contentDescription = null,
-                        tint = MaterialTheme.colorScheme.tertiary,
+                        tint = themeColors.encourage,
                         modifier = Modifier.size(32.dp)
                     )
                     Spacer(modifier = Modifier.width(12.dp))
@@ -1856,7 +1935,7 @@ fun HomeRoute(
                     Spacer(modifier = Modifier.height(16.dp))
                     Box(
                         modifier = Modifier.fillMaxWidth().background(
-                            MaterialTheme.colorScheme.primaryContainer,
+                            themeColors.baseContainer,
                             RoundedCornerShape(12.dp)
                         ).padding(16.dp),
                         contentAlignment = Alignment.Center
@@ -1868,7 +1947,7 @@ fun HomeRoute(
                                 AppText.t("home_value_minutes", yesterdaySavedMinutes)
                             },
                             style = MaterialTheme.typography.headlineMedium,
-                            color = MaterialTheme.colorScheme.primary
+                            color = themeColors.base
                         )
                     }
                     Spacer(modifier = Modifier.height(16.dp))
@@ -1972,11 +2051,17 @@ private fun Context.startActivityKeepingCurrentTask(intent: Intent) {
     startActivity(intent)
 }
 
-private fun android.content.Context.openSupportEmail(subject: String): Boolean {
+private fun android.content.Context.openSupportEmail(
+    subject: String,
+    body: String? = null,
+): Boolean {
     val intent = Intent(Intent.ACTION_SENDTO).apply {
         data = Uri.parse("mailto:$CONTACT_EMAIL")
         putExtra(Intent.EXTRA_EMAIL, arrayOf(CONTACT_EMAIL))
         putExtra(Intent.EXTRA_SUBJECT, subject)
+        if (body != null) {
+            putExtra(Intent.EXTRA_TEXT, body)
+        }
     }
     return runCatching {
         startActivityKeepingCurrentTask(intent)
@@ -2183,6 +2268,7 @@ fun HomeScreen(
     isIgnoringBattery: Boolean,
     installedApps: List<ManagedApp>,
     groupsWithApps: List<AppGroupWithApps>,
+    activeRewardEffects: List<ActiveRewardEffectEntity>,
     userPoints: Double,
     todayPoints: Double,
     isLoadingApps: Boolean,
@@ -2253,6 +2339,7 @@ fun HomeScreen(
             context,
             groupsWithApps,
             usageMap,
+            activeRewardEffects,
             historicalArchives,
             userPoints,
             todayPoints,
@@ -2262,6 +2349,7 @@ fun HomeScreen(
                 context = context,
                 groupsWithApps = groupsWithApps,
                 usageMap = usageMap,
+                activeRewardEffects = activeRewardEffects,
                 historicalArchives = historicalArchives,
                 userPoints = userPoints,
                 todayPoints = todayPoints,
@@ -2350,6 +2438,7 @@ fun HomeScreen(
                     GroupDashboard(
                         groupsWithApps = groupsWithApps,
                         usageMap = usageMap,
+                        activeRewardEffects = activeRewardEffects,
                         installedApps = installedApps,
                         isLoadingApps = isLoadingApps,
                         onSaveGroup = onSaveGroup,
@@ -2496,7 +2585,7 @@ private fun HomeOverviewPaperCard(
                             value = state.control.todaySavedMinutes.toString(),
                             unit = AppText.t("group_minutes"),
                             progress = AppText.t("home_commitment_progress_value", state.control.completedGroups, state.control.totalGroups),
-                            streak = AppText.t("home_control_streak_value", state.control.streakDays),
+                            streak = state.control.streakLabel,
                             primaryMetricLabel = AppText.t("home_total_saved"),
                             primaryMetricValue = state.history.totalSavedMinutes.toString(),
                             primaryMetricUnit = AppText.t("group_minutes"),
@@ -2515,11 +2604,13 @@ private fun HomeOverviewPaperCard(
                         HomeOverviewWingPanel(
                             isLeft = false,
                             title = AppText.t("home_encouragement_panel"),
-                            label = AppText.t("home_earned_today"),
+                            label = state.encourage.pointsMultiplierLabel?.let {
+                                AppText.t("home_earned_today_with_badge", it)
+                            } ?: AppText.t("home_earned_today"),
                             value = formatHomePointWholeValue(state.encourage.todayEarnedPoints),
                             unit = AppText.t("group_points"),
                             progress = AppText.t("home_encouragement_progress_value", state.encourage.completedGroups, state.encourage.totalGroups),
-                            streak = AppText.t("home_encourage_streak_value", state.encourage.streakDays),
+                            streak = state.encourage.streakLabel,
                             primaryMetricLabel = AppText.t("home_total_earned"),
                             primaryMetricValue = formatHomePointValue(state.history.totalEarnedPoints),
                             primaryMetricUnit = AppText.t("group_points"),
@@ -3109,7 +3200,7 @@ private fun HomeOverviewSplitCards(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         HomeOverviewSplitPill(text = AppText.t("home_commitment_progress_value", state.control.completedGroups, state.control.totalGroups))
-                        HomeOverviewSplitPill(text = AppText.t("home_control_streak_value", state.control.streakDays))
+                        HomeOverviewSplitPill(text = state.control.streakLabel)
                     }
 
                     // Divider
@@ -3176,7 +3267,9 @@ private fun HomeOverviewSplitCards(
                         verticalArrangement = Arrangement.spacedBy(1.dp)
                     ) {
                         Text(
-                            text = AppText.t("home_earned_today"),
+                            text = state.encourage.pointsMultiplierLabel?.let {
+                                AppText.t("home_earned_today_with_badge", it)
+                            } ?: AppText.t("home_earned_today"),
                             style = MaterialTheme.typography.labelSmall.copy(
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.SemiBold
@@ -3215,7 +3308,7 @@ private fun HomeOverviewSplitCards(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         HomeOverviewSplitPill(text = AppText.t("home_encouragement_progress_value", state.encourage.completedGroups, state.encourage.totalGroups))
-                        HomeOverviewSplitPill(text = AppText.t("home_encourage_streak_value", state.encourage.streakDays))
+                        HomeOverviewSplitPill(text = state.encourage.streakLabel)
                     }
 
                     // Divider
@@ -3869,6 +3962,26 @@ private fun formatHomePointValue(points: Double): String =
 private fun formatHomePointWholeValue(points: Double): String =
     points.roundToLong().coerceAtLeast(0L).toString()
 
+private fun homeStreakLabel(
+    archivedStreak: Int,
+    completedGroups: Int,
+    totalGroups: Int,
+): String {
+    val todayCompleted = totalGroups > 0 && completedGroups >= totalGroups
+    return when {
+        todayCompleted -> AppText.t("home_streak_value", archivedStreak + 1)
+        archivedStreak > 0 -> AppText.t("home_streak_pending_value", archivedStreak, archivedStreak + 1)
+        else -> AppText.t("home_streak_value", archivedStreak)
+    }
+}
+
+private fun trimHomeMultiplier(value: Double): String =
+    if (value % 1.0 == 0.0) {
+        value.toInt().toString()
+    } else {
+        value.toString().trimEnd('0').trimEnd('.')
+    }
+
 private const val HOME_SURPRISE_COUNT = 100
 
 private fun homeSurpriseKeyForDate(date: LocalDate): String {
@@ -3917,6 +4030,7 @@ private fun buildHomeOverviewUiState(
     context: android.content.Context,
     groupsWithApps: List<AppGroupWithApps>,
     usageMap: Map<String, Long>,
+    activeRewardEffects: List<ActiveRewardEffectEntity>,
     historicalArchives: List<com.rrrrz.tinyvow.data.db.DailyArchiveEntity>,
     userPoints: Double,
     todayPoints: Double,
@@ -3984,6 +4098,17 @@ private fun buildHomeOverviewUiState(
                 }
             usagePoints + targetBonus
         }
+    val encouragePointsMultiplier =
+        activeRewardEffects
+            .filter { it.effectType == RewardType.DOUBLE_POINTS_DAY && it.targetGroupType == GroupType.ENCOURAGE }
+            .maxOfOrNull { parseRewardPayload(it.payloadJson).pointsMultiplier.coerceAtLeast(1.0) }
+            ?: 1.0
+    val encouragePointsMultiplierLabel =
+        if (encouragePointsMultiplier > 1.0) {
+            AppText.t("home_points_multiplier_badge", trimHomeMultiplier(encouragePointsMultiplier))
+        } else {
+            null
+        }
     val totalSavedMinutes = historicalArchives.sumOf { it.savedMillis } / 60_000L
     val extendedLifeMinutes = totalSavedMinutes * 3L
     val totalEarnedPoints = historicalArchives.sumOf { it.pointsEarned } + todayPoints
@@ -4004,6 +4129,12 @@ private fun buildHomeOverviewUiState(
                 totalGroups = controlGroups.size,
                 scoreRatio = controlScoreRatio,
                 streakDays = achievementProgress.controlStreak,
+                streakLabel =
+                    homeStreakLabel(
+                        archivedStreak = achievementProgress.controlStreak,
+                        completedGroups = controlCompletedGroups,
+                        totalGroups = controlGroups.size,
+                    ),
             ),
         encourage =
             HomeEncourageOverviewUiState(
@@ -4012,6 +4143,13 @@ private fun buildHomeOverviewUiState(
                 totalGroups = encourageGroups.size,
                 scoreRatio = encourageScoreRatio,
                 streakDays = achievementProgress.encourageStreak,
+                streakLabel =
+                    homeStreakLabel(
+                        archivedStreak = achievementProgress.encourageStreak,
+                        completedGroups = encourageCompletedGroups,
+                        totalGroups = encourageGroups.size,
+                    ),
+                pointsMultiplierLabel = encouragePointsMultiplierLabel,
             ),
         history =
             HomeHistoryOverviewUiState(
@@ -4023,6 +4161,129 @@ private fun buildHomeOverviewUiState(
     )
 }
 
+private fun buildRuntimeDiagnostics(
+    generatedAtMillis: Long,
+    usageAccessGranted: Boolean,
+    accessibilityServiceEnabled: Boolean,
+    notificationPermissionGranted: Boolean,
+    isIgnoringBattery: Boolean,
+    groupsWithApps: List<AppGroupWithApps>,
+    archiveCount: Int,
+    latestArchiveDate: String?,
+    proEntitlement: ProEntitlementState,
+    superModeStatus: SuperModeStatus,
+): RuntimeDiagnostics {
+    val controlCount = groupsWithApps.count { it.group.type == GroupType.CONTROL }
+    val encourageCount = groupsWithApps.count { it.group.type == GroupType.ENCOURAGE }
+    val generatedAt =
+        java.text.DateFormat
+            .getDateTimeInstance(java.text.DateFormat.MEDIUM, java.text.DateFormat.SHORT)
+            .format(java.util.Date(generatedAtMillis))
+    val archiveValue =
+        if (archiveCount > 0 && latestArchiveDate != null) {
+            AppText.t("diagnostics_archive_count_latest", archiveCount, latestArchiveDate)
+        } else {
+            AppText.t("diagnostics_archive_count_empty")
+        }
+    val proValue = proDiagnosticValue(proEntitlement)
+    val superModeValue =
+        when {
+            !superModeStatus.isConfigured -> AppText.t("super_mode_not_configured")
+            !superModeStatus.isEnabled -> AppText.t("super_mode_disabled_status")
+            superModeStatus.isActive -> AppText.t("super_mode_active_status", formatDiagnosticsRemaining(superModeStatus.remainingMillis))
+            superModeStatus.isAvailableNow -> AppText.t("super_mode_ready_status")
+            else -> AppText.t("super_mode_locked_until_status")
+        }
+    return RuntimeDiagnostics(
+        generatedAt = generatedAt,
+        items =
+            listOf(
+                RuntimeDiagnosticItem(
+                    label = AppText.t("diagnostics_label_app_version"),
+                    value = AppText.t("diagnostics_version_value", BuildConfig.VERSION_NAME, BuildConfig.VERSION_CODE),
+                ),
+                RuntimeDiagnosticItem(
+                    label = AppText.t("diagnostics_label_channel"),
+                    value = BuildConfig.STORE_CHANNEL,
+                ),
+                RuntimeDiagnosticItem(
+                    label = AppText.t("diagnostics_label_usage_access"),
+                    value = permissionStatusText(usageAccessGranted),
+                    isHealthy = usageAccessGranted,
+                ),
+                RuntimeDiagnosticItem(
+                    label = AppText.t("diagnostics_label_accessibility"),
+                    value = enabledStatusText(accessibilityServiceEnabled),
+                    isHealthy = accessibilityServiceEnabled,
+                ),
+                RuntimeDiagnosticItem(
+                    label = AppText.t("diagnostics_label_notifications"),
+                    value = permissionStatusText(notificationPermissionGranted),
+                    isHealthy = notificationPermissionGranted,
+                ),
+                RuntimeDiagnosticItem(
+                    label = AppText.t("diagnostics_label_battery"),
+                    value = if (isIgnoringBattery) AppText.t("diagnostics_battery_unrestricted") else AppText.t("diagnostics_battery_restricted"),
+                    isHealthy = isIgnoringBattery,
+                ),
+                RuntimeDiagnosticItem(
+                    label = AppText.t("diagnostics_label_groups"),
+                    value = AppText.t("diagnostics_group_count_value", controlCount, encourageCount),
+                ),
+                RuntimeDiagnosticItem(
+                    label = AppText.t("diagnostics_label_archives"),
+                    value = archiveValue,
+                ),
+                RuntimeDiagnosticItem(
+                    label = AppText.t("diagnostics_label_pro"),
+                    value = proValue,
+                    isHealthy = proEntitlement.status != ProEntitlementStatus.UNAVAILABLE,
+                ),
+                RuntimeDiagnosticItem(
+                    label = AppText.t("diagnostics_label_super_mode"),
+                    value = superModeValue,
+                ),
+            ),
+    )
+}
+
+private fun permissionStatusText(granted: Boolean): String =
+    if (granted) AppText.t("diagnostics_status_granted") else AppText.t("diagnostics_status_denied")
+
+private fun enabledStatusText(enabled: Boolean): String =
+    if (enabled) AppText.t("diagnostics_status_enabled") else AppText.t("diagnostics_status_disabled")
+
+private fun formatDiagnosticsRemaining(millis: Long): String {
+    val minutes = ((millis + 59_999L) / 60_000L).coerceAtLeast(1L).toInt()
+    return AppText.t("super_mode_minutes_value", minutes)
+}
+
+private fun proDiagnosticValue(entitlement: ProEntitlementState): String {
+    val sourceLabel =
+        when (entitlement.source) {
+            "google_play" -> AppText.t("diagnostics_pro_source_google_play")
+            "local_activation" -> AppText.t("diagnostics_pro_source_local_activation")
+            "debug_lab" -> AppText.t("diagnostics_pro_source_debug_lab")
+            null, "" -> AppText.t("diagnostics_pro_source_none")
+            else -> entitlement.source
+        }
+    val expiresAt =
+        entitlement.expiresAtMillis?.let {
+            java.text.DateFormat.getDateInstance().format(java.util.Date(it))
+        }
+    return when (entitlement.status) {
+        ProEntitlementStatus.ACTIVE ->
+            if (expiresAt == null) {
+                AppText.t("diagnostics_pro_active_source", sourceLabel)
+            } else {
+                AppText.t("diagnostics_pro_active_source_until", sourceLabel, expiresAt)
+            }
+        ProEntitlementStatus.PENDING -> AppText.t("diagnostics_pro_pending")
+        ProEntitlementStatus.UNAVAILABLE -> AppText.t("diagnostics_pro_unavailable")
+        ProEntitlementStatus.FREE -> AppText.t("diagnostics_pro_free")
+    }
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun DiagnosticSettingsPage(
@@ -4031,6 +4292,7 @@ private fun DiagnosticSettingsPage(
     isAutoStartDismissed: Boolean,
     isIgnoringBattery: Boolean,
     notificationPermissionGranted: Boolean,
+    runtimeDiagnostics: RuntimeDiagnostics,
     statusColor: androidx.compose.ui.graphics.Color,
     onBack: () -> Unit,
     onOpenUsageAccessSettings: () -> Unit,
@@ -4041,8 +4303,10 @@ private fun DiagnosticSettingsPage(
     onRequestNotificationPermission: () -> Unit,
 ) {
     val themeColors = LocalThemeColors.current
+    val context = LocalContext.current
     BackHandler(onBack = onBack)
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
                 title = {
@@ -4058,6 +4322,10 @@ private fun DiagnosticSettingsPage(
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = AppText.t("group_back"))
                     }
                 },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    scrolledContainerColor = MaterialTheme.colorScheme.surface,
+                ),
             )
         },
     ) { innerPadding ->
@@ -4068,8 +4336,10 @@ private fun DiagnosticSettingsPage(
                 .padding(innerPadding)
                 .verticalScroll(rememberScrollState())
                 .padding(
-                    horizontal = TinyVowSpacing.PageHorizontal,
-                    vertical = 0.dp,
+                    start = TinyVowSpacing.PageHorizontal,
+                    end = TinyVowSpacing.PageHorizontal,
+                    top = TinyVowSpacing.PageTop,
+                    bottom = TinyVowSpacing.PageTop,
                 ),
             verticalArrangement = Arrangement.spacedBy(TinyVowSpacing.SectionGap),
         ) {
@@ -4089,6 +4359,23 @@ private fun DiagnosticSettingsPage(
                     color = themeColors.ink.copy(alpha = 0.78f),
                 )
             }
+            RuntimeDiagnosticsCard(
+                diagnostics = runtimeDiagnostics,
+                onCopy = {
+                    val title = AppText.t("diagnostics_runtime_summary")
+                    val clipboard =
+                        context.getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+                    clipboard.setPrimaryClip(
+                        ClipData.newPlainText(
+                            title,
+                            runtimeDiagnostics.asPlainText(title),
+                        ),
+                    )
+                    android.widget.Toast
+                        .makeText(context, AppText.t("diagnostics_copied"), android.widget.Toast.LENGTH_SHORT)
+                        .show()
+                },
+            )
             PermissionProcessList(
                 isMenuMode = true,
                 usageAccessGranted = usageAccessGranted,
@@ -4104,8 +4391,86 @@ private fun DiagnosticSettingsPage(
                 onRequestBatteryOptimization = onRequestBatteryOptimization,
                 onRequestNotificationPermission = onRequestNotificationPermission,
             )
-            Spacer(modifier = Modifier.height(32.dp))
         }
+    }
+}
+
+@Composable
+private fun RuntimeDiagnosticsCard(
+    diagnostics: RuntimeDiagnostics,
+    onCopy: () -> Unit,
+) {
+    val themeColors = LocalThemeColors.current
+    TinyVowCard(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(TinyVowRadius.Card),
+    ) {
+        Column(
+            modifier = Modifier.padding(
+                horizontal = TinyVowSpacing.CardHorizontal,
+                vertical = TinyVowSpacing.CardVertical,
+            ),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Text(
+                        text = AppText.t("diagnostics_runtime_summary"),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = themeColors.inkStrong,
+                    )
+                    Text(
+                        text = AppText.t("diagnostics_generated_at_value", diagnostics.generatedAt),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = themeColors.inkMuted,
+                    )
+                }
+                TextButton(onClick = onCopy) {
+                    Text(AppText.t("diagnostics_copy"))
+                }
+            }
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                diagnostics.items.forEach { item ->
+                    RuntimeDiagnosticRow(item)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RuntimeDiagnosticRow(item: RuntimeDiagnosticItem) {
+    val valueColor =
+        when (item.isHealthy) {
+            true -> LocalThemeColors.current.encourage
+            false -> MaterialTheme.colorScheme.error
+            null -> MaterialTheme.colorScheme.onSurfaceVariant
+        }
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = item.label,
+            modifier = Modifier.weight(1f),
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(
+            text = item.value,
+            style = MaterialTheme.typography.bodyMedium,
+            color = valueColor,
+            fontWeight = FontWeight.SemiBold,
+        )
     }
 }
 
@@ -4397,7 +4762,7 @@ private fun AutoStartCard(
                 ) {
                     Text(text = stringResource(R.string.autostart_card_action))
                 }
-                androidx.compose.material3.OutlinedButton(
+                OutlinedButton(
                     onClick = onSetAutoStartDismissed,
                     modifier = Modifier.weight(1f),
                 ) {
@@ -4549,6 +4914,7 @@ private fun HomeScreenPreviewDenied() {
             accessibilityServiceEnabled = false,
             installedApps = emptyList(),
             groupsWithApps = emptyList(),
+            activeRewardEffects = emptyList(),
             userPoints = 120.5,
             todayPoints = 10.0,
             isLoadingApps = false,
@@ -4591,6 +4957,7 @@ private fun HomeScreenPreviewGranted() {
                 ),
             ),
             groupsWithApps = emptyList(),
+            activeRewardEffects = emptyList(),
             userPoints = 450.0,
             todayPoints = 25.0,
             isLoadingApps = false,

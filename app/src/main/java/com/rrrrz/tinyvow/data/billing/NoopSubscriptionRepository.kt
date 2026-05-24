@@ -2,6 +2,7 @@ package com.rrrrz.tinyvow.data.billing
 
 import android.app.Activity
 import android.content.Context
+import com.rrrrz.tinyvow.i18n.AppText
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -18,7 +19,7 @@ class NoopSubscriptionRepository : SubscriptionRepository {
     override suspend fun restore(): Result<Unit> = Result.success(Unit)
 
     override suspend fun purchase(activity: Activity, offer: SubscriptionOffer, accountId: String?): Result<Unit> =
-        Result.failure(IllegalStateException("Play Billing is disabled for this channel."))
+        Result.failure(IllegalStateException(AppText.t("billing_error_play_billing_disabled_for_channel")))
 
     override fun openManageSubscription(context: Context) = Unit
 }

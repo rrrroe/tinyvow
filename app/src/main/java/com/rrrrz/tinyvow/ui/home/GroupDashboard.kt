@@ -53,8 +53,6 @@ import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -65,7 +63,6 @@ import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -106,15 +103,20 @@ import androidx.core.content.FileProvider
 import androidx.core.view.WindowCompat
 import coil.compose.AsyncImage
 import com.rrrrz.tinyvow.data.apps.ManagedApp
+import com.rrrrz.tinyvow.data.db.ActiveRewardEffectEntity
 import com.rrrrz.tinyvow.data.db.DailyGroupArchiveEntity
 import com.rrrrz.tinyvow.data.db.GroupType
 import com.rrrrz.tinyvow.data.db.LimitPeriod
+import com.rrrrz.tinyvow.data.db.RewardType
 import com.rrrrz.tinyvow.data.repository.AppGroupWithApps
 import com.rrrrz.tinyvow.data.repository.DailyArchiveRepository
+import com.rrrrz.tinyvow.data.repository.parseRewardPayload
 import com.rrrrz.tinyvow.data.pro.ProFeatureGate
 import com.rrrrz.tinyvow.data.supermode.GuardedAction
 import com.rrrrz.tinyvow.data.usage.MergedUsageRepository
 import com.rrrrz.tinyvow.ui.theme.LocalThemeColors
+import com.rrrrz.tinyvow.ui.theme.TinyVowButton
+import com.rrrrz.tinyvow.ui.theme.TinyVowButtonTone
 import com.rrrrz.tinyvow.ui.theme.TinyVowCard
 import com.rrrrz.tinyvow.ui.theme.TinyVowElevation
 import com.rrrrz.tinyvow.ui.theme.TinyVowRadius
@@ -134,6 +136,7 @@ private val CompactFieldShape = RoundedCornerShape(16.dp)
 fun GroupDashboard(
     groupsWithApps: List<AppGroupWithApps>,
     usageMap: Map<String, Long>,
+    activeRewardEffects: List<ActiveRewardEffectEntity>,
     isLoadingApps: Boolean,
     installedApps: List<ManagedApp>,
     onSaveGroup: (
@@ -180,6 +183,7 @@ fun GroupDashboard(
                 title = AppText.t("group_commitment"),
                 groups = controlGroups,
                 usageMap = usageMap,
+                activeRewardEffects = activeRewardEffects,
                 accent = themeColors.control,
                 onAdd = {
                     if (ProFeatureGate.canAddGroup(isProActive, GroupType.CONTROL, controlGroups.size)) {
@@ -211,6 +215,7 @@ fun GroupDashboard(
                 title = AppText.t("group_small_encouragement"),
                 groups = encourageGroups,
                 usageMap = usageMap,
+                activeRewardEffects = activeRewardEffects,
                 accent = themeColors.encourage,
                 onAdd = {
                     if (ProFeatureGate.canAddGroup(isProActive, GroupType.ENCOURAGE, encourageGroups.size)) {
@@ -307,6 +312,7 @@ private fun SectionCard(
     title: String,
     groups: List<AppGroupWithApps>,
     usageMap: Map<String, Long>,
+    activeRewardEffects: List<ActiveRewardEffectEntity>,
     accent: Color,
     onAdd: () -> Unit,
     onSort: () -> Unit,
@@ -380,6 +386,7 @@ private fun SectionCard(
                     GroupCard(
                         groupData = item,
                         usedMinutes = ((usageMap[item.group.id] ?: 0L) / 60_000L).toInt(),
+                        activeEffects = activeRewardEffects.filter { it.targetGroupId == item.group.id },
                         accent = accent,
                         onClick = { onOpen(item) },
                         onLongClick = { onEdit(item) },
@@ -395,6 +402,7 @@ private fun SectionCard(
 private fun GroupCard(
     groupData: AppGroupWithApps,
     usedMinutes: Int,
+    activeEffects: List<ActiveRewardEffectEntity>,
     accent: Color,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
@@ -407,9 +415,19 @@ private fun GroupCard(
         LimitPeriod.WEEKLY -> AppText.t("group_weekly")
         LimitPeriod.MONTHLY -> AppText.t("group_monthly")
     }
-    val detailText = AppText.t("group_value_value_value_min", periodLabel, usedMinutes, groupData.group.limitMinutes)
-    val rawProgress = if (groupData.group.limitMinutes > 0) {
-        usedMinutes.toFloat() / groupData.group.limitMinutes.toFloat()
+    val rewardSummary = remember(activeEffects, groupData.group.type) {
+        groupActiveRewardSummary(activeEffects, groupData.group.type)
+    }
+    val effectLabels = groupActiveRewardLabels(rewardSummary, groupData.group.type)
+    val effectiveLimitMinutes =
+        if (groupData.group.type == GroupType.CONTROL) {
+            groupData.group.limitMinutes + rewardSummary.extraMinutes
+        } else {
+            groupData.group.limitMinutes
+        }
+    val detailText = AppText.t("group_value_value_value_min", periodLabel, usedMinutes, effectiveLimitMinutes)
+    val rawProgress = if (effectiveLimitMinutes > 0) {
+        usedMinutes.toFloat() / effectiveLimitMinutes.toFloat()
     } else {
         0f
     }
@@ -512,6 +530,18 @@ private fun GroupCard(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
+                if (effectLabels.isNotEmpty()) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        effectLabels.take(2).forEachIndexed { index, label ->
+                            if (index > 0) Spacer(modifier = Modifier.width(4.dp))
+                            GroupEffectPill(text = label, accent = accent)
+                        }
+                    }
+                }
             }
         }
         Box(
@@ -531,6 +561,80 @@ private fun GroupCard(
         }
     }
 }
+
+private data class GroupActiveRewardSummary(
+    val extraMinutes: Int = 0,
+    val hasPeriodPass: Boolean = false,
+    val pointsMultiplier: Double = 1.0,
+)
+
+private fun groupActiveRewardSummary(
+    effects: List<ActiveRewardEffectEntity>,
+    groupType: GroupType,
+): GroupActiveRewardSummary {
+    val extraMinutes =
+        if (groupType == GroupType.CONTROL) {
+            effects
+                .filter { it.effectType == RewardType.TIME_ADD || it.effectType == RewardType.EMERGENCY_UNLOCK }
+                .sumOf { parseRewardPayload(it.payloadJson).minutes }
+        } else {
+            0
+        }
+    val hasPeriodPass = groupType == GroupType.CONTROL && effects.any { it.effectType == RewardType.PERIOD_PASS }
+    val pointsMultiplier =
+        if (groupType == GroupType.ENCOURAGE) {
+            effects
+                .filter { it.effectType == RewardType.DOUBLE_POINTS_DAY }
+                .maxOfOrNull { parseRewardPayload(it.payloadJson).pointsMultiplier.coerceAtLeast(1.0) }
+                ?: 1.0
+        } else {
+            1.0
+        }
+    return GroupActiveRewardSummary(
+        extraMinutes = extraMinutes,
+        hasPeriodPass = hasPeriodPass,
+        pointsMultiplier = pointsMultiplier,
+    )
+}
+
+private fun groupActiveRewardLabels(
+    summary: GroupActiveRewardSummary,
+    groupType: GroupType,
+): List<String> =
+    buildList {
+        if (groupType == GroupType.CONTROL && summary.extraMinutes > 0) {
+            add(AppText.t("home_group_effect_extra_minutes", summary.extraMinutes))
+        }
+        if (groupType == GroupType.CONTROL && summary.hasPeriodPass) {
+            add(AppText.t("home_group_effect_period_pass"))
+        }
+        if (groupType == GroupType.ENCOURAGE && summary.pointsMultiplier > 1.0) {
+            add(AppText.t("home_points_multiplier_badge", trimTrailingZero(summary.pointsMultiplier)))
+        }
+    }
+
+@Composable
+private fun GroupEffectPill(
+    text: String,
+    accent: Color,
+) {
+    Surface(
+        shape = RoundedCornerShape(50),
+        color = accent.copy(alpha = 0.13f),
+        border = BorderStroke(1.dp, accent.copy(alpha = 0.18f)),
+    ) {
+        Text(
+            text = text,
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp, lineHeight = 12.sp),
+            fontWeight = FontWeight.SemiBold,
+            color = accent,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
 @Composable
 private fun GroupSortDialog(
     title: String,
@@ -605,14 +709,17 @@ private fun GroupSortDialog(
             }
         },
         confirmButton = {
-            TextButton(onClick = { onSave(orderedGroups.map { it.group.id }) }) {
-                Text(AppText.t("group_save"))
-            }
+            TinyVowButton(
+                text = AppText.t("group_save"),
+                onClick = { onSave(orderedGroups.map { it.group.id }) },
+                tone = TinyVowButtonTone.Primary,
+            )
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(AppText.t("group_cancel"))
-            }
+            TinyVowButton(
+                text = AppText.t("group_cancel"),
+                onClick = onDismiss,
+            )
         },
     )
 }
@@ -1659,8 +1766,4 @@ private fun trimTrailingZero(value: Double): String {
         value.toString().trimEnd('0').trimEnd('.')
     }
 }
-
-
-
-
 

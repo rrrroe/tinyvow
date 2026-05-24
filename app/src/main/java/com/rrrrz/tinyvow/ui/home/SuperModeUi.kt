@@ -24,21 +24,18 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.VerifiedUser
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -144,6 +141,7 @@ fun SuperModeSettingsSheet(
 ) {
     val themeColors = LocalThemeColors.current
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
                 title = {
@@ -159,6 +157,10 @@ fun SuperModeSettingsSheet(
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = AppText.t("group_back"))
                     }
                 },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    scrolledContainerColor = MaterialTheme.colorScheme.surface,
+                ),
             )
         },
     ) { innerPadding ->
@@ -324,7 +326,6 @@ fun SuperModeSettingsSheet(
                 }
             }
 
-            Spacer(modifier = Modifier.height(24.dp))
         }
     }
 }
@@ -362,6 +363,7 @@ fun SuperModeCredentialDialog(
     onDismiss: () -> Unit,
     onConfirm: (password: String, recoveryQuestion: String, recoveryAnswer: String) -> Unit,
 ) {
+    val themeColors = LocalThemeColors.current
     var password by remember { mutableStateOf("") }
     var confirmPassword by remember { mutableStateOf("") }
     var recoveryQuestion by remember(initialQuestion) { mutableStateOf(initialQuestion) }
@@ -395,7 +397,7 @@ fun SuperModeCredentialDialog(
                 Text(
                     text = AppText.t("super_mode_credentials_hint"),
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = themeColors.inkMuted,
                 )
                 OutlinedTextField(
                     value = password,
@@ -478,6 +480,7 @@ fun SuperModePasswordDialog(
     onDismiss: () -> Unit,
     onConfirm: (String) -> Unit,
 ) {
+    val themeColors = LocalThemeColors.current
     var password by remember { mutableStateOf("") }
 
     AlertDialog(
@@ -488,7 +491,7 @@ fun SuperModePasswordDialog(
                 Text(
                     text = message,
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = themeColors.inkMuted,
                 )
                 OutlinedTextField(
                     value = password,
@@ -529,6 +532,7 @@ fun SuperModeUnavailableDialog(
     windowLabel: String,
     onDismiss: () -> Unit,
 ) {
+    val themeColors = LocalThemeColors.current
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(AppText.t("super_mode_unavailable_title")) },
@@ -537,23 +541,30 @@ fun SuperModeUnavailableDialog(
                 Text(
                     text = AppText.t("super_mode_unavailable_body"),
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = themeColors.ink,
                 )
                 Surface(
                     shape = RoundedCornerShape(16.dp),
-                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    color = themeColors.baseContainer.copy(alpha = 0.72f),
+                    border = BorderStroke(1.dp, themeColors.base.copy(alpha = 0.12f)),
                 ) {
                     Column(
                         modifier = Modifier.padding(14.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Schedule, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                            Text(AppText.t("super_mode_current_time_value", currentTimeLabel))
+                            Icon(Icons.Default.Schedule, contentDescription = null, tint = themeColors.base)
+                            Text(
+                                text = AppText.t("super_mode_current_time_value", currentTimeLabel),
+                                color = themeColors.inkStrong,
+                            )
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
-                            Icon(Icons.Default.Lock, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
-                            Text(AppText.t("super_mode_allowed_window_value", windowLabel))
+                            Icon(Icons.Default.Lock, contentDescription = null, tint = themeColors.base)
+                            Text(
+                                text = AppText.t("super_mode_allowed_window_value", windowLabel),
+                                color = themeColors.inkStrong,
+                            )
                         }
                     }
                 }
@@ -573,6 +584,7 @@ fun SuperModeSetupRequiredDialog(
     onDismiss: () -> Unit,
     onOpenSettings: () -> Unit,
 ) {
+    val themeColors = LocalThemeColors.current
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(AppText.t("super_mode_setup_required_title")) },
@@ -580,7 +592,7 @@ fun SuperModeSetupRequiredDialog(
             Text(
                 text = AppText.t("super_mode_setup_required_body", actionLabel),
                 style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = themeColors.ink,
             )
         },
         confirmButton = {
@@ -603,6 +615,7 @@ fun SuperModeRecoveryResetDialog(
     onDismiss: () -> Unit,
     onConfirm: (String) -> Unit,
 ) {
+    val themeColors = LocalThemeColors.current
     var answer by remember { mutableStateOf("") }
 
     AlertDialog(
@@ -613,7 +626,7 @@ fun SuperModeRecoveryResetDialog(
                 Text(
                     text = question,
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
+                    color = themeColors.inkStrong,
                 )
                 OutlinedTextField(
                     value = answer,
@@ -655,6 +668,7 @@ fun SuperModeWindowDialog(
     onDismiss: () -> Unit,
     onConfirm: (Int, Int) -> Unit,
 ) {
+    val themeColors = LocalThemeColors.current
     var startHour by remember(initialStartMinutes) { mutableStateOf((initialStartMinutes / 60).toString()) }
     var startMinute by remember(initialStartMinutes) { mutableStateOf((initialStartMinutes % 60).toString().padStart(2, '0')) }
     var endHour by remember(initialEndMinutes) { mutableStateOf((initialEndMinutes / 60).toString()) }
@@ -668,7 +682,7 @@ fun SuperModeWindowDialog(
                 Text(
                     text = AppText.t("super_mode_window_dialog_body"),
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = themeColors.inkMuted,
                 )
                 TimeInputRow(
                     title = AppText.t("super_mode_window_start_label"),
@@ -732,11 +746,12 @@ private fun TimeInputRow(
     onHourChange: (String) -> Unit,
     onMinuteChange: (String) -> Unit,
 ) {
+    val themeColors = LocalThemeColors.current
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(
             text = title,
             style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.onSurface,
+            color = themeColors.inkStrong,
         )
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             OutlinedTextField(
@@ -778,3 +793,4 @@ fun formatSuperModeTimeLabel(
     controller: SuperModeController,
     minutes: Int,
 ): String = controller.formatTime(minutes)
+

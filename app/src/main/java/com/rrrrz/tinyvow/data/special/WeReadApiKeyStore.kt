@@ -84,5 +84,13 @@ class WeReadApiKeyStore(
                 ?.replace(Regex("^Bearer\\s+", RegexOption.IGNORE_CASE), "")
                 ?.trim()
                 .orEmpty()
+
+        fun deleteStoredKeyMaterial() {
+            runCatching {
+                KeyStore.getInstance(ANDROID_KEYSTORE)
+                    .apply { load(null) }
+                    .deleteEntry(KEY_ALIAS)
+            }
+        }
     }
 }

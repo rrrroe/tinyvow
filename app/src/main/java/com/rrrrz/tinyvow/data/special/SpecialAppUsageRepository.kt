@@ -19,6 +19,7 @@ import com.rrrrz.tinyvow.data.settings.ManagedAppPreferences
 import com.rrrrz.tinyvow.data.usage.SpecialUsageOverride
 import com.rrrrz.tinyvow.data.usage.UsageStatsUsageRepository
 import com.rrrrz.tinyvow.data.usage.usagePeriodBounds
+import com.rrrrz.tinyvow.i18n.AppText
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.ZoneId
@@ -195,7 +196,7 @@ class SpecialAppUsageRepository(
         withContext(Dispatchers.IO) {
             val apiKey = apiKeyStore.get()
             if (apiKey.isNullOrBlank()) {
-                return@withContext Result.failure(IllegalStateException("WeRead API key is not set"))
+                return@withContext Result.failure(IllegalStateException(AppText.t("special_app_error_api_key_missing")))
             }
             runCatching {
                 val month = YearMonth.from(targetDate)
@@ -218,7 +219,7 @@ class SpecialAppUsageRepository(
             val now = System.currentTimeMillis()
             val apiKey = apiKeyStore.get()
             if (apiKey.isNullOrBlank()) {
-                val error = "WeRead API key is not set"
+                val error = AppText.t("special_app_error_api_key_missing")
                 configDao.updateSyncState(WEREAD_PROVIDER, now, config.lastSuccessAt, error, now)
                 return@withContext Result.failure(IllegalStateException(error))
             }
@@ -438,7 +439,7 @@ class SpecialAppUsageRepository(
         val now = System.currentTimeMillis()
         val apiKey = apiKeyStore.get()
         if (apiKey.isNullOrBlank()) {
-            val error = "WeRead API key is not set"
+            val error = AppText.t("special_app_error_api_key_missing")
             configDao.updateSyncState(WEREAD_PROVIDER, now, config.lastSuccessAt, error, now)
             return Result.failure(IllegalStateException(error))
         }

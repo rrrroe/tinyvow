@@ -1,4 +1,4 @@
-﻿package com.rrrrz.tinyvow.ui.home
+package com.rrrrz.tinyvow.ui.home
 
 import com.rrrrz.tinyvow.i18n.AppText
 
@@ -63,17 +63,13 @@ import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Timeline
 import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material.icons.filled.WbSunny
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -122,6 +118,8 @@ import com.rrrrz.tinyvow.data.usage.UsageStatsUsageRepository
 import com.rrrrz.tinyvow.ui.theme.LocalThemeColors
 import com.rrrrz.tinyvow.ui.theme.LocalReportColors
 import com.rrrrz.tinyvow.ui.theme.ReportColors
+import com.rrrrz.tinyvow.ui.theme.TinyVowButton
+import com.rrrrz.tinyvow.ui.theme.TinyVowButtonTone
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
@@ -162,17 +160,46 @@ internal fun DailyBattleHeroCard(
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
                 if (data == null || summary == null || overview == null) {
-                    SkeletonLine(width = 110.dp, height = 12.dp)
-                    SkeletonLine(width = 156.dp, height = 28.dp)
-                    SkeletonLine(fill = true, height = 18.dp)
+                    Text(
+                        text = AppText.t("stats_total_phone_usage"),
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        color = themeColors.inkStrong,
+                    )
+                    SkeletonLine(width = 176.dp, height = 44.dp)
+                    SkeletonLine(fill = true, height = 20.dp)
                     AdaptiveRowGrid(
                         itemCount = 2,
                         compactColumns = 2,
                         expandedColumns = 2,
                         horizontalSpacing = 8.dp,
                         verticalSpacing = 8.dp,
-                    ) { modifier, _ ->
-                        SkeletonMetricChip(modifier = modifier)
+                    ) { modifier, index ->
+                        BattleHeadlineSkeletonChip(
+                            label = if (index == 0) AppText.t("stats_vs_previous_day_decreased") else AppText.t("stats_last_7_days_daily_average"),
+                            modifier = modifier,
+                        )
+                    }
+                    AdaptiveRowGrid(
+                        itemCount = 2,
+                        compactColumns = 2,
+                        expandedColumns = 2,
+                        horizontalSpacing = 8.dp,
+                        verticalSpacing = 8.dp,
+                    ) { modifier, index ->
+                        BattleMetricSkeletonTile(
+                            label = if (index == 0) AppText.t("stats_launches") else AppText.t("stats_night_use"),
+                            accent = if (index == 0) reportColors.danger else reportColors.positive,
+                            modifier = modifier,
+                        )
+                    }
+                    FlowRow(
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        SkeletonPill(width = 86.dp)
+                        SkeletonPill(width = 76.dp)
+                        SkeletonPill(width = 96.dp)
                     }
                 } else {
                     Text(
@@ -181,11 +208,13 @@ internal fun DailyBattleHeroCard(
                         fontWeight = FontWeight.SemiBold,
                         color = themeColors.inkStrong,
                     )
-                    Text(
-                        text = summary.primaryValue,
+                    AnimatedMetricText(
+                        rawText = summary.primaryValue,
+                        label = "daily_battle_primary_${summary.title}_${summary.primaryValue}",
                         style = MaterialTheme.typography.displaySmall,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.primary,
+                        delayMillis = 80,
                     )
                     Text(
                         text = summary.message,
@@ -249,6 +278,61 @@ internal fun DailyBattleHeroCard(
         }
     }
 }
+@Composable
+private fun BattleHeadlineSkeletonChip(
+    label: String,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(20.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.20f)),
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            SkeletonLine(width = 68.dp, height = 16.dp)
+        }
+    }
+}
+
+@Composable
+private fun BattleMetricSkeletonTile(
+    label: String,
+    accent: Color,
+    modifier: Modifier = Modifier,
+) {
+    val themeColors = LocalThemeColors.current
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.24f)),
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall,
+                color = themeColors.inkFaint,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            SkeletonLine(width = 52.dp, height = 15.dp)
+        }
+    }
+}
 
 @Composable
 internal fun BattleHeadlineChip(
@@ -256,6 +340,7 @@ internal fun BattleHeadlineChip(
     value: String,
     accent: Color,
     showValue: Boolean = true,
+    animateValue: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     val themeColors = LocalThemeColors.current
@@ -275,14 +360,27 @@ internal fun BattleHeadlineChip(
                 color = themeColors.inkMuted,
             )
             if (showValue) {
-                Text(
-                    text = value,
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.SemiBold,
-                    color = accent,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                if (animateValue) {
+                    AnimatedMetricText(
+                        rawText = value,
+                        label = "battle_headline_${label}_${value}",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = accent,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        delayMillis = 180,
+                    )
+                } else {
+                    Text(
+                        text = value,
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = accent,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
             }
         }
     }
@@ -293,14 +391,20 @@ internal fun BattleMetricTile(
     label: String,
     value: String,
     accent: Color,
+    animateValue: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     val themeColors = LocalThemeColors.current
-    val animatedValue = animateMetricDisplayText(
-        rawText = value,
-        label = "battle_metric_${label.hashCode()}",
-        delayMillis = 180,
-    )
+    val displayValue =
+        if (animateValue) {
+            animateMetricDisplayText(
+                rawText = value,
+                label = "battle_metric_${label.hashCode()}",
+                delayMillis = 180,
+            )
+        } else {
+            value
+        }
     Surface(
         modifier = modifier,
         shape = RoundedCornerShape(18.dp),
@@ -319,7 +423,7 @@ internal fun BattleMetricTile(
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
-                text = animatedValue,
+                text = displayValue,
                 style = MaterialTheme.typography.titleSmall,
                 fontWeight = FontWeight.SemiBold,
                 color = accent,
@@ -344,14 +448,23 @@ internal fun DailyRhythmCard(
             when (timelineState) {
                 SectionState.Loading -> {
                     SkeletonTimelineChart()
+                    TimelineFooter(labels = buildTimelineFooterLabels(ReportTab.DAY, emptyList()))
                     AdaptiveRowGrid(
                         itemCount = 3,
                         compactColumns = 1,
                         expandedColumns = 3,
                         horizontalSpacing = 10.dp,
                         verticalSpacing = 10.dp,
-                    ) { modifier, _ ->
-                        SkeletonMetricChip(modifier = modifier)
+                    ) { modifier, index ->
+                        MiniInsightSkeletonCard(
+                            label = when (index) {
+                                0 -> AppText.t("stats_peak_time")
+                                1 -> AppText.t("stats_over_2h")
+                                else -> AppText.t("stats_night_use")
+                            },
+                            compact = true,
+                            modifier = modifier,
+                        )
                     }
                 }
                 SectionState.Empty -> {
@@ -479,8 +592,16 @@ internal fun DailyAnalysisPanel(
                     expandedColumns = 2,
                     horizontalSpacing = 10.dp,
                     verticalSpacing = 10.dp,
-                ) { modifier, _ ->
-                    SkeletonMetricChip(modifier = modifier)
+                ) { modifier, index ->
+                    MiniInsightSkeletonCard(
+                        label = when (index) {
+                            0 -> AppText.t("stats_behavior_fragmentation")
+                            1 -> AppText.t("stats_launch_intensity")
+                            2 -> AppText.t("stats_average_session")
+                            else -> AppText.t("stats_night_use")
+                        },
+                        modifier = modifier,
+                    )
                 }
                 repeat(2) {
                     SkeletonBlock(
@@ -555,12 +676,12 @@ internal fun CompactLockedAnalysisPanel(
                     modifier = modifier.graphicsLayer { alpha = 0.52f },
                 )
             }
-            Button(
+            TinyVowButton(
+                text = AppText.t("pro_view_benefits"),
                 onClick = onClick,
+                tone = TinyVowButtonTone.Primary,
                 modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text(AppText.t("pro_view_benefits"))
-            }
+            )
         }
     }
 }
@@ -592,13 +713,12 @@ internal fun LockedAdvancedReportCard(onClick: () -> Unit) {
                     modifier = modifier.graphicsLayer { alpha = 0.45f },
                 )
             }
-            Button(
+            TinyVowButton(
+                text = AppText.t("pro_view_benefits"),
                 onClick = onClick,
+                tone = TinyVowButtonTone.Primary,
                 modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text(AppText.t("pro_view_benefits"))
-            }
+            )
         }
     }
 }
-

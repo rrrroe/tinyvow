@@ -16,7 +16,7 @@
 - 修改 entity、DAO 或 schema 时必须提升数据库版本，添加上一版本到新版本的 `Migration`，注册到 `Room.databaseBuilder(...).addMigrations(...)`，更新导出的 schema JSON，并补迁移测试。
 - 默认保留用户数据：分组、关联关系、积分 ledger、兑换历史、归档、自定义主题和激活状态都不应无说明地丢弃或重写。
 - 分组和分组-App 关系使用软删除。不要改成物理删除，除非已经处理所有历史引用。
-- 隐私清理必须同时覆盖 Room、`managed_app_preferences`、国内本地账号 `auth_preferences`、国内激活 `activation_preferences` 和奖励导入图标。
+- 隐私导出和清理必须同步维护。清理至少覆盖 Room、`managed_app_preferences`、国内本地账号 `auth_preferences`、国内激活 `activation_preferences`、奖励导入图标、导出分享缓存和微信读书 Key 材料；导出摘要要覆盖当前 Room 表和这些本地存储项。新增本地存储时同步更新公开隐私政策、账号删除说明和应用内数据隐私文案。
 
 ## 特殊应用双源用量
 

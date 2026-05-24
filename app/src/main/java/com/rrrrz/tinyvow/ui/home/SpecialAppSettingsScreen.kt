@@ -25,25 +25,22 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
-import androidx.compose.material.icons.filled.MenuBook
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -70,6 +67,7 @@ import com.rrrrz.tinyvow.data.special.WeReadSettingsState
 import com.rrrrz.tinyvow.data.special.WeReadSyncSummary
 import com.rrrrz.tinyvow.i18n.AppText
 import com.rrrrz.tinyvow.ui.theme.LocalThemeColors
+import com.rrrrz.tinyvow.ui.theme.TinyVowButton
 import com.rrrrz.tinyvow.ui.theme.TinyVowCard
 import com.rrrrz.tinyvow.ui.theme.TinyVowRadius
 import com.rrrrz.tinyvow.ui.theme.TinyVowSpacing
@@ -97,6 +95,7 @@ fun SpecialAppsScreen(
     }
 
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
                 title = {
@@ -112,6 +111,10 @@ fun SpecialAppsScreen(
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = AppText.t("group_back"))
                     }
                 },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    scrolledContainerColor = MaterialTheme.colorScheme.surface,
+                ),
             )
         },
     ) { innerPadding ->
@@ -149,7 +152,7 @@ fun SpecialAppsScreen(
             }
 
             SpecialAppListItem(
-                icon = Icons.Default.MenuBook,
+                icon = Icons.AutoMirrored.Filled.MenuBook,
                 title = AppText.t("special_app_weread_title"),
                 subtitle = AppText.t("special_app_weread_list_subtitle"),
                 status = if (state?.hasApiKey == true) {
@@ -217,14 +220,30 @@ fun SpecialAppSettingsScreen(
     LaunchedEffect(Unit) {
         state = repository.buildSettingsState()
         if (state?.hasApiKey == true) {
+            isBusy = true
             isHistoryBusy = true
-            repository.syncMissingWeReadHistoryUpToYesterday().onSuccess {
-                historyMessage = formatHistorySummary(it)
-            }.onFailure {
-                historyMessage = formatWeReadError(it)
+            try {
+                repository.syncWeReadNow().onSuccess { summary ->
+                    syncSummary = summary
+                    message =
+                        if (summary.savedSnapshotCount > 0) {
+                            AppText.t("special_app_sync_saved_buckets", summary.savedSnapshotCount)
+                        } else {
+                            AppText.t("special_app_sync_no_daily_buckets")
+                        }
+                }.onFailure {
+                    message = formatWeReadError(it)
+                }
+                repository.syncMissingWeReadHistoryUpToYesterday().onSuccess {
+                    historyMessage = formatHistorySummary(it)
+                }.onFailure {
+                    historyMessage = formatWeReadError(it)
+                }
+                state = repository.buildSettingsState()
+            } finally {
+                isBusy = false
+                isHistoryBusy = false
             }
-            state = repository.buildSettingsState()
-            isHistoryBusy = false
         }
         historyDays = repository.getWeReadHistoryMonth(historyMonth)
     }
@@ -272,6 +291,7 @@ fun SpecialAppSettingsScreen(
     }
 
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
                 title = {
@@ -287,6 +307,10 @@ fun SpecialAppSettingsScreen(
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = AppText.t("group_back"))
                     }
                 },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    scrolledContainerColor = MaterialTheme.colorScheme.surface,
+                ),
             )
         },
     ) { innerPadding ->
@@ -434,6 +458,7 @@ fun SpecialAppSettingsScreen(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
+                ReplacementStatusPanel(state)
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     PreferenceButton(
                         selected = state?.config?.usagePreference == SpecialAppUsagePreference.READING_FIRST,
@@ -630,7 +655,6 @@ fun SpecialAppSettingsScreen(
                     )
                 }
             }
-            Spacer(modifier = Modifier.height(24.dp))
         }
     }
 }
@@ -752,6 +776,110 @@ private fun SpecialAppHero(state: WeReadSettingsState?) {
         }
     }
 }
+
+@Composable
+private fun ReplacementStatusPanel(state: WeReadSettingsState?) {
+    val config = state?.config
+    val status =
+        buildSpecialAppReplacementStatus(
+            hasApiKey = state?.hasApiKey == true,
+            lastSuccessAt = config?.lastSuccessAt ?: 0L,
+            enabledForControl = config?.enabledForControl == true,
+            enabledForEncourage = config?.enabledForEncourage == true,
+            syncEnabled = config?.syncEnabled == true,
+            usagePreference = config?.usagePreference ?: SpecialAppUsagePreference.READING_FIRST,
+        )
+    val title =
+        when (status.type) {
+            SpecialAppReplacementStatusType.ACTIVE -> AppText.t("special_app_replacement_status_active")
+            SpecialAppReplacementStatusType.NEEDS_KEY -> AppText.t("special_app_replacement_status_needs_key")
+            SpecialAppReplacementStatusType.NEEDS_SYNC -> AppText.t("special_app_replacement_status_needs_sync")
+            SpecialAppReplacementStatusType.NEEDS_SCOPE -> AppText.t("special_app_replacement_status_needs_scope")
+            SpecialAppReplacementStatusType.INACTIVE -> AppText.t("special_app_replacement_status_inactive")
+        }
+    val description =
+        when (status.type) {
+            SpecialAppReplacementStatusType.ACTIVE -> AppText.t("special_app_replacement_status_active_description")
+            SpecialAppReplacementStatusType.NEEDS_KEY -> AppText.t("special_app_replacement_status_needs_key_description")
+            SpecialAppReplacementStatusType.NEEDS_SYNC -> AppText.t("special_app_replacement_status_needs_sync_description")
+            SpecialAppReplacementStatusType.NEEDS_SCOPE -> AppText.t("special_app_replacement_status_needs_scope_description")
+            SpecialAppReplacementStatusType.INACTIVE -> AppText.t("special_app_replacement_status_inactive_description")
+        }
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        color = if (status.active) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.36f)),
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = if (status.active) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
+                    )
+                    Text(
+                        text = description,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = if (status.active) {
+                            MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.78f)
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                    )
+                }
+                StatusPill(
+                    text = if (status.active) AppText.t("special_app_status_connected") else AppText.t("special_app_status_not_ready"),
+                    active = status.active,
+                )
+            }
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.56f))
+            MetricRow(
+                AppText.t("special_app_replacement_status_api_key"),
+                if (status.hasApiKey) AppText.t("special_app_api_key_saved") else AppText.t("special_app_api_key_missing"),
+            )
+            MetricRow(
+                AppText.t("special_app_replacement_status_success_sync"),
+                if (status.hasSuccessfulSync) AppText.t("special_app_yes") else AppText.t("special_app_no"),
+            )
+            MetricRow(
+                AppText.t("special_app_replacement_status_scope"),
+                replacementScopeLabel(status.controlEnabled, status.encourageEnabled),
+            )
+            MetricRow(
+                AppText.t("special_app_replacement_status_preference"),
+                if (status.usagePreference == SpecialAppUsagePreference.PHONE_FIRST) {
+                    AppText.t("special_app_prefer_phone")
+                } else {
+                    AppText.t("special_app_prefer_reading")
+                },
+            )
+        }
+    }
+}
+
+private fun replacementScopeLabel(
+    control: Boolean,
+    encourage: Boolean,
+): String =
+    when {
+        control && encourage -> AppText.t("special_app_replacement_scope_control_and_encourage")
+        control -> AppText.t("special_app_replacement_scope_control_only")
+        encourage -> AppText.t("special_app_replacement_scope_encourage_only")
+        else -> AppText.t("special_app_replacement_scope_none")
+    }
 
 @Composable
 private fun StatusPill(text: String, active: Boolean) {
@@ -1067,15 +1195,13 @@ private fun PreferenceButton(
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
-    if (selected) {
-        Button(onClick = onClick, enabled = enabled, modifier = modifier) {
-            Text(text)
-        }
-    } else {
-        OutlinedButton(onClick = onClick, enabled = enabled, modifier = modifier) {
-            Text(text)
-        }
-    }
+    TinyVowButton(
+        text = text,
+        onClick = onClick,
+        enabled = enabled,
+        selected = selected,
+        modifier = modifier,
+    )
 }
 
 @Composable

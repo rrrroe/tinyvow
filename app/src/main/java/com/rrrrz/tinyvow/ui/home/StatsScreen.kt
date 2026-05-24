@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -61,18 +62,14 @@ import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Timeline
 import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material.icons.filled.WbSunny
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -124,6 +121,8 @@ import com.rrrrz.tinyvow.data.usage.UsageStatsUsageRepository
 import com.rrrrz.tinyvow.ui.theme.LocalThemeColors
 import com.rrrrz.tinyvow.ui.theme.LocalReportColors
 import com.rrrrz.tinyvow.ui.theme.TinyVowCard
+import com.rrrrz.tinyvow.ui.theme.TinyVowButton
+import com.rrrrz.tinyvow.ui.theme.TinyVowButtonTone
 import com.rrrrz.tinyvow.ui.theme.TinyVowElevation
 import com.rrrrz.tinyvow.ui.theme.TinyVowRadius
 import com.rrrrz.tinyvow.ui.theme.TinyVowSpacing
@@ -163,7 +162,14 @@ fun StatsRoute(
     var selectedWeekStart by remember { mutableStateOf<LocalDate?>(null) }
     var selectedMonth by remember { mutableStateOf<YearMonth?>(null) }
     var selectedYear by remember { mutableStateOf<Int?>(null) }
-    var uiState by remember { mutableStateOf(DailyReportUiState(selectedTab = selectedTab)) }
+    var uiState by remember {
+        mutableStateOf(
+            DailyReportUiState(
+                isPermissionGranted = usageAccessStatus == UsageAccessStatus.GRANTED,
+                selectedTab = selectedTab,
+            ),
+        )
+    }
 
     LaunchedEffect(
         usageAccessStatus,
@@ -189,23 +195,26 @@ fun StatsRoute(
             return@LaunchedEffect
         }
 
+        uiState =
+            createRefreshingUiState(
+                selectedTab = selectedTab,
+                previous = uiState,
+                selectedArchiveDate = selectedArchiveDate,
+                selectedWeekStart = selectedWeekStart,
+                selectedMonth = selectedMonth,
+                selectedYear = selectedYear,
+            )
+
         val recentArchives =
-            archiveRepository
-                .getRecentArchives(limit = 3650)
-                .first()
-                .sortedByDescending { it.archiveDate }
+            withContext(Dispatchers.IO) {
+                archiveRepository
+                    .getRecentArchives(limit = 3650)
+                    .first()
+                    .sortedByDescending { it.archiveDate }
+            }
 
         when (selectedTab) {
             ReportTab.DAY -> {
-                uiState =
-                    createRefreshingUiState(
-                        selectedTab = selectedTab,
-                        previous = uiState,
-                        selectedArchiveDate = selectedArchiveDate,
-                        selectedWeekStart = selectedWeekStart,
-                        selectedMonth = selectedMonth,
-                        selectedYear = selectedYear,
-                    )
                 val normalizedSelectedDate =
                     when {
                         recentArchives.isEmpty() -> null
@@ -225,15 +234,6 @@ fun StatsRoute(
                 return@LaunchedEffect
             }
             ReportTab.WEEK, ReportTab.MONTH, ReportTab.YEAR -> {
-                uiState =
-                    createRefreshingUiState(
-                        selectedTab = selectedTab,
-                        previous = uiState,
-                        selectedArchiveDate = selectedArchiveDate,
-                        selectedWeekStart = selectedWeekStart,
-                        selectedMonth = selectedMonth,
-                        selectedYear = selectedYear,
-                    )
                 val availableWeekStarts = buildAvailableWeekStarts(recentArchives)
                 val availableMonths = buildAvailableMonths(recentArchives)
                 val availableYears = buildAvailableYears(recentArchives)
@@ -413,45 +413,21 @@ private fun DailyReportScreen(
                 verticalArrangement = Arrangement.spacedBy(TinyVowSpacing.SectionGap),
             ) {
                 ReportTabRow(selectedTab = state.selectedTab, onTabSelected = onTabSelected)
-                if (state.selectedTab == ReportTab.DAY && state.selectedArchiveDate != null) {
-                    ArchiveDateNavigator(
-                        selectedArchiveDate = state.selectedArchiveDate,
-                        previousArchiveDate = state.previousArchiveDate,
-                        nextArchiveDate = state.nextArchiveDate,
-                        availableArchiveDates = state.availableArchiveDates,
-                        onPreviousArchiveDate = onPreviousArchiveDate,
-                        onNextArchiveDate = onNextArchiveDate,
-                        onSelectArchiveDate = onSelectArchiveDate,
-                    )
-                } else {
-                    PeriodNavigator(
-                        selectedTab = state.selectedTab,
-                        selectedWeekStart = state.selectedWeekStart,
-                        previousWeekStart = state.previousWeekStart,
-                        nextWeekStart = state.nextWeekStart,
-                        availableWeekStarts = state.availableWeekStarts,
-                        selectedMonth = state.selectedMonth,
-                        previousMonth = state.previousMonth,
-                        nextMonth = state.nextMonth,
-                        availableMonths = state.availableMonths,
-                        selectedYear = state.selectedYear,
-                        previousYear = state.previousYear,
-                        nextYear = state.nextYear,
-                        availableYears = state.availableYears,
-                        onPreviousWeek = onPreviousWeek,
-                        onNextWeek = onNextWeek,
-                        onSelectWeekStart = onSelectWeekStart,
-                        onPreviousMonth = onPreviousMonth,
-                        onNextMonth = onNextMonth,
-                        onSelectMonth = onSelectMonth,
-                        onPreviousYear = onPreviousYear,
-                        onNextYear = onNextYear,
-                        onSelectYear = onSelectYear,
-                    )
-                }
-                if (state.isRefreshing) {
-                    LoadingHintChip(selectedTab = state.selectedTab)
-                }
+                ReportNavigator(
+                    state = state,
+                    onPreviousArchiveDate = onPreviousArchiveDate,
+                    onNextArchiveDate = onNextArchiveDate,
+                    onSelectArchiveDate = onSelectArchiveDate,
+                    onPreviousWeek = onPreviousWeek,
+                    onNextWeek = onNextWeek,
+                    onSelectWeekStart = onSelectWeekStart,
+                    onPreviousMonth = onPreviousMonth,
+                    onNextMonth = onNextMonth,
+                    onSelectMonth = onSelectMonth,
+                    onPreviousYear = onPreviousYear,
+                    onNextYear = onNextYear,
+                    onSelectYear = onSelectYear,
+                )
                 ReportPageContent(
                     state = state,
                     isProActive = isProActive,
@@ -466,7 +442,6 @@ private fun DailyReportScreen(
         }
     }
 }
-
 @Composable
 private fun ReportPageContent(
     state: DailyReportUiState,
@@ -500,7 +475,131 @@ private fun ReportPageContent(
         }
     }
 }
+@Composable
+private fun ReportNavigator(
+    state: DailyReportUiState,
+    onPreviousArchiveDate: () -> Unit,
+    onNextArchiveDate: () -> Unit,
+    onSelectArchiveDate: (String) -> Unit,
+    onPreviousWeek: () -> Unit,
+    onNextWeek: () -> Unit,
+    onSelectWeekStart: (LocalDate) -> Unit,
+    onPreviousMonth: () -> Unit,
+    onNextMonth: () -> Unit,
+    onSelectMonth: (YearMonth) -> Unit,
+    onPreviousYear: () -> Unit,
+    onNextYear: () -> Unit,
+    onSelectYear: (Int) -> Unit,
+) {
+    val waitingForDayDate = state.selectedTab == ReportTab.DAY && state.selectedArchiveDate == null
+    val waitingForPeriod =
+        when (state.selectedTab) {
+            ReportTab.WEEK -> state.selectedWeekStart == null
+            ReportTab.MONTH -> state.selectedMonth == null
+            ReportTab.YEAR -> state.selectedYear == null
+            ReportTab.DAY -> false
+        }
+    if (state.isRefreshing && (waitingForDayDate || waitingForPeriod)) {
+        ReportNavigatorSkeleton(selectedTab = state.selectedTab)
+        return
+    }
+    if (state.selectedTab == ReportTab.DAY) {
+        state.selectedArchiveDate?.let { selectedDate ->
+            ArchiveDateNavigator(
+                selectedArchiveDate = selectedDate,
+                previousArchiveDate = state.previousArchiveDate,
+                nextArchiveDate = state.nextArchiveDate,
+                availableArchiveDates = state.availableArchiveDates,
+                onPreviousArchiveDate = onPreviousArchiveDate,
+                onNextArchiveDate = onNextArchiveDate,
+                onSelectArchiveDate = onSelectArchiveDate,
+            )
+        } ?: ReportNavigatorSkeleton(selectedTab = state.selectedTab)
+    } else {
+        PeriodNavigator(
+            selectedTab = state.selectedTab,
+            selectedWeekStart = state.selectedWeekStart,
+            previousWeekStart = state.previousWeekStart,
+            nextWeekStart = state.nextWeekStart,
+            availableWeekStarts = state.availableWeekStarts,
+            selectedMonth = state.selectedMonth,
+            previousMonth = state.previousMonth,
+            nextMonth = state.nextMonth,
+            availableMonths = state.availableMonths,
+            selectedYear = state.selectedYear,
+            previousYear = state.previousYear,
+            nextYear = state.nextYear,
+            availableYears = state.availableYears,
+            onPreviousWeek = onPreviousWeek,
+            onNextWeek = onNextWeek,
+            onSelectWeekStart = onSelectWeekStart,
+            onPreviousMonth = onPreviousMonth,
+            onNextMonth = onNextMonth,
+            onSelectMonth = onSelectMonth,
+            onPreviousYear = onPreviousYear,
+            onNextYear = onNextYear,
+            onSelectYear = onSelectYear,
+        )
+    }
+}
 
+@Composable
+private fun ReportNavigatorSkeleton(selectedTab: ReportTab) {
+    val title =
+        when (selectedTab) {
+            ReportTab.DAY -> AppText.t("stats_choose_archive_date")
+            else -> AppText.t("stats_choose_period")
+        }
+    val subtitle =
+        when (selectedTab) {
+            ReportTab.DAY -> AppText.t("stats_only_archived_dates_selectable")
+            ReportTab.WEEK -> AppText.t("stats_natural_week")
+            ReportTab.MONTH -> AppText.t("stats_natural_month")
+            ReportTab.YEAR -> AppText.t("stats_natural_year")
+        }
+    Surface(
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.32f)),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            SkeletonCircle(size = 40.dp)
+            Surface(
+                modifier = Modifier.weight(1f),
+                shape = RoundedCornerShape(14.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.86f),
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    SkeletonCircle(size = 18.dp)
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        Text(
+                            text = title,
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                        Text(
+                            text = subtitle,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                }
+            }
+            SkeletonCircle(size = 40.dp)
+        }
+    }
+}
 @Composable
 private fun PeriodNavigator(
     selectedTab: ReportTab,
@@ -667,6 +766,7 @@ private fun PeriodWeekPickerDialog(
     onDismiss: () -> Unit,
     onSelectWeekStart: (LocalDate) -> Unit,
 ) {
+    val themeColors = LocalThemeColors.current
     AlertDialog(
         onDismissRequest = onDismiss,
         confirmButton = {
@@ -687,13 +787,18 @@ private fun PeriodWeekPickerDialog(
                     Surface(
                         modifier = Modifier.fillMaxWidth().clickable { onSelectWeekStart(weekStart) },
                         shape = RoundedCornerShape(14.dp),
-                        color = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.32f),
+                        color = if (selected) themeColors.baseContainer.copy(alpha = 0.76f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.32f),
+                        border = BorderStroke(
+                            1.dp,
+                            if (selected) themeColors.base.copy(alpha = 0.18f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.22f),
+                        ),
                     ) {
                         Text(
                             text = periodWeekLabel(weekStart),
                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                            color = if (selected) themeColors.base else themeColors.ink,
                         )
                     }
                 }
@@ -709,6 +814,7 @@ private fun PeriodMonthPickerDialog(
     onDismiss: () -> Unit,
     onSelectMonth: (YearMonth) -> Unit,
 ) {
+    val themeColors = LocalThemeColors.current
     AlertDialog(
         onDismissRequest = onDismiss,
         confirmButton = {
@@ -727,13 +833,18 @@ private fun PeriodMonthPickerDialog(
                     Surface(
                         modifier = Modifier.fillMaxWidth().clickable { onSelectMonth(month) },
                         shape = RoundedCornerShape(14.dp),
-                        color = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.32f),
+                        color = if (selected) themeColors.baseContainer.copy(alpha = 0.76f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.32f),
+                        border = BorderStroke(
+                            1.dp,
+                            if (selected) themeColors.base.copy(alpha = 0.18f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.22f),
+                        ),
                     ) {
                         Text(
                             text = month.format(DateTimeFormatter.ofPattern(AppText.t("stats_mmmm_yyyy"), Locale.getDefault())),
                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                            color = if (selected) themeColors.base else themeColors.ink,
                         )
                     }
                 }
@@ -749,6 +860,7 @@ private fun PeriodYearPickerDialog(
     onDismiss: () -> Unit,
     onSelectYear: (Int) -> Unit,
 ) {
+    val themeColors = LocalThemeColors.current
     AlertDialog(
         onDismissRequest = onDismiss,
         confirmButton = {
@@ -767,50 +879,24 @@ private fun PeriodYearPickerDialog(
                     Surface(
                         modifier = Modifier.fillMaxWidth().clickable { onSelectYear(year) },
                         shape = RoundedCornerShape(14.dp),
-                        color = if (selected) MaterialTheme.colorScheme.primary.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.32f),
+                        color = if (selected) themeColors.baseContainer.copy(alpha = 0.76f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.32f),
+                        border = BorderStroke(
+                            1.dp,
+                            if (selected) themeColors.base.copy(alpha = 0.18f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.22f),
+                        ),
                     ) {
                         Text(
                             text = year.toString(),
                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                            color = if (selected) themeColors.base else themeColors.ink,
                         )
                     }
                 }
             }
         },
     )
-}
-
-@Composable
-private fun LoadingHintChip(selectedTab: ReportTab) {
-    val label =
-        when (selectedTab) {
-            ReportTab.DAY -> AppText.t("stats_reading_archived_daily_reports")
-            ReportTab.WEEK -> AppText.t("stats_updating_last_7_days")
-            ReportTab.MONTH -> AppText.t("stats_updating_last_30_days")
-            ReportTab.YEAR -> AppText.t("stats_yearly_report_label")
-        }
-    Surface(
-        shape = RoundedCornerShape(999.dp),
-        color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.7f),
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            CircularProgressIndicator(
-                modifier = Modifier.size(14.dp),
-                strokeWidth = 2.dp,
-            )
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelLarge,
-                color = MaterialTheme.colorScheme.onSecondaryContainer,
-            )
-        }
-    }
 }
 
 @Composable
@@ -911,6 +997,7 @@ private fun ArchiveCalendarDialog(
     onDismiss: () -> Unit,
     onSelectDate: (LocalDate) -> Unit,
 ) {
+    val themeColors = LocalThemeColors.current
     var displayedMonth by remember(selectedArchiveDate, availableDates) {
         mutableStateOf(
             availableDates
@@ -961,6 +1048,7 @@ private fun ArchiveCalendarDialog(
                         text = displayedMonth.format(DateTimeFormatter.ofPattern(AppText.t("stats_mmmm_yyyy"), Locale.CHINA)),
                         modifier = Modifier.weight(1f),
                         style = MaterialTheme.typography.titleMedium,
+                        color = themeColors.inkStrong,
                     )
                     IconButton(
                         onClick = { displayedMonth = displayedMonth.plusMonths(1) },
@@ -978,7 +1066,7 @@ private fun ArchiveCalendarDialog(
                             text = dayLabel,
                             modifier = Modifier.width(32.dp),
                             style = MaterialTheme.typography.labelMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = themeColors.inkMuted,
                         )
                     }
                 }
@@ -1001,8 +1089,8 @@ private fun ArchiveCalendarDialog(
                                         shape = CircleShape,
                                         color =
                                             when {
-                                                isSelected -> MaterialTheme.colorScheme.primary
-                                                isEnabled -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.4f)
+                                                isSelected -> themeColors.base
+                                                isEnabled -> themeColors.baseContainer.copy(alpha = 0.40f)
                                                 else -> Color.Transparent
                                             },
                                     ) {
@@ -1012,9 +1100,9 @@ private fun ArchiveCalendarDialog(
                                                 style = MaterialTheme.typography.labelMedium,
                                                 color =
                                                     when {
-                                                        isSelected -> MaterialTheme.colorScheme.onPrimary
-                                                        isEnabled -> MaterialTheme.colorScheme.onSurface
-                                                        else -> MaterialTheme.colorScheme.onSurface.copy(alpha = 0.28f)
+                                                        isSelected -> themeColors.onBase
+                                                        isEnabled -> themeColors.ink
+                                                        else -> themeColors.ink.copy(alpha = 0.28f)
                                                     },
                                             )
                                         }
@@ -1030,7 +1118,7 @@ private fun ArchiveCalendarDialog(
                 Text(
                     text = AppText.t("stats_unarchived_dates_not_selectable"),
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = themeColors.inkMuted,
                 )
             }
         },
@@ -1059,7 +1147,7 @@ private fun PlaceholderReportScreen(
                     color = MaterialTheme.colorScheme.secondaryContainer,
                 ) {
                     Text(
-                        text = AppText.t("stats_trend_views_are_coming_soon"),
+                        text = AppText.t("stats_archived_reports_waiting"),
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
                         style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.onSecondaryContainer,
@@ -1110,22 +1198,21 @@ private fun PermissionRequiredState(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Button(
+                    TinyVowButton(
+                        text = AppText.t("stats_view_details_and_enable"),
                         onClick = onRequestUsageAccess,
+                        tone = TinyVowButtonTone.Primary,
                         modifier = Modifier.weight(1f),
-                    ) {
-                        Text(AppText.t("stats_view_details_and_enable"))
-                    }
-                    OutlinedButton(
+                    )
+                    TinyVowButton(
+                        text = AppText.t("stats_open_settings"),
                         onClick = {
                             context.startActivity(
                                 Intent(Settings.ACTION_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
                             )
                         },
                         modifier = Modifier.weight(1f),
-                    ) {
-                        Text(AppText.t("stats_open_settings"))
-                    }
+                    )
                 }
             }
         }
@@ -1147,31 +1234,13 @@ private fun ReportTabRow(
     ) {
         ReportTab.entries.forEach { tab ->
             val selected = selectedTab == tab
-            Surface(
-                modifier = Modifier.weight(1f),
-                shape = RoundedCornerShape(16.dp),
-                color = if (selected) {
-                    MaterialTheme.colorScheme.primaryContainer
-                } else {
-                    Color.Transparent
-                },
+            TinyVowButton(
+                text = tab.label(),
                 onClick = { onTabSelected(tab) },
-            ) {
-                Box(
-                    modifier = Modifier.padding(vertical = 12.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        text = tab.label(),
-                        modifier = Modifier.fillMaxWidth(),
-                        style = MaterialTheme.typography.titleMedium,
-                        textAlign = TextAlign.Center,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-            }
+                selected = selected,
+                modifier = Modifier.weight(1f),
+                contentPadding = PaddingValues(vertical = 12.dp),
+            )
         }
     }
 }
@@ -1551,16 +1620,20 @@ private fun UsageGoalChart(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                Text(
-                    text = if (overLimit) AppText.t("stats_over_by_value_2", formatDuration(usageMillis - capMillis)) else AppText.t("stats_remaining_value_2", formatDuration((capMillis - usageMillis).coerceAtLeast(0L))),
+                AnimatedMetricText(
+                    rawText = if (overLimit) AppText.t("stats_over_by_value_2", formatDuration(usageMillis - capMillis)) else AppText.t("stats_remaining_value_2", formatDuration((capMillis - usageMillis).coerceAtLeast(0L))),
+                    label = "usage_goal_remaining_${usageMillis}_${capMillis}",
                     style = MaterialTheme.typography.labelMedium,
                     color = if (overLimit) warning else MaterialTheme.colorScheme.onSurfaceVariant,
+                    delayMillis = 180,
                 )
-                Text(
-                    text = "${((usageMillis.toFloat() / capMillis.coerceAtLeast(1L).toFloat()) * 100f).roundToInt()}%",
+                AnimatedMetricText(
+                    rawText = "${((usageMillis.toFloat() / capMillis.coerceAtLeast(1L).toFloat()) * 100f).roundToInt()}%",
+                    label = "usage_goal_percent_${usageMillis}_${capMillis}",
                     style = MaterialTheme.typography.labelMedium,
                     color = if (overLimit) warning else primary,
                     fontWeight = FontWeight.SemiBold,
+                    delayMillis = 200,
                 )
             }
         }
@@ -1630,19 +1703,7 @@ private fun DailyFocusCard(
     when (focusState) {
         SectionState.Empty -> Unit
         SectionState.Loading -> {
-            AdaptiveRowGrid(
-                itemCount = 2,
-                compactColumns = if (compactLayout) 1 else 2,
-                expandedColumns = 2,
-                horizontalSpacing = 8.dp,
-                verticalSpacing = 8.dp,
-            ) { modifier, _ ->
-                SkeletonBlock(
-                    modifier = modifier,
-                    height = 208.dp,
-                    shape = RoundedCornerShape(TinyVowRadius.FeaturedCard),
-                )
-            }
+            FocusSummarySkeletonGrid(compactLayout = compactLayout)
         }
         is SectionState.Ready -> {
             AdaptiveRowGrid(
@@ -1657,6 +1718,7 @@ private fun DailyFocusCard(
                         summary = focusState.data.control,
                         icon = Icons.Default.Bolt,
                         compact = compactLayout,
+                        animateValues = false,
                         modifier = modifier,
                     )
                 } else {
@@ -1664,6 +1726,7 @@ private fun DailyFocusCard(
                         summary = focusState.data.encourage,
                         icon = Icons.Default.RocketLaunch,
                         compact = compactLayout,
+                        animateValues = true,
                         modifier = modifier,
                     )
                 }
@@ -1705,12 +1768,14 @@ private fun WindowFocusCard(
                         DailyModeSummaryCard(
                             summary = focusState.data.control,
                             icon = Icons.Default.Bolt,
+                            animateValues = false,
                             modifier = modifier,
                         )
                     } else {
                         DailyModeSummaryCard(
                             summary = focusState.data.encourage,
                             icon = Icons.Default.RocketLaunch,
+                            animateValues = true,
                             modifier = modifier,
                         )
                     }
@@ -1787,7 +1852,10 @@ private fun YearScopePanel(
         ) {
             Text(summary.title, style = MaterialTheme.typography.titleMedium)
             Text(summary.rangeLabel, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Text(summary.totalUsage, style = MaterialTheme.typography.headlineSmall)
+            Text(
+                text = summary.totalUsage,
+                style = MaterialTheme.typography.headlineSmall,
+            )
             AdaptiveRowGrid(itemCount = 4, compactColumns = 2, expandedColumns = 2, verticalSpacing = 8.dp) { childModifier, index ->
                 val metric =
                     when (index) {
@@ -1919,12 +1987,12 @@ private fun ReportShareActionCard(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            Button(
+            TinyVowButton(
+                text = AppText.t("stats_preview_share_poster"),
                 onClick = { showPreview = true },
                 enabled = canShare,
-            ) {
-                Text(AppText.t("stats_preview_share_poster"))
-            }
+                tone = TinyVowButtonTone.Primary,
+            )
         }
     }
 
@@ -2071,15 +2139,15 @@ private fun ReportPageSharePreviewDialog(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Spacer(modifier = Modifier.weight(1f))
-                    OutlinedButton(
+                    TinyVowButton(
+                        text = AppText.t("group_close"),
                         onClick = onDismiss,
                         enabled = !isSharing,
-                    ) {
-                        Text(AppText.t("group_close"))
-                    }
-                    Button(
+                    )
+                    TinyVowButton(
                         onClick = { shareCurrentPreview() },
                         enabled = !isSharing,
+                        tone = TinyVowButtonTone.Primary,
                     ) {
                         if (isSharing) {
                             CircularProgressIndicator(
@@ -2101,6 +2169,7 @@ internal fun DailyModeSummaryCard(
     summary: DailyModeSummary,
     icon: ImageVector,
     compact: Boolean = false,
+    animateValues: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val reportColors = LocalReportColors.current
@@ -2112,11 +2181,16 @@ internal fun DailyModeSummaryCard(
             summary.isWarning -> reportColors.warning
             else -> MaterialTheme.colorScheme.primary
         }
-    val animatedPrimaryValue = animateMetricDisplayText(
-        rawText = summary.primaryValue,
-        label = "daily_focus_${summary.title}_${summary.primaryLabel}",
-        delayMillis = 120,
-    )
+    val primaryValue =
+        if (animateValues) {
+            animateMetricDisplayText(
+                rawText = summary.primaryValue,
+                label = "daily_focus_${summary.title}_${summary.primaryLabel}",
+                delayMillis = 120,
+            )
+        } else {
+            summary.primaryValue
+        }
     var showAllGroups by remember(summary.title, summary.groupItems.size) { mutableStateOf(false) }
     val visibleGroupItems =
         if (showAllGroups || summary.groupItems.size <= 4) {
@@ -2172,7 +2246,7 @@ internal fun DailyModeSummaryCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 Text(
-                    text = animatedPrimaryValue,
+                    text = primaryValue,
                     style = if (compact) MaterialTheme.typography.titleLarge else MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.SemiBold,
                     color = accent,
@@ -2198,6 +2272,7 @@ internal fun DailyModeSummaryCard(
                             progress = summary.progress,
                             color = accent,
                             label = "${(summary.progress * 100f).roundToInt()}%",
+                            animateValue = animateValues,
                             modifier = Modifier.size(metricSize),
                         )
                         summary.metrics.getOrNull(0)?.let { metric ->
@@ -2208,6 +2283,7 @@ internal fun DailyModeSummaryCard(
                                 modifier = Modifier.size(metricSize),
                                 emphasizeValue = true,
                                 valueColor = accent,
+                                animateValue = animateValues,
                             )
                         } ?: Spacer(modifier = Modifier.size(metricSize))
                     }
@@ -2222,6 +2298,7 @@ internal fun DailyModeSummaryCard(
                                 modifier = Modifier.size(metricSize),
                                 emphasizeValue = true,
                                 valueColor = accent,
+                                animateValue = animateValues,
                             )
                         }
                         repeat((2 - summary.metrics.drop(1).take(2).size).coerceAtLeast(0)) {
@@ -2280,6 +2357,7 @@ internal fun DailyModeSummaryCard(
                         DailyGroupProgressRow(
                             item = item,
                             accent = accent,
+                            animateValues = animateValues,
                         )
                     }
                     if (summary.groupItems.size > 4) {
@@ -2307,17 +2385,23 @@ internal fun DailyModeSummaryCard(
 private fun DailyGroupProgressRow(
     item: DailyGroupProgressItem,
     accent: Color,
+    animateValues: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val themeColors = LocalThemeColors.current
     val resultColor = if (item.isWarning) accent else themeColors.inkMuted
     val quietColor = if (item.isMuted) themeColors.inkFaint else themeColors.inkMuted
     val progressFillColor = if (item.isWarning) accent else themeColors.inkFaint
-    val animatedProgress = animateFractionValue(
-        targetValue = item.progress.coerceIn(0f, 1f),
-        label = "daily_group_progress_${item.groupName}_${item.statusLabel}",
-        delayMillis = 180,
-    )
+    val displayProgress =
+        if (animateValues) {
+            animateFractionValue(
+                targetValue = item.progress.coerceIn(0f, 1f),
+                label = "daily_group_progress_${item.groupName}_${item.statusLabel}",
+                delayMillis = 180,
+            )
+        } else {
+            item.progress.coerceIn(0f, 1f)
+        }
     Surface(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(15.dp),
@@ -2342,29 +2426,56 @@ private fun DailyGroupProgressRow(
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
-                Text(
-                    text = "${item.trailingLabel} ${item.trailingValue}",
-                    style = MaterialTheme.typography.labelSmall,
-                    fontWeight = FontWeight.Medium,
-                    color = resultColor,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    textAlign = TextAlign.End,
-                )
+                if (animateValues) {
+                    AnimatedMetricText(
+                        rawText = "${item.trailingLabel} ${item.trailingValue}",
+                        label = "daily_group_trailing_${item.groupName}_${item.trailingValue}",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Medium,
+                        color = resultColor,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        textAlign = TextAlign.End,
+                        delayMillis = 260,
+                    )
+                } else {
+                    Text(
+                        text = "${item.trailingLabel} ${item.trailingValue}",
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Medium,
+                        color = resultColor,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        textAlign = TextAlign.End,
+                    )
+                }
             }
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Text(
-                    text = item.leadingValue,
-                    modifier = Modifier.weight(1f),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = quietColor,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                if (animateValues) {
+                    AnimatedMetricText(
+                        rawText = item.leadingValue,
+                        label = "daily_group_leading_${item.groupName}_${item.leadingValue}",
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = quietColor,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        delayMillis = 220,
+                    )
+                } else {
+                    Text(
+                        text = item.leadingValue,
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = quietColor,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
                 Text(
                     text = item.statusLabel,
                     style = MaterialTheme.typography.labelSmall,
@@ -2384,7 +2495,7 @@ private fun DailyGroupProgressRow(
             ) {
                 Box(
                     modifier = Modifier
-                        .fillMaxWidth(fraction = animatedProgress)
+                        .fillMaxWidth(fraction = displayProgress)
                         .fillMaxHeight()
                         .clip(RoundedCornerShape(3.dp))
                         .background(progressFillColor.copy(alpha = if (item.isWarning) 0.86f else 0.56f))
@@ -2431,13 +2542,29 @@ private fun FocusProgressRing(
     progress: Float,
     color: Color,
     label: String,
+    animateValue: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
-    val animatedProgress = animateFractionValue(
-        targetValue = progress.coerceIn(0f, 1f),
-        label = "focus_progress_ring_$label",
-        delayMillis = 160,
-    )
+    val displayProgress =
+        if (animateValue) {
+            animateFractionValue(
+                targetValue = progress.coerceIn(0f, 1f),
+                label = "focus_progress_ring_$label",
+                delayMillis = 160,
+            )
+        } else {
+            progress.coerceIn(0f, 1f)
+        }
+    val displayLabel =
+        if (animateValue) {
+            animateMetricDisplayText(
+                rawText = label,
+                label = "focus_progress_ring_$label",
+                delayMillis = 120,
+            )
+        } else {
+            label
+        }
     Box(modifier = modifier, contentAlignment = Alignment.Center) {
         Canvas(modifier = Modifier.fillMaxSize()) {
             val stroke = size.minDimension * 0.14f
@@ -2456,7 +2583,7 @@ private fun FocusProgressRing(
             drawArc(
                 color = color,
                 startAngle = -90f,
-                sweepAngle = 360f * animatedProgress,
+                sweepAngle = 360f * displayProgress,
                 useCenter = false,
                 topLeft = topLeft,
                 size = chartSize,
@@ -2464,7 +2591,7 @@ private fun FocusProgressRing(
             )
         }
         Text(
-            text = label,
+            text = displayLabel,
             style = MaterialTheme.typography.labelLarge,
             fontWeight = FontWeight.SemiBold,
             color = color,
@@ -2480,20 +2607,26 @@ private fun FocusMetricPill(
     modifier: Modifier = Modifier,
     emphasizeValue: Boolean = false,
     valueColor: Color = MaterialTheme.colorScheme.onSurface,
+    animateValue: Boolean = false,
 ) {
     val themeColors = LocalThemeColors.current
-    val animatedValue = animateMetricDisplayText(
-        rawText = metric.value,
-        label = "daily_focus_metric_${metric.label}_${metric.value}",
-        delayMillis = delayMillis,
-    )
+    val displayValue =
+        if (animateValue) {
+            animateMetricDisplayText(
+                rawText = metric.value,
+                label = "daily_focus_metric_${metric.label}_${metric.value}",
+                delayMillis = delayMillis,
+            )
+        } else {
+            metric.value
+        }
     Surface(
         modifier = modifier,
         shape = RoundedCornerShape(14.dp),
         color = accent.copy(alpha = 0.1f),
     ) {
         if (emphasizeValue) {
-            val valueParts = splitMetricValue(animatedValue)
+            val valueParts = splitMetricValue(displayValue)
             Column(
                 modifier = Modifier
                     .fillMaxSize()
@@ -2542,7 +2675,7 @@ private fun FocusMetricPill(
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    text = animatedValue,
+                    text = displayValue,
                     style = MaterialTheme.typography.labelLarge,
                     fontWeight = FontWeight.SemiBold,
                     color = themeColors.ink,
@@ -2713,15 +2846,7 @@ internal fun DailyTimelineChart(
     val deviceColor = MaterialTheme.colorScheme.primary
     val guideLineColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.14f)
     val axisTextColor = MaterialTheme.colorScheme.onSurfaceVariant
-    val stagedRevealTarget = rememberDelayedFloatTarget(
-        targetValue = if (buckets.any { it.deviceMillis > 0L }) 1f else 0f,
-        delayMillis = 160,
-    )
-    val revealProgress by animateFloatAsState(
-        targetValue = stagedRevealTarget,
-        animationSpec = tween(durationMillis = 720),
-        label = "timeline_bar_reveal",
-    )
+    val revealProgress = if (buckets.any { it.deviceMillis > 0L }) 1f else 0f
     BoxWithConstraints {
         val chartHeight = if (maxWidth < 360.dp) 138.dp else 156.dp
         val axisWidth = if (maxWidth < 360.dp) 32.dp else 40.dp
@@ -2853,12 +2978,6 @@ private fun PeriodDistributionCard(
     val dominantIndex = periodUsage.indexOfFirst { it.deviceMillis == (periodUsage.maxOfOrNull { item -> item.deviceMillis } ?: 0L) }
     val dominantItem = dominantIndex.takeIf { it >= 0 }?.let { periodUsage[it] }
     val reportColors = LocalReportColors.current
-    val animatedDominantMillis = animateLongValue(
-        targetValue = dominantItem?.deviceMillis ?: 0L,
-        label = "period_dominant_value",
-        durationMillis = 840,
-        delayMillis = 240,
-    )
     val colors = reportColors.periodPalette
     Surface(
         modifier = modifier,
@@ -2898,7 +3017,7 @@ private fun PeriodDistributionCard(
                                 fontWeight = FontWeight.SemiBold,
                             )
                             Text(
-                                text = dominantItem?.let { formatDuration(animatedDominantMillis) } ?: "--",
+                                text = dominantItem?.let { formatDuration(it.deviceMillis) } ?: "--",
                                 style = MaterialTheme.typography.labelMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                             )
@@ -2925,23 +3044,39 @@ private fun PeriodDonutChart(
     colors: List<Color>,
     highlightedIndex: Int? = null,
     delayMillis: Int = 0,
+    animateValue: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     val total = values.sum().coerceAtLeast(1L)
-    val stagedRevealTarget = rememberDelayedFloatTarget(
-        targetValue = if (values.any { it > 0L }) 1f else 0f,
-        delayMillis = delayMillis,
-    )
-    val revealProgress by animateFloatAsState(
-        targetValue = stagedRevealTarget,
-        animationSpec = spring(dampingRatio = 0.92f, stiffness = 160f),
-        label = "donut_reveal_progress",
-    )
-    val rotationProgress by animateFloatAsState(
-        targetValue = stagedRevealTarget,
-        animationSpec = tween(durationMillis = 920),
-        label = "donut_rotation_progress",
-    )
+    val targetProgress = if (values.any { it > 0L }) 1f else 0f
+    val revealProgress =
+        if (animateValue) {
+            val stagedRevealTarget = rememberDelayedFloatTarget(
+                targetValue = targetProgress,
+                delayMillis = delayMillis,
+            )
+            animateFloatAsState(
+                targetValue = stagedRevealTarget,
+                animationSpec = spring(dampingRatio = 0.92f, stiffness = 160f),
+                label = "donut_reveal_progress",
+            ).value
+        } else {
+            targetProgress
+        }
+    val rotationProgress =
+        if (animateValue) {
+            val stagedRevealTarget = rememberDelayedFloatTarget(
+                targetValue = targetProgress,
+                delayMillis = delayMillis,
+            )
+            animateFloatAsState(
+                targetValue = stagedRevealTarget,
+                animationSpec = tween(durationMillis = 920),
+                label = "donut_rotation_progress",
+            ).value
+        } else {
+            targetProgress
+        }
     Canvas(modifier = modifier) {
         val baseStroke = size.minDimension * 0.13f
         val diameter = size.minDimension - baseStroke
@@ -3088,19 +3223,6 @@ private fun TopUsageBarRow(
 ) {
     val isTopRank = rank == 1
     val share = if (totalUsage > 0L) item.value.toFloat() / totalUsage.toFloat() else 0f
-    val delayMillis = 300 + ((rank - 1) * 35)
-    val animatedDuration = animateLongValue(
-        targetValue = item.value,
-        label = "top_usage_duration_${item.packageName}",
-        durationMillis = 820,
-        delayMillis = delayMillis,
-    )
-    val animatedShare = animateFractionValue(
-        targetValue = share,
-        label = "top_usage_share_${item.packageName}",
-        durationMillis = 760,
-        delayMillis = delayMillis + 30,
-    )
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(18.dp),
@@ -3146,17 +3268,16 @@ private fun TopUsageBarRow(
                 GradientProgressBar(
                     progress = (item.value.toFloat() / maxUsage.toFloat()).coerceIn(0f, 1f),
                     color = color,
-                    delayMillis = delayMillis,
                 )
             }
             Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(1.dp)) {
                 Text(
-                    text = formatDuration(animatedDuration),
+                    text = formatDuration(item.value),
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold,
                 )
                 Text(
-                    text = "${(animatedShare * 100).roundToInt()}%",
+                    text = "${(share * 100).roundToInt()}%",
                     style = MaterialTheme.typography.labelMedium,
                     color = color,
                     fontWeight = FontWeight.Medium,
@@ -3171,17 +3292,23 @@ private fun GradientProgressBar(
     progress: Float,
     color: Color,
     delayMillis: Int = 0,
+    animateValue: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
-    val stagedProgress = rememberDelayedFloatTarget(
-        targetValue = progress.coerceIn(0f, 1f),
-        delayMillis = delayMillis,
-    )
-    val animatedProgress by animateFloatAsState(
-        targetValue = stagedProgress,
-        animationSpec = spring(dampingRatio = 0.92f, stiffness = 220f),
-        label = "gradient_progress",
-    )
+    val displayProgress =
+        if (animateValue) {
+            val stagedProgress = rememberDelayedFloatTarget(
+                targetValue = progress.coerceIn(0f, 1f),
+                delayMillis = delayMillis,
+            )
+            animateFloatAsState(
+                targetValue = stagedProgress,
+                animationSpec = spring(dampingRatio = 0.92f, stiffness = 220f),
+                label = "gradient_progress",
+            ).value
+        } else {
+            progress.coerceIn(0f, 1f)
+        }
     Box(
         modifier = modifier
             .fillMaxWidth()
@@ -3191,7 +3318,7 @@ private fun GradientProgressBar(
     ) {
         Box(
             modifier = Modifier
-                .fillMaxWidth(animatedProgress)
+                .fillMaxWidth(displayProgress)
                 .fillMaxSize()
                 .clip(CircleShape)
                 .background(
@@ -3259,19 +3386,10 @@ internal fun AppUsageShareCard(
                 modifier = Modifier.padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(
-                        text = AppText.t("stats_app_duration"),
-                        style = MaterialTheme.typography.titleMedium,
-                    )
-                    AppIconStack(
-                        packages = visibleItems.map { it.packageName },
-                    )
-                }
+                Text(
+                    text = AppText.t("stats_app_duration"),
+                    style = MaterialTheme.typography.titleMedium,
+                )
                 if (items.isEmpty()) {
                     Text(
                         text = AppText.t("stats_no_usage_records"),
@@ -3287,12 +3405,6 @@ internal fun AppUsageShareCard(
                         } else {
                             visibleItems.map { it.value }
                         }
-                    val animatedTotal = animateLongValue(
-                        targetValue = total,
-                        label = "app_usage_share_total",
-                        durationMillis = 860,
-                        delayMillis = 260,
-                    )
                     Box(
                         modifier = Modifier.fillMaxWidth(),
                         contentAlignment = Alignment.Center,
@@ -3314,7 +3426,7 @@ internal fun AppUsageShareCard(
                                 verticalArrangement = Arrangement.spacedBy(4.dp),
                             ) {
                                 Text(
-                                    text = formatDuration(animatedTotal),
+                                    text = formatDuration(total),
                                     style = if (compact) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleLarge,
                                     fontWeight = FontWeight.SemiBold,
                                 )
@@ -3359,12 +3471,6 @@ private fun AppShareChip(
     delayMillis: Int = 0,
     modifier: Modifier = Modifier,
 ) {
-    val animatedShare = animateFractionValue(
-        targetValue = share.coerceIn(0f, 1f),
-        label = "app_share_chip_$packageName",
-        durationMillis = 780,
-        delayMillis = delayMillis,
-    )
     Surface(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
@@ -3387,7 +3493,7 @@ private fun AppShareChip(
                 )
             }
             Text(
-                text = "${(animatedShare * 100).roundToInt()}%",
+                text = "${(share.coerceIn(0f, 1f) * 100).roundToInt()}%",
                 style = MaterialTheme.typography.labelMedium,
                 fontWeight = FontWeight.SemiBold,
                 color = color,
@@ -3452,11 +3558,6 @@ internal fun MiniInsightCard(
     modifier: Modifier = Modifier,
 ) {
     val accent = MaterialTheme.colorScheme.primary
-    val animatedValue = animateMetricDisplayText(
-        rawText = value,
-        label = "mini_insight_${label.hashCode()}",
-        delayMillis = delayMillis,
-    )
     Surface(
         modifier = modifier,
         shape = RoundedCornerShape(18.dp),
@@ -3487,7 +3588,7 @@ internal fun MiniInsightCard(
                         overflow = TextOverflow.Ellipsis,
                     )
                     Text(
-                        text = animatedValue,
+                        text = value,
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.SemiBold,
                         maxLines = 1,
@@ -3527,7 +3628,7 @@ internal fun MiniInsightCard(
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-                Text(text = animatedValue, style = MaterialTheme.typography.titleMedium)
+                Text(text = value, style = MaterialTheme.typography.titleMedium)
                 if (visualRatio != null) {
                     GradientProgressBar(
                         progress = visualRatio.coerceIn(0f, 1f),
@@ -3837,11 +3938,6 @@ internal fun ComparisonRow(
     showChips: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
-    val animatedTodayValue = animateMetricDisplayText(
-        rawText = item.todayValue,
-        label = "comparison_${item.label.hashCode()}",
-        delayMillis = delayMillis,
-    )
     Surface(
         modifier = modifier,
         shape = RoundedCornerShape(16.dp),
@@ -3858,7 +3954,7 @@ internal fun ComparisonRow(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Text(text = item.label, style = MaterialTheme.typography.titleSmall)
-                Text(text = animatedTodayValue, style = MaterialTheme.typography.headlineSmall)
+                Text(text = item.todayValue, style = MaterialTheme.typography.headlineSmall)
             }
             item.chartData?.let { data ->
                 ComparisonMiniBars(
@@ -3933,11 +4029,6 @@ private fun ComparisonBar(
     modifier: Modifier = Modifier,
 ) {
     val progress = if (value != null && maxValue > 0L) (value.toFloat() / maxValue.toFloat()).coerceIn(0f, 1f) else 0f
-    val animatedProgress = animateFractionValue(
-        targetValue = progress,
-        label = "comparison_bar_${label}_${display.orEmpty()}",
-        delayMillis = delayMillis,
-    )
     Row(
         modifier = modifier
             .fillMaxWidth()
@@ -3962,7 +4053,7 @@ private fun ComparisonBar(
         ) {
             Box(
                 modifier = Modifier
-                    .fillMaxWidth(maxOf(0.04f, animatedProgress))
+                    .fillMaxWidth(maxOf(0.04f, progress))
                     .fillMaxHeight()
                     .clip(CircleShape)
                     .background(color.copy(alpha = if (value == null) 0.12f else 0.72f)),

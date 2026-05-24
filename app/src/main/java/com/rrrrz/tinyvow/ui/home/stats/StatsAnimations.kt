@@ -2,9 +2,18 @@ package com.rrrrz.tinyvow.ui.home
 
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.Modifier
 import kotlinx.coroutines.delay
 import java.util.Locale
 import kotlin.math.roundToInt
@@ -23,7 +32,7 @@ internal fun animateLongValue(
     )
     val animatedValue by animateFloatAsState(
         targetValue = delayedTargetValue.toFloat(),
-        animationSpec = tween(durationMillis = durationMillis),
+        animationSpec = tween(durationMillis = slowedMetricDuration(durationMillis)),
         label = label,
     )
     return animatedValue.roundToLong().coerceAtLeast(0L)
@@ -42,7 +51,7 @@ internal fun animateIntValue(
     )
     val animatedValue by animateFloatAsState(
         targetValue = delayedTargetValue.toFloat(),
-        animationSpec = tween(durationMillis = durationMillis),
+        animationSpec = tween(durationMillis = slowedMetricDuration(durationMillis)),
         label = label,
     )
     return animatedValue.roundToInt().coerceAtLeast(0)
@@ -61,7 +70,7 @@ internal fun animateFractionValue(
     )
     val animatedValue by animateFloatAsState(
         targetValue = delayedTargetValue,
-        animationSpec = tween(durationMillis = durationMillis),
+        animationSpec = tween(durationMillis = slowedMetricDuration(durationMillis)),
         label = label,
     )
     return animatedValue.coerceIn(0f, 1f)
@@ -80,7 +89,7 @@ internal fun animateDecimalValue(
     )
     val animatedValue by animateFloatAsState(
         targetValue = delayedTargetValue,
-        animationSpec = tween(durationMillis = durationMillis),
+        animationSpec = tween(durationMillis = slowedMetricDuration(durationMillis)),
         label = label,
     )
     return animatedValue.coerceAtLeast(0f)
@@ -114,32 +123,67 @@ internal fun animateMetricDisplayText(
         return rawText.replaceRange(percentMatch.range, "${animatedPercent}%")
     }
 
-    val decimalMatch = Regex("""(\d+\.\d+)""").find(rawText)
+    val decimalMatch = Regex("""([+\-]?\d+\.\d+)""").find(rawText)
     if (decimalMatch != null) {
         val animatedDecimal = animateDecimalValue(
-            targetValue = decimalMatch.groupValues[1].toFloatOrNull() ?: 0f,
+            targetValue = kotlin.math.abs(decimalMatch.groupValues[1].toFloatOrNull() ?: 0f),
             label = "${label}_decimal",
             durationMillis = 760,
             delayMillis = delayMillis,
         )
+        val sign = if (decimalMatch.groupValues[1].startsWith("-")) "-" else if (decimalMatch.groupValues[1].startsWith("+")) "+" else ""
         return rawText.replaceRange(
             decimalMatch.range,
-            String.format(Locale.CHINA, "%.1f", animatedDecimal),
+            sign + String.format(Locale.CHINA, "%.1f", animatedDecimal),
         )
     }
 
-    val countMatch = Regex("""\d+""").find(rawText)
+    val countMatch = Regex("""([+\-]?\d+)""").find(rawText)
     if (countMatch != null) {
+        val rawValue = countMatch.groupValues[1]
         val animatedCount = animateIntValue(
-            targetValue = countMatch.value.toIntOrNull() ?: 0,
+            targetValue = kotlin.math.abs(rawValue.toIntOrNull() ?: 0),
             label = "${label}_count",
             durationMillis = 720,
             delayMillis = delayMillis,
         )
-        return rawText.replaceRange(countMatch.range, animatedCount.toString())
+        val sign = if (rawValue.startsWith("-")) "-" else if (rawValue.startsWith("+")) "+" else ""
+        return rawText.replaceRange(countMatch.range, sign + animatedCount.toString())
     }
 
     return rawText
+}
+
+private fun slowedMetricDuration(durationMillis: Int): Int =
+    (durationMillis * 2).coerceAtMost(2_400)
+
+@Composable
+internal fun AnimatedMetricText(
+    rawText: String,
+    label: String,
+    modifier: Modifier = Modifier,
+    style: TextStyle = MaterialTheme.typography.bodyMedium,
+    color: Color = LocalContentColor.current,
+    fontWeight: FontWeight? = null,
+    textAlign: TextAlign? = null,
+    maxLines: Int = Int.MAX_VALUE,
+    overflow: TextOverflow = TextOverflow.Clip,
+    delayMillis: Int = 0,
+) {
+    Text(
+        text = animateMetricDisplayText(
+            rawText = rawText,
+            label = label,
+            delayMillis = delayMillis,
+        ),
+        modifier = modifier,
+        style = style,
+        color = color,
+        fontWeight = fontWeight,
+        textAlign = textAlign,
+        maxLines = maxLines,
+        overflow = overflow,
+    )
 }
 
 @Composable

@@ -14,6 +14,7 @@ import com.google.android.libraries.identity.googleid.GetGoogleIdOption
 import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import com.google.android.libraries.identity.googleid.GoogleIdTokenParsingException
 import com.rrrrz.tinyvow.BuildConfig
+import com.rrrrz.tinyvow.i18n.AppText
 import java.util.UUID
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -61,7 +62,7 @@ class LocalAuthRepository(
 
     override suspend fun signInWithGoogle(activity: ComponentActivity): Result<UserSession> {
         if (!isGoogleSignInConfigured) {
-            return Result.failure(IllegalStateException("Google Web client ID is not configured."))
+            return Result.failure(IllegalStateException(AppText.t("auth_error_google_web_client_missing")))
         }
 
         return runCatching {
@@ -83,13 +84,13 @@ class LocalAuthRepository(
                 credential !is CustomCredential ||
                 credential.type != GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
             ) {
-                error("Unsupported credential type.")
+                throw IllegalStateException(AppText.t("auth_error_unsupported_credential"))
             }
 
             val googleCredential = try {
                 GoogleIdTokenCredential.createFrom(credential.data)
             } catch (error: GoogleIdTokenParsingException) {
-                throw IllegalStateException("Unable to parse Google ID token.", error)
+                throw IllegalStateException(AppText.t("auth_error_parse_google_id_token"), error)
             }
 
             val now = System.currentTimeMillis()
@@ -110,7 +111,7 @@ class LocalAuthRepository(
             nextSession
         }.recoverCatching { error ->
             if (error is GetCredentialException) {
-                throw IllegalStateException("Google sign-in was cancelled or unavailable.", error)
+                throw IllegalStateException(AppText.t("auth_error_google_sign_in_unavailable"), error)
             }
             throw error
         }

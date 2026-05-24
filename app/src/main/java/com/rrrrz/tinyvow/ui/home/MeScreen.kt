@@ -3,6 +3,7 @@ package com.rrrrz.tinyvow.ui.home
 import com.rrrrz.tinyvow.i18n.AppText
 
 import android.content.Intent
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -38,20 +39,17 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Science
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.VerifiedUser
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
@@ -87,6 +85,8 @@ import com.rrrrz.tinyvow.data.supermode.SuperModeStatus
 import com.rrrrz.tinyvow.i18n.AppLanguage
 import com.rrrrz.tinyvow.ui.theme.LocalThemeColors
 import com.rrrrz.tinyvow.ui.theme.ThemeSeed
+import com.rrrrz.tinyvow.ui.theme.TinyVowButton
+import com.rrrrz.tinyvow.ui.theme.TinyVowButtonTone
 import com.rrrrz.tinyvow.ui.theme.TinyVowCard
 import com.rrrrz.tinyvow.ui.theme.TinyVowElevation
 import com.rrrrz.tinyvow.ui.theme.TinyVowRadius
@@ -279,15 +279,15 @@ fun MeScreen(
                             horizontalArrangement = Arrangement.spacedBy(10.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            OutlinedButton(onClick = onSignOut) {
-                                Text(AppText.t("me_sign_out"), color = themeColors.onBase)
-                            }
-                            TextButton(onClick = { showDeleteAccountConfirm = true }) {
-                                Text(
-                                    AppText.t("me_delete_account"),
-                                    color = themeColors.onBase,
-                                )
-                            }
+                            TinyVowButton(
+                                text = AppText.t("me_sign_out"),
+                                onClick = onSignOut,
+                            )
+                            TinyVowButton(
+                                text = AppText.t("me_delete_account"),
+                                onClick = { showDeleteAccountConfirm = true },
+                                tone = TinyVowButtonTone.Danger,
+                            )
                         }
                     }
                 }
@@ -792,6 +792,7 @@ fun LanguageSettingsScreen(
     onBack: () -> Unit,
 ) {
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
                 title = { Text(AppText.t("selected_language_title")) },
@@ -800,6 +801,10 @@ fun LanguageSettingsScreen(
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = AppText.t("group_back"))
                     }
                 },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    scrolledContainerColor = MaterialTheme.colorScheme.surface,
+                ),
             )
         },
     ) { innerPadding ->
@@ -812,7 +817,7 @@ fun LanguageSettingsScreen(
                 .padding(
                     start = TinyVowSpacing.PageHorizontal,
                     end = TinyVowSpacing.PageHorizontal,
-                    top = 6.dp,
+                    top = TinyVowSpacing.PageTop,
                     bottom = TinyVowSpacing.PageTop,
                 ),
             verticalArrangement = Arrangement.spacedBy(TinyVowSpacing.SectionGap),
@@ -867,7 +872,6 @@ fun LanguageSettingsScreen(
                     }
                 }
             }
-            Spacer(modifier = Modifier.height(24.dp))
         }
     }
 }
@@ -908,6 +912,7 @@ private fun MeDetailPageScaffold(
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
                 title = {
@@ -923,6 +928,10 @@ private fun MeDetailPageScaffold(
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = AppText.t("group_back"))
                     }
                 },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    scrolledContainerColor = MaterialTheme.colorScheme.surface,
+                ),
             )
         },
     ) { innerPadding ->
@@ -935,7 +944,7 @@ private fun MeDetailPageScaffold(
                 .padding(
                     start = TinyVowSpacing.PageHorizontal,
                     end = TinyVowSpacing.PageHorizontal,
-                    top = 6.dp,
+                    top = TinyVowSpacing.PageTop,
                     bottom = TinyVowSpacing.PageTop,
                 ),
             verticalArrangement = Arrangement.spacedBy(TinyVowSpacing.SectionGap),
@@ -957,7 +966,6 @@ private fun MeDetailPageScaffold(
                 )
             }
             content()
-            Spacer(modifier = Modifier.height(24.dp))
         }
     }
 }
@@ -1295,6 +1303,7 @@ private fun ProBenefitsComparisonDialog(
 
 @Composable
 private fun ProCompareHeaderRow() {
+    val themeColors = LocalThemeColors.current
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -1304,17 +1313,19 @@ private fun ProCompareHeaderRow() {
             text = AppText.t("pro_compare_feature"),
             modifier = Modifier.weight(1.4f),
             style = MaterialTheme.typography.labelMedium,
+            color = themeColors.inkMuted,
         )
         Text(
             text = AppText.t("pro_compare_free"),
             modifier = Modifier.weight(0.8f),
             style = MaterialTheme.typography.labelMedium,
+            color = themeColors.inkMuted,
         )
         Text(
             text = AppText.t("pro_compare_pro"),
             modifier = Modifier.weight(0.8f),
             style = MaterialTheme.typography.labelMedium,
-            color = MaterialTheme.colorScheme.primary,
+            color = themeColors.base,
         )
     }
 }
@@ -1325,10 +1336,12 @@ private fun ProCompareValueRow(
     freeValue: String,
     proValue: String,
 ) {
+    val themeColors = LocalThemeColors.current
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(14.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerLow,
+        color = themeColors.baseContainer.copy(alpha = 0.44f),
+        border = androidx.compose.foundation.BorderStroke(1.dp, themeColors.base.copy(alpha = 0.08f)),
     ) {
         Row(
             modifier = Modifier
@@ -1341,18 +1354,19 @@ private fun ProCompareValueRow(
                 text = feature,
                 modifier = Modifier.weight(1.4f),
                 style = MaterialTheme.typography.bodyMedium,
+                color = themeColors.ink,
             )
             Text(
                 text = freeValue,
                 modifier = Modifier.weight(0.8f),
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = themeColors.inkMuted,
             )
             Text(
                 text = proValue,
                 modifier = Modifier.weight(0.8f),
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.primary,
+                color = themeColors.base,
             )
         }
     }
@@ -1364,6 +1378,7 @@ private fun ActivationCodeDialog(
     onDismiss: () -> Unit,
     onActivate: (String) -> Unit,
 ) {
+    val themeColors = LocalThemeColors.current
     val clipboard = LocalClipboardManager.current
     var code by remember { mutableStateOf("") }
 
@@ -1375,18 +1390,19 @@ private fun ActivationCodeDialog(
                 Text(
                     text = AppText.t("activation_send_user_id_to_developer"),
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color = themeColors.inkMuted,
                 )
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp),
-                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    color = themeColors.baseContainer.copy(alpha = 0.54f),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, themeColors.base.copy(alpha = 0.10f)),
                 ) {
                     Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text(
                             text = userId,
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = themeColors.ink,
                         )
                         TextButton(
                             onClick = { clipboard.setText(AnnotatedString(userId)) },
@@ -1549,3 +1565,4 @@ fun MeMenuItem(
         )
     }
 }
+

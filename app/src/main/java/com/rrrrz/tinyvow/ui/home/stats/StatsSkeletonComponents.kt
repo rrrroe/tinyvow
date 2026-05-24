@@ -1,4 +1,4 @@
-﻿package com.rrrrz.tinyvow.ui.home
+package com.rrrrz.tinyvow.ui.home
 
 import com.rrrrz.tinyvow.i18n.AppText
 
@@ -64,18 +64,14 @@ import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Timeline
 import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material.icons.filled.WbSunny
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -265,6 +261,711 @@ internal fun BehaviorSkeletonCard() {
                     modifier = modifier,
                     height = 72.dp,
                     shape = RoundedCornerShape(TinyVowRadius.ItemCard),
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+internal fun FocusSummarySkeletonGrid(
+    compactLayout: Boolean = false,
+) {
+    AdaptiveRowGrid(
+        itemCount = 2,
+        compactColumns = if (compactLayout) 1 else 2,
+        expandedColumns = 2,
+        horizontalSpacing = 8.dp,
+        verticalSpacing = 8.dp,
+    ) { modifier, index ->
+        DailyModeSummarySkeletonCard(
+            isEncourage = index == 1,
+            compact = compactLayout,
+            modifier = modifier,
+        )
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+internal fun DailyModeSummarySkeletonCard(
+    isEncourage: Boolean,
+    compact: Boolean = false,
+    modifier: Modifier = Modifier,
+) {
+    val title = if (isEncourage) AppText.t("stats_encourage_progress") else AppText.t("stats_control_results")
+    val description =
+        if (isEncourage) {
+            AppText.t("stats_encourage_usage_produced_positive_point_gains")
+        } else {
+            AppText.t("stats_control_groups_were_stable_overall")
+        }
+    val primaryLabel = if (isEncourage) AppText.t("stats_net_points") else AppText.t("stats_time_saved")
+    val metricLabels =
+        if (isEncourage) {
+            listOf(AppText.t("stats_duration"), AppText.t("stats_met"), AppText.t("stats_redemption"))
+        } else {
+            listOf(AppText.t("stats_met"), AppText.t("stats_over_limit"), AppText.t("group_blocks"))
+        }
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(TinyVowRadius.Card),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.28f)),
+    ) {
+        Column(
+            modifier = Modifier.padding(
+                horizontal = if (compact) TinyVowSpacing.CompactCardHorizontal else TinyVowSpacing.CardHorizontal,
+                vertical = if (compact) TinyVowSpacing.CompactCardVertical else TinyVowSpacing.CardVertical,
+            ),
+            verticalArrangement = Arrangement.spacedBy(if (compact) 8.dp else TinyVowSpacing.CardGap),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                SkeletonBlock(
+                    modifier = Modifier.size(if (compact) 32.dp else 36.dp),
+                    height = if (compact) 32.dp else 36.dp,
+                    shape = RoundedCornerShape(12.dp),
+                )
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Text(
+                        text = title,
+                        style = if (compact) MaterialTheme.typography.titleSmall else MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    if (!compact) {
+                        Text(
+                            text = description,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.Bottom,
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        text = primaryLabel,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    SkeletonLine(width = if (compact) 72.dp else 92.dp, height = if (compact) 20.dp else 26.dp)
+                }
+                Text(
+                    text = if (isEncourage) AppText.t("stats_best_encourage_group") else AppText.t("stats_label"),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                val metricSize = ((maxWidth - 10.dp) / 2).coerceIn(
+                    if (compact) 58.dp else 64.dp,
+                    if (compact) 74.dp else 82.dp,
+                )
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(if (compact) 8.dp else 10.dp),
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(if (compact) 8.dp else 10.dp),
+                    ) {
+                        SkeletonCircle(size = metricSize)
+                        SkeletonMetricLabelTile(
+                            label = metricLabels.firstOrNull() ?: primaryLabel,
+                            modifier = Modifier.size(metricSize),
+                        )
+                    }
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(if (compact) 8.dp else 10.dp),
+                    ) {
+                        metricLabels.drop(1).take(2).forEach { label ->
+                            SkeletonMetricLabelTile(
+                                label = label,
+                                modifier = Modifier.size(metricSize),
+                            )
+                        }
+                        repeat((2 - metricLabels.drop(1).take(2).size).coerceAtLeast(0)) {
+                            Spacer(modifier = Modifier.size(metricSize))
+                        }
+                    }
+                }
+            }
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(18.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.52f),
+            ) {
+                Column(
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                    verticalArrangement = Arrangement.spacedBy(3.dp),
+                ) {
+                    Text(
+                        text = if (isEncourage) AppText.t("stats_best_encourage_group") else AppText.t("stats_label"),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    SkeletonLine(width = 150.dp, height = 15.dp)
+                }
+            }
+            if (!compact) {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        Text(
+                            text = if (isEncourage) AppText.t("stats_encourage_group_details") else AppText.t("stats_group_details"),
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        SkeletonLine(width = 36.dp, height = 10.dp)
+                    }
+                    repeat(3) { index ->
+                        DailyGroupRowSkeleton()
+                        if (index != 2) {
+                            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.28f))
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SkeletonMetricLabelTile(
+    label: String,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(TinyVowRadius.ItemCard),
+        color = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.64f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.18f)),
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 9.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            SkeletonLine(width = 48.dp, height = 18.dp)
+        }
+    }
+}
+
+@Composable
+internal fun MiniInsightSkeletonCard(
+    label: String,
+    compact: Boolean = false,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = 0.56f),
+    ) {
+        if (compact) {
+            Column(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                verticalArrangement = Arrangement.spacedBy(7.dp),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    SkeletonCircle(size = 16.dp)
+                    Text(
+                        text = label,
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    SkeletonLine(width = 48.dp, height = 16.dp)
+                }
+                SkeletonBlock(
+                    modifier = Modifier.fillMaxWidth(),
+                    height = 6.dp,
+                    shape = RoundedCornerShape(999.dp),
+                )
+            }
+        } else {
+            Column(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    SkeletonCircle(size = 16.dp)
+                    Text(
+                        text = label,
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                SkeletonLine(width = 84.dp, height = 20.dp)
+                SkeletonBlock(
+                    modifier = Modifier.fillMaxWidth(),
+                    height = 6.dp,
+                    shape = RoundedCornerShape(999.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun DailyGroupRowSkeleton() {
+    Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            SkeletonLine(width = 96.dp, height = 13.dp)
+            Spacer(modifier = Modifier.weight(1f))
+            SkeletonLine(width = 62.dp, height = 11.dp)
+        }
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            SkeletonLine(width = 82.dp, height = 11.dp)
+            Spacer(modifier = Modifier.weight(1f))
+            SkeletonLine(width = 48.dp, height = 11.dp)
+        }
+        SkeletonBlock(
+            modifier = Modifier.fillMaxWidth(),
+            height = 7.dp,
+            shape = RoundedCornerShape(999.dp),
+        )
+    }
+}
+
+@Composable
+internal fun PeriodReportSkeleton(selectedTab: ReportTab) {
+    PeriodHeroSkeletonCard(selectedTab = selectedTab)
+    ReportCard {
+        FocusSummarySkeletonGrid(compactLayout = true)
+    }
+    if (selectedTab == ReportTab.MONTH || selectedTab == ReportTab.YEAR) {
+        PeriodHeatmapSkeletonCard(selectedTab = selectedTab, compactCells = selectedTab == ReportTab.YEAR)
+    }
+    PeriodTrendSkeletonCard(selectedTab = selectedTab)
+    when (selectedTab) {
+        ReportTab.MONTH -> PeriodStructureSkeletonCard(selectedTab = selectedTab, itemCount = 4)
+        ReportTab.YEAR -> PeriodStructureSkeletonCard(selectedTab = selectedTab, itemCount = 4)
+        else -> Unit
+    }
+    PeriodAppFocusSkeletonCard(selectedTab = selectedTab, showMatrix = selectedTab == ReportTab.WEEK)
+    PeriodBehaviorSkeletonCard()
+}
+
+@Composable
+private fun PeriodHeroSkeletonCard(selectedTab: ReportTab) {
+    val message =
+        when (selectedTab) {
+            ReportTab.WEEK -> AppText.t("stats_weekly_battle_message")
+            ReportTab.MONTH -> AppText.t("stats_monthly_battle_message")
+            ReportTab.YEAR -> AppText.t("stats_yearly_battle_message")
+            ReportTab.DAY -> ""
+        }
+    val averageLabel =
+        when (selectedTab) {
+            ReportTab.YEAR -> AppText.t("stats_monthly_average")
+            else -> AppText.t("stats_daily_average")
+        }
+    val metricLabels =
+        when (selectedTab) {
+            ReportTab.WEEK -> listOf(
+                AppText.t("stats_active_days"),
+                AppText.t("stats_night_use"),
+                AppText.t("stats_best_day"),
+                AppText.t("stats_calmest_day"),
+            )
+            ReportTab.MONTH -> listOf(
+                AppText.t("stats_active_days"),
+                AppText.t("stats_over_limit"),
+                AppText.t("stats_time_saved"),
+                AppText.t("stats_net_points"),
+            )
+            ReportTab.YEAR -> listOf(
+                AppText.t("stats_active_months"),
+                AppText.t("stats_best_month"),
+                AppText.t("stats_time_saved"),
+                AppText.t("stats_net_points"),
+            )
+            ReportTab.DAY -> emptyList()
+        }
+    ReportCard {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(26.dp))
+                .background(MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.72f))
+                .padding(horizontal = 18.dp, vertical = 18.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.Top,
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        text = AppText.t("stats_total_phone_usage"),
+                        style = MaterialTheme.typography.titleLarge,
+                    )
+                }
+                SkeletonPill(width = 96.dp)
+            }
+            SkeletonLine(width = 156.dp, height = 36.dp)
+            Text(
+                text = message,
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            AdaptiveRowGrid(
+                itemCount = 2,
+                compactColumns = 1,
+                expandedColumns = 2,
+                horizontalSpacing = 8.dp,
+                verticalSpacing = 8.dp,
+            ) { modifier, index ->
+                SkeletonMetricLabelTile(
+                    label = if (index == 0) AppText.t("stats_vs_previous_period_decreased") else averageLabel,
+                    modifier = modifier,
+                )
+            }
+            AdaptiveRowGrid(
+                itemCount = 4,
+                compactColumns = 2,
+                expandedColumns = 4,
+                horizontalSpacing = 8.dp,
+                verticalSpacing = 8.dp,
+            ) { modifier, index ->
+                SkeletonMetricLabelTile(
+                    label = metricLabels.getOrElse(index) { AppText.t("stats_usage_duration") },
+                    modifier = modifier,
+                )
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                SkeletonPill(width = 72.dp)
+                SkeletonPill(width = 82.dp)
+                SkeletonPill(width = 64.dp)
+            }
+        }
+    }
+}
+
+@Composable
+private fun PeriodTrendSkeletonCard(selectedTab: ReportTab) {
+    val title =
+        when (selectedTab) {
+            ReportTab.WEEK -> AppText.t("stats_weekly_rhythm_curve")
+            ReportTab.MONTH -> AppText.t("stats_monthly_cumulative_curve")
+            ReportTab.YEAR -> AppText.t("stats_yearly_curve")
+            ReportTab.DAY -> AppText.t("stats_usage_duration")
+        }
+    val subtitle =
+        when (selectedTab) {
+            ReportTab.WEEK -> AppText.t("stats_weekly_rhythm_curve_description")
+            ReportTab.MONTH -> AppText.t("stats_monthly_cumulative_curve_description")
+            ReportTab.YEAR -> AppText.t("stats_yearly_curve_description")
+            ReportTab.DAY -> null
+        }
+    ReportCard {
+        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            SectionHeader(icon = Icons.Default.Timeline, title = title, subtitle = subtitle)
+            SkeletonPeriodTrendChart()
+            TimelineFooter(labels = periodSkeletonTimelineLabels(selectedTab))
+            AdaptiveRowGrid(
+                itemCount = 3,
+                compactColumns = 1,
+                expandedColumns = 3,
+                horizontalSpacing = 8.dp,
+                verticalSpacing = 8.dp,
+            ) { modifier, index ->
+                val label =
+                    when (selectedTab) {
+                        ReportTab.WEEK -> listOf(AppText.t("stats_weekday_average"), AppText.t("stats_weekend_average"), AppText.t("stats_highest_day")).getOrElse(index) { AppText.t("stats_lowest_day") }
+                        ReportTab.MONTH -> listOf(AppText.t("stats_highest_day"), AppText.t("stats_night_use"), AppText.t("stats_time_saved")).getOrElse(index) { AppText.t("stats_usage_duration") }
+                        ReportTab.YEAR -> listOf(AppText.t("stats_active_months"), AppText.t("stats_best_month"), AppText.t("stats_time_saved")).getOrElse(index) { AppText.t("stats_usage_duration") }
+                        ReportTab.DAY -> AppText.t("stats_usage_duration")
+                    }
+                SkeletonMetricLabelTile(
+                    label = label,
+                    modifier = modifier,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SkeletonPeriodTrendChart() {
+    val (baseColor, accentColor) = rememberSkeletonColors()
+    val lineColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.26f)
+    Canvas(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(188.dp),
+    ) {
+        repeat(4) { index ->
+            val y = size.height - size.height * (index / 3f)
+            drawLine(
+                color = lineColor,
+                start = Offset(0f, y),
+                end = Offset(size.width, y),
+                strokeWidth = 2f,
+            )
+        }
+        val values = listOf(0.18f, 0.42f, 0.34f, 0.58f, 0.45f, 0.72f, 0.54f)
+        val path = Path()
+        values.forEachIndexed { index, value ->
+            val x = if (values.size == 1) size.width / 2f else size.width * index / values.lastIndex.toFloat()
+            val y = size.height - size.height * value
+            if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
+        }
+        val fillPath = Path().apply {
+            addPath(path)
+            lineTo(size.width, size.height)
+            lineTo(0f, size.height)
+            close()
+        }
+        drawPath(fillPath, color = baseColor.copy(alpha = 0.45f))
+        drawPath(path, color = accentColor, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 6f))
+    }
+}
+
+private fun periodSkeletonTimelineLabels(selectedTab: ReportTab): List<String> =
+    when (selectedTab) {
+        ReportTab.WEEK -> listOf("1", "2", "3", "4", "5", "6", "7")
+        ReportTab.MONTH -> listOf("1", "10", "20", "30")
+        ReportTab.YEAR -> listOf("1", "4", "7", "10", "12")
+        ReportTab.DAY -> listOf("00:00", "06:00", "12:00", "18:00", "24:00")
+    }
+
+@Composable
+private fun PeriodHeatmapSkeletonCard(selectedTab: ReportTab, compactCells: Boolean) {
+    val title =
+        if (selectedTab == ReportTab.YEAR) {
+            AppText.t("stats_year_month_heatmap")
+        } else {
+            AppText.t("stats_month_calendar_heatmap")
+        }
+    val subtitle =
+        if (selectedTab == ReportTab.YEAR) {
+            AppText.t("stats_year_month_heatmap_description")
+        } else {
+            AppText.t("stats_month_calendar_heatmap_description")
+        }
+    ReportCard {
+        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            SectionHeader(icon = Icons.Default.CalendarMonth, title = title, subtitle = subtitle)
+            val rows = if (compactCells) 4 else 5
+            val columns = 7
+            repeat(rows) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(if (compactCells) 3.dp else 6.dp),
+                ) {
+                    repeat(columns) {
+                        SkeletonBlock(
+                            modifier = Modifier.weight(1f),
+                            height = if (compactCells) 14.dp else 36.dp,
+                            shape = RoundedCornerShape(if (compactCells) 8.dp else 12.dp),
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PeriodAppFocusSkeletonCard(selectedTab: ReportTab, showMatrix: Boolean) {
+    ReportCard {
+        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            SectionHeader(
+                icon = Icons.Default.BarChart,
+                title = AppText.t("stats_app_focus"),
+                subtitle = AppText.t("stats_app_focus_description"),
+            )
+            Text(
+                text =
+                    when (selectedTab) {
+                        ReportTab.WEEK -> AppText.t("stats_weekly_top_apps_total", "--")
+                        ReportTab.MONTH -> AppText.t("stats_monthly_top_apps_total", "--")
+                        ReportTab.YEAR -> AppText.t("stats_yearly_top_apps_total", "--")
+                        ReportTab.DAY -> "--"
+                    },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (showMatrix) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    repeat(7) {
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            SkeletonLine(width = 18.dp, height = 10.dp)
+                            repeat(4) {
+                                SkeletonBlock(
+                                    modifier = Modifier.size(34.dp),
+                                    height = 34.dp,
+                                    shape = RoundedCornerShape(10.dp),
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+            repeat(5) { index ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    SkeletonCircle(size = 34.dp)
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(7.dp),
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                        ) {
+                            SkeletonLine(width = 104.dp, height = 12.dp)
+                            SkeletonLine(width = 44.dp, height = 12.dp)
+                        }
+                        SkeletonBlock(
+                            modifier = Modifier.fillMaxWidth(),
+                            height = 8.dp,
+                            shape = RoundedCornerShape(999.dp),
+                        )
+                    }
+                }
+                if (index != 4) {
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.24f))
+                }
+            }
+            AdaptiveRowGrid(
+                itemCount = 2,
+                compactColumns = 1,
+                expandedColumns = 2,
+                horizontalSpacing = 8.dp,
+                verticalSpacing = 8.dp,
+            ) { modifier, index ->
+                SkeletonMetricLabelTile(
+                    label = if (index == 0) AppText.t("stats_most_stable_app") else AppText.t("stats_burst_app"),
+                    modifier = modifier,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PeriodBehaviorSkeletonCard() {
+    ReportCard {
+        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            SectionHeader(
+                icon = Icons.Default.Insights,
+                title = AppText.t("stats_behavior_analysis"),
+                subtitle = AppText.t("stats_behavior_structure_description"),
+            )
+            AdaptiveRowGrid(
+                itemCount = 4,
+                compactColumns = 1,
+                expandedColumns = 2,
+                horizontalSpacing = 8.dp,
+                verticalSpacing = 8.dp,
+            ) { modifier, index ->
+                val label =
+                    listOf(
+                        AppText.t("stats_behavior_fragmentation"),
+                        AppText.t("stats_launch_intensity"),
+                        AppText.t("stats_average_session"),
+                        AppText.t("stats_night_use"),
+                    ).getOrElse(index) { AppText.t("stats_behavior_analysis") }
+                SkeletonMetricLabelTile(
+                    label = label,
+                    modifier = modifier,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PeriodStructureSkeletonCard(selectedTab: ReportTab, itemCount: Int) {
+    val title =
+        if (selectedTab == ReportTab.YEAR) {
+            AppText.t("stats_quarter_breakdown")
+        } else {
+            AppText.t("stats_month_week_structure")
+        }
+    val subtitle =
+        if (selectedTab == ReportTab.YEAR) {
+            AppText.t("stats_quarter_breakdown_description")
+        } else {
+            AppText.t("stats_month_week_structure_description")
+        }
+    ReportCard {
+        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            SectionHeader(icon = Icons.AutoMirrored.Filled.CallSplit, title = title, subtitle = subtitle)
+            AdaptiveRowGrid(
+                itemCount = itemCount,
+                compactColumns = 1,
+                expandedColumns = 2,
+                horizontalSpacing = 8.dp,
+                verticalSpacing = 8.dp,
+            ) { modifier, _ ->
+                SkeletonMetricLabelTile(
+                    label = if (selectedTab == ReportTab.YEAR) AppText.t("stats_best_month") else AppText.t("stats_daily_average"),
+                    modifier = modifier,
                 )
             }
         }
@@ -621,4 +1322,5 @@ internal fun rememberSkeletonColors(): Pair<Color, Color> {
     val accent = reportColors.skeletonAccent.copy(alpha = 0.72f + 0.18f * pulse)
     return base to accent
 }
+
 

@@ -39,6 +39,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -75,38 +76,38 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlinx.coroutines.launch
 
-private enum class HistoryListSort(val label: String) {
-    DATE("\u6700\u8fd1"),
-    USAGE("\u65f6\u957f"),
-    POINTS("\u51c0\u79ef\u5206"),
-    REDEMPTIONS("\u5151\u6362"),
+private enum class HistoryListSort {
+    DATE,
+    USAGE,
+    POINTS,
+    REDEMPTIONS,
 }
 
-private enum class HistoryRangeFilter(val label: String) {
-    LAST_7("\u8fd1 7 \u5929"),
-    LAST_30("\u8fd1 30 \u5929"),
-    ALL("\u5168\u90e8"),
+private enum class HistoryRangeFilter {
+    LAST_7,
+    LAST_30,
+    ALL,
 }
 
-private enum class HistoryGroupFilter(val label: String) {
-    ALL("\u5168\u90e8"),
-    CONTROL("\u63a7\u5236\u7ec4"),
-    ENCOURAGE("\u9f13\u52b1\u7ec4"),
+private enum class HistoryGroupFilter {
+    ALL,
+    CONTROL,
+    ENCOURAGE,
 }
 
-private enum class GroupSortMode(val label: String) {
-    DEFAULT("\u9ed8\u8ba4"),
-    USAGE("\u4f7f\u7528"),
-    POINTS("\u79ef\u5206"),
-    STATUS("\u72b6\u6001"),
+private enum class GroupSortMode {
+    DEFAULT,
+    USAGE,
+    POINTS,
+    STATUS,
 }
 
-private enum class AppSortMode(val label: String) {
-    USAGE("\u65f6\u957f"),
-    OPENS("\u6253\u5f00"),
-    SESSIONS("\u4f1a\u8bdd"),
-    NIGHT("\u591c\u95f4"),
-    POINTS("\u79ef\u5206"),
+private enum class AppSortMode {
+    USAGE,
+    OPENS,
+    SESSIONS,
+    NIGHT,
+    POINTS,
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -143,14 +144,15 @@ fun HistoryRoute(
     }
 
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
                 title = {
                     Text(
                         text = if (selectedDate == null) {
-                            "\u4f7f\u7528\u5386\u53f2"
+                            AppText.t("history_usage_history")
                         } else {
-                            "\u5f52\u6863\u8be6\u60c5"
+                            AppText.t("history_archive_details")
                         },
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.SemiBold,
@@ -170,6 +172,10 @@ fun HistoryRoute(
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
                     }
                 },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    scrolledContainerColor = MaterialTheme.colorScheme.surface,
+                ),
             )
         },
     ) { innerPadding ->
@@ -231,8 +237,8 @@ private fun HistoryListScreen(
     val themeColors = LocalThemeColors.current
     if (archives.isEmpty()) {
         EmptyHistoryState(
-            title = "\u8fd8\u6ca1\u6709\u53ef\u67e5\u770b\u7684\u5f52\u6863",
-            body = "\u5386\u53f2\u9875\u53ea\u5c55\u793a\u6628\u5929\u548c\u66f4\u65e9\u7684\u5f52\u6863\u6570\u636e\u3002\u7b49\u5230\u660e\u5929\u518d\u56de\u6765\uff0c\u5c31\u80fd\u770b\u5230\u7b2c\u4e00\u6761\u8bb0\u5f55\u3002",
+            title = AppText.t("history_empty_title"),
+            body = AppText.t("history_empty_body"),
             modifier = modifier,
         )
         return
@@ -265,7 +271,12 @@ private fun HistoryListScreen(
 
     LazyColumn(
         modifier = modifier.fillMaxSize(),
-        contentPadding = PaddingValues(TinyVowSpacing.PageHorizontal),
+        contentPadding = PaddingValues(
+            start = TinyVowSpacing.PageHorizontal,
+            top = TinyVowSpacing.PageTop,
+            end = TinyVowSpacing.PageHorizontal,
+            bottom = TinyVowSpacing.PageTop,
+        ),
         verticalArrangement = Arrangement.spacedBy(TinyVowSpacing.CardGap),
     ) {
         item {
@@ -278,12 +289,12 @@ private fun HistoryListScreen(
                     verticalArrangement = Arrangement.spacedBy(TinyVowSpacing.CardGap),
                 ) {
                     Text(
-                        text = "\u5386\u53f2\u603b\u89c8",
+                        text = AppText.t("history_overview"),
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
                         color = themeColors.inkStrong,
                     )
-                    HistoryMetricRow(label = "\u5f52\u6863\u5929\u6570", value = "${sortedArchives.size} \u5929")
+                    HistoryMetricRow(label = AppText.t("history_archived_days"), value = historyDaysValue(sortedArchives.size))
                     HistoryMetricRow(
                         label = primarySummaryLabel(groupFilter),
                         value = formatHistoryDuration(sortedArchives.sumOf { archive -> usageForGroupFilter(archive, groupFilter) }),
@@ -292,10 +303,10 @@ private fun HistoryListScreen(
                         label = summaryLabelForGroupFilter(groupFilter),
                         value = summaryValueForGroupFilter(sortedArchives, groupFilter),
                     )
-                    HistoryMetricRow(label = "\u7d2f\u8ba1\u5151\u6362", value = "${sortedArchives.sumOf { it.redemptionCount }} \u6b21")
+                    HistoryMetricRow(label = AppText.t("history_total_redemptions"), value = historyTimesValue(sortedArchives.sumOf { it.redemptionCount }))
 
                     Text(
-                        text = "\u65f6\u95f4\u8303\u56f4",
+                        text = AppText.t("history_time_range"),
                         style = MaterialTheme.typography.labelLarge,
                         color = themeColors.inkFaint,
                     )
@@ -305,7 +316,7 @@ private fun HistoryListScreen(
                     ) {
                         HistoryRangeFilter.entries.forEach { mode ->
                             HistoryToggleChip(
-                                text = mode.label,
+                                text = historyRangeFilterLabel(mode),
                                 selected = rangeFilter == mode,
                                 onClick = { onRangeFilterChange(mode) },
                             )
@@ -313,7 +324,7 @@ private fun HistoryListScreen(
                     }
 
                     Text(
-                        text = "\u5206\u7ec4\u8fc7\u6ee4",
+                        text = AppText.t("history_group_filter"),
                         style = MaterialTheme.typography.labelLarge,
                         color = themeColors.inkFaint,
                     )
@@ -323,7 +334,7 @@ private fun HistoryListScreen(
                     ) {
                         HistoryGroupFilter.entries.forEach { mode ->
                             HistoryToggleChip(
-                                text = mode.label,
+                                text = historyGroupFilterLabel(mode),
                                 selected = groupFilter == mode,
                                 onClick = { onGroupFilterChange(mode) },
                             )
@@ -331,7 +342,7 @@ private fun HistoryListScreen(
                     }
 
                     Text(
-                        text = "\u6392\u5e8f\u65b9\u5f0f",
+                        text = AppText.t("history_sort_mode"),
                         style = MaterialTheme.typography.labelLarge,
                         color = themeColors.inkFaint,
                     )
@@ -341,7 +352,7 @@ private fun HistoryListScreen(
                     ) {
                         HistoryListSort.entries.forEach { mode ->
                             HistoryToggleChip(
-                                text = mode.label,
+                                text = historyListSortLabel(mode),
                                 selected = sortMode == mode,
                                 onClick = { onSortModeChange(mode) },
                             )
@@ -354,8 +365,8 @@ private fun HistoryListScreen(
         if (sortedArchives.isEmpty()) {
             item {
                 ListEmptyStateCard(
-                    title = "\u5f53\u524d\u7b5b\u9009\u4e0b\u6ca1\u6709\u8bb0\u5f55",
-                    body = "\u8bd5\u8bd5\u653e\u5bbd\u65f6\u95f4\u8303\u56f4\uff0c\u6216\u8005\u5207\u6362\u5206\u7ec4\u8fc7\u6ee4\u548c\u6392\u5e8f\u6761\u4ef6\u3002",
+                    title = AppText.t("history_filter_empty_title"),
+                    body = AppText.t("history_filter_empty_body"),
                 )
             }
             return@LazyColumn
@@ -431,24 +442,24 @@ private fun HistoryListScreen(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
-                        HistoryTagChip("\u5151\u6362 ${archive.redemptionCount} \u6b21")
+                        HistoryTagChip(AppText.t("history_tag_redemptions", archive.redemptionCount))
                         when (groupFilter) {
                             HistoryGroupFilter.ALL -> {
-                                HistoryTagChip("\u63a7\u5236\u5b8c\u6210 ${archive.controlCompletedGroupCount}")
-                                HistoryTagChip("\u63a7\u5236\u8d85\u989d ${archive.controlExceededGroupCount}")
-                                HistoryTagChip("\u9f13\u52b1\u8fbe\u6210 ${archive.encourageCompletedGroupCount}")
+                                HistoryTagChip(AppText.t("history_tag_control_completed", archive.controlCompletedGroupCount))
+                                HistoryTagChip(AppText.t("history_tag_control_exceeded", archive.controlExceededGroupCount))
+                                HistoryTagChip(AppText.t("history_tag_encourage_completed", archive.encourageCompletedGroupCount))
                             }
                             HistoryGroupFilter.CONTROL -> {
-                                HistoryTagChip("\u5b8c\u6210 ${archive.controlCompletedGroupCount}")
-                                HistoryTagChip("\u8d85\u989d ${archive.controlExceededGroupCount}")
+                                HistoryTagChip(AppText.t("history_tag_completed", archive.controlCompletedGroupCount))
+                                HistoryTagChip(AppText.t("history_tag_exceeded", archive.controlExceededGroupCount))
                                 if (archive.savedMillis > 0L) {
-                                    HistoryTagChip("\u8282\u7701 ${formatHistoryDuration(archive.savedMillis)}")
+                                    HistoryTagChip(AppText.t("history_tag_saved", formatHistoryDuration(archive.savedMillis)))
                                 }
                             }
                             HistoryGroupFilter.ENCOURAGE -> {
-                                HistoryTagChip("\u8fbe\u6210 ${archive.encourageCompletedGroupCount}")
+                                HistoryTagChip(AppText.t("history_tag_achieved", archive.encourageCompletedGroupCount))
                                 if (archive.pointsEarned > 0.0) {
-                                    HistoryTagChip("\u83b7\u5f97 +${formatPoints(archive.pointsEarned)}")
+                                    HistoryTagChip(AppText.t("history_tag_earned_points", formatPoints(archive.pointsEarned)))
                                 }
                             }
                         }
@@ -476,8 +487,8 @@ private fun HistoryDetailScreen(
 ) {
     if (archive == null) {
         EmptyHistoryState(
-            title = "\u8fd9\u4e00\u5929\u7684\u5f52\u6863\u6682\u4e0d\u53ef\u7528",
-            body = "\u6570\u636e\u53ef\u80fd\u8fd8\u6ca1\u6709\u5b8c\u6210\u8bfb\u53d6\uff0c\u7a0d\u540e\u518d\u8bd5\u3002",
+            title = AppText.t("history_archive_unavailable_title"),
+            body = AppText.t("history_archive_unavailable_body"),
             modifier = modifier,
         )
         return
@@ -492,12 +503,12 @@ private fun HistoryDetailScreen(
     val ungroupedAppArchives = appArchives.filter { !it.isGrouped }
     val orderedSections = when (preferredGroupFilter) {
         HistoryGroupFilter.ENCOURAGE -> listOf(
-            Triple("\u9f13\u52b1\u7ec4", MaterialTheme.colorScheme.tertiary, encourageGroups),
-            Triple("\u63a7\u5236\u7ec4", MaterialTheme.colorScheme.primary, controlGroups),
+            Triple(AppText.t("history_filter_encourage"), MaterialTheme.colorScheme.tertiary, encourageGroups),
+            Triple(AppText.t("history_filter_control"), MaterialTheme.colorScheme.primary, controlGroups),
         )
         else -> listOf(
-            Triple("\u63a7\u5236\u7ec4", MaterialTheme.colorScheme.primary, controlGroups),
-            Triple("\u9f13\u52b1\u7ec4", MaterialTheme.colorScheme.tertiary, encourageGroups),
+            Triple(AppText.t("history_filter_control"), MaterialTheme.colorScheme.primary, controlGroups),
+            Triple(AppText.t("history_filter_encourage"), MaterialTheme.colorScheme.tertiary, encourageGroups),
         )
     }
 
@@ -506,7 +517,12 @@ private fun HistoryDetailScreen(
             modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .padding(TinyVowSpacing.PageHorizontal),
+                .padding(
+                    start = TinyVowSpacing.PageHorizontal,
+                    top = TinyVowSpacing.PageTop,
+                    end = TinyVowSpacing.PageHorizontal,
+                    bottom = TinyVowSpacing.PageTop,
+                ),
         verticalArrangement = Arrangement.spacedBy(TinyVowSpacing.CardGap),
     ) {
         DetailDateNavigator(
@@ -533,7 +549,7 @@ private fun HistoryDetailScreen(
                     fontWeight = FontWeight.SemiBold,
                 )
                 Text(
-                    text = "\u5f53\u5929\u603b\u89c8",
+                    text = AppText.t("history_daily_overview"),
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -543,12 +559,12 @@ private fun HistoryDetailScreen(
                 ) {
                     DashboardMetric(
                         modifier = Modifier.weight(1f),
-                        label = "\u603b\u65f6\u957f",
+                        label = AppText.t("history_total_duration"),
                         value = formatHistoryDuration(archive.totalUsageMillis),
                     )
                     DashboardMetric(
                         modifier = Modifier.weight(1f),
-                        label = "\u51c0\u79ef\u5206",
+                        label = AppText.t("history_net_points"),
                         value = formatSignedPoints(archive.pointsNet),
                     )
                 }
@@ -558,12 +574,12 @@ private fun HistoryDetailScreen(
                 ) {
                     DashboardMetric(
                         modifier = Modifier.weight(1f),
-                        label = "\u63a7\u5236\u7ec4",
+                        label = AppText.t("history_filter_control"),
                         value = formatHistoryDuration(archive.controlUsageMillis),
                     )
                     DashboardMetric(
                         modifier = Modifier.weight(1f),
-                        label = "\u9f13\u52b1\u7ec4",
+                        label = AppText.t("history_filter_encourage"),
                         value = formatHistoryDuration(archive.encourageUsageMillis),
                     )
                 }
@@ -573,13 +589,13 @@ private fun HistoryDetailScreen(
                 ) {
                     DashboardMetric(
                         modifier = Modifier.weight(1f),
-                        label = "\u83b7\u5f97\u79ef\u5206",
+                        label = AppText.t("history_points_earned"),
                         value = "+${formatPoints(archive.pointsEarned)}",
                     )
                     DashboardMetric(
                         modifier = Modifier.weight(1f),
-                        label = "\u5151\u6362\u6b21\u6570",
-                        value = "${archive.redemptionCount} \u6b21",
+                        label = AppText.t("history_redemption_count"),
+                        value = historyTimesValue(archive.redemptionCount),
                     )
                 }
 
@@ -587,17 +603,17 @@ private fun HistoryDetailScreen(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    HistoryTagChip("\u63a7\u5236\u5b8c\u6210 ${archive.controlCompletedGroupCount}")
-                    HistoryTagChip("\u63a7\u5236\u8d85\u989d ${archive.controlExceededGroupCount}")
-                    HistoryTagChip("\u9f13\u52b1\u8fbe\u6210 ${archive.encourageCompletedGroupCount}")
+                    HistoryTagChip(AppText.t("history_tag_control_completed", archive.controlCompletedGroupCount))
+                    HistoryTagChip(AppText.t("history_tag_control_exceeded", archive.controlExceededGroupCount))
+                    HistoryTagChip(AppText.t("history_tag_encourage_completed", archive.encourageCompletedGroupCount))
                     if (archive.savedMillis > 0L) {
-                        HistoryTagChip("\u8282\u7701 ${formatHistoryDuration(archive.savedMillis)}")
+                        HistoryTagChip(AppText.t("history_tag_saved", formatHistoryDuration(archive.savedMillis)))
                     }
                 }
 
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
-                HistoryMetricRow(label = "\u5f52\u6863\u5199\u5165", value = formatArchiveTimestamp(archive.updatedAt))
-                HistoryMetricRow(label = "\u5f52\u6863\u7248\u672c", value = "v${archive.archiveVersion}")
+                HistoryMetricRow(label = AppText.t("history_archive_written"), value = formatArchiveTimestamp(archive.updatedAt))
+                HistoryMetricRow(label = AppText.t("history_archive_version"), value = "v${archive.archiveVersion}")
             }
         }
 
@@ -607,7 +623,7 @@ private fun HistoryDetailScreen(
                 iconTint = color,
                 items = items,
                 appArchivesByGroup = appArchivesByGroup,
-                emptyText = "\u5f53\u5929\u6ca1\u6709${title}\u5f52\u6863\u3002",
+                emptyText = AppText.t("history_no_group_archive_for_type", title),
             )
         }
 
@@ -654,7 +670,7 @@ private fun DetailDateNavigator(
                     fontWeight = FontWeight.SemiBold,
                 )
                 Text(
-                    text = "\u53ea\u5728\u5df2\u6709\u5f52\u6863\u65e5\u671f\u95f4\u8df3\u8f6c",
+                    text = AppText.t("history_only_jump_between_archived_dates"),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -676,9 +692,9 @@ private fun DetailDateNavigator(
             Text(
                 text =
                     if (isRefreshing) {
-                        "\u6b63\u5728\u4ece\u7cfb\u7edf\u5237\u65b0\u8fd9\u4e00\u5929\u7684\u5e94\u7528\u8bb0\u5f55..."
+                        AppText.t("history_refreshing_archive")
                     } else {
-                        "\u5237\u65b0\u5931\u8d25\uff1a${refreshError.orEmpty()}"
+                        AppText.t("history_refresh_failed", refreshError.orEmpty())
                     },
                 modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 10.dp),
                 style = MaterialTheme.typography.bodySmall,
@@ -736,7 +752,7 @@ private fun GroupArchiveSection(
 
             if (items.isEmpty()) {
                 ListEmptyStateCard(
-                    title = "\u8fd9\u4e00\u5929\u6ca1\u6709${title}",
+                    title = AppText.t("history_no_group_section_title", title),
                     body = emptyText,
                 )
             } else {
@@ -750,12 +766,12 @@ private fun GroupArchiveSection(
                 ) {
                     DashboardMetric(
                         modifier = Modifier.weight(1f),
-                        label = "\u7ec4\u6570",
-                        value = "${items.size} \u4e2a",
+                        label = AppText.t("history_group_count"),
+                        value = historyCountValue(items.size),
                     )
                     DashboardMetric(
                         modifier = Modifier.weight(1f),
-                        label = "\u603b\u65f6\u957f",
+                        label = AppText.t("history_total_duration"),
                         value = formatHistoryDuration(totalUsage),
                     )
                 }
@@ -765,12 +781,12 @@ private fun GroupArchiveSection(
                 ) {
                     DashboardMetric(
                         modifier = Modifier.weight(1f),
-                        label = "\u51c0\u79ef\u5206",
+                        label = AppText.t("history_net_points"),
                         value = formatSignedPoints(totalPoints),
                     )
                     DashboardMetric(
                         modifier = Modifier.weight(1f),
-                        label = "\u5b8c\u6210\u6570",
+                        label = AppText.t("history_completed_count"),
                         value = "$completedCount / ${items.size}",
                     )
                 }
@@ -781,7 +797,7 @@ private fun GroupArchiveSection(
                 ) {
                     GroupSortMode.entries.forEach { mode ->
                         HistoryToggleChip(
-                            text = mode.label,
+                            text = groupSortModeLabel(mode),
                             selected = sortMode == mode,
                             onClick = { sortMode = mode },
                         )
@@ -855,9 +871,9 @@ private fun GroupArchiveCard(
                 Text(
                     text =
                         if (item.completed) {
-                            "\u5df2\u5b8c\u6210"
+                            AppText.t("history_completed")
                         } else {
-                            "\u672a\u5b8c\u6210"
+                            AppText.t("history_not_completed")
                         },
                     modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
                     style = MaterialTheme.typography.labelLarge,
@@ -878,23 +894,23 @@ private fun GroupArchiveCard(
         ) {
             HistoryTagChip(groupTypeLabel(item.groupType))
             HistoryTagChip(limitPeriodLabel(item.limitPeriod))
-            HistoryTagChip("\u57fa\u7840\u989d\u5ea6 ${item.limitMinutes} \u5206\u949f")
+            HistoryTagChip(AppText.t("history_base_limit_minutes", item.limitMinutes))
             if (item.bonusMinutes > 0) {
-                HistoryTagChip("\u5956\u52b1 ${item.bonusMinutes} \u5206\u949f")
+                HistoryTagChip(AppText.t("history_bonus_minutes", item.bonusMinutes))
             }
             if (item.pointsPerMinute > 0.0) {
-                HistoryTagChip("\u500d\u7387 ${formatPoints(item.pointsPerMinute)} / \u5206\u949f")
+                HistoryTagChip(AppText.t("history_points_rate_per_minute", formatPoints(item.pointsPerMinute)))
             }
         }
 
-        HistoryMetricRow(label = "\u5f53\u5929\u4f7f\u7528", value = formatHistoryDuration(item.dailyUsageMillis))
-        HistoryMetricRow(label = "\u5468\u671f\u7d2f\u8ba1", value = formatHistoryDuration(item.periodUsageMillisAtClose))
-        HistoryMetricRow(label = "\u5269\u4f59\u989d\u5ea6", value = formatHistoryDuration(item.remainingMillisAtClose))
-        HistoryMetricRow(label = "\u8d85\u989d\u65f6\u957f", value = formatHistoryDuration(item.exceededMillisAtClose))
-        HistoryMetricRow(label = "\u51c0\u79ef\u5206", value = formatSignedPoints(item.earnedPoints - item.spentPoints))
-        HistoryMetricRow(label = "\u5206\u7ec4\u5e94\u7528\u6570", value = "${item.packageCount} \u4e2a")
-        HistoryMetricRow(label = "\u6253\u5f00\u6b21\u6570", value = "$totalOpenCount \u6b21")
-        HistoryMetricRow(label = "\u4f1a\u8bdd\u6570", value = "$totalSessionCount \u6b21")
+        HistoryMetricRow(label = AppText.t("history_daily_usage"), value = formatHistoryDuration(item.dailyUsageMillis))
+        HistoryMetricRow(label = AppText.t("history_period_total"), value = formatHistoryDuration(item.periodUsageMillisAtClose))
+        HistoryMetricRow(label = AppText.t("history_remaining_limit"), value = formatHistoryDuration(item.remainingMillisAtClose))
+        HistoryMetricRow(label = AppText.t("history_exceeded_duration"), value = formatHistoryDuration(item.exceededMillisAtClose))
+        HistoryMetricRow(label = AppText.t("history_net_points"), value = formatSignedPoints(item.earnedPoints - item.spentPoints))
+        HistoryMetricRow(label = AppText.t("history_grouped_app_count"), value = historyCountValue(item.packageCount))
+        HistoryMetricRow(label = AppText.t("history_open_count"), value = historyTimesValue(totalOpenCount))
+        HistoryMetricRow(label = AppText.t("history_session_count"), value = historyTimesValue(totalSessionCount))
 
         Surface(
             shape = RoundedCornerShape(14.dp),
@@ -904,9 +920,9 @@ private fun GroupArchiveCard(
             Text(
                 text =
                     if (showMoreMetrics) {
-                        "\u6536\u8d77\u66f4\u591a\u6307\u6807"
+                        AppText.t("history_collapse_more_metrics")
                     } else {
-                        "\u5c55\u5f00\u66f4\u591a\u6307\u6807"
+                        AppText.t("history_expand_more_metrics")
                     },
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
                 style = MaterialTheme.typography.bodySmall,
@@ -916,13 +932,13 @@ private fun GroupArchiveCard(
         }
 
         if (showMoreMetrics) {
-            HistoryMetricRow(label = "\u5468\u671f\u989d\u5ea6", value = formatHistoryDuration(item.effectiveLimitMillisAtClose))
-            HistoryMetricRow(label = "\u79ef\u5206\u83b7\u5f97", value = "+${formatPoints(item.earnedPoints)}")
-            HistoryMetricRow(label = "\u79ef\u5206\u6d88\u8d39", value = "-${formatPoints(item.spentPoints)}")
-            HistoryMetricRow(label = "\u591c\u95f4\u4f7f\u7528", value = formatHistoryDuration(totalNightUsage))
-            HistoryMetricRow(label = "\u5b8c\u6210\u5e94\u7528", value = "$completedAppCount / ${appItems.size}")
+            HistoryMetricRow(label = AppText.t("history_effective_limit"), value = formatHistoryDuration(item.effectiveLimitMillisAtClose))
+            HistoryMetricRow(label = AppText.t("history_points_earned"), value = "+${formatPoints(item.earnedPoints)}")
+            HistoryMetricRow(label = AppText.t("history_points_spent"), value = "-${formatPoints(item.spentPoints)}")
+            HistoryMetricRow(label = AppText.t("history_night_usage"), value = formatHistoryDuration(totalNightUsage))
+            HistoryMetricRow(label = AppText.t("history_completed_apps"), value = "$completedAppCount / ${appItems.size}")
             if (rankedApps.isNotEmpty()) {
-                HistoryMetricRow(label = "\u5f52\u6863\u8986\u76d6", value = "${(coverageRatio * 100).toInt()}%")
+                HistoryMetricRow(label = AppText.t("history_archive_coverage"), value = "${(coverageRatio * 100).toInt()}%")
             }
         }
 
@@ -932,8 +948,8 @@ private fun GroupArchiveCard(
 
         if (rankedApps.isEmpty()) {
             ListEmptyStateCard(
-                title = "\u8be5\u7ec4\u6ca1\u6709\u5e94\u7528\u5f52\u6863",
-                body = "\u5f53\u5929\u6ca1\u6709\u751f\u6210\u8be5\u7ec4\u5185\u5e94\u7528\u7684\u5f52\u6863\u5feb\u7167\u3002",
+                title = AppText.t("history_group_apps_empty_title"),
+                body = AppText.t("history_group_apps_empty_body"),
             )
         } else {
             Surface(
@@ -945,12 +961,12 @@ private fun GroupArchiveCard(
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     Text(
-                        text = "\u7ec4\u5185\u5e94\u7528",
+                        text = AppText.t("history_group_apps"),
                         style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                     Text(
-                        text = "\u9ed8\u8ba4\u53ea\u5c55\u793a\u524d 5 \u4e2a\u5e94\u7528\uff0c\u70b9\u5f00\u53ef\u770b 24 \u5c0f\u65f6\u5206\u5e03\u548c\u4f1a\u8bdd\u6307\u6807\u3002",
+                        text = AppText.t("history_group_apps_hint"),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -960,7 +976,7 @@ private fun GroupArchiveCard(
                     ) {
                         AppSortMode.entries.forEach { mode ->
                             HistoryToggleChip(
-                                text = mode.label,
+                                text = appSortModeLabel(mode),
                                 selected = appSortMode == mode,
                                 onClick = { appSortMode = mode },
                             )
@@ -994,7 +1010,7 @@ private fun AppComparisonPanel(appItems: List<DailyAppArchiveEntity>) {
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             Text(
-                text = "\u7ec4\u5185\u5bf9\u6bd4",
+                text = AppText.t("history_group_app_comparison"),
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
@@ -1013,14 +1029,14 @@ private fun AppComparisonPanel(appItems: List<DailyAppArchiveEntity>) {
                     mostOpened?.let { leader ->
                         ComparisonBadge(
                             modifier = Modifier.weight(1f),
-                            label = "\u6253\u5f00\u6b21\u6570\u6700\u591a",
-                            value = "${leader.appLabel} / ${leader.openCount} \u6b21",
+                            label = AppText.t("history_most_opened"),
+                            value = AppText.t("history_app_times_value", leader.appLabel, leader.openCount),
                         )
                     }
                     longestSessionLeader?.let { leader ->
                         ComparisonBadge(
                             modifier = Modifier.weight(1f),
-                            label = "\u6700\u957f\u5355\u6b21\u4f1a\u8bdd",
+                            label = AppText.t("history_longest_session"),
                             value = "${leader.appLabel} / ${formatHistoryDuration(leader.longestSessionMillis)}",
                         )
                     }
@@ -1054,7 +1070,7 @@ private fun AppUsageCompareRow(
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    text = "${formatHistoryDuration(appItem.dailyUsageMillis)} / ${appItem.openCount} \u6b21\u6253\u5f00",
+                    text = AppText.t("history_app_usage_opens_value", formatHistoryDuration(appItem.dailyUsageMillis), appItem.openCount),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
@@ -1155,10 +1171,9 @@ private fun AppArchiveRow(appItem: DailyAppArchiveEntity) {
                         buildString {
                             append(formatHistoryDuration(appItem.dailyUsageMillis))
                             append(" / ")
-                            append(appItem.openCount)
-                            append(" \u6b21\u6253\u5f00")
+                            append(AppText.t("history_open_times_suffix", appItem.openCount))
                             if (appItem.nightUsageMillis > 0L) {
-                                append(" / \u591c\u95f4 ")
+                                append(AppText.t("history_night_suffix"))
                                 append(formatHistoryDuration(appItem.nightUsageMillis))
                             }
                         },
@@ -1174,16 +1189,16 @@ private fun AppArchiveRow(appItem: DailyAppArchiveEntity) {
                     if (appItem.isGrouped) {
                         HistoryTagChip(
                             if (appItem.completed) {
-                                "\u5df2\u5b8c\u6210"
+                                AppText.t("history_completed")
                             } else {
-                                "\u672a\u5b8c\u6210"
+                                AppText.t("history_not_completed")
                             },
                         )
                         HistoryTagChip(limitPeriodLabel(appItem.limitPeriod))
                     } else {
-                        HistoryTagChip("\u672a\u5206\u7ec4")
+                        HistoryTagChip(AppText.t("history_ungrouped"))
                     }
-                    HistoryTagChip("${appItem.sessionCount} \u6b21\u4f1a\u8bdd")
+                    HistoryTagChip(AppText.t("history_session_times", appItem.sessionCount))
                 }
             }
             Column(
@@ -1198,9 +1213,9 @@ private fun AppArchiveRow(appItem: DailyAppArchiveEntity) {
                 Text(
                     text =
                         if (expanded) {
-                            "\u6536\u8d77\u8be6\u60c5"
+                            AppText.t("history_collapse_details")
                         } else {
-                            "\u5c55\u5f00\u8be6\u60c5"
+                            AppText.t("history_expand_details")
                         },
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.primary,
@@ -1218,43 +1233,43 @@ private fun AppArchiveRow(appItem: DailyAppArchiveEntity) {
                     verticalArrangement = Arrangement.spacedBy(10.dp),
                 ) {
                     HistoryMetricRow(
-                        label = "\u6700\u957f\u5355\u6b21\u4f1a\u8bdd",
+                        label = AppText.t("history_longest_session"),
                         value = formatHistoryDuration(appItem.longestSessionMillis),
                     )
                     HistoryMetricRow(
-                        label = "\u6253\u5f00\u6b21\u6570",
-                        value = "${appItem.openCount} \u6b21",
+                        label = AppText.t("history_open_count"),
+                        value = historyTimesValue(appItem.openCount),
                     )
                     HistoryMetricRow(
-                        label = "\u4f1a\u8bdd\u6570",
-                        value = "${appItem.sessionCount} \u6b21",
+                        label = AppText.t("history_session_count"),
+                        value = historyTimesValue(appItem.sessionCount),
                     )
                     HistoryMetricRow(
-                        label = "\u6d3b\u8dc3\u5c0f\u65f6",
-                        value = "$activeHourCount \u5c0f\u65f6",
+                        label = AppText.t("history_active_hours"),
+                        value = AppText.t("history_value_hours", activeHourCount),
                     )
                     HistoryMetricRow(
-                        label = "\u5cf0\u503c\u65f6\u6bb5",
+                        label = AppText.t("history_peak_hour"),
                         value = "${peakHour.toString().padStart(2, '0')}:00",
                     )
                     HistoryMetricRow(
-                        label = "\u591c\u95f4\u4f7f\u7528",
+                        label = AppText.t("history_night_usage"),
                         value = formatHistoryDuration(appItem.nightUsageMillis),
                     )
                     HistoryMetricRow(
-                        label = "\u79ef\u5206\u83b7\u5f97",
+                        label = AppText.t("history_points_earned"),
                         value = "+${formatPoints(appItem.earnedPoints)}",
                     )
                     HistoryMetricRow(
-                        label = "\u6240\u5c5e\u5206\u7ec4",
-                        value = appItem.groupName ?: "\u672a\u5206\u7ec4\u5e94\u7528",
+                        label = AppText.t("history_belongs_to_group"),
+                        value = appItem.groupName ?: AppText.t("history_ungrouped_apps"),
                     )
                     HistoryMetricRow(
-                        label = "\u5468\u671f",
+                        label = AppText.t("history_period"),
                         value = limitPeriodLabel(appItem.limitPeriod),
                     )
                     Text(
-                        text = "24 \u5c0f\u65f6\u5206\u5e03",
+                        text = AppText.t("history_24_hour_distribution"),
                         style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -1294,21 +1309,21 @@ private fun UngroupedAppArchiveSection(appItems: List<DailyAppArchiveEntity>) {
             ) {
                 Icon(Icons.Default.Insights, contentDescription = null, tint = MaterialTheme.colorScheme.secondary)
                 Text(
-                    text = "\u672a\u5206\u7ec4\u5e94\u7528",
+                    text = AppText.t("history_ungrouped_apps"),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
                 )
             }
             Text(
-                text = "\u4ec5\u5f52\u6863\u5f53\u5929\u4f7f\u7528\u8d85\u8fc7 1 \u5206\u949f\u7684\u672a\u5206\u7ec4\u5e94\u7528\u3002",
+                text = AppText.t("history_ungrouped_apps_description"),
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
             if (rankedApps.isEmpty()) {
                 ListEmptyStateCard(
-                    title = "\u8fd9\u4e00\u5929\u6ca1\u6709\u672a\u5206\u7ec4\u5e94\u7528",
-                    body = "\u672a\u5206\u7ec4\u5e94\u7528\u4f7f\u7528\u4e0d\u8db3 1 \u5206\u949f\u65f6\u4e0d\u4f1a\u8fdb\u5165\u957f\u671f\u5f52\u6863\u3002",
+                    title = AppText.t("history_ungrouped_apps_empty_title"),
+                    body = AppText.t("history_ungrouped_apps_empty_body"),
                 )
                 return@TinyVowCard
             }
@@ -1319,12 +1334,12 @@ private fun UngroupedAppArchiveSection(appItems: List<DailyAppArchiveEntity>) {
             ) {
                 DashboardMetric(
                     modifier = Modifier.weight(1f),
-                    label = "\u5e94\u7528\u6570",
-                    value = "${rankedApps.size} \u4e2a",
+                    label = AppText.t("history_app_count"),
+                    value = historyCountValue(rankedApps.size),
                 )
                 DashboardMetric(
                     modifier = Modifier.weight(1f),
-                    label = "\u603b\u65f6\u957f",
+                    label = AppText.t("history_total_duration"),
                     value = formatHistoryDuration(rankedApps.sumOf { it.dailyUsageMillis }),
                 )
             }
@@ -1335,7 +1350,7 @@ private fun UngroupedAppArchiveSection(appItems: List<DailyAppArchiveEntity>) {
             ) {
                 AppSortMode.entries.forEach { mode ->
                     HistoryToggleChip(
-                        text = mode.label,
+                        text = appSortModeLabel(mode),
                         selected = appSortMode == mode,
                         onClick = { appSortMode = mode },
                     )
@@ -1656,17 +1671,17 @@ private fun pointsForGroupFilter(
 
 private fun primarySummaryLabel(filter: HistoryGroupFilter): String {
     return when (filter) {
-        HistoryGroupFilter.ALL -> "\u7d2f\u8ba1\u4f7f\u7528"
-        HistoryGroupFilter.CONTROL -> "\u63a7\u5236\u7ec4\u65f6\u957f"
-        HistoryGroupFilter.ENCOURAGE -> "\u9f13\u52b1\u7ec4\u65f6\u957f"
+        HistoryGroupFilter.ALL -> AppText.t("history_total_usage")
+        HistoryGroupFilter.CONTROL -> AppText.t("history_control_usage")
+        HistoryGroupFilter.ENCOURAGE -> AppText.t("history_encourage_usage")
     }
 }
 
 private fun summaryLabelForGroupFilter(filter: HistoryGroupFilter): String {
     return when (filter) {
-        HistoryGroupFilter.ALL -> "\u51c0\u79ef\u5206\u53d8\u5316"
-        HistoryGroupFilter.CONTROL -> "\u63a7\u5236\u7ec4\u8282\u7701"
-        HistoryGroupFilter.ENCOURAGE -> "\u83b7\u5f97\u79ef\u5206"
+        HistoryGroupFilter.ALL -> AppText.t("history_net_points_change")
+        HistoryGroupFilter.CONTROL -> AppText.t("history_control_saved")
+        HistoryGroupFilter.ENCOURAGE -> AppText.t("history_points_earned")
     }
 }
 
@@ -1686,9 +1701,21 @@ private fun listCardHeadline(
     filter: HistoryGroupFilter,
 ): String {
     return when (filter) {
-        HistoryGroupFilter.ALL -> "\u63a7\u5236 ${archive.controlCompletedGroupCount} \u5b8c\u6210 / \u9f13\u52b1 ${archive.encourageCompletedGroupCount} \u8fbe\u6210"
-        HistoryGroupFilter.CONTROL -> "\u5b8c\u6210 ${archive.controlCompletedGroupCount} / \u8d85\u989d ${archive.controlExceededGroupCount}"
-        HistoryGroupFilter.ENCOURAGE -> "\u8fbe\u6210 ${archive.encourageCompletedGroupCount} / \u83b7\u5f97 +${formatPoints(archive.pointsEarned)}"
+        HistoryGroupFilter.ALL -> AppText.t(
+            "history_card_headline_all",
+            archive.controlCompletedGroupCount,
+            archive.encourageCompletedGroupCount,
+        )
+        HistoryGroupFilter.CONTROL -> AppText.t(
+            "history_card_headline_control",
+            archive.controlCompletedGroupCount,
+            archive.controlExceededGroupCount,
+        )
+        HistoryGroupFilter.ENCOURAGE -> AppText.t(
+            "history_card_headline_encourage",
+            archive.encourageCompletedGroupCount,
+            formatPoints(archive.pointsEarned),
+        )
     }
 }
 
@@ -1702,18 +1729,73 @@ private fun cardSecondaryValue(
             if (archive.savedMillis > 0L) {
                 formatHistoryDuration(archive.savedMillis)
             } else {
-                "\u5b8c\u6210 ${archive.controlCompletedGroupCount} / \u8d85\u989d ${archive.controlExceededGroupCount}"
+                AppText.t("history_card_headline_control", archive.controlCompletedGroupCount, archive.controlExceededGroupCount)
             }
         }
         HistoryGroupFilter.ENCOURAGE -> {
             if (archive.pointsEarned > 0.0) {
                 "+${formatPoints(archive.pointsEarned)}"
             } else {
-                "\u8fbe\u6210 ${archive.encourageCompletedGroupCount}"
+                AppText.t("history_tag_achieved", archive.encourageCompletedGroupCount)
             }
         }
     }
 }
+
+private fun historyListSortLabel(sort: HistoryListSort): String =
+    AppText.t(
+        when (sort) {
+            HistoryListSort.DATE -> "history_sort_recent"
+            HistoryListSort.USAGE -> "history_sort_usage"
+            HistoryListSort.POINTS -> "history_sort_net_points"
+            HistoryListSort.REDEMPTIONS -> "history_sort_redemptions"
+        },
+    )
+
+private fun historyRangeFilterLabel(filter: HistoryRangeFilter): String =
+    AppText.t(
+        when (filter) {
+            HistoryRangeFilter.LAST_7 -> "history_range_last_7_days"
+            HistoryRangeFilter.LAST_30 -> "history_range_last_30_days"
+            HistoryRangeFilter.ALL -> "history_range_all"
+        },
+    )
+
+private fun historyGroupFilterLabel(filter: HistoryGroupFilter): String =
+    AppText.t(
+        when (filter) {
+            HistoryGroupFilter.ALL -> "history_filter_all"
+            HistoryGroupFilter.CONTROL -> "history_filter_control"
+            HistoryGroupFilter.ENCOURAGE -> "history_filter_encourage"
+        },
+    )
+
+private fun groupSortModeLabel(sort: GroupSortMode): String =
+    AppText.t(
+        when (sort) {
+            GroupSortMode.DEFAULT -> "history_sort_default"
+            GroupSortMode.USAGE -> "history_sort_usage"
+            GroupSortMode.POINTS -> "history_sort_points"
+            GroupSortMode.STATUS -> "history_sort_status"
+        },
+    )
+
+private fun appSortModeLabel(sort: AppSortMode): String =
+    AppText.t(
+        when (sort) {
+            AppSortMode.USAGE -> "history_sort_usage"
+            AppSortMode.OPENS -> "history_sort_opens"
+            AppSortMode.SESSIONS -> "history_sort_sessions"
+            AppSortMode.NIGHT -> "history_sort_night"
+            AppSortMode.POINTS -> "history_sort_points"
+        },
+    )
+
+private fun historyDaysValue(days: Int): String = AppText.t("history_value_days", days)
+
+private fun historyTimesValue(times: Int): String = AppText.t("history_value_times", times)
+
+private fun historyCountValue(count: Int): String = AppText.t("history_value_count", count)
 
 private fun formatPoints(value: Double): String = String.format(Locale.CHINA, "%.1f", value)
 
@@ -1739,17 +1821,17 @@ private fun formatHistoryDuration(durationMillis: Long): String {
 
 private fun groupTypeLabel(groupType: GroupType): String {
     return when (groupType) {
-        GroupType.CONTROL -> "\u63a7\u5236\u7ec4"
-        GroupType.ENCOURAGE -> "\u9f13\u52b1\u7ec4"
+        GroupType.CONTROL -> AppText.t("history_filter_control")
+        GroupType.ENCOURAGE -> AppText.t("history_filter_encourage")
     }
 }
 
 private fun limitPeriodLabel(limitPeriod: LimitPeriod?): String {
     return when (limitPeriod) {
-        LimitPeriod.DAILY -> "\u6309\u65e5"
-        LimitPeriod.WEEKLY -> "\u6309\u5468"
-        LimitPeriod.MONTHLY -> "\u6309\u6708"
-        null -> "\u672a\u5206\u7ec4"
+        LimitPeriod.DAILY -> AppText.t("history_period_daily")
+        LimitPeriod.WEEKLY -> AppText.t("history_period_weekly")
+        LimitPeriod.MONTHLY -> AppText.t("history_period_monthly")
+        null -> AppText.t("history_ungrouped")
     }
 }
 

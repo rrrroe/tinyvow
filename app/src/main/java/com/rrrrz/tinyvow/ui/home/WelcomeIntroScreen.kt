@@ -24,12 +24,10 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Timer
-import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -43,6 +41,8 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import com.rrrrz.tinyvow.i18n.AppText
 import com.rrrrz.tinyvow.ui.theme.LocalThemeColors
+import com.rrrrz.tinyvow.ui.theme.TinyVowButton
+import com.rrrrz.tinyvow.ui.theme.TinyVowButtonTone
 import com.rrrrz.tinyvow.ui.theme.TinyVowRadius
 import kotlinx.coroutines.launch
 
@@ -177,7 +177,7 @@ fun WelcomeIntroScreen(
                 modifier = Modifier.align(Alignment.CenterHorizontally),
             )
 
-            Button(
+            TinyVowButton(
                 onClick = {
                     if (isLastPage) {
                         onComplete()
@@ -188,7 +188,7 @@ fun WelcomeIntroScreen(
                     }
                 },
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(TinyVowRadius.Control),
+                tone = TinyVowButtonTone.Primary,
             ) {
                 if (isLastPage) {
                     Icon(
@@ -200,12 +200,11 @@ fun WelcomeIntroScreen(
                 }
                 Text(if (isLastPage) AppText.t("welcome_intro_enter") else AppText.t("welcome_intro_next"))
             }
-            TextButton(
+            TinyVowButton(
+                text = AppText.t("welcome_intro_skip"),
                 onClick = onDismiss,
                 modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text(AppText.t("welcome_intro_skip"))
-            }
+            )
         }
     }
 }
@@ -404,3 +403,4 @@ private fun WelcomeIntroPageDots(
         }
     }
 }
+

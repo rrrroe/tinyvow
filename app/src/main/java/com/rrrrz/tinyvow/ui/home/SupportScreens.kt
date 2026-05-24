@@ -17,22 +17,23 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Email
-import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.rrrrz.tinyvow.ui.theme.LocalThemeColors
+import com.rrrrz.tinyvow.ui.theme.TinyVowButton
+import com.rrrrz.tinyvow.ui.theme.TinyVowButtonTone
 import com.rrrrz.tinyvow.ui.theme.TinyVowCard
 import com.rrrrz.tinyvow.ui.theme.TinyVowRadius
 import com.rrrrz.tinyvow.ui.theme.TinyVowSpacing
@@ -47,6 +48,7 @@ fun HelpFeedbackScreen(
 ) {
     val themeColors = LocalThemeColors.current
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
                 title = {
@@ -62,6 +64,10 @@ fun HelpFeedbackScreen(
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = AppText.t("group_back"))
                     }
                 },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    scrolledContainerColor = MaterialTheme.colorScheme.surface,
+                ),
             )
         },
     ) { innerPadding ->
@@ -92,14 +98,14 @@ fun HelpFeedbackScreen(
                 title = AppText.t("support_what_should_i_include_in_feedback"),
                 body = AppText.t("support_please_include_your_phone_model_system_version_where"),
             )
-            Button(
+            TinyVowButton(
                 onClick = onSendFeedback,
+                tone = TinyVowButtonTone.Primary,
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Icon(Icons.Default.Email, contentDescription = null)
                 Text(AppText.t("support_send_feedback"))
             }
-            Spacer(modifier = Modifier.height(32.dp))
         }
     }
 }
@@ -113,6 +119,7 @@ fun ContactUsScreen(
 ) {
     val themeColors = LocalThemeColors.current
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
                 title = {
@@ -128,6 +135,10 @@ fun ContactUsScreen(
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = AppText.t("group_back"))
                     }
                 },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    scrolledContainerColor = MaterialTheme.colorScheme.surface,
+                ),
             )
         },
     ) { innerPadding ->
@@ -138,7 +149,7 @@ fun ContactUsScreen(
                 .verticalScroll(rememberScrollState())
                 .padding(
                     horizontal = TinyVowSpacing.PageHorizontal,
-                    vertical = TinyVowSpacing.CardVertical,
+                    vertical = TinyVowSpacing.PageTop,
                 ),
             verticalArrangement = Arrangement.spacedBy(TinyVowSpacing.SectionGap),
         ) {
@@ -177,14 +188,15 @@ fun ContactUsScreen(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Button(
+                TinyVowButton(
                     onClick = onSendEmail,
+                    tone = TinyVowButtonTone.Primary,
                     modifier = Modifier.weight(1f),
                 ) {
                     Icon(Icons.Default.Email, contentDescription = null)
                     Text(AppText.t("support_send_email"))
                 }
-                OutlinedButton(
+                TinyVowButton(
                     onClick = onCopyEmail,
                     modifier = Modifier.weight(1f),
                 ) {
@@ -227,3 +239,4 @@ private fun HelpCard(
         }
     }
 }
+

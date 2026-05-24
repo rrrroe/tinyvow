@@ -86,10 +86,10 @@ class SuperModePolicyTest {
     }
 
     @Test
-    fun `guarded action excludes reward purchases`() {
-        assertEquals(null, GuardedAction.fromRewardType(RewardType.TIME_ADD))
-        assertEquals(null, GuardedAction.fromRewardType(RewardType.PERIOD_PASS))
-        assertEquals(null, GuardedAction.fromRewardType(RewardType.EMERGENCY_UNLOCK))
+    fun `guarded action protects time related reward purchases`() {
+        assertEquals(GuardedAction.PURCHASE_TIME_ADD, GuardedAction.fromRewardType(RewardType.TIME_ADD))
+        assertEquals(GuardedAction.PURCHASE_PERIOD_PASS, GuardedAction.fromRewardType(RewardType.PERIOD_PASS))
+        assertEquals(GuardedAction.PURCHASE_EMERGENCY_UNLOCK, GuardedAction.fromRewardType(RewardType.EMERGENCY_UNLOCK))
         assertEquals(null, GuardedAction.fromRewardType(RewardType.STREAK_SHIELD))
         assertEquals(null, GuardedAction.fromRewardType(RewardType.DOUBLE_POINTS_DAY))
         assertEquals(null, GuardedAction.fromRewardType(RewardType.CUSTOM))

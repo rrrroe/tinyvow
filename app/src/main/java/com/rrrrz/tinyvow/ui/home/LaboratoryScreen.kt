@@ -1,7 +1,5 @@
 package com.rrrrz.tinyvow.ui.home
 
-import com.rrrrz.tinyvow.i18n.AppText
-
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -14,7 +12,6 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
@@ -24,12 +21,15 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import com.rrrrz.tinyvow.i18n.AppText
 import com.rrrrz.tinyvow.ui.theme.LocalThemeColors
+import com.rrrrz.tinyvow.ui.theme.TinyVowSpacing
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -48,6 +48,7 @@ fun LaboratoryScreen(
 ) {
     val themeColors = LocalThemeColors.current
     Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
         topBar = {
             TopAppBar(
                 title = {
@@ -63,6 +64,10 @@ fun LaboratoryScreen(
                         Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = AppText.t("group_back"))
                     }
                 },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    scrolledContainerColor = MaterialTheme.colorScheme.surface,
+                ),
             )
         },
     ) { padding ->
@@ -70,7 +75,10 @@ fun LaboratoryScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
-                .padding(16.dp)
+                .padding(
+                    horizontal = TinyVowSpacing.PageHorizontal,
+                    vertical = TinyVowSpacing.PageTop,
+                )
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
@@ -81,8 +89,12 @@ fun LaboratoryScreen(
                 color = themeColors.inkStrong,
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = { onAddPoints(10.0) }, modifier = Modifier.weight(1f)) { Text("+10") }
-                Button(onClick = { onAddPoints(100.0) }, modifier = Modifier.weight(1f)) { Text("+100") }
+                Button(onClick = { onAddPoints(10.0) }, modifier = Modifier.weight(1f)) {
+                    Text(AppText.t("lab_add_points", 10))
+                }
+                Button(onClick = { onAddPoints(100.0) }, modifier = Modifier.weight(1f)) {
+                    Text(AppText.t("lab_add_points", 100))
+                }
             }
 
             HorizontalDivider()
@@ -204,7 +216,6 @@ fun LaboratoryScreen(
                 Text(AppText.t("lab_trigger_report_dialog_directly"))
             }
 
-            Spacer(modifier = Modifier.height(32.dp))
             Text(
                 AppText.t("lab_tip_after_resetting_restart_the_app_to_verify"),
                 style = MaterialTheme.typography.bodySmall,
@@ -213,3 +224,5 @@ fun LaboratoryScreen(
         }
     }
 }
+
+

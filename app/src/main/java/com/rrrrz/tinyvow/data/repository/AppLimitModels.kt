@@ -38,6 +38,56 @@ data class RewardStoreItem(
     val purchasedTodayCount: Int,
 )
 
+enum class RewardStoreUnavailableReason {
+    OUT_OF_STOCK,
+    DAILY_LIMIT_REACHED,
+    NEEDS_CONTROL_GROUP,
+    NEEDS_ENCOURAGE_GROUP,
+    INSUFFICIENT_POINTS,
+}
+
+data class RewardStoreAvailability(
+    val canAfford: Boolean,
+    val inStock: Boolean,
+    val dailyLimitReached: Boolean,
+    val needsControlGroups: Boolean,
+    val needsEncourageGroups: Boolean,
+) {
+    val canPurchase: Boolean =
+        canAfford && inStock && !dailyLimitReached && !needsControlGroups && !needsEncourageGroups
+
+    val unavailableReason: RewardStoreUnavailableReason? =
+        when {
+            !inStock -> RewardStoreUnavailableReason.OUT_OF_STOCK
+            dailyLimitReached -> RewardStoreUnavailableReason.DAILY_LIMIT_REACHED
+            needsControlGroups -> RewardStoreUnavailableReason.NEEDS_CONTROL_GROUP
+            needsEncourageGroups -> RewardStoreUnavailableReason.NEEDS_ENCOURAGE_GROUP
+            !canAfford -> RewardStoreUnavailableReason.INSUFFICIENT_POINTS
+            else -> null
+        }
+}
+
+fun evaluateRewardStoreAvailability(
+    item: RewardStoreItem,
+    userPoints: Double,
+    controlGroupCount: Int,
+    encourageGroupCount: Int,
+): RewardStoreAvailability {
+    val reward = item.reward
+    val needsControlGroups =
+        (reward.rewardType == RewardType.TIME_ADD || reward.rewardType == RewardType.PERIOD_PASS) &&
+            controlGroupCount == 0
+    val needsEncourageGroups =
+        reward.rewardType == RewardType.DOUBLE_POINTS_DAY && encourageGroupCount == 0
+    return RewardStoreAvailability(
+        canAfford = userPoints >= reward.pointCost,
+        inStock = reward.stock == -1 || reward.stock > 0,
+        dailyLimitReached = reward.builtinKey != null && item.purchasedTodayCount >= 1,
+        needsControlGroups = needsControlGroups,
+        needsEncourageGroups = needsEncourageGroups,
+    )
+}
+
 data class InventoryRewardItem(
     val reward: RedemptionEntity,
     val quantity: Int,

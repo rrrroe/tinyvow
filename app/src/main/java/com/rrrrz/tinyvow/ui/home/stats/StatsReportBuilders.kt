@@ -39,10 +39,10 @@ internal fun createRefreshingUiState(
         isPermissionGranted = true,
         selectedTab = selectedTab,
         isRefreshing = true,
-        heroState = previous?.heroState ?: SectionState.Loading,
+        heroState = if (selectedTab == ReportTab.DAY) SectionState.Loading else SectionState.Empty,
         dailyFocusState =
             if (selectedTab == ReportTab.DAY) {
-                previous?.dailyFocusState ?: SectionState.Loading
+                SectionState.Loading
             } else {
                 SectionState.Empty
             },
@@ -50,30 +50,30 @@ internal fun createRefreshingUiState(
             if (selectedTab == ReportTab.DAY) {
                 SectionState.Empty
             } else {
-                previous?.windowFocusState ?: SectionState.Loading
+                SectionState.Loading
             },
         heatmapState =
             if (selectedTab == ReportTab.MONTH || selectedTab == ReportTab.YEAR) {
-                previous?.heatmapState ?: SectionState.Loading
+                SectionState.Loading
             } else {
                 SectionState.Empty
             },
         yearDualScopeState =
             if (selectedTab == ReportTab.YEAR) {
-                previous?.yearDualScopeState ?: SectionState.Loading
+                SectionState.Loading
             } else {
                 SectionState.Empty
             },
-        shareState = previous?.shareState ?: SectionState.Loading,
-        timelineState = previous?.timelineState ?: SectionState.Loading,
-        topAppsState = previous?.topAppsState ?: SectionState.Loading,
-        behaviorState = previous?.behaviorState ?: SectionState.Loading,
-        comparisonState = previous?.comparisonState ?: SectionState.Loading,
+        shareState = SectionState.Loading,
+        timelineState = if (selectedTab == ReportTab.DAY) SectionState.Loading else SectionState.Empty,
+        topAppsState = if (selectedTab == ReportTab.DAY) SectionState.Loading else SectionState.Empty,
+        behaviorState = if (selectedTab == ReportTab.DAY) SectionState.Loading else SectionState.Empty,
+        comparisonState = if (selectedTab == ReportTab.DAY) SectionState.Loading else SectionState.Empty,
         periodReportState =
             if (selectedTab == ReportTab.DAY) {
                 SectionState.Empty
             } else {
-                previous?.periodReportState ?: SectionState.Loading
+                SectionState.Loading
             },
         selectedArchiveDate = selectedArchiveDate,
         previousArchiveDate = previous?.previousArchiveDate,
@@ -2306,15 +2306,15 @@ internal suspend fun buildDailyReportUiState(
 
 internal fun buildPlaceholderUiState(tab: ReportTab): DailyReportUiState {
     val title = when (tab) {
-        ReportTab.WEEK -> AppText.t("stats_weekly_reports_are_coming_soon")
-        ReportTab.MONTH -> AppText.t("stats_monthly_reports_are_coming_soon")
-        ReportTab.YEAR -> AppText.t("stats_yearly_reports_are_coming_soon")
+        ReportTab.WEEK -> AppText.t("stats_no_archived_weekly_reports_yet")
+        ReportTab.MONTH -> AppText.t("stats_no_archived_monthly_reports_yet")
+        ReportTab.YEAR -> AppText.t("stats_no_archived_yearly_reports_yet")
         ReportTab.DAY -> AppText.t("stats_daily_report")
     }
     val description = when (tab) {
-        ReportTab.WEEK -> AppText.t("stats_weekly_trends_and_streak_insights_will_open_after")
-        ReportTab.MONTH -> AppText.t("stats_monthly_views_will_analyze_rhythm_phases_and_structural")
-        ReportTab.YEAR -> AppText.t("stats_year_view_description")
+        ReportTab.WEEK -> AppText.t("stats_weekly_reports_need_archives")
+        ReportTab.MONTH -> AppText.t("stats_monthly_reports_need_archives")
+        ReportTab.YEAR -> AppText.t("stats_yearly_reports_need_archives")
         ReportTab.DAY -> ""
     }
     return DailyReportUiState(

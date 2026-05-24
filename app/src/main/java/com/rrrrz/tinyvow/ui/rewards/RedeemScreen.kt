@@ -21,16 +21,12 @@ import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.Inventory2
 import androidx.compose.material.icons.filled.LockClock
 import androidx.compose.material.icons.filled.Timer
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -40,14 +36,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
-import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import com.rrrrz.tinyvow.data.db.GroupType
 import com.rrrrz.tinyvow.data.db.LimitPeriod
 import com.rrrrz.tinyvow.data.db.RedemptionEntity
@@ -65,13 +63,17 @@ import com.rrrrz.tinyvow.data.repository.PendingStreakShieldItem
 import com.rrrrz.tinyvow.data.repository.RewardIconCatalog
 import com.rrrrz.tinyvow.data.repository.RewardIconSpec
 import com.rrrrz.tinyvow.data.repository.RewardSaveValidationError
+import com.rrrrz.tinyvow.data.repository.RewardStoreUnavailableReason
 import com.rrrrz.tinyvow.data.repository.RewardStoreItem
+import com.rrrrz.tinyvow.data.repository.evaluateRewardStoreAvailability
 import com.rrrrz.tinyvow.data.repository.parseRewardPayload
 import com.rrrrz.tinyvow.data.repository.validateCustomRewardInput
 import com.rrrrz.tinyvow.data.supermode.GuardedAction
 import com.rrrrz.tinyvow.i18n.AppText
 import com.rrrrz.tinyvow.ui.home.ProUpsellSource
 import com.rrrrz.tinyvow.ui.theme.LocalThemeColors
+import com.rrrrz.tinyvow.ui.theme.TinyVowButton
+import com.rrrrz.tinyvow.ui.theme.TinyVowButtonTone
 import com.rrrrz.tinyvow.ui.theme.TinyVowCard
 import com.rrrrz.tinyvow.ui.theme.TinyVowRadius
 import com.rrrrz.tinyvow.ui.theme.TinyVowSpacing
@@ -117,6 +119,16 @@ fun RedeemScreen(
     }
     val streakItems = remember(storeItems) { storeItems.filter { it.reward.rewardType == RewardType.STREAK_SHIELD } }
     val pointItems = remember(storeItems) { storeItems.filter { it.reward.rewardType == RewardType.DOUBLE_POINTS_DAY } }
+    fun purchaseWithGuard(reward: RedemptionEntity) {
+        val action = GuardedAction.fromRewardType(reward.rewardType)
+        if (action == null) {
+            onPurchase(reward)
+        } else {
+            onGuardAction(action) {
+                onPurchase(reward)
+            }
+        }
+    }
 
     if (showConfigPage) {
         RewardConfigScreen(
@@ -170,7 +182,7 @@ fun RedeemScreen(
                         userPoints = userPoints,
                         controlGroupCount = controlGroups,
                         encourageGroupCount = encourageGroups,
-                        onPurchase = { onPurchase(item.reward) },
+                        onPurchase = { purchaseWithGuard(item.reward) },
                         onEdit = null,
                         onArchive = null,
                     )
@@ -185,7 +197,7 @@ fun RedeemScreen(
                         userPoints = userPoints,
                         controlGroupCount = controlGroups,
                         encourageGroupCount = encourageGroups,
-                        onPurchase = { onPurchase(item.reward) },
+                        onPurchase = { purchaseWithGuard(item.reward) },
                         onEdit = null,
                         onArchive = null,
                     )
@@ -200,7 +212,7 @@ fun RedeemScreen(
                         userPoints = userPoints,
                         controlGroupCount = controlGroups,
                         encourageGroupCount = encourageGroups,
-                        onPurchase = { onPurchase(item.reward) },
+                        onPurchase = { purchaseWithGuard(item.reward) },
                         onEdit = null,
                         onArchive = null,
                     )
@@ -217,7 +229,7 @@ fun RedeemScreen(
                         userPoints = userPoints,
                         controlGroupCount = controlGroups,
                         encourageGroupCount = encourageGroups,
-                        onPurchase = { onPurchase(item.reward) },
+                        onPurchase = { purchaseWithGuard(item.reward) },
                         onEdit = null,
                         onArchive = null,
                     )
@@ -225,13 +237,11 @@ fun RedeemScreen(
             }
 
             item {
-                OutlinedButton(
+                TinyVowButton(
+                    text = AppText.t("redeem_custom_config"),
                     onClick = { showConfigPage = true },
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(16.dp),
-                ) {
-                    Text(AppText.t("redeem_custom_config"))
-                }
+                )
             }
         }
     }
@@ -287,19 +297,20 @@ fun RedeemScreen(
             title = { Text(AppText.t("redeem_archive_custom_reward")) },
             text = { Text(AppText.t("redeem_archive_custom_reward_confirmation", reward.title)) },
             confirmButton = {
-                Button(
+                TinyVowButton(
+                    text = AppText.t("group_delete"),
                     onClick = {
                         onArchiveReward(reward)
                         archivingReward = null
                     },
-                ) {
-                    Text(AppText.t("group_delete"))
-                }
+                    tone = TinyVowButtonTone.Danger,
+                )
             },
             dismissButton = {
-                TextButton(onClick = { archivingReward = null }) {
-                    Text(AppText.t("group_cancel"))
-                }
+                TinyVowButton(
+                    text = AppText.t("group_cancel"),
+                    onClick = { archivingReward = null },
+                )
             },
         )
     }
@@ -565,24 +576,86 @@ private fun InventorySwitchButton(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val themeColors = LocalThemeColors.current
     Surface(
-        modifier = modifier.clickable(onClick = onClick),
-        shape = RoundedCornerShape(14.dp),
-        color =
-            if (selected) MaterialTheme.colorScheme.primaryContainer
-            else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f),
+        modifier = modifier
+            .defaultMinSize(minHeight = 36.dp)
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(12.dp),
+        color = if (selected) {
+            themeColors.baseContainer.copy(alpha = 0.76f)
+        } else {
+            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.22f)
+        },
+        border = BorderStroke(
+            1.dp,
+            if (selected) {
+                themeColors.base.copy(alpha = 0.18f)
+            } else {
+                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.30f)
+            },
+        ),
     ) {
         Box(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 9.dp),
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
             contentAlignment = Alignment.Center,
         ) {
             Text(
                 text = title,
                 style = MaterialTheme.typography.labelMedium,
-                color =
-                    if (selected) MaterialTheme.colorScheme.onPrimaryContainer
-                    else MaterialTheme.colorScheme.onSurfaceVariant,
+                fontWeight = FontWeight.SemiBold,
+                color = if (selected) themeColors.base else themeColors.inkMuted,
                 maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
+private fun InventorySubButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    primary: Boolean = false,
+) {
+    val themeColors = LocalThemeColors.current
+    val container =
+        when {
+            !enabled -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.24f)
+            primary -> themeColors.encourageContainer.copy(alpha = 0.70f)
+            else -> MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.24f)
+        }
+    val contentColor =
+        when {
+            !enabled -> themeColors.inkMuted.copy(alpha = 0.52f)
+            primary -> themeColors.encourage
+            else -> themeColors.inkMuted
+        }
+    Surface(
+        modifier = modifier.defaultMinSize(minHeight = 34.dp),
+        shape = RoundedCornerShape(12.dp),
+        color = container,
+        border = BorderStroke(
+            1.dp,
+            if (primary) themeColors.encourage.copy(alpha = 0.16f)
+            else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.24f),
+        ),
+        enabled = enabled,
+        onClick = onClick,
+    ) {
+        Box(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = text,
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = contentColor,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
         }
     }
@@ -673,15 +746,30 @@ private fun StoreRewardItemCard(
 ) {
     val themeColors = LocalThemeColors.current
     val reward = item.reward
-    val canAfford = userPoints >= reward.pointCost
-    val inStock = reward.stock == -1 || reward.stock > 0
-    val dailyLimitReached = reward.builtinKey != null && item.purchasedTodayCount >= 1
-    val needsControlGroups =
-        (reward.rewardType == RewardType.TIME_ADD || reward.rewardType == RewardType.PERIOD_PASS) && controlGroupCount == 0
-    val needsEncourageGroups = reward.rewardType == RewardType.DOUBLE_POINTS_DAY && encourageGroupCount == 0
+    val availability =
+        evaluateRewardStoreAvailability(
+            item = item,
+            userPoints = userPoints,
+            controlGroupCount = controlGroupCount,
+            encourageGroupCount = encourageGroupCount,
+        )
+    val canPurchase = availability.canPurchase
+    val canPurchaseFromCard = canPurchase && onEdit == null && onArchive == null
+    val availabilityText =
+        storeAvailabilityText(
+            item = item,
+            unavailableReason = availability.unavailableReason,
+        )
 
     TinyVowCard(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(
+                enabled = canPurchaseFromCard,
+                onClickLabel = AppText.t("redeem_store_purchase_action"),
+                role = Role.Button,
+                onClick = onPurchase,
+            ),
         shape = RoundedCornerShape(TinyVowRadius.Card),
     ) {
         Row(
@@ -708,6 +796,18 @@ private fun StoreRewardItemCard(
                     text = reward.localizedDescription(),
                     style = MaterialTheme.typography.bodySmall,
                     color = themeColors.inkMuted,
+                    maxLines = 2,
+                )
+                Text(
+                    text = storeRuleSummary(reward),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.primary,
+                    maxLines = 1,
+                )
+                Text(
+                    text = availabilityText,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (canPurchase) themeColors.inkMuted else MaterialTheme.colorScheme.error,
                     maxLines = 2,
                 )
             }
@@ -737,7 +837,7 @@ private fun StoreRewardItemCard(
             } else {
                 Button(
                     onClick = onPurchase,
-                    enabled = canAfford && inStock && !dailyLimitReached && !needsControlGroups && !needsEncourageGroups,
+                    enabled = canPurchase,
                     shape = RoundedCornerShape(14.dp),
                     contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
                 ) {
@@ -750,6 +850,33 @@ private fun StoreRewardItemCard(
             }
         }
 
+    }
+}
+
+private fun storeAvailabilityText(
+    item: RewardStoreItem,
+    unavailableReason: RewardStoreUnavailableReason?,
+): String {
+    val reward = item.reward
+    return when (unavailableReason) {
+        RewardStoreUnavailableReason.OUT_OF_STOCK -> AppText.t("redeem_error_out_of_stock")
+        RewardStoreUnavailableReason.DAILY_LIMIT_REACHED -> AppText.t("redeem_store_daily_limit_reached")
+        RewardStoreUnavailableReason.NEEDS_CONTROL_GROUP -> AppText.t("redeem_no_control_group_for_time_pack")
+        RewardStoreUnavailableReason.NEEDS_ENCOURAGE_GROUP -> AppText.t("redeem_no_encourage_group_for_double_points")
+        RewardStoreUnavailableReason.INSUFFICIENT_POINTS -> AppText.t("redeem_error_insufficient_points")
+        null -> {
+            val stockText =
+                if (reward.stock == -1) {
+                    AppText.t("redeem_store_stock_owned_unlimited", item.ownedQuantity)
+                } else {
+                    AppText.t("redeem_store_stock_owned_value", reward.stock, item.ownedQuantity)
+                }
+            if (reward.builtinKey != null) {
+                AppText.t("redeem_store_stock_owned_daily_limit", stockText, item.purchasedTodayCount)
+            } else {
+                stockText
+            }
+        }
     }
 }
 
@@ -831,7 +958,14 @@ private fun InventoryRewardCard(
             reward.rewardType == RewardType.PERIOD_PASS ||
             reward.rewardType == RewardType.DOUBLE_POINTS_DAY
     TinyVowCard(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(
+                enabled = canUse,
+                onClickLabel = AppText.t("redeem_inventory_use"),
+                role = Role.Button,
+                onClick = onUseClick,
+            ),
         shape = RoundedCornerShape(TinyVowRadius.Card),
     ) {
         Row(
@@ -861,9 +995,11 @@ private fun InventoryRewardCard(
                 )
             }
             if (canUse) {
-                OutlinedButton(onClick = onUseClick, shape = RoundedCornerShape(14.dp)) {
-                    Text(AppText.t("redeem_inventory_use"))
-                }
+                InventorySubButton(
+                    text = AppText.t("redeem_inventory_use"),
+                    onClick = onUseClick,
+                    primary = true,
+                )
             } else {
                 Icon(
                     imageVector =
@@ -906,12 +1042,18 @@ private fun PendingShieldCard(
                 color = MaterialTheme.colorScheme.primary,
             )
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = onUse, enabled = item.ownedQuantity > 0, modifier = Modifier.weight(1f)) {
-                    Text(AppText.t("redeem_pending_use"))
-                }
-                OutlinedButton(onClick = onDismiss, modifier = Modifier.weight(1f)) {
-                    Text(AppText.t("redeem_pending_skip"))
-                }
+                InventorySubButton(
+                    text = AppText.t("redeem_pending_use"),
+                    onClick = onUse,
+                    enabled = item.ownedQuantity > 0,
+                    primary = true,
+                    modifier = Modifier.weight(1f),
+                )
+                InventorySubButton(
+                    text = AppText.t("redeem_pending_skip"),
+                    onClick = onDismiss,
+                    modifier = Modifier.weight(1f),
+                )
             }
         }
     }
@@ -923,16 +1065,18 @@ private fun TargetGroupRow(
     reward: RedemptionEntity,
     onClick: () -> Unit,
 ) {
+    val themeColors = LocalThemeColors.current
     Surface(
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
         shape = RoundedCornerShape(14.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f),
+        color = themeColors.baseContainer.copy(alpha = 0.48f),
+        border = BorderStroke(1.dp, themeColors.base.copy(alpha = 0.10f)),
     ) {
         Column(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            Text(group.group.name, style = MaterialTheme.typography.bodyLarge)
+            Text(group.group.name, style = MaterialTheme.typography.bodyLarge, color = themeColors.inkStrong)
             Text(
                 text =
                     AppText.t(
@@ -940,14 +1084,14 @@ private fun TargetGroupRow(
                         periodLabel(group.group.limitPeriod),
                         group.group.limitMinutes,
                         group.packageNames.size,
-                    ),
+                ),
                 style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                color = themeColors.inkMuted,
             )
             Text(
                 text = useRuleSummary(reward, group.group.limitPeriod),
                 style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.primary,
+                color = themeColors.base,
             )
         }
     }
@@ -1557,3 +1701,4 @@ private fun RedemptionHistoryEntity.localizedRewardTitle(): String =
 
 private fun RewardUseHistoryEntity.localizedRewardTitle(): String =
     rewardBuiltinKey?.let { AppText.t("${it}_title") } ?: rewardTitle
+

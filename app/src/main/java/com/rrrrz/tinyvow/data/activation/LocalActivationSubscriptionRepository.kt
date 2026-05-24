@@ -10,6 +10,7 @@ import androidx.datastore.preferences.preferencesDataStore
 import com.rrrrz.tinyvow.data.billing.ProEntitlementState
 import com.rrrrz.tinyvow.data.billing.SubscriptionOffer
 import com.rrrrz.tinyvow.data.billing.SubscriptionRepository
+import com.rrrrz.tinyvow.i18n.AppText
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -103,7 +104,7 @@ class LocalActivationSubscriptionRepository(
     override suspend fun restore(): Result<Unit> = refresh()
 
     override suspend fun purchase(activity: Activity, offer: SubscriptionOffer, accountId: String?): Result<Unit> =
-        Result.failure(IllegalStateException("本渠道不使用 Google Play Billing"))
+        Result.failure(IllegalStateException(AppText.t("activation_error_play_billing_not_used")))
 
     override fun openManageSubscription(context: Context) = Unit
 

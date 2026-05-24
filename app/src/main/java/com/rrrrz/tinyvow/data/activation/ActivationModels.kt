@@ -1,11 +1,16 @@
 package com.rrrrz.tinyvow.data.activation
 
 import com.rrrrz.tinyvow.data.billing.TINYVOW_PRO_PRODUCT_ID
+import com.rrrrz.tinyvow.i18n.AppText
 
 const val ACTIVATION_CODE_PREFIX = "TVA1"
 const val ACTIVATION_CHANNEL_CHINA = "china"
 const val ACTIVATION_SOURCE_LOCAL = "local_activation"
 const val ACTIVATION_TIME_ROLLBACK_TOLERANCE_MILLIS = 10 * 60 * 1000L
+
+class ActivationCodeException(
+    val messageKey: String,
+) : IllegalArgumentException(AppText.t(messageKey))
 
 data class ActivationCodePayload(
     val version: Int,
@@ -18,13 +23,13 @@ data class ActivationCodePayload(
     val validUntilMillis: Long,
 ) {
     fun validateFor(userId: String, nowMillis: Long, usedCodeIds: Set<String>) {
-        require(version == 1) { "不支持的激活码版本" }
-        require(this.userId == userId) { "激活码不属于当前用户" }
-        require(productId == TINYVOW_PRO_PRODUCT_ID) { "激活码商品不匹配" }
-        require(channel == ACTIVATION_CHANNEL_CHINA) { "激活码渠道不匹配" }
-        require(durationDays > 0) { "激活码时长无效" }
-        require(nowMillis <= validUntilMillis) { "激活码已过兑换有效期" }
-        require(codeId !in usedCodeIds) { "激活码已使用" }
+        requireActivation(version == 1, "activation_error_unsupported_version")
+        requireActivation(this.userId == userId, "activation_error_wrong_user")
+        requireActivation(productId == TINYVOW_PRO_PRODUCT_ID, "activation_error_product_mismatch")
+        requireActivation(channel == ACTIVATION_CHANNEL_CHINA, "activation_error_channel_mismatch")
+        requireActivation(durationDays > 0, "activation_error_invalid_duration")
+        requireActivation(nowMillis <= validUntilMillis, "activation_error_expired_code")
+        requireActivation(codeId !in usedCodeIds, "activation_error_code_already_used")
     }
 
     fun toJsonString(): String =
@@ -91,6 +96,10 @@ data class LocalActivationRecord(
             }.getOrNull()
         }
     }
+}
+
+internal fun requireActivation(condition: Boolean, messageKey: String) {
+    if (!condition) throw ActivationCodeException(messageKey)
 }
 
 private fun escapeJson(value: String): String =

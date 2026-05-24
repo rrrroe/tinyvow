@@ -60,6 +60,35 @@ class AppLanguageTest {
     }
 
     @Test
+    fun mainSourceStringKeysExistInResources() {
+        val resourceKeys = buildSet {
+            addAll(parseStringResources(File("src/main/res/values/app_texts.xml")).keys)
+            addAll(parseStringResources(File("src/main/res/values/strings.xml")).keys)
+        }
+        val mainSourceText = File("src/main/java").walkTopDown()
+            .filter { it.isFile && it.extension == "kt" }
+            .joinToString("\n") { it.readText() }
+
+        val referencedKeys = buildSet {
+            Regex("""AppText\.t\("([^"]+)""")
+                .findAll(mainSourceText)
+                .map { it.groupValues[1] }
+                .filterNot { it.contains('$') }
+                .forEach { add(it) }
+            Regex("""stringResource\(R\.string\.([A-Za-z0-9_]+)""")
+                .findAll(mainSourceText)
+                .forEach { add(it.groupValues[1]) }
+        }
+
+        assertTrue(
+            "Missing string resources: ${
+                referencedKeys.filterNot { it in resourceKeys }.sorted().joinToString()
+            }",
+            referencedKeys.all { it in resourceKeys },
+        )
+    }
+
+    @Test
     fun localeConfigDeclaresSupportedLanguages() {
         val localeConfig = File("src/main/res/xml/locales_config.xml")
         assertTrue(localeConfig.exists())

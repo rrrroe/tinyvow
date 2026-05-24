@@ -1,4 +1,4 @@
-﻿package com.rrrrz.tinyvow.ui.home
+package com.rrrrz.tinyvow.ui.home
 
 import com.rrrrz.tinyvow.i18n.AppText
 
@@ -64,18 +64,14 @@ import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Timeline
 import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material.icons.filled.WbSunny
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -150,9 +146,7 @@ internal fun PeriodReportScreen(
 ) {
     when (val periodState = state.periodReportState) {
         SectionState.Loading -> {
-            repeat(4) {
-                HeroSkeletonCard()
-            }
+            PeriodReportSkeleton(selectedTab = state.selectedTab)
         }
         SectionState.Empty -> {
             Text(
@@ -190,7 +184,6 @@ internal fun PeriodReportScreen(
         }
     }
 }
-
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun PeriodFocusCard(data: WindowFocusSectionData) {
@@ -207,13 +200,13 @@ internal fun PeriodFocusCard(data: WindowFocusSectionData) {
                     summary = if (index == 0) data.control else data.encourage,
                     icon = if (index == 0) Icons.Default.Bolt else Icons.Default.RocketLaunch,
                     compact = true,
+                    animateValues = index == 1,
                     modifier = modifier,
                 )
             }
         }
     }
 }
-
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun PeriodHeroCard(hero: PeriodHeroData) {
@@ -267,10 +260,12 @@ internal fun PeriodHeroCard(hero: PeriodHeroData) {
                         )
                     }
                 }
-                Text(
-                    text = hero.primaryValue,
+                AnimatedMetricText(
+                    rawText = hero.primaryValue,
+                    label = "period_hero_primary_${hero.title}_${hero.rangeLabel}",
                     style = MaterialTheme.typography.displaySmall,
                     color = MaterialTheme.colorScheme.primary,
+                    delayMillis = 80,
                 )
                 Text(
                     text = hero.message,
@@ -480,11 +475,11 @@ internal fun PeriodAppFocusCard(data: AppFocusSectionData) {
     ReportCard {
         Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
             SectionHeader(icon = Icons.Default.BarChart, title = data.title, subtitle = data.subtitle)
-            Text(
-                text = data.totalUsageLabel,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+                Text(
+                    text = data.totalUsageLabel,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             if (data.weeklyTopAppRows.isNotEmpty()) {
                 WeeklyTopAppsMatrix(rows = data.weeklyTopAppRows)
             }
@@ -742,8 +737,15 @@ internal fun PeriodMonthStructureCard(data: MonthlyWeekStructureData) {
                         verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
                         Text(week.label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text(formatDuration(week.totalUsageMillis), style = MaterialTheme.typography.titleMedium)
-                        Text(AppText.t("stats_daily_average_value", formatDuration(week.averageUsageMillis)), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(
+                            text = formatDuration(week.totalUsageMillis),
+                            style = MaterialTheme.typography.titleMedium,
+                        )
+                        Text(
+                            text = AppText.t("stats_daily_average_value", formatDuration(week.averageUsageMillis)),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                         Text(AppText.t("stats_peak_time"), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text(week.peakDayLabel, style = MaterialTheme.typography.labelLarge)
                     }
@@ -776,9 +778,15 @@ internal fun PeriodQuarterBreakdownCard(data: YearQuarterSectionData) {
                         verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
                         Text(quarter.label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text(formatDuration(quarter.totalUsageMillis), style = MaterialTheme.typography.titleMedium)
+                        Text(
+                            text = formatDuration(quarter.totalUsageMillis),
+                            style = MaterialTheme.typography.titleMedium,
+                        )
                         Text(AppText.t("stats_best_month"), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                        Text("${quarter.bestMonthLabel} · ${formatDuration(quarter.bestMonthUsageMillis)}", style = MaterialTheme.typography.bodySmall)
+                        Text(
+                            text = "${quarter.bestMonthLabel} · ${formatDuration(quarter.bestMonthUsageMillis)}",
+                            style = MaterialTheme.typography.bodySmall,
+                        )
                         Text(AppText.t("stats_top_apps"), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         Text(quarter.topAppLabel, style = MaterialTheme.typography.bodySmall, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     }

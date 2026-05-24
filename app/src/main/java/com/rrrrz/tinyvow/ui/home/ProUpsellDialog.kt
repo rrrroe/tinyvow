@@ -4,14 +4,13 @@ import com.rrrrz.tinyvow.i18n.AppText
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.unit.dp
 import com.rrrrz.tinyvow.ui.theme.LocalThemeColors
+import com.rrrrz.tinyvow.ui.theme.TinyVowButton
+import com.rrrrz.tinyvow.ui.theme.TinyVowButtonTone
 
 enum class ProUpsellSource {
     GROUP_LIMIT,
@@ -53,14 +52,17 @@ fun ProUpsellDialog(
             }
         },
         confirmButton = {
-            Button(onClick = onViewBenefits) {
-                Text(AppText.t("pro_view_benefits"))
-            }
+            TinyVowButton(
+                text = AppText.t("pro_view_benefits"),
+                onClick = onViewBenefits,
+                tone = TinyVowButtonTone.Primary,
+            )
         },
         dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(AppText.t("group_cancel"))
-            }
+            TinyVowButton(
+                text = AppText.t("group_cancel"),
+                onClick = onDismiss,
+            )
         },
     )
 }

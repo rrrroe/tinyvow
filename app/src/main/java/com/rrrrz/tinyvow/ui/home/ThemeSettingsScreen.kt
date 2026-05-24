@@ -7,14 +7,12 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -23,11 +21,15 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -49,6 +51,7 @@ import com.rrrrz.tinyvow.ui.theme.TinyVowSpacing
 import com.rrrrz.tinyvow.ui.theme.localizedName
 import com.rrrrz.tinyvow.ui.theme.themeTokensFromSeed
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ThemeSettingsScreen(
     selectedThemeId: String,
@@ -64,44 +67,60 @@ fun ThemeSettingsScreen(
     val allThemes = ThemePresets + MemberThemePresets
     val themeColors = LocalThemeColors.current
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .statusBarsPadding()
-            .padding(horizontal = TinyVowSpacing.PageHorizontal),
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(top = 12.dp, bottom = 14.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = AppText.t("group_back"))
-            }
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = AppText.t("me_appearance_theme"),
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.SemiBold,
-                    color = themeColors.inkStrong,
-                )
-                Text(
-                    text = AppText.t("theme_manage_preset_and_custom_three_color_themes"),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = themeColors.inkMuted,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
-            }
-        }
-
+    Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
+        topBar = {
+            TopAppBar(
+                title = {
+                    Text(
+                        text = AppText.t("me_appearance_theme"),
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        color = themeColors.inkStrong,
+                    )
+                },
+                navigationIcon = {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = AppText.t("group_back"))
+                    }
+                },
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = MaterialTheme.colorScheme.surface,
+                    scrolledContainerColor = MaterialTheme.colorScheme.surface,
+                ),
+            )
+        },
+    ) { innerPadding ->
         LazyColumn(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .background(MaterialTheme.colorScheme.background)
+                .padding(innerPadding)
+                .padding(horizontal = TinyVowSpacing.PageHorizontal),
+            contentPadding = PaddingValues(
+                top = TinyVowSpacing.PageTop,
+                bottom = TinyVowSpacing.PageTop,
+            ),
             verticalArrangement = Arrangement.spacedBy(TinyVowSpacing.CardGap),
         ) {
+            item {
+                TinyVowCard(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(TinyVowRadius.FeaturedCard),
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    borderAlpha = 0.18f,
+                ) {
+                    Text(
+                        text = AppText.t("theme_manage_preset_and_custom_three_color_themes"),
+                        modifier = Modifier.padding(
+                            horizontal = TinyVowSpacing.CardHorizontal,
+                            vertical = TinyVowSpacing.CardVertical,
+                        ),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.82f),
+                    )
+                }
+            }
             items(allThemes, key = { it.id }) { theme ->
                 val locked = !ProFeatureGate.canSelectTheme(isProActive, theme.id)
                 ThemeStyleCard(
@@ -117,10 +136,8 @@ fun ThemeSettingsScreen(
                     },
                 )
             }
-            item { Spacer(modifier = Modifier.height(24.dp)) }
         }
     }
-
 }
 
 @Composable

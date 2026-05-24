@@ -14,17 +14,23 @@ class ActivationCodeVerifier(
 
     fun verify(code: String): ActivationCodePayload {
         val parts = code.trim().split('.')
-        require(parts.size == 3 && parts[0] == ACTIVATION_CODE_PREFIX) { "激活码格式不正确" }
+        requireActivation(parts.size == 3 && parts[0] == ACTIVATION_CODE_PREFIX, "activation_error_invalid_format")
 
         val payloadPart = parts[1]
-        val signatureBytes = decodeUrl(parts[2])
+        val signatureBytes =
+            runCatching { decodeUrl(parts[2]) }
+                .getOrElse { throw ActivationCodeException("activation_error_invalid_format") }
         val signature = Signature.getInstance("SHA256withRSA")
         signature.initVerify(publicKey)
         signature.update(payloadPart.toByteArray(StandardCharsets.UTF_8))
-        require(signature.verify(signatureBytes)) { "激活码签名无效" }
+        requireActivation(signature.verify(signatureBytes), "activation_error_invalid_signature")
 
-        val payloadJson = String(decodeUrl(payloadPart), StandardCharsets.UTF_8)
-        return ActivationCodePayload.fromJsonString(payloadJson)
+        return runCatching {
+            val payloadJson = String(decodeUrl(payloadPart), StandardCharsets.UTF_8)
+            ActivationCodePayload.fromJsonString(payloadJson)
+        }.getOrElse {
+            throw ActivationCodeException("activation_code_invalid")
+        }
     }
 
     companion object {
