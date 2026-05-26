@@ -155,6 +155,8 @@ private fun rewardCanUseFromInventory(rewardType: RewardType): Boolean =
         -> false
     }
 
+private const val REWARD_EFFECT_CONFIRM_WINDOW_MS = 10_000L
+
 private fun inventoryItemTitle(
     reward: RedemptionEntity,
     pendingCount: Int,
@@ -193,6 +195,7 @@ class AppLimitRepository(
     private val dailyGroupArchiveDao: DailyGroupArchiveDao = database.dailyGroupArchiveDao()
     private val rewardInventoryDao: RewardInventoryDao = database.rewardInventoryDao()
     private val activeRewardEffectDao: ActiveRewardEffectDao = database.activeRewardEffectDao()
+    private val rewardEffectBenefitDao = database.rewardEffectBenefitDao()
     private val streakShieldPendingDao: StreakShieldPendingDao = database.streakShieldPendingDao()
     private val rewardUseHistoryDao: RewardUseHistoryDao = database.rewardUseHistoryDao()
     private val bonusTimeDao = database.bonusTimeDao()
@@ -500,7 +503,7 @@ class AppLimitRepository(
                         if (group.type != GroupType.CONTROL || payload.minutes <= 0) {
                             return@withLock UseRewardResult.InvalidTargetGroup
                         }
-                        createEffectAndConsumeInventory(
+                        val effectId = createPendingEffectAndConsumeInventory(
                             reward = reward,
                             inventory = inventory,
                             targetGroup = group,
@@ -508,31 +511,27 @@ class AppLimitRepository(
                             createdAt = now,
                             effectType = RewardType.TIME_ADD,
                         )
-                        insertRewardUseHistory(
-                            reward = reward,
-                            targetGroupName = group.name,
-                            usedAt = now,
-                        )
                         return@withLock UseRewardResult.Success(
                             rewardTitle = localizedRewardTitle(reward),
-                            messageKey = "redeem_use_success_time_add",
+                            messageKey = "redeem_effect_pending_time_add",
                             messageArgs = listOf(group.name, payload.minutes),
+                            pendingEffectId = effectId,
                         )
                     }
                     RewardType.PERIOD_PASS -> {
                         if (group.type != GroupType.CONTROL) return@withLock UseRewardResult.InvalidTargetGroup
                         val window = currentEffectWindow(now, group.limitPeriod)
                         if (
-                            activeRewardEffectDao.getActiveForGroupAndPeriod(
+                            activeRewardEffectDao.getBlockingForGroupAndPeriod(
                                 groupId = group.id,
                                 effectType = RewardType.PERIOD_PASS,
                                 periodStartDate = window.startDate,
                                 periodEndDate = window.endDate,
                             ) != null
                         ) {
-                            return@withLock UseRewardResult.AlreadyActive
+                            return@withLock UseRewardResult.PeriodPassAlreadyActive
                         }
-                        createEffectAndConsumeInventory(
+                        val effectId = createPendingEffectAndConsumeInventory(
                             reward = reward,
                             inventory = inventory,
                             targetGroup = group,
@@ -540,34 +539,30 @@ class AppLimitRepository(
                             createdAt = now,
                             effectType = RewardType.PERIOD_PASS,
                         )
-                        insertRewardUseHistory(
-                            reward = reward,
-                            targetGroupName = group.name,
-                            usedAt = now,
-                        )
                         return@withLock UseRewardResult.Success(
                             rewardTitle = localizedRewardTitle(reward),
-                            messageKey = "redeem_use_success_period_pass",
+                            messageKey = "redeem_effect_pending_period_pass",
                             messageArgs = listOf(group.name),
+                            pendingEffectId = effectId,
                         )
                     }
                     RewardType.DOUBLE_POINTS_DAY -> {
                         if (group.type != GroupType.ENCOURAGE) return@withLock UseRewardResult.InvalidTargetGroup
                         val window = currentEffectWindow(now, LimitPeriod.DAILY)
                         if (
-                            activeRewardEffectDao.getActiveForGroupAndPeriod(
+                            activeRewardEffectDao.getBlockingForGroupAndPeriod(
                                 groupId = group.id,
                                 effectType = RewardType.DOUBLE_POINTS_DAY,
                                 periodStartDate = window.startDate,
                                 periodEndDate = window.endDate,
                             ) != null
                         ) {
-                            return@withLock UseRewardResult.AlreadyActive
+                            return@withLock UseRewardResult.DoublePointsAlreadyActive
                         }
                         if (isEncourageTargetAlreadyReached(group)) {
                             return@withLock UseRewardResult.AlreadyCompleted
                         }
-                        createEffectAndConsumeInventory(
+                        val effectId = createPendingEffectAndConsumeInventory(
                             reward = reward,
                             inventory = inventory,
                             targetGroup = group,
@@ -576,15 +571,11 @@ class AppLimitRepository(
                             effectType = RewardType.DOUBLE_POINTS_DAY,
                             effectPeriod = LimitPeriod.DAILY,
                         )
-                        insertRewardUseHistory(
-                            reward = reward,
-                            targetGroupName = group.name,
-                            usedAt = now,
-                        )
                         return@withLock UseRewardResult.Success(
                             rewardTitle = localizedRewardTitle(reward),
-                            messageKey = "redeem_use_success_double_points_day",
+                            messageKey = "redeem_effect_pending_double_points_day",
                             messageArgs = listOf(group.name),
+                            pendingEffectId = effectId,
                         )
                     }
                     RewardType.EMERGENCY_UNLOCK,
@@ -627,8 +618,10 @@ class AppLimitRepository(
                             id = effectId,
                             effectType = RewardType.EMERGENCY_UNLOCK,
                             sourceRewardId = ownedUnlockReward.id,
+                            sourceInventoryId = inventory.id,
                             sourceBuiltinKey = ownedUnlockReward.builtinKey,
                             targetGroupId = group.id,
+                            targetGroupNameSnapshot = group.name,
                             targetGroupType = group.type,
                             startAt = now,
                             expireAt = now + payload.minutes * 60_000L,
@@ -636,7 +629,9 @@ class AppLimitRepository(
                             periodEndDate = ArchiveDateUtils.formatDate(ArchiveDateUtils.localDateAt(now, zoneId)),
                             status = ActiveRewardEffectStatus.ACTIVE,
                             payloadJson = ownedUnlockReward.payloadJson,
+                            effectValueJson = rewardEffectValueJson(RewardType.EMERGENCY_UNLOCK, payload),
                             createdAt = now,
+                            confirmedAt = now,
                         ),
                     )
                 }
@@ -970,7 +965,7 @@ class AppLimitRepository(
         return totalUsage >= group.limitMinutes * 60_000L
     }
 
-    private suspend fun createEffectAndConsumeInventory(
+    private suspend fun createPendingEffectAndConsumeInventory(
         reward: RedemptionEntity,
         inventory: RewardInventoryEntity,
         targetGroup: AppGroupEntity,
@@ -978,8 +973,9 @@ class AppLimitRepository(
         createdAt: Long,
         effectType: RewardType,
         effectPeriod: LimitPeriod = targetGroup.limitPeriod,
-    ) {
+    ): String {
         val window = currentEffectWindow(createdAt, effectPeriod)
+        val effectId = UUID.randomUUID().toString()
         database.withTransaction {
             rewardInventoryDao.upsert(
                 inventory.copy(
@@ -989,23 +985,143 @@ class AppLimitRepository(
             )
             activeRewardEffectDao.upsert(
                 ActiveRewardEffectEntity(
-                    id = UUID.randomUUID().toString(),
+                    id = effectId,
                     effectType = effectType,
                     sourceRewardId = reward.id,
+                    sourceInventoryId = inventory.id,
                     sourceBuiltinKey = reward.builtinKey,
                     targetGroupId = targetGroup.id,
+                    targetGroupNameSnapshot = targetGroup.name,
                     targetGroupType = targetGroup.type,
                     startAt = createdAt,
                     expireAt = window.expireAt,
                     periodStartDate = window.startDate,
                     periodEndDate = window.endDate,
-                    status = ActiveRewardEffectStatus.ACTIVE,
+                    status = ActiveRewardEffectStatus.PENDING_CONFIRM,
                     payloadJson = reward.payloadJson,
+                    effectValueJson = rewardEffectValueJson(effectType, payload),
                     createdAt = createdAt,
+                    confirmDeadlineAt = createdAt + REWARD_EFFECT_CONFIRM_WINDOW_MS,
                 ),
             )
         }
+        return effectId
     }
+
+    suspend fun confirmRewardEffect(effectId: String): UseRewardResult =
+        withContext(Dispatchers.IO) {
+            rewardActionMutex.withLock {
+                val effect = activeRewardEffectDao.getById(effectId) ?: return@withLock UseRewardResult.InvalidReward
+                if (effect.status == ActiveRewardEffectStatus.ACTIVE) {
+                    return@withLock UseRewardResult.Success(
+                        rewardTitle = effect.sourceBuiltinKey?.let { AppText.t("${it}_title") }.orEmpty(),
+                        messageKey = "redeem_effect_confirmed",
+                    )
+                }
+                if (effect.status != ActiveRewardEffectStatus.PENDING_CONFIRM) {
+                    return@withLock UseRewardResult.InvalidReward
+                }
+                val reward = redemptionDao.getRedemptionById(effect.sourceRewardId) ?: return@withLock UseRewardResult.InvalidReward
+                val now = System.currentTimeMillis()
+                database.withTransaction {
+                    activeRewardEffectDao.updateLifecycle(
+                        effectId = effect.id,
+                        status = ActiveRewardEffectStatus.ACTIVE,
+                        confirmedAt = now,
+                        canceledAt = null,
+                        consumedAt = null,
+                    )
+                    insertRewardUseHistory(
+                        reward = reward,
+                        targetGroupName = effect.targetGroupNameSnapshot,
+                        usedAt = now,
+                    )
+                }
+                return@withLock UseRewardResult.Success(
+                    rewardTitle = localizedRewardTitle(reward),
+                    messageKey = "redeem_effect_confirmed",
+                )
+            }
+        }
+
+    suspend fun cancelPendingRewardEffect(effectId: String): UseRewardResult =
+        withContext(Dispatchers.IO) {
+            rewardActionMutex.withLock {
+                val effect = activeRewardEffectDao.getById(effectId) ?: return@withLock UseRewardResult.InvalidReward
+                if (effect.status != ActiveRewardEffectStatus.PENDING_CONFIRM) {
+                    return@withLock UseRewardResult.InvalidReward
+                }
+                val reward = redemptionDao.getRedemptionById(effect.sourceRewardId) ?: return@withLock UseRewardResult.InvalidReward
+                val inventory = rewardInventoryDao.getByRewardId(effect.sourceRewardId)
+                val now = System.currentTimeMillis()
+                database.withTransaction {
+                    if (inventory != null) {
+                        rewardInventoryDao.upsert(
+                            inventory.copy(
+                                quantity = inventory.quantity + 1,
+                                updatedAt = now,
+                            ),
+                        )
+                    } else {
+                        rewardInventoryDao.upsert(
+                            RewardInventoryEntity(
+                                id = effect.sourceInventoryId ?: "inventory:${effect.sourceRewardId}",
+                                rewardId = effect.sourceRewardId,
+                                rewardBuiltinKey = effect.sourceBuiltinKey,
+                                quantity = 1,
+                                createdAt = now,
+                                updatedAt = now,
+                            ),
+                        )
+                    }
+                    activeRewardEffectDao.updateLifecycle(
+                        effectId = effect.id,
+                        status = ActiveRewardEffectStatus.CANCELED,
+                        confirmedAt = null,
+                        canceledAt = now,
+                        consumedAt = null,
+                    )
+                }
+                return@withLock UseRewardResult.Success(
+                    rewardTitle = localizedRewardTitle(reward),
+                    messageKey = "redeem_effect_canceled",
+                )
+            }
+        }
+
+    suspend fun confirmExpiredPendingRewardEffects(now: Long = System.currentTimeMillis()) {
+        withContext(Dispatchers.IO) {
+            val pending =
+                activeRewardEffectDao
+                    .getAllSync()
+                    .filter {
+                        it.status == ActiveRewardEffectStatus.PENDING_CONFIRM &&
+                            (it.confirmDeadlineAt ?: Long.MAX_VALUE) <= now
+                    }
+            pending.forEach { effect ->
+                confirmRewardEffect(effect.id)
+            }
+        }
+    }
+
+    fun observeRewardEffectBenefits(): Flow<List<com.rrrrz.tinyvow.data.db.RewardEffectBenefitEntity>> =
+        rewardEffectBenefitDao.observeAll()
+
+    private fun rewardEffectValueJson(
+        effectType: RewardType,
+        payload: RewardPayload,
+    ): String =
+        JSONObject().apply {
+            when (effectType) {
+                RewardType.TIME_ADD,
+                RewardType.EMERGENCY_UNLOCK
+                -> put("minutes", payload.minutes)
+                RewardType.PERIOD_PASS -> put("periodPass", true)
+                RewardType.DOUBLE_POINTS_DAY -> put("pointsMultiplier", payload.pointsMultiplier)
+                RewardType.STREAK_SHIELD -> put("shieldTarget", payload.shieldTarget?.name)
+                RewardType.CUSTOM -> put("custom", true)
+            }
+        }.toString()
 
     private suspend fun insertRewardUseHistory(
         reward: RedemptionEntity,

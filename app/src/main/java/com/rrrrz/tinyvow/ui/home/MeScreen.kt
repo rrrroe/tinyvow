@@ -29,27 +29,38 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Science
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.TimePicker
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.rememberTimePickerState
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
@@ -91,6 +102,7 @@ import com.rrrrz.tinyvow.ui.theme.TinyVowCard
 import com.rrrrz.tinyvow.ui.theme.TinyVowElevation
 import com.rrrrz.tinyvow.ui.theme.TinyVowRadius
 import com.rrrrz.tinyvow.ui.theme.TinyVowSpacing
+import com.rrrrz.tinyvow.ui.theme.selectedThemeDisplayName
 import java.text.DateFormat
 import java.text.NumberFormat
 import java.util.Date
@@ -121,8 +133,12 @@ fun MeScreen(
     superModeStatus: SuperModeStatus,
     isDebugBuild: Boolean,
     selectedAppLanguage: AppLanguage,
+    notificationRemindersEnabled: Boolean,
+    controlRemainingReminderMinutes: Int,
+    encourageReminderTimesMinutes: List<Int>,
     openBenefitsDialog: Boolean,
     onBenefitsDialogOpened: () -> Unit,
+    onNavigateToProMembership: () -> Unit,
     usageAccessGranted: Boolean,
     accessibilityServiceEnabled: Boolean,
     isAutoStartDismissed: Boolean,
@@ -145,6 +161,7 @@ fun MeScreen(
     onRequestNotificationPermission: () -> Unit,
     onClearDismissedPermissionPrompts: () -> Unit,
     onNavigateToPermissionSettings: () -> Unit,
+    onNavigateToNotificationSettings: () -> Unit,
     onNavigateToLaboratory: () -> Unit,
     onNavigateToHistory: () -> Unit,
     onNavigateToThemeSettings: () -> Unit,
@@ -185,6 +202,9 @@ fun MeScreen(
     val canTapToSignIn = isGoogleSignInEnabled && userSession == null && isGoogleSignInConfigured
     val isProMember = isProActive
     val appUsageDays = remember(context) { calculateInstalledDays(context) }
+    val currentThemeName = remember(selectedThemeId, customThemes, selectedAppLanguage) {
+        selectedThemeDisplayName(selectedThemeId, customThemes)
+    }
     val hasCustomDisplayName = !profileDisplayName.isNullOrBlank()
     val displayName =
         profileDisplayName
@@ -203,6 +223,12 @@ fun MeScreen(
             else -> AppText.t("me_china_local_mode_subtitle")
         }
     val displayAppVersion = userFacingVersionName(appVersionName)
+    LaunchedEffect(openBenefitsDialog) {
+        if (openBenefitsDialog) {
+            onBenefitsDialogOpened()
+            onNavigateToProMembership()
+        }
+    }
 
     Column(
         modifier = Modifier
@@ -358,14 +384,11 @@ fun MeScreen(
                 SubscriptionStatusPanel(
                     entitlement = proEntitlement,
                     offers = subscriptionOffers,
-                    isPlayBillingEnabled = isPlayBillingEnabled,
                     isLocalActivationEnabled = isLocalActivationEnabled,
                     localUserId = userSession?.userId,
-                    openBenefitsDialog = openBenefitsDialog,
-                    onBenefitsDialogOpened = onBenefitsDialogOpened,
+                    onOpenMembershipPage = onNavigateToProMembership,
                     onPurchasePro = onPurchasePro,
                     onRestorePurchases = onRestorePurchases,
-                    onManageSubscription = onManageSubscription,
                     onActivateProCode = onActivateProCode,
                 )
             }
@@ -380,6 +403,17 @@ fun MeScreen(
                         icon = Icons.Default.Settings,
                         title = AppText.t("me_permission_settings"),
                         onClick = onNavigateToPermissionSettings,
+                    )
+                    SettingsDivider()
+                    MeMenuItem(
+                        icon = Icons.Default.Info,
+                        title = AppText.t("notification_settings_title"),
+                        trailingText = if (notificationRemindersEnabled) {
+                            AppText.t("notification_settings_enabled")
+                        } else {
+                            AppText.t("notification_settings_disabled")
+                        },
+                        onClick = onNavigateToNotificationSettings,
                     )
                     SettingsDivider()
                     MeMenuItem(
@@ -405,6 +439,7 @@ fun MeScreen(
                     MeMenuItem(
                         icon = Icons.Default.Palette,
                         title = AppText.t("me_theme_management"),
+                        trailingText = currentThemeName,
                         onClick = onNavigateToThemeSettings,
                     )
                     SettingsDivider()
@@ -786,6 +821,314 @@ internal fun PermissionSettingsPage(
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
+internal fun NotificationReminderSettingsPage(
+    remindersEnabled: Boolean,
+    notificationPermissionGranted: Boolean,
+    isProActive: Boolean,
+    controlRemainingReminderMinutes: Int,
+    encourageReminderTimesMinutes: List<Int>,
+    onBack: () -> Unit,
+    onSetEnabled: (Boolean) -> Unit,
+    onSetControlRemainingMinutes: (Int) -> Unit,
+    onSetEncourageTimes: (List<Int>) -> Unit,
+    onRequestNotificationPermission: () -> Unit,
+    onShowProUpsell: () -> Unit,
+) {
+    var controlText by remember(controlRemainingReminderMinutes) {
+        mutableStateOf(controlRemainingReminderMinutes.toString())
+    }
+    var draftEncourageTimes by remember(encourageReminderTimesMinutes) {
+        mutableStateOf(encourageReminderTimesMinutes)
+    }
+    var editingTimeIndex by remember { mutableStateOf<Int?>(null) }
+    var showAddTimeDialog by remember { mutableStateOf(false) }
+    val parsedControl = controlText.toIntOrNull()
+
+    MeDetailPageScaffold(
+        title = AppText.t("notification_settings_title"),
+        description = AppText.t("notification_settings_description"),
+        onBack = onBack,
+    ) {
+        MeSettingsCard(title = AppText.t("notification_settings_general")) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        text = AppText.t("notification_settings_enabled_title"),
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = LocalThemeColors.current.ink,
+                    )
+                    Text(
+                        text = AppText.t("notification_settings_enabled_body"),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = LocalThemeColors.current.inkMuted,
+                    )
+                }
+                Switch(checked = remindersEnabled, onCheckedChange = onSetEnabled)
+            }
+
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        text = AppText.t("notification_settings_permission_title"),
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = LocalThemeColors.current.ink,
+                    )
+                    Text(
+                        text = if (notificationPermissionGranted) {
+                            AppText.t("home_notifications_enabled")
+                        } else {
+                            AppText.t("notification_settings_permission_needed")
+                        },
+                        style = MaterialTheme.typography.bodySmall,
+                        color = LocalThemeColors.current.inkMuted,
+                    )
+                }
+                if (!notificationPermissionGranted) {
+                    Button(onClick = onRequestNotificationPermission) {
+                        Text(AppText.t("reminder_card_action"))
+                    }
+                }
+            }
+        }
+
+        MeSettingsCard(title = AppText.t("notification_settings_schedule")) {
+            OutlinedTextField(
+                value = controlText,
+                onValueChange = { value ->
+                    if (isProActive) {
+                        controlText = value.filter(Char::isDigit).take(3)
+                    } else {
+                        onShowProUpsell()
+                    }
+                },
+                enabled = isProActive,
+                label = { Text(AppText.t("notification_settings_control_threshold")) },
+                supportingText = {
+                    Text(
+                        if (isProActive) {
+                            AppText.t("notification_settings_control_threshold_hint")
+                        } else {
+                            AppText.t("notification_settings_pro_locked")
+                        }
+                    )
+                },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+            )
+            Button(
+                onClick = {
+                    val minutes = parsedControl ?: return@Button
+                    onSetControlRemainingMinutes(minutes)
+                },
+                enabled = isProActive &&
+                    parsedControl != null &&
+                    parsedControl in 1..120 &&
+                    parsedControl != controlRemainingReminderMinutes,
+            ) {
+                Text(AppText.t("notification_settings_save_control_threshold"))
+            }
+            if (!isProActive) {
+                OutlinedButton(onClick = onShowProUpsell) {
+                    Text(AppText.t("pro_view_benefits"))
+                }
+            }
+
+            HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+            ReminderTimeSelector(
+                times = draftEncourageTimes,
+                enabled = isProActive,
+                onAdd = {
+                    if (isProActive) {
+                        showAddTimeDialog = true
+                    } else {
+                        onShowProUpsell()
+                    }
+                },
+                onEdit = { index ->
+                    if (isProActive) {
+                        editingTimeIndex = index
+                    } else {
+                        onShowProUpsell()
+                    }
+                },
+                onDelete = { index ->
+                    if (!isProActive) {
+                        onShowProUpsell()
+                    } else if (draftEncourageTimes.size > 1) {
+                        draftEncourageTimes = draftEncourageTimes.filterIndexed { itemIndex, _ -> itemIndex != index }
+                    }
+                },
+                onShowProUpsell = onShowProUpsell,
+            )
+            Button(
+                onClick = { onSetEncourageTimes(draftEncourageTimes) },
+                enabled = isProActive && draftEncourageTimes.isNotEmpty() && draftEncourageTimes != encourageReminderTimesMinutes,
+            ) {
+                Text(AppText.t("notification_settings_save_encourage_times"))
+            }
+        }
+    }
+
+    val editingIndex = editingTimeIndex
+    if (showAddTimeDialog) {
+        ReminderTimePickerDialog(
+            initialMinutes = draftEncourageTimes.lastOrNull() ?: 8 * 60,
+            onDismiss = { showAddTimeDialog = false },
+            onConfirm = { minutes ->
+                draftEncourageTimes = (draftEncourageTimes + minutes).distinct().sorted()
+                showAddTimeDialog = false
+            },
+        )
+    }
+    if (editingIndex != null) {
+        ReminderTimePickerDialog(
+            initialMinutes = draftEncourageTimes.getOrNull(editingIndex) ?: 8 * 60,
+            onDismiss = { editingTimeIndex = null },
+            onConfirm = { minutes ->
+                draftEncourageTimes =
+                    draftEncourageTimes
+                        .mapIndexed { index, existing -> if (index == editingIndex) minutes else existing }
+                        .distinct()
+                        .sorted()
+                editingTimeIndex = null
+            },
+        )
+    }
+}
+
+@Composable
+private fun ReminderTimeSelector(
+    times: List<Int>,
+    enabled: Boolean,
+    onAdd: () -> Unit,
+    onEdit: (Int) -> Unit,
+    onDelete: (Int) -> Unit,
+    onShowProUpsell: () -> Unit,
+) {
+    val themeColors = LocalThemeColors.current
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        Text(
+            text = AppText.t("notification_settings_encourage_times"),
+            style = MaterialTheme.typography.bodyLarge,
+            color = themeColors.ink,
+        )
+        Text(
+            text = if (enabled) {
+                AppText.t("notification_settings_encourage_times_hint")
+            } else {
+                AppText.t("notification_settings_pro_locked")
+            },
+            style = MaterialTheme.typography.bodySmall,
+            color = themeColors.inkMuted,
+        )
+        times.forEachIndexed { index, minutes ->
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable { if (enabled) onEdit(index) else onShowProUpsell() },
+                shape = RoundedCornerShape(14.dp),
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)),
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.AccessTime,
+                        contentDescription = null,
+                        tint = themeColors.base,
+                    )
+                    Text(
+                        text = formatReminderTime(minutes),
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = themeColors.inkStrong,
+                    )
+                    IconButton(
+                        onClick = { if (enabled) onDelete(index) else onShowProUpsell() },
+                        enabled = enabled && times.size > 1,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Delete,
+                            contentDescription = AppText.t("notification_settings_delete_time"),
+                            tint = if (enabled && times.size > 1) {
+                                MaterialTheme.colorScheme.error
+                            } else {
+                                MaterialTheme.colorScheme.outline
+                            },
+                        )
+                    }
+                }
+            }
+        }
+        OutlinedButton(
+            onClick = onAdd,
+            modifier = Modifier.fillMaxWidth(),
+            enabled = enabled,
+        ) {
+            Icon(
+                imageVector = Icons.Default.Add,
+                contentDescription = null,
+                modifier = Modifier.size(18.dp),
+            )
+            Spacer(Modifier.width(8.dp))
+            Text(AppText.t("notification_settings_add_encourage_time"))
+        }
+        if (!enabled) {
+            OutlinedButton(onClick = onShowProUpsell, modifier = Modifier.fillMaxWidth()) {
+                Text(AppText.t("pro_view_benefits"))
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ReminderTimePickerDialog(
+    initialMinutes: Int,
+    onDismiss: () -> Unit,
+    onConfirm: (Int) -> Unit,
+) {
+    val state = rememberTimePickerState(
+        initialHour = (initialMinutes / 60).coerceIn(0, 23),
+        initialMinute = (initialMinutes % 60).coerceIn(0, 59),
+        is24Hour = true,
+    )
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(AppText.t("notification_settings_time_picker_title")) },
+        text = {
+            Box(modifier = Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                TimePicker(state = state)
+            }
+        },
+        confirmButton = {
+            Button(onClick = { onConfirm(state.hour * 60 + state.minute) }) {
+                Text(AppText.t("group_save"))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(AppText.t("group_cancel"))
+            }
+        },
+    )
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
 fun LanguageSettingsScreen(
     selected: AppLanguage,
     onSelect: (AppLanguage) -> Unit,
@@ -1027,26 +1370,16 @@ private fun MetricInfoRow(label: String, value: String) {
 private fun SubscriptionStatusPanel(
     entitlement: ProEntitlementState,
     offers: List<SubscriptionOffer>,
-    isPlayBillingEnabled: Boolean,
     isLocalActivationEnabled: Boolean,
     localUserId: String?,
-    openBenefitsDialog: Boolean,
-    onBenefitsDialogOpened: () -> Unit,
+    onOpenMembershipPage: () -> Unit,
     onPurchasePro: (SubscriptionOffer) -> Unit,
     onRestorePurchases: () -> Unit,
-    onManageSubscription: () -> Unit,
     onActivateProCode: (String) -> Unit,
 ) {
     val isActive = entitlement.status == ProEntitlementStatus.ACTIVE
     val isPending = entitlement.status == ProEntitlementStatus.PENDING
     var showActivationDialog by remember { mutableStateOf(false) }
-    var showBenefitsDialog by remember { mutableStateOf(false) }
-    LaunchedEffect(openBenefitsDialog) {
-        if (openBenefitsDialog) {
-            showBenefitsDialog = true
-            onBenefitsDialogOpened()
-        }
-    }
 
     Column(
         modifier = Modifier
@@ -1058,7 +1391,7 @@ private fun SubscriptionStatusPanel(
             modifier = Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(16.dp))
-                .clickable(onClick = { showBenefitsDialog = true })
+                .clickable(onClick = onOpenMembershipPage)
                 .padding(vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -1132,21 +1465,6 @@ private fun SubscriptionStatusPanel(
             }
         }
     }
-
-    if (showBenefitsDialog) {
-        ProBenefitsComparisonDialog(
-            entitlement = entitlement,
-            offers = offers,
-            showSubscriptionActions = isPlayBillingEnabled && !isLocalActivationEnabled,
-            isLocalActivationEnabled = isLocalActivationEnabled,
-            localUserId = localUserId,
-            onPurchasePro = onPurchasePro,
-            onRestorePurchases = onRestorePurchases,
-            onManageSubscription = onManageSubscription,
-            onActivateProCode = onActivateProCode,
-            onDismiss = { showBenefitsDialog = false },
-        )
-    }
 }
 
 private fun subscriptionPriceSummary(offers: List<SubscriptionOffer>, isActive: Boolean): String =
@@ -1167,38 +1485,336 @@ private fun entitlementStatusText(entitlement: ProEntitlementState): String =
         ProEntitlementStatus.FREE -> AppText.t("me_free_version")
     }
 
+private data class ProPricePlan(
+    val title: String,
+    val price: String,
+    val note: String,
+    val offer: SubscriptionOffer? = null,
+    val highlighted: Boolean = false,
+)
+
+private const val PRO_PURCHASE_EMAIL = "rrrr.zhao@qq.com"
+private const val PRO_PURCHASE_WECHAT = "rourourenren222"
+private const val PRO_COMPARE_FEATURE_WEIGHT = 0.72f
+private const val PRO_COMPARE_FREE_WEIGHT = 1.02f
+private const val PRO_COMPARE_PRO_WEIGHT = 1.26f
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun ProBenefitsComparisonDialog(
+internal fun ProMembershipPage(
     entitlement: ProEntitlementState,
     offers: List<SubscriptionOffer>,
-    showSubscriptionActions: Boolean,
+    isPlayBillingEnabled: Boolean,
     isLocalActivationEnabled: Boolean,
     localUserId: String?,
+    onBack: () -> Unit,
     onPurchasePro: (SubscriptionOffer) -> Unit,
     onRestorePurchases: () -> Unit,
     onManageSubscription: () -> Unit,
     onActivateProCode: (String) -> Unit,
+) {
+    val isActive = entitlement.status == ProEntitlementStatus.ACTIVE
+    val showSubscriptionActions = isPlayBillingEnabled && !isLocalActivationEnabled
+    val plans = proPricePlans(offers, isLocalActivationEnabled)
+    var showPurchaseContactDialog by remember { mutableStateOf(false) }
+
+    MeDetailPageScaffold(
+        title = AppText.t("pro_membership_title"),
+        description = AppText.t("pro_membership_description"),
+        onBack = onBack,
+    ) {
+        MeSettingsCard(title = AppText.t("pro_compare_title")) {
+            ProCompareHeaderRow()
+            proComparisonRows().forEach { (feature, freeValue, proValue) ->
+                ProCompareValueRow(
+                    feature = feature,
+                    freeValue = freeValue,
+                    proValue = proValue,
+                )
+            }
+        }
+
+        MeSettingsCard(title = AppText.t("pro_membership_status")) {
+            MetricInfoRow(
+                label = AppText.t("me_subscription"),
+                value = entitlementStatusText(entitlement),
+            )
+            if (isActive && showSubscriptionActions) {
+                TextButton(onClick = onManageSubscription, modifier = Modifier.fillMaxWidth()) {
+                    Text(AppText.t("me_manage_subscription"))
+                }
+            }
+        }
+
+        MeSettingsCard(title = AppText.t("pro_price_title")) {
+            Text(
+                text = if (isLocalActivationEnabled) {
+                    AppText.t("pro_price_china_description")
+                } else {
+                    AppText.t("pro_price_global_description")
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            plans.forEach { plan ->
+                ProPricePlanCard(
+                    plan = plan,
+                    showPurchaseButton = false,
+                    onPurchase = { plan.offer?.let(onPurchasePro) },
+                )
+            }
+            Button(
+                onClick = { showPurchaseContactDialog = true },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(if (isActive) AppText.t("pro_renew_membership") else AppText.t("pro_buy_membership"))
+            }
+            if (showSubscriptionActions) {
+                TextButton(onClick = onRestorePurchases, modifier = Modifier.fillMaxWidth()) {
+                    Text(AppText.t("me_restore_purchases"))
+                }
+            }
+        }
+    }
+
+    if (showPurchaseContactDialog) {
+        ProPurchaseContactDialog(
+            onDismiss = { showPurchaseContactDialog = false },
+        )
+    }
+}
+
+@Composable
+private fun ProPricePlanCard(
+    plan: ProPricePlan,
+    showPurchaseButton: Boolean,
+    onPurchase: () -> Unit,
+) {
+    val themeColors = LocalThemeColors.current
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        color = if (plan.highlighted) {
+            themeColors.baseContainer.copy(alpha = 0.58f)
+        } else {
+            MaterialTheme.colorScheme.surfaceContainerHigh
+        },
+        border = BorderStroke(
+            width = 1.dp,
+            color = if (plan.highlighted) themeColors.base.copy(alpha = 0.24f) else MaterialTheme.colorScheme.outlineVariant,
+        ),
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = plan.title,
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = themeColors.inkStrong,
+                )
+                Text(
+                    text = plan.price,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = themeColors.base,
+                )
+            }
+            Text(
+                text = plan.note,
+                style = MaterialTheme.typography.bodySmall,
+                color = themeColors.inkMuted,
+            )
+            if (showPurchaseButton) {
+                Button(
+                    onClick = onPurchase,
+                    enabled = plan.offer != null,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(
+                        if (plan.offer == null) {
+                            AppText.t("me_loading_subscription_info")
+                        } else {
+                            AppText.t("me_buy_pro_with_price", plan.price)
+                        },
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ProPurchaseContactDialog(
     onDismiss: () -> Unit,
 ) {
+    val clipboard = LocalClipboardManager.current
+    var copiedLabel by remember { mutableStateOf<String?>(null) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(AppText.t("pro_purchase_contact_title")) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    text = AppText.t("pro_purchase_contact_body"),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                ProPurchaseContactRow(
+                    label = AppText.t("pro_purchase_email_label"),
+                    value = PRO_PURCHASE_EMAIL,
+                    onCopy = {
+                        clipboard.setText(AnnotatedString(PRO_PURCHASE_EMAIL))
+                        copiedLabel = AppText.t("pro_purchase_email_label")
+                    },
+                )
+                ProPurchaseContactRow(
+                    label = AppText.t("pro_purchase_wechat_label"),
+                    value = PRO_PURCHASE_WECHAT,
+                    onCopy = {
+                        clipboard.setText(AnnotatedString(PRO_PURCHASE_WECHAT))
+                        copiedLabel = AppText.t("pro_purchase_wechat_label")
+                    },
+                )
+                copiedLabel?.let { label ->
+                    Text(
+                        text = AppText.t("pro_purchase_contact_copied", label),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = LocalThemeColors.current.encourage,
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(AppText.t("group_close"))
+            }
+        },
+    )
+}
+
+@Composable
+private fun ProPurchaseContactRow(
+    label: String,
+    value: String,
+    onCopy: () -> Unit,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    text = value,
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+            }
+            IconButton(onClick = onCopy) {
+                Icon(
+                    imageVector = Icons.Default.ContentCopy,
+                    contentDescription = AppText.t("pro_purchase_copy_contact", label),
+                )
+            }
+        }
+    }
+}
+
+private fun proPricePlans(offers: List<SubscriptionOffer>, isLocalActivationEnabled: Boolean): List<ProPricePlan> {
+    if (isLocalActivationEnabled) {
+        return listOf(
+            ProPricePlan(
+                title = AppText.t("pro_price_yearly"),
+                price = AppText.t("pro_price_china_yearly"),
+                note = AppText.t("pro_price_china_yearly_note"),
+                highlighted = true,
+            ),
+            ProPricePlan(
+                title = AppText.t("pro_price_monthly"),
+                price = AppText.t("pro_price_china_monthly"),
+                note = AppText.t("pro_price_china_monthly_note"),
+            ),
+        )
+    }
+
+    val yearlyOffer = offers.firstOrNull { it.billingPeriod.equals("P1Y", ignoreCase = true) }
+    val monthlyOffer = offers.firstOrNull { it.billingPeriod.equals("P1M", ignoreCase = true) }
+    val periodOffers = listOfNotNull(yearlyOffer, monthlyOffer)
+    return if (periodOffers.isNotEmpty()) {
+        listOf(
+            ProPricePlan(
+                title = AppText.t("pro_price_yearly"),
+                price = yearlyOffer?.price ?: AppText.t("pro_price_global_yearly"),
+                note = AppText.t("pro_price_global_yearly_note"),
+                offer = yearlyOffer,
+                highlighted = true,
+            ),
+            ProPricePlan(
+                title = AppText.t("pro_price_monthly"),
+                price = monthlyOffer?.price ?: AppText.t("pro_price_global_monthly"),
+                note = AppText.t("pro_price_global_monthly_note"),
+                offer = monthlyOffer,
+            ),
+        )
+    } else if (offers.isNotEmpty()) {
+        offers.mapIndexed { index, offer ->
+            ProPricePlan(
+                title = billingPeriodTitle(offer.billingPeriod),
+                price = offer.price,
+                note = AppText.t("pro_price_store_offer_note"),
+                offer = offer,
+                highlighted = index == 0,
+            )
+        }
+    } else {
+        listOf(
+            ProPricePlan(
+                title = AppText.t("pro_price_yearly"),
+                price = AppText.t("pro_price_global_yearly"),
+                note = AppText.t("pro_price_global_yearly_note"),
+                highlighted = true,
+            ),
+            ProPricePlan(
+                title = AppText.t("pro_price_monthly"),
+                price = AppText.t("pro_price_global_monthly"),
+                note = AppText.t("pro_price_global_monthly_note"),
+            ),
+        )
+    }
+}
+
+private fun billingPeriodTitle(billingPeriod: String): String =
+    when (billingPeriod.uppercase()) {
+        "P1Y" -> AppText.t("pro_price_yearly")
+        "P1M" -> AppText.t("pro_price_monthly")
+        else -> AppText.t("me_subscription")
+    }
+
+private fun proComparisonRows(): List<Triple<String, String, String>> {
     val freeLimits = ProFeatureGate.limits(false)
     val proLimits = ProFeatureGate.limits(true)
-    val defaultOffer = offers.firstOrNull()
-    val purchaseButtonEnabled =
-        if (isLocalActivationEnabled) {
-            !localUserId.isNullOrBlank()
-        } else {
-            entitlement.status == ProEntitlementStatus.FREE && defaultOffer != null
-        }
-    val purchaseButtonLabel =
-        when {
-            isLocalActivationEnabled -> AppText.t("pro_activate_membership")
-            entitlement.status == ProEntitlementStatus.ACTIVE -> AppText.t("me_unlocked")
-            entitlement.status == ProEntitlementStatus.PENDING -> AppText.t("me_payment_pending")
-            defaultOffer != null -> AppText.t("me_buy_pro_with_price", defaultOffer.price)
-            else -> AppText.t("me_loading_subscription_info")
-        }
-    var showActivationDialog by remember { mutableStateOf(false) }
-    val rows = listOf(
+    return listOf(
         Triple(
             AppText.t("pro_compare_control_groups"),
             freeLimits.controlGroupLimit.toString(),
@@ -1220,6 +1836,11 @@ private fun ProBenefitsComparisonDialog(
             AppText.t("pro_compare_unlimited"),
         ),
         Triple(
+            AppText.t("pro_compare_custom_themes"),
+            freeLimits.customThemeLimit.toString(),
+            proLimits.customThemeLimit.toString(),
+        ),
+        Triple(
             AppText.t("pro_compare_member_themes"),
             AppText.t("pro_compare_not_included"),
             AppText.t("pro_compare_included"),
@@ -1235,6 +1856,38 @@ private fun ProBenefitsComparisonDialog(
             AppText.t("pro_compare_custom_window"),
         ),
     )
+}
+
+@Composable
+private fun ProBenefitsComparisonDialog(
+    entitlement: ProEntitlementState,
+    offers: List<SubscriptionOffer>,
+    showSubscriptionActions: Boolean,
+    isLocalActivationEnabled: Boolean,
+    localUserId: String?,
+    onPurchasePro: (SubscriptionOffer) -> Unit,
+    onRestorePurchases: () -> Unit,
+    onManageSubscription: () -> Unit,
+    onActivateProCode: (String) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val defaultOffer = offers.firstOrNull()
+    val purchaseButtonEnabled =
+        if (isLocalActivationEnabled) {
+            !localUserId.isNullOrBlank()
+        } else {
+            entitlement.status == ProEntitlementStatus.FREE && defaultOffer != null
+        }
+    val purchaseButtonLabel =
+        when {
+            isLocalActivationEnabled -> AppText.t("pro_activate_membership")
+            entitlement.status == ProEntitlementStatus.ACTIVE -> AppText.t("me_unlocked")
+            entitlement.status == ProEntitlementStatus.PENDING -> AppText.t("me_payment_pending")
+            defaultOffer != null -> AppText.t("me_buy_pro_with_price", defaultOffer.price)
+            else -> AppText.t("me_loading_subscription_info")
+        }
+    var showActivationDialog by remember { mutableStateOf(false) }
+    val rows = proComparisonRows()
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -1304,29 +1957,36 @@ private fun ProBenefitsComparisonDialog(
 @Composable
 private fun ProCompareHeaderRow() {
     val themeColors = LocalThemeColors.current
-    Row(
+    Surface(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.CenterVertically,
+        shape = RoundedCornerShape(12.dp),
+        color = themeColors.baseContainer.copy(alpha = 0.22f),
     ) {
-        Text(
-            text = AppText.t("pro_compare_feature"),
-            modifier = Modifier.weight(1.4f),
-            style = MaterialTheme.typography.labelMedium,
-            color = themeColors.inkMuted,
-        )
-        Text(
-            text = AppText.t("pro_compare_free"),
-            modifier = Modifier.weight(0.8f),
-            style = MaterialTheme.typography.labelMedium,
-            color = themeColors.inkMuted,
-        )
-        Text(
-            text = AppText.t("pro_compare_pro"),
-            modifier = Modifier.weight(0.8f),
-            style = MaterialTheme.typography.labelMedium,
-            color = themeColors.base,
-        )
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = AppText.t("pro_compare_feature"),
+                modifier = Modifier.weight(PRO_COMPARE_FEATURE_WEIGHT),
+                style = MaterialTheme.typography.labelSmall,
+                color = themeColors.inkMuted,
+            )
+            Text(
+                text = AppText.t("pro_compare_free"),
+                modifier = Modifier.weight(PRO_COMPARE_FREE_WEIGHT),
+                style = MaterialTheme.typography.labelSmall,
+                color = themeColors.inkMuted,
+            )
+            Text(
+                text = AppText.t("pro_compare_pro"),
+                modifier = Modifier.weight(PRO_COMPARE_PRO_WEIGHT),
+                style = MaterialTheme.typography.labelSmall,
+                color = themeColors.base,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
     }
 }
 
@@ -1339,33 +1999,35 @@ private fun ProCompareValueRow(
     val themeColors = LocalThemeColors.current
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(14.dp),
-        color = themeColors.baseContainer.copy(alpha = 0.44f),
-        border = androidx.compose.foundation.BorderStroke(1.dp, themeColors.base.copy(alpha = 0.08f)),
+        shape = RoundedCornerShape(12.dp),
+        color = themeColors.baseContainer.copy(alpha = 0.34f),
+        border = BorderStroke(1.dp, themeColors.base.copy(alpha = 0.08f)),
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 10.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                .padding(horizontal = 10.dp, vertical = 9.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Text(
                 text = feature,
-                modifier = Modifier.weight(1.4f),
-                style = MaterialTheme.typography.bodyMedium,
-                color = themeColors.ink,
+                modifier = Modifier.weight(PRO_COMPARE_FEATURE_WEIGHT),
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = themeColors.inkStrong,
             )
             Text(
                 text = freeValue,
-                modifier = Modifier.weight(0.8f),
+                modifier = Modifier.weight(PRO_COMPARE_FREE_WEIGHT),
                 style = MaterialTheme.typography.bodySmall,
                 color = themeColors.inkMuted,
             )
             Text(
                 text = proValue,
-                modifier = Modifier.weight(0.8f),
+                modifier = Modifier.weight(PRO_COMPARE_PRO_WEIGHT),
                 style = MaterialTheme.typography.bodySmall,
+                fontWeight = FontWeight.SemiBold,
                 color = themeColors.base,
             )
         }
@@ -1461,6 +2123,9 @@ private fun calculateInstalledDays(context: android.content.Context): Long {
     val today = LocalDate.now(ZoneId.systemDefault())
     return ChronoUnit.DAYS.between(installedDate, today).plus(1L).coerceAtLeast(1L)
 }
+
+private fun formatReminderTime(minutes: Int): String =
+    "%02d:%02d".format(minutes / 60, minutes % 60)
 
 @Composable
 fun MeMenuSection(title: String, content: @Composable ColumnScope.() -> Unit) {

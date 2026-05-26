@@ -150,10 +150,13 @@ fun GroupDashboard(
     ) -> Unit,
     onDeleteGroup: (id: String) -> Unit,
     onReorderGroups: (GroupType, List<String>) -> Unit,
+    createGroupRequest: Int = 0,
     archiveRepository: DailyArchiveRepository?,
     isProActive: Boolean,
     onShowProUpsell: (ProUpsellSource) -> Unit,
     onGuardAction: (GuardedAction, () -> Unit) -> Unit,
+    openGroupDetailRequest: Int = 0,
+    openGroupDetailGroup: AppGroupWithApps? = null,
     modifier: Modifier = Modifier
 ) {
     val themeColors = LocalThemeColors.current
@@ -168,6 +171,23 @@ fun GroupDashboard(
     }
     val encourageGroups = remember(groupsWithApps) {
         groupsWithApps.filter { it.group.type == GroupType.ENCOURAGE }
+    }
+
+    LaunchedEffect(createGroupRequest) {
+        if (createGroupRequest <= 0) return@LaunchedEffect
+        if (ProFeatureGate.canAddGroup(isProActive, GroupType.CONTROL, controlGroups.size)) {
+            editingGroup = null
+            forcedType = GroupType.CONTROL
+            showDialog = true
+        } else {
+            onShowProUpsell(ProUpsellSource.GROUP_LIMIT)
+        }
+    }
+
+    LaunchedEffect(openGroupDetailRequest) {
+        if (openGroupDetailRequest > 0) {
+            detailGroup = openGroupDetailGroup
+        }
     }
 
     Column(
@@ -452,7 +472,7 @@ private fun GroupCard(
         targetValue = progress,
         animationSpec = androidx.compose.animation.core.spring(
             dampingRatio = androidx.compose.animation.core.Spring.DampingRatioNoBouncy,
-            stiffness = androidx.compose.animation.core.Spring.StiffnessVeryLow
+            stiffness = androidx.compose.animation.core.Spring.StiffnessLow,
         ),
         label = "progress"
     )
@@ -484,9 +504,9 @@ private fun GroupCard(
                             .padding(start = (index * iconOffset).dp)
                             .size(iconSize.dp)
                             .zIndex((maxIcons - index).toFloat()),
-                        shape = RoundedCornerShape(11.dp),
+                        shape = CircleShape,
                         color = MaterialTheme.colorScheme.surface,
-                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.95f)),
+                        border = BorderStroke(2.dp, Color.White.copy(alpha = 0.95f)),
                     ) {
                         if (icon != null) {
                             AsyncImage(
@@ -495,7 +515,7 @@ private fun GroupCard(
                                 contentScale = ContentScale.Crop,
                                 modifier = Modifier
                                     .fillMaxSize()
-                                    .clip(RoundedCornerShape(11.dp))
+                                    .clip(CircleShape)
                                     .graphicsLayer {
                                         scaleX = 1.08f
                                         scaleY = 1.08f

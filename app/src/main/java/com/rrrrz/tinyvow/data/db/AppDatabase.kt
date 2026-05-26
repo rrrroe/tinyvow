@@ -22,13 +22,15 @@ import com.rrrrz.tinyvow.data.db.migration.AppDatabaseMigrations
         BlockEventEntity::class,
         RewardInventoryEntity::class,
         ActiveRewardEffectEntity::class,
+        RewardEffectBenefitEntity::class,
         StreakShieldPendingEntity::class,
         RewardUseHistoryEntity::class,
         SpecialAppConfigEntity::class,
         SpecialAppUsageSnapshotEntity::class,
         SpecialAppPointCreditEntity::class,
+        ProtectionEventEntity::class,
     ],
-    version = 21,
+    version = 22,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -46,11 +48,13 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun blockEventDao(): BlockEventDao
     abstract fun rewardInventoryDao(): RewardInventoryDao
     abstract fun activeRewardEffectDao(): ActiveRewardEffectDao
+    abstract fun rewardEffectBenefitDao(): RewardEffectBenefitDao
     abstract fun streakShieldPendingDao(): StreakShieldPendingDao
     abstract fun rewardUseHistoryDao(): RewardUseHistoryDao
     abstract fun specialAppConfigDao(): SpecialAppConfigDao
     abstract fun specialAppUsageSnapshotDao(): SpecialAppUsageSnapshotDao
     abstract fun specialAppPointCreditDao(): SpecialAppPointCreditDao
+    abstract fun protectionEventDao(): ProtectionEventDao
 
     companion object {
         private const val DEFAULT_DATABASE_NAME = "tinyvow_database"
@@ -67,6 +71,7 @@ abstract class AppDatabase : RoomDatabase() {
         val MIGRATION_18_19 = AppDatabaseMigrations.MIGRATION_18_19
         val MIGRATION_19_20 = AppDatabaseMigrations.MIGRATION_19_20
         val MIGRATION_20_21 = AppDatabaseMigrations.MIGRATION_20_21
+        val MIGRATION_21_22 = AppDatabaseMigrations.MIGRATION_21_22
 
         @Volatile
         private var INSTANCE: AppDatabase? = null

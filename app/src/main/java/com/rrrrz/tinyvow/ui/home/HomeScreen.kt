@@ -23,11 +23,14 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -94,6 +97,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.Popup
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -115,6 +119,10 @@ import com.rrrrz.tinyvow.data.db.AppDatabase
 import com.rrrrz.tinyvow.data.notification.NotificationPermissionChecker
 import com.rrrrz.tinyvow.data.privacy.LocalDataManager
 import com.rrrrz.tinyvow.data.pro.ProFeatureGate
+import com.rrrrz.tinyvow.data.reminder.ReminderPolicy
+import com.rrrrz.tinyvow.data.reminder.ReminderScheduler
+import com.rrrrz.tinyvow.data.reliability.PermissionReliabilitySnapshot
+import com.rrrrz.tinyvow.data.reliability.StartupReliabilityStep
 import com.rrrrz.tinyvow.data.repository.AppGroupWithApps
 import com.rrrrz.tinyvow.data.repository.AppLimitRepository
 import com.rrrrz.tinyvow.data.repository.AchievementProgress
@@ -123,6 +131,7 @@ import com.rrrrz.tinyvow.data.repository.CustomRewardDraft
 import com.rrrrz.tinyvow.data.repository.PointsRepository
 import com.rrrrz.tinyvow.data.repository.InventoryRewardItem
 import com.rrrrz.tinyvow.data.repository.PendingStreakShieldItem
+import com.rrrrz.tinyvow.data.repository.ProtectionEventRepository
 import com.rrrrz.tinyvow.data.repository.PurchaseRewardResult
 import com.rrrrz.tinyvow.data.repository.RewardStoreItem
 import com.rrrrz.tinyvow.data.repository.RewardSaveResult
@@ -140,20 +149,24 @@ import com.rrrrz.tinyvow.data.supermode.SuperModeStoredState
 import com.rrrrz.tinyvow.data.supermode.SuperModeWindowUpdateResult
 import com.rrrrz.tinyvow.data.usage.UsageAccessStateChecker
 import com.rrrrz.tinyvow.data.usage.UsageAccessStatus
+import com.rrrrz.tinyvow.data.usage.AppSession
 import com.rrrrz.tinyvow.service.block.AppLimitAccessibilityService
 import com.rrrrz.tinyvow.ui.theme.TinyVowTheme
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import androidx.compose.animation.*
 import androidx.compose.foundation.BorderStroke
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.ZoneId
+import org.json.JSONObject
 import kotlin.math.atan2
 import kotlin.math.PI
 import kotlin.math.cos
+import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
 import kotlin.math.roundToLong
@@ -168,8 +181,12 @@ import com.rrrrz.tinyvow.data.db.AchievementEntity
 import com.rrrrz.tinyvow.data.db.AchievementTier
 import com.rrrrz.tinyvow.data.db.ActiveRewardEffectEntity
 import com.rrrrz.tinyvow.data.db.ActiveRewardEffectStatus
+import com.rrrrz.tinyvow.data.db.DailyAppArchiveEntity
+import com.rrrrz.tinyvow.data.db.DailyGroupArchiveEntity
 import com.rrrrz.tinyvow.data.db.RedemptionEntity
 import com.rrrrz.tinyvow.data.db.RedemptionHistoryEntity
+import com.rrrrz.tinyvow.data.db.ProtectionEventType
+import com.rrrrz.tinyvow.data.db.RewardEffectBenefitEntity
 import com.rrrrz.tinyvow.data.db.RewardType
 import com.rrrrz.tinyvow.data.db.RewardUseHistoryEntity
 import com.rrrrz.tinyvow.data.repository.parseRewardPayload
@@ -187,11 +204,12 @@ import com.rrrrz.tinyvow.ui.theme.TinyVowRadius
 import com.rrrrz.tinyvow.ui.theme.TinyVowSpacing
 import com.rrrrz.tinyvow.ui.theme.TinyVowSnackbarHost
 
-enum class Screen { HOME, REWARDS, STATS, ME, ME_PERMISSIONS, ME_DATA_PRIVACY, ME_VERSION, SUPER_MODE, LABORATORY, HISTORY, THEME, LANGUAGE, HELP_FEEDBACK, CONTACT_US, SPECIAL_APPS, WEREAD_SPECIAL_APP, PERMISSION_DIAGNOSTICS }
+enum class Screen { HOME, REWARDS, STATS, ME, ME_PRO, ME_PERMISSIONS, ME_NOTIFICATIONS, ME_DATA_PRIVACY, ME_VERSION, SUPER_MODE, LABORATORY, HISTORY, THEME, LANGUAGE, HELP_FEEDBACK, CONTACT_US, SPECIAL_APPS, WEREAD_SPECIAL_APP, PERMISSION_DIAGNOSTICS }
 enum class RewardsSection { STORE, INVENTORY, ACHIEVEMENTS }
 
 private const val CONTACT_EMAIL = "rrrr.zhao@gmail.com"
 private const val WEREAD_AUTO_SYNC_DEBOUNCE_MS = 60_000L
+private const val HOME_CONTROL_TOLERANCE_MINUTES = 5L
 
 private data class PendingSuperModeRequest(
     val message: String,
@@ -202,6 +220,20 @@ private data class BottomNavDestination(
     val screen: Screen,
     val label: String,
     val icon: ImageVector,
+)
+
+private enum class CoachmarkBubbleAlignment {
+    Top,
+    Center,
+    Bottom,
+}
+
+private data class FirstRunCoachmarkStep(
+    val screen: Screen,
+    val icon: ImageVector,
+    val titleKey: String,
+    val bodyKey: String,
+    val alignment: CoachmarkBubbleAlignment,
 )
 
 @Composable
@@ -321,6 +353,28 @@ private data class HomeOverviewUiState(
     val control: HomeControlOverviewUiState,
     val encourage: HomeEncourageOverviewUiState,
     val history: HomeHistoryOverviewUiState,
+    val behaviorScoreMetrics: List<DailyBehaviorScoreMetric>,
+    val behaviorComparisonMetrics: List<DailyBehaviorScoreMetric>,
+    val battleActions: List<HomeBattleAction>,
+)
+
+private enum class HomeBattleActionType {
+    CONTROL,
+    ENCOURAGE,
+    REWARD,
+    CREATE,
+    PERMISSION_USAGE,
+    PERMISSION_ACCESSIBILITY,
+}
+
+private data class HomeBattleAction(
+    val type: HomeBattleActionType,
+    val title: String,
+    val subtitle: String,
+    val value: String,
+    val progress: Float,
+    val group: AppGroupWithApps? = null,
+    val subtitleGroupName: String? = null,
 )
 
 private data class HomeControlOverviewUiState(
@@ -357,6 +411,8 @@ fun RewardsHome(
     storeItems: List<RewardStoreItem>,
     inventoryItems: List<InventoryRewardItem>,
     pendingShieldItems: List<PendingStreakShieldItem>,
+    activeRewardEffects: List<ActiveRewardEffectEntity>,
+    rewardEffectBenefits: List<RewardEffectBenefitEntity>,
     groups: List<AppGroupWithApps>,
     redemptionHistory: List<RedemptionHistoryEntity>,
     rewardUseHistory: List<RewardUseHistoryEntity>,
@@ -396,6 +452,8 @@ fun RewardsHome(
                 RewardInventoryScreen(
                     inventoryItems = inventoryItems,
                     pendingItems = pendingShieldItems,
+                    activeRewardEffects = activeRewardEffects,
+                    rewardEffectBenefits = rewardEffectBenefits,
                     groups = groups,
                     redemptionHistory = redemptionHistory,
                     rewardUseHistory = rewardUseHistory,
@@ -484,6 +542,8 @@ private fun useRewardResultMessage(result: UseRewardResult): String =
         UseRewardResult.NotOwned -> AppText.t("redeem_error_not_owned")
         UseRewardResult.InvalidTargetGroup -> AppText.t("redeem_error_missing_target_group")
         UseRewardResult.AlreadyActive -> AppText.t("redeem_error_already_active")
+        UseRewardResult.PeriodPassAlreadyActive -> AppText.t("redeem_error_period_pass_already_active")
+        UseRewardResult.DoublePointsAlreadyActive -> AppText.t("redeem_error_double_points_already_active")
         UseRewardResult.AlreadyCompleted -> AppText.t("redeem_error_already_completed")
         UseRewardResult.InvalidReward -> AppText.t("redeem_error_invalid_reward")
     }
@@ -512,6 +572,33 @@ private fun guardedActionLabel(action: GuardedAction): String =
         GuardedAction.PURCHASE_PERIOD_PASS -> AppText.t("super_mode_action_purchase_period_pass")
         GuardedAction.PURCHASE_EMERGENCY_UNLOCK -> AppText.t("super_mode_action_purchase_emergency_unlock")
     }
+
+private fun groupProtectionSnapshot(group: AppGroupWithApps): String =
+    groupProtectionSnapshot(
+        name = group.group.name,
+        type = group.group.type,
+        period = group.group.limitPeriod,
+        limitMinutes = group.group.limitMinutes,
+        pointsPerMinute = group.group.pointsPerMinute,
+        packageCount = group.packageNames.size,
+    )
+
+private fun groupProtectionSnapshot(
+    name: String,
+    type: GroupType,
+    period: LimitPeriod,
+    limitMinutes: Int,
+    pointsPerMinute: Double,
+    packageCount: Int,
+): String =
+    JSONObject()
+        .put("name", name)
+        .put("type", type.name)
+        .put("period", period.name)
+        .put("limitMinutes", limitMinutes)
+        .put("pointsPerMinute", pointsPerMinute)
+        .put("packageCount", packageCount)
+        .toString()
 
 @Composable
 fun HomeRoute(
@@ -551,6 +638,8 @@ fun HomeRoute(
     val specialAppUsageRepository = remember(context) { SpecialAppUsageRepository(context) }
     val pointsRepository = remember(database, context) { PointsRepository(context, database) }
     val dailyArchiveRepository = remember(database, context) { DailyArchiveRepository(context, database) }
+    val statsReportMemoryCache = remember { StatsReportMemoryCache() }
+    val protectionEventRepository = remember(database) { ProtectionEventRepository(database) }
     val localDataManager = remember(database, context, preferences) {
         LocalDataManager(context, database, preferences)
     }
@@ -574,6 +663,39 @@ fun HomeRoute(
     val inventoryRewardItems by appLimitRepository.observeInventoryRewards().collectAsStateWithLifecycle(initialValue = emptyList(), lifecycle = lifecycle)
     val pendingShieldItems by appLimitRepository.observePendingStreakShields().collectAsStateWithLifecycle(initialValue = emptyList(), lifecycle = lifecycle)
     val allRewardEffects by database.activeRewardEffectDao().observeAll().collectAsStateWithLifecycle(initialValue = emptyList(), lifecycle = lifecycle)
+    val homeOverviewGroupsWithAppsLoaded by appLimitRepository.getAllGroupsWithApps()
+        .map<List<AppGroupWithApps>, List<AppGroupWithApps>?> { it }
+        .collectAsStateWithLifecycle(initialValue = null, lifecycle = lifecycle)
+    val homeOverviewUserPointsLoaded by preferences.userPoints
+        .map<Double, Double?> { it }
+        .collectAsStateWithLifecycle(initialValue = null, lifecycle = lifecycle)
+    val homeOverviewTodayPointsLoaded by preferences.todayPoints
+        .map<Double, Double?> { it }
+        .collectAsStateWithLifecycle(initialValue = null, lifecycle = lifecycle)
+    val homeOverviewAchievementProgressLoaded by appLimitRepository.observeAchievementProgress()
+        .map<AchievementProgress, AchievementProgress?> { it }
+        .collectAsStateWithLifecycle(initialValue = null, lifecycle = lifecycle)
+    val homeOverviewAllRewardEffectsLoaded by database.activeRewardEffectDao().observeAll()
+        .map<List<ActiveRewardEffectEntity>, List<ActiveRewardEffectEntity>?> { it }
+        .collectAsStateWithLifecycle(initialValue = null, lifecycle = lifecycle)
+    val homeOverviewHistoricalArchivesLoaded =
+        dailyArchiveRepository.getRecentArchives(limit = 3650)
+            .map<List<com.rrrrz.tinyvow.data.db.DailyArchiveEntity>, List<com.rrrrz.tinyvow.data.db.DailyArchiveEntity>?> { it }
+            .collectAsStateWithLifecycle(initialValue = null, lifecycle = lifecycle)
+    val homeOverviewRecentGroupArchivesLoaded =
+        dailyArchiveRepository.getGroupArchivesByRange(
+            LocalDate.now().minusDays(7).toString(),
+            LocalDate.now().minusDays(1).toString(),
+        ).map<List<DailyGroupArchiveEntity>, List<DailyGroupArchiveEntity>?> { it }
+            .collectAsStateWithLifecycle(initialValue = null, lifecycle = lifecycle)
+    val homeOverviewInputsReady =
+        homeOverviewGroupsWithAppsLoaded != null &&
+            homeOverviewUserPointsLoaded != null &&
+            homeOverviewTodayPointsLoaded != null &&
+            homeOverviewAchievementProgressLoaded != null &&
+            homeOverviewAllRewardEffectsLoaded != null &&
+            homeOverviewHistoricalArchivesLoaded != null &&
+            homeOverviewRecentGroupArchivesLoaded != null
     val activeRewardEffects = remember(allRewardEffects, currentTimeMillis) {
         allRewardEffects.filter {
             it.status == ActiveRewardEffectStatus.ACTIVE &&
@@ -585,10 +707,22 @@ fun HomeRoute(
     val achievementProgress by appLimitRepository.observeAchievementProgress().collectAsStateWithLifecycle(initialValue = AchievementProgress(), lifecycle = lifecycle)
     val redemptionHistory by appLimitRepository.getRedemptionHistory().collectAsStateWithLifecycle(initialValue = emptyList(), lifecycle = lifecycle)
     val rewardUseHistory by appLimitRepository.observeRewardUseHistory().collectAsStateWithLifecycle(initialValue = emptyList(), lifecycle = lifecycle)
+    val rewardEffectBenefits by appLimitRepository.observeRewardEffectBenefits().collectAsStateWithLifecycle(initialValue = emptyList(), lifecycle = lifecycle)
     val dismissedPermissionPrompts by preferences.dismissedPermissionPrompts.collectAsStateWithLifecycle(initialValue = emptySet(), lifecycle = lifecycle)
     val usageAccessDisclosureAccepted by preferences.usageAccessDisclosureAccepted.collectAsStateWithLifecycle(initialValue = false, lifecycle = lifecycle)
     val accessibilityDisclosureAccepted by preferences.accessibilityDisclosureAccepted.collectAsStateWithLifecycle(initialValue = false, lifecycle = lifecycle)
+    val accessibilityServiceHeartbeatAtMillis by preferences.accessibilityServiceHeartbeatAtMillis.collectAsStateWithLifecycle(initialValue = null, lifecycle = lifecycle)
     val welcomeIntroCompleted by preferences.welcomeIntroCompleted.collectAsStateWithLifecycle(initialValue = true, lifecycle = lifecycle)
+    val firstRunCoachmarkCompleted by preferences.firstRunCoachmarkCompleted.collectAsStateWithLifecycle(initialValue = true, lifecycle = lifecycle)
+    val notificationRemindersEnabled by preferences.notificationRemindersEnabled.collectAsStateWithLifecycle(initialValue = true, lifecycle = lifecycle)
+    val controlRemainingReminderMinutes by preferences.controlRemainingReminderMinutes.collectAsStateWithLifecycle(
+        initialValue = ManagedAppPreferences.DEFAULT_CONTROL_REMAINING_REMINDER_MINUTES,
+        lifecycle = lifecycle,
+    )
+    val encourageReminderTimesMinutes by preferences.encourageReminderTimesMinutes.collectAsStateWithLifecycle(
+        initialValue = ManagedAppPreferences.DEFAULT_ENCOURAGE_REMINDER_TIMES_MINUTES,
+        lifecycle = lifecycle,
+    )
     val superModeStoredState by preferences.superModeState.collectAsStateWithLifecycle(initialValue = SuperModeStoredState(), lifecycle = lifecycle)
     val userSession by authRepository.session.collectAsStateWithLifecycle(initialValue = null, lifecycle = lifecycle)
     val subscriptionEntitlement by subscriptionRepository.entitlement.collectAsStateWithLifecycle(lifecycle = lifecycle)
@@ -644,6 +778,7 @@ fun HomeRoute(
 
     var showYesterdaySummary by remember { mutableStateOf(false) }
     var showWelcomeIntro by remember { mutableStateOf(false) }
+    var showFirstRunCoachmark by remember { mutableStateOf(false) }
     var yesterdaySavedMinutes by remember { mutableIntStateOf(0) }
     var showSuperModeCredentialDialog by remember { mutableStateOf(false) }
     var isEditingSuperModeCredentials by remember { mutableStateOf(false) }
@@ -653,6 +788,7 @@ fun HomeRoute(
     var showSuperModeRecoveryDialog by remember { mutableStateOf(false) }
     var showSuperModeWindowDialog by remember { mutableStateOf(false) }
     var showSuperModeDisableDialog by remember { mutableStateOf(false) }
+    var showSuperModeInfoDialog by remember { mutableStateOf(false) }
     var superModePasswordError by remember { mutableStateOf<String?>(null) }
     var superModeRecoveryError by remember { mutableStateOf<String?>(null) }
     var superModeWindowError by remember { mutableStateOf<String?>(null) }
@@ -690,6 +826,32 @@ fun HomeRoute(
     fun clearPendingSuperModeRequest() {
         pendingSuperModeRequest = null
         superModePasswordError = null
+    }
+
+    suspend fun recordProtectionEvent(
+        eventType: ProtectionEventType,
+        titleKey: String,
+        messageKey: String,
+        messageArgs: List<String> = emptyList(),
+        targetId: String? = null,
+        targetLabel: String? = null,
+        beforeJson: String? = null,
+        afterJson: String? = null,
+        withinWindow: Boolean? = superModeStatus.isAvailableNow,
+        protectionEnabled: Boolean = superModeStatus.isEnabled,
+    ) {
+        protectionEventRepository.record(
+            eventType = eventType,
+            titleKey = titleKey,
+            messageKey = messageKey,
+            messageArgs = messageArgs,
+            targetId = targetId,
+            targetLabel = targetLabel,
+            beforeJson = beforeJson,
+            afterJson = afterJson,
+            withinWindow = withinWindow,
+            protectionEnabled = protectionEnabled,
+        )
     }
 
     fun requestSuperModeSession(
@@ -742,6 +904,17 @@ fun HomeRoute(
         }
         if (!superModeStatus.isAvailableNow) {
             clearPendingSuperModeRequest()
+            coroutineScope.launch {
+                recordProtectionEvent(
+                    eventType = ProtectionEventType.GUARDED_ACTION_BLOCKED_OUTSIDE_WINDOW,
+                    titleKey = "protection_event_title_guarded_action_blocked",
+                    messageKey = "protection_event_message_guarded_action_blocked",
+                    messageArgs = listOf(guardedActionLabel(action)),
+                    targetLabel = guardedActionLabel(action),
+                    withinWindow = false,
+                    protectionEnabled = true,
+                )
+            }
             showSuperModeUnavailableDialog = true
             return
         }
@@ -826,6 +999,7 @@ fun HomeRoute(
 
     LaunchedEffect(Unit) {
         appLimitRepository.clearExpiredBonusTime(System.currentTimeMillis())
+        appLimitRepository.confirmExpiredPendingRewardEffects()
         dailyArchiveRepository.ensureArchivesUpToYesterday()
         
         // Daily summary logic.
@@ -855,6 +1029,13 @@ fun HomeRoute(
         }
     }
 
+    LaunchedEffect(Unit) {
+        while (true) {
+            delay(1_000L)
+            appLimitRepository.confirmExpiredPendingRewardEffects()
+        }
+    }
+
     val effectiveUsageAccessStatus =
         if (usageAccessStatus == UsageAccessStatus.GRANTED && usageAccessDisclosureAccepted) {
             UsageAccessStatus.GRANTED
@@ -863,16 +1044,40 @@ fun HomeRoute(
         }
     val effectiveAccessibilityServiceEnabled =
         accessibilityServiceEnabled && accessibilityDisclosureAccepted
+    val permissionReliabilitySnapshot =
+        remember(
+            groupsWithApps,
+            effectiveUsageAccessStatus,
+            accessibilityDisclosureAccepted,
+            accessibilityServiceEnabled,
+            notificationPermissionGranted,
+            isIgnoringBattery,
+            isAutoStartDismissed,
+            accessibilityServiceHeartbeatAtMillis,
+            currentTimeMillis,
+        ) {
+            PermissionReliabilitySnapshot.build(
+                groups = groupsWithApps,
+                usageAccessGranted = effectiveUsageAccessStatus == UsageAccessStatus.GRANTED,
+                accessibilityDisclosureAccepted = accessibilityDisclosureAccepted,
+                accessibilityServiceEnabled = accessibilityServiceEnabled,
+                notificationPermissionGranted = notificationPermissionGranted,
+                isIgnoringBatteryOptimizations = isIgnoringBattery,
+                isAutoStartDismissed = isAutoStartDismissed,
+                lastAccessibilityHeartbeatAtMillis = accessibilityServiceHeartbeatAtMillis,
+                nowMillis = currentTimeMillis,
+            )
+        }
 
     LaunchedEffect(usageAccessStatus, usageAccessDisclosureAccepted) {
-        if (effectiveUsageAccessStatus == UsageAccessStatus.GRANTED) {
-            isLoadingApps = true
-            installedApps = appRepository.getAllInstalledApps()
-            isLoadingApps = false
-        } else {
-            installedApps = emptyList()
-            isLoadingApps = false
-        }
+        isLoadingApps = true
+        installedApps =
+            if (effectiveUsageAccessStatus == UsageAccessStatus.GRANTED) {
+                appRepository.getAllInstalledApps()
+            } else {
+                appRepository.getLaunchableApps()
+            }
+        isLoadingApps = false
     }
 
     // Check achievements once at startup to avoid expensive DB scans on every point update.
@@ -904,11 +1109,24 @@ fun HomeRoute(
         }
     }
 
+    LaunchedEffect(welcomeIntroCompleted, firstRunCoachmarkCompleted, showWelcomeIntro) {
+        if (welcomeIntroCompleted && !firstRunCoachmarkCompleted && !showWelcomeIntro) {
+            showFirstRunCoachmark = true
+        }
+    }
+
     if (showWelcomeIntro) {
         BackHandler {
             coroutineScope.launch {
                 preferences.setWelcomeIntroCompleted(true)
                 showWelcomeIntro = false
+            }
+        }
+    } else if (showFirstRunCoachmark) {
+        BackHandler {
+            coroutineScope.launch {
+                preferences.setFirstRunCoachmarkCompleted(true)
+                showFirstRunCoachmark = false
             }
         }
     } else if (currentScreen != Screen.HOME) {
@@ -922,7 +1140,7 @@ fun HomeRoute(
                 currentScreen = when (currentScreen) {
                     Screen.WEREAD_SPECIAL_APP -> Screen.SPECIAL_APPS
                     Screen.PERMISSION_DIAGNOSTICS -> Screen.HOME
-                    Screen.ME_PERMISSIONS, Screen.ME_DATA_PRIVACY, Screen.ME_VERSION, Screen.SUPER_MODE, Screen.LABORATORY, Screen.HISTORY, Screen.THEME, Screen.LANGUAGE, Screen.HELP_FEEDBACK, Screen.CONTACT_US, Screen.SPECIAL_APPS -> Screen.ME
+                    Screen.ME_PRO, Screen.ME_PERMISSIONS, Screen.ME_NOTIFICATIONS, Screen.ME_DATA_PRIVACY, Screen.ME_VERSION, Screen.SUPER_MODE, Screen.LABORATORY, Screen.HISTORY, Screen.THEME, Screen.LANGUAGE, Screen.HELP_FEEDBACK, Screen.CONTACT_US, Screen.SPECIAL_APPS -> Screen.ME
                     else -> Screen.HOME
                 }
             }
@@ -987,11 +1205,13 @@ fun HomeRoute(
                         accessibilityServiceEnabled = effectiveAccessibilityServiceEnabled,
                         notificationPermissionGranted = notificationPermissionGranted,
                         isIgnoringBattery = isIgnoringBattery,
+                        permissionReliabilitySnapshot = permissionReliabilitySnapshot,
                         installedApps = installedApps,
                         groupsWithApps = groupsWithApps,
                         activeRewardEffects = activeRewardEffects,
                         userPoints = userPoints,
                         todayPoints = todayPoints,
+                        overviewInputsReady = homeOverviewInputsReady,
                         isLoadingApps = isLoadingApps,
                         superModeStatus = superModeStatus,
                         onNavigateToRedeem = {
@@ -1002,13 +1222,7 @@ fun HomeRoute(
                             rewardsSection = RewardsSection.ACHIEVEMENTS
                             currentScreen = Screen.REWARDS
                         },
-                        onOpenSuperModeEntry = {
-                            when {
-                                !superModeStatus.isConfigured -> openSuperModeSettings(configureImmediately = true)
-                                superModeStatus.isActive -> openSuperModeSettings()
-                                else -> requestSuperModeSession(AppText.t("super_mode_enter_from_home"))
-                            }
-                        },
+                        onOpenSuperModeEntry = { showSuperModeInfoDialog = true },
                         onOpenUsageAccessSettings = { requestUsageAccessSettings() },
                         onOpenAccessibilitySettings = { requestAccessibilitySettings() },
                         onRequestNotificationPermission = {
@@ -1040,16 +1254,39 @@ fun HomeRoute(
                         },
                         onSaveGroup = { id, name, limit, type, period, pts, pkgs ->
                             coroutineScope.launch {
+                                val previousGroup = id?.let { groupId ->
+                                    groupsWithApps.firstOrNull { it.group.id == groupId }
+                                }
                                 val groupId = appLimitRepository.createOrUpdateGroup(id, name, limit, type, period, pts)
                                 appLimitRepository.updateGroupApps(groupId, pkgs)
                                 if (id != null) {
+                                    recordProtectionEvent(
+                                        eventType = ProtectionEventType.GROUP_UPDATED,
+                                        titleKey = "protection_event_title_group_updated",
+                                        messageKey = "protection_event_message_group_updated",
+                                        messageArgs = listOf(name),
+                                        targetId = groupId,
+                                        targetLabel = name,
+                                        beforeJson = previousGroup?.let(::groupProtectionSnapshot),
+                                        afterJson = groupProtectionSnapshot(name, type, period, limit, pts, pkgs.size),
+                                    )
                                     superModeController.touch(proEntitlement.isProActive)
                                 }
                             }
                         },
                         onDeleteGroup = { id ->
                             coroutineScope.launch {
+                                val previousGroup = groupsWithApps.firstOrNull { it.group.id == id }
                                 appLimitRepository.deleteGroup(id)
+                                recordProtectionEvent(
+                                    eventType = ProtectionEventType.GROUP_DELETED,
+                                    titleKey = "protection_event_title_group_deleted",
+                                    messageKey = "protection_event_message_group_deleted",
+                                    messageArgs = listOf(previousGroup?.group?.name ?: id),
+                                    targetId = id,
+                                    targetLabel = previousGroup?.group?.name,
+                                    beforeJson = previousGroup?.let(::groupProtectionSnapshot),
+                                )
                                 superModeController.touch(proEntitlement.isProActive)
                             }
                         },
@@ -1075,6 +1312,8 @@ fun HomeRoute(
                             storeItems = storeRewardItems,
                             inventoryItems = inventoryRewardItems,
                             pendingShieldItems = pendingShieldItems,
+                            activeRewardEffects = activeRewardEffects,
+                            rewardEffectBenefits = rewardEffectBenefits,
                             groups = groupsWithApps,
                             redemptionHistory = redemptionHistory,
                             rewardUseHistory = rewardUseHistory,
@@ -1082,7 +1321,21 @@ fun HomeRoute(
                                 coroutineScope.launch {
                                     snackbarHostState.showSnackbar(
                                         runCatching {
-                                            purchaseRewardResultMessage(appLimitRepository.purchaseReward(reward.id))
+                                            val result = appLimitRepository.purchaseReward(reward.id)
+                                            if (
+                                                result is PurchaseRewardResult.Success &&
+                                                GuardedAction.fromRewardType(reward.rewardType) != null
+                                            ) {
+                                                recordProtectionEvent(
+                                                    eventType = ProtectionEventType.TIME_REWARD_PURCHASED,
+                                                    titleKey = "protection_event_title_time_reward_purchased",
+                                                    messageKey = "protection_event_message_time_reward_purchased",
+                                                    messageArgs = listOf(result.rewardTitle),
+                                                    targetId = reward.id,
+                                                    targetLabel = result.rewardTitle,
+                                                )
+                                            }
+                                            purchaseRewardResultMessage(result)
                                         }.getOrElse {
                                             AppText.t("redeem_purchase_failed")
                                         }
@@ -1091,13 +1344,31 @@ fun HomeRoute(
                             },
                         onUseInventoryReward = { reward, groupId ->
                             coroutineScope.launch {
-                                snackbarHostState.showSnackbar(
-                                    runCatching {
-                                        useRewardResultMessage(appLimitRepository.useInventoryReward(reward.id, groupId))
-                                    }.getOrElse {
-                                        AppText.t("redeem_purchase_failed")
+                                runCatching {
+                                    appLimitRepository.useInventoryReward(reward.id, groupId)
+                                }.onSuccess { result ->
+                                    val message = useRewardResultMessage(result)
+                                    val pendingEffectId = (result as? UseRewardResult.Success)?.pendingEffectId
+                                    if (pendingEffectId == null) {
+                                        snackbarHostState.showSnackbar(message)
+                                    } else {
+                                        val snackbarResult =
+                                            snackbarHostState.showSnackbar(
+                                                message = message,
+                                                actionLabel = AppText.t("redeem_effect_undo"),
+                                                withDismissAction = true,
+                                            )
+                                        if (snackbarResult == SnackbarResult.ActionPerformed) {
+                                            snackbarHostState.showSnackbar(
+                                                useRewardResultMessage(appLimitRepository.cancelPendingRewardEffect(pendingEffectId))
+                                            )
+                                        } else {
+                                            appLimitRepository.confirmRewardEffect(pendingEffectId)
+                                        }
                                     }
-                                )
+                                }.onFailure {
+                                    snackbarHostState.showSnackbar(AppText.t("redeem_purchase_failed"))
+                                }
                             }
                         },
                         onResolvePendingShield = { pendingId, useShield ->
@@ -1152,6 +1423,7 @@ fun HomeRoute(
                             userPoints = userPoints,
                             todayPoints = todayPoints,
                             archiveRepository = dailyArchiveRepository,
+                            reportMemoryCache = statsReportMemoryCache,
                             isProActive = proEntitlement.isProActive,
                             onShowProUpsell = { proUpsellSource = it },
                             onRequestUsageAccess = { requestUsageAccessSettings() },
@@ -1176,6 +1448,8 @@ fun HomeRoute(
                                     generatedAtMillis = currentTimeMillis,
                                     usageAccessGranted = effectiveUsageAccessStatus == UsageAccessStatus.GRANTED,
                                     accessibilityServiceEnabled = effectiveAccessibilityServiceEnabled,
+                                    accessibilityHeartbeatHealthy = permissionReliabilitySnapshot.accessibilityHeartbeatHealthy,
+                                    lastAccessibilityHeartbeatAtMillis = accessibilityServiceHeartbeatAtMillis,
                                     notificationPermissionGranted = notificationPermissionGranted,
                                     isIgnoringBattery = isIgnoringBattery,
                                     groupsWithApps = groupsWithApps,
@@ -1235,8 +1509,22 @@ fun HomeRoute(
                         superModeStatus = superModeStatus,
                         isDebugBuild = BuildConfig.DEBUG,
                         selectedAppLanguage = selectedAppLanguage,
+                        notificationRemindersEnabled = notificationRemindersEnabled,
+                        controlRemainingReminderMinutes = ReminderPolicy.effectiveSettings(
+                            enabled = notificationRemindersEnabled,
+                            controlRemainingReminderMinutes = controlRemainingReminderMinutes,
+                            encourageReminderTimesMinutes = encourageReminderTimesMinutes,
+                            isProActive = proEntitlement.isProActive,
+                        ).controlRemainingReminderMinutes,
+                        encourageReminderTimesMinutes = ReminderPolicy.effectiveSettings(
+                            enabled = notificationRemindersEnabled,
+                            controlRemainingReminderMinutes = controlRemainingReminderMinutes,
+                            encourageReminderTimesMinutes = encourageReminderTimesMinutes,
+                            isProActive = proEntitlement.isProActive,
+                        ).encourageReminderTimesMinutes,
                         openBenefitsDialog = openMeProBenefitsDialog,
                         onBenefitsDialogOpened = { openMeProBenefitsDialog = false },
+                        onNavigateToProMembership = { currentScreen = Screen.ME_PRO },
                         usageAccessGranted = effectiveUsageAccessStatus == UsageAccessStatus.GRANTED,
                         accessibilityServiceEnabled = effectiveAccessibilityServiceEnabled,
                         isAutoStartDismissed = isAutoStartDismissed,
@@ -1302,6 +1590,7 @@ fun HomeRoute(
                             }
                         },
                         onNavigateToPermissionSettings = { currentScreen = Screen.ME_PERMISSIONS },
+                        onNavigateToNotificationSettings = { currentScreen = Screen.ME_NOTIFICATIONS },
                         onNavigateToLaboratory = { currentScreen = Screen.LABORATORY },
                         onNavigateToHistory = { currentScreen = Screen.HISTORY },
                         onNavigateToThemeSettings = { currentScreen = Screen.THEME },
@@ -1394,6 +1683,58 @@ fun HomeRoute(
                         )
                     }
                 }
+                Screen.ME_PRO -> {
+                    ProMembershipPage(
+                        entitlement = proEntitlement,
+                        offers = subscriptionOffers,
+                        isPlayBillingEnabled = BuildConfig.ENABLE_PLAY_BILLING,
+                        isLocalActivationEnabled = BuildConfig.ENABLE_LOCAL_ACTIVATION,
+                        localUserId = userSession?.userId,
+                        onBack = { currentScreen = Screen.ME },
+                        onPurchasePro = { offer ->
+                            val activity = context as? android.app.Activity
+                            if (activity == null) {
+                                coroutineScope.launch {
+                                    snackbarHostState.showSnackbar(AppText.t("home_google_play_purchase_cannot_start_from_this_screen"))
+                                }
+                            } else {
+                                coroutineScope.launch {
+                                    subscriptionRepository.purchase(activity, offer, userSession?.userId)
+                                        .onFailure {
+                                            snackbarHostState.showSnackbar(it.message ?: AppText.t("home_failed_to_start_pro_subscription"))
+                                        }
+                                }
+                            }
+                        },
+                        onRestorePurchases = {
+                            coroutineScope.launch {
+                                subscriptionRepository.refresh()
+                                    .onSuccess {
+                                        snackbarHostState.showSnackbar(AppText.t("home_subscription_status_refreshed"))
+                                    }
+                                    .onFailure {
+                                        snackbarHostState.showSnackbar(it.message ?: AppText.t("home_failed_to_restore_purchases"))
+                                    }
+                            }
+                        },
+                        onManageSubscription = {
+                            subscriptionRepository.openManageSubscription(context)
+                        },
+                        onActivateProCode = { code ->
+                            coroutineScope.launch {
+                                val localUserId = userSession?.userId ?: authRepository.ensureLocalSession().userId
+                                localActivationRepository
+                                    ?.activate(localUserId, code)
+                                    ?.onSuccess {
+                                        snackbarHostState.showSnackbar(AppText.t("activation_pro_activated"))
+                                    }
+                                    ?.onFailure {
+                                        snackbarHostState.showSnackbar(AppText.t("activation_code_invalid"))
+                                    }
+                            }
+                        },
+                    )
+                }
                 Screen.ME_PERMISSIONS -> {
                     PermissionSettingsPage(
                         usageAccessGranted = effectiveUsageAccessStatus == UsageAccessStatus.GRANTED,
@@ -1431,6 +1772,57 @@ fun HomeRoute(
                         },
                     )
                 }
+                Screen.ME_NOTIFICATIONS -> {
+                    val effectiveNotificationSettings = ReminderPolicy.effectiveSettings(
+                        enabled = notificationRemindersEnabled,
+                        controlRemainingReminderMinutes = controlRemainingReminderMinutes,
+                        encourageReminderTimesMinutes = encourageReminderTimesMinutes,
+                        isProActive = proEntitlement.isProActive,
+                    )
+                    NotificationReminderSettingsPage(
+                        remindersEnabled = effectiveNotificationSettings.enabled,
+                        notificationPermissionGranted = notificationPermissionGranted,
+                        isProActive = proEntitlement.isProActive,
+                        controlRemainingReminderMinutes = effectiveNotificationSettings.controlRemainingReminderMinutes,
+                        encourageReminderTimesMinutes = effectiveNotificationSettings.encourageReminderTimesMinutes,
+                        onBack = { currentScreen = Screen.ME },
+                        onSetEnabled = { enabled ->
+                            coroutineScope.launch {
+                                preferences.setNotificationRemindersEnabled(enabled)
+                                ReminderScheduler(context).schedule()
+                            }
+                        },
+                        onSetControlRemainingMinutes = { minutes ->
+                            coroutineScope.launch {
+                                preferences.setControlRemainingReminderMinutes(minutes)
+                                ReminderScheduler(context).scheduleControlRemainingReminder()
+                                snackbarHostState.showSnackbar(AppText.t("notification_settings_saved"))
+                            }
+                        },
+                        onSetEncourageTimes = { times ->
+                            coroutineScope.launch {
+                                preferences.setEncourageReminderTimesMinutes(times)
+                                ReminderScheduler(context).scheduleNextEncourageReminder(
+                                    ReminderPolicy.effectiveSettings(
+                                        enabled = notificationRemindersEnabled,
+                                        controlRemainingReminderMinutes = controlRemainingReminderMinutes,
+                                        encourageReminderTimesMinutes = times,
+                                        isProActive = proEntitlement.isProActive,
+                                    )
+                                )
+                                snackbarHostState.showSnackbar(AppText.t("notification_settings_saved"))
+                            }
+                        },
+                        onRequestNotificationPermission = {
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                                pendingSensitiveDisclosure = SensitivePermissionDisclosure.NOTIFICATION
+                            }
+                        },
+                        onShowProUpsell = {
+                            proUpsellSource = ProUpsellSource.NOTIFICATION_CUSTOMIZATION
+                        },
+                    )
+                }
                 Screen.ME_DATA_PRIVACY -> {
                     DataPrivacyPage(
                         onBack = { currentScreen = Screen.ME },
@@ -1442,6 +1834,8 @@ fun HomeRoute(
                                             generatedAtMillis = currentTimeMillis,
                                             usageAccessGranted = effectiveUsageAccessStatus == UsageAccessStatus.GRANTED,
                                             accessibilityServiceEnabled = effectiveAccessibilityServiceEnabled,
+                                            accessibilityHeartbeatHealthy = permissionReliabilitySnapshot.accessibilityHeartbeatHealthy,
+                                            lastAccessibilityHeartbeatAtMillis = accessibilityServiceHeartbeatAtMillis,
                                             notificationPermissionGranted = notificationPermissionGranted,
                                             isIgnoringBattery = isIgnoringBattery,
                                             groupsWithApps = groupsWithApps,
@@ -1520,6 +1914,25 @@ fun HomeRoute(
                         onSetEnabled = { enabled ->
                             coroutineScope.launch {
                                 preferences.setSuperModeEnabled(enabled)
+                                recordProtectionEvent(
+                                    eventType = if (enabled) {
+                                        ProtectionEventType.SUPER_MODE_ENABLED
+                                    } else {
+                                        ProtectionEventType.SUPER_MODE_DISABLED
+                                    },
+                                    titleKey = if (enabled) {
+                                        "protection_event_title_super_mode_enabled"
+                                    } else {
+                                        "protection_event_title_super_mode_disabled"
+                                    },
+                                    messageKey = if (enabled) {
+                                        "protection_event_message_super_mode_enabled"
+                                    } else {
+                                        "protection_event_message_super_mode_disabled"
+                                    },
+                                    withinWindow = superModeStatus.isAvailableNow,
+                                    protectionEnabled = enabled,
+                                )
                                 snackbarHostState.showSnackbar(
                                     if (enabled) {
                                         AppText.t("super_mode_enabled_success")
@@ -1623,6 +2036,8 @@ fun HomeRoute(
                                     generatedAtMillis = currentTimeMillis,
                                     usageAccessGranted = effectiveUsageAccessStatus == UsageAccessStatus.GRANTED,
                                     accessibilityServiceEnabled = effectiveAccessibilityServiceEnabled,
+                                    accessibilityHeartbeatHealthy = permissionReliabilitySnapshot.accessibilityHeartbeatHealthy,
+                                    lastAccessibilityHeartbeatAtMillis = accessibilityServiceHeartbeatAtMillis,
                                     notificationPermissionGranted = notificationPermissionGranted,
                                     isIgnoringBattery = isIgnoringBattery,
                                     groupsWithApps = groupsWithApps,
@@ -1666,6 +2081,7 @@ fun HomeRoute(
                 Screen.HISTORY -> {
                     HistoryRoute(
                         archiveRepository = dailyArchiveRepository,
+                        protectionEventRepository = protectionEventRepository,
                         onBack = { currentScreen = Screen.ME },
                     )
                 }
@@ -1698,6 +2114,20 @@ fun HomeRoute(
                         onResetSummary = { coroutineScope.launch { preferences.setLastSummaryShownDate("reset") } },
                         onTriggerSummary = { showYesterdaySummary = true },
                         onTriggerWelcomeIntro = { showWelcomeIntro = true },
+                        onTriggerCoachmarkTutorial = {
+                            currentScreen = Screen.HOME
+                            showFirstRunCoachmark = true
+                        },
+                        onTriggerAdvancedCenterTest = {
+                            coroutineScope.launch {
+                                if (!accessibilityDisclosureAccepted || !accessibilityServiceEnabled) {
+                                    snackbarHostState.showSnackbar(AppText.t("lab_advanced_center_test_requires_accessibility"))
+                                    return@launch
+                                }
+                                context.sendBroadcast(AppLimitAccessibilityService.debugShowTestOverlayIntent(context))
+                                snackbarHostState.showSnackbar(AppText.t("lab_advanced_center_test_triggered"))
+                            }
+                        },
                         showDebugProControls = BuildConfig.DEBUG,
                         onExtendDebugPro = { days ->
                             coroutineScope.launch {
@@ -1743,6 +2173,41 @@ fun HomeRoute(
         )
     }
 
+    if (showFirstRunCoachmark && !showWelcomeIntro) {
+        FirstRunCoachmarkOverlay(
+            onTargetScreenChange = { screen ->
+                if (screen == Screen.REWARDS) {
+                    rewardsSection = RewardsSection.STORE
+                }
+                currentScreen = screen
+            },
+            onComplete = {
+                coroutineScope.launch {
+                    preferences.setFirstRunCoachmarkCompleted(true)
+                    showFirstRunCoachmark = false
+                }
+            },
+            onDismiss = {
+                coroutineScope.launch {
+                    preferences.setFirstRunCoachmarkCompleted(true)
+                    showFirstRunCoachmark = false
+                }
+            },
+        )
+    }
+
+    if (showSuperModeInfoDialog) {
+        SuperModeInfoDialog(
+            status = superModeStatus,
+            currentTimeLabel = currentTimeLabel,
+            onDismiss = { showSuperModeInfoDialog = false },
+            onOpenSettings = {
+                showSuperModeInfoDialog = false
+                openSuperModeSettings()
+            },
+        )
+    }
+
     if (showSuperModeCredentialDialog) {
         SuperModeCredentialDialog(
             initialQuestion = superModeStoredState.recoveryQuestion.orEmpty(),
@@ -1750,8 +2215,26 @@ fun HomeRoute(
             onDismiss = { showSuperModeCredentialDialog = false },
             onConfirm = { password, question, answer ->
                 coroutineScope.launch {
+                    val wasConfigured = superModeStatus.isConfigured
                     superModeController.updateCredentials(password, question, answer)
                     showSuperModeCredentialDialog = false
+                    recordProtectionEvent(
+                        eventType = if (wasConfigured) {
+                            ProtectionEventType.SUPER_MODE_CREDENTIALS_CHANGED
+                        } else {
+                            ProtectionEventType.SUPER_MODE_CONFIGURED
+                        },
+                        titleKey = if (wasConfigured) {
+                            "protection_event_title_super_mode_credentials_changed"
+                        } else {
+                            "protection_event_title_super_mode_configured"
+                        },
+                        messageKey = if (wasConfigured) {
+                            "protection_event_message_super_mode_credentials_changed"
+                        } else {
+                            "protection_event_message_super_mode_configured"
+                        },
+                    )
                     snackbarHostState.showSnackbar(
                         if (isEditingSuperModeCredentials) {
                             AppText.t("super_mode_edit_credentials_success")
@@ -1831,6 +2314,11 @@ fun HomeRoute(
                     when (superModeController.resetWithRecovery(answer)) {
                         SuperModeRecoveryResult.Success -> {
                             showSuperModeRecoveryDialog = false
+                            recordProtectionEvent(
+                                eventType = ProtectionEventType.SUPER_MODE_CLEARED,
+                                titleKey = "protection_event_title_super_mode_cleared",
+                                messageKey = "protection_event_message_super_mode_cleared",
+                            )
                             currentScreen = Screen.ME
                             snackbarHostState.showSnackbar(AppText.t("super_mode_reset_success"))
                         }
@@ -1854,9 +2342,16 @@ fun HomeRoute(
             onDismiss = { showSuperModeWindowDialog = false },
             onConfirm = { startMinutes, endMinutes ->
                 coroutineScope.launch {
+                    val previousWindow = superModeStatus.windowLabel
                     when (superModeController.updateWindow(startMinutes, endMinutes, proEntitlement.isProActive)) {
                         SuperModeWindowUpdateResult.Success -> {
                             showSuperModeWindowDialog = false
+                            recordProtectionEvent(
+                                eventType = ProtectionEventType.SUPER_MODE_WINDOW_CHANGED,
+                                titleKey = "protection_event_title_super_mode_window_changed",
+                                messageKey = "protection_event_message_super_mode_window_changed",
+                                messageArgs = listOf(previousWindow, superModeController.formatWindowLabel(startMinutes, endMinutes)),
+                            )
                             snackbarHostState.showSnackbar(AppText.t("super_mode_window_saved"))
                         }
                         SuperModeWindowUpdateResult.InvalidWindow -> {
@@ -1881,6 +2376,11 @@ fun HomeRoute(
                     onClick = {
                         coroutineScope.launch {
                             superModeController.clearConfiguration()
+                            recordProtectionEvent(
+                                eventType = ProtectionEventType.SUPER_MODE_CLEARED,
+                                titleKey = "protection_event_title_super_mode_cleared",
+                                messageKey = "protection_event_message_super_mode_cleared",
+                            )
                             showSuperModeDisableDialog = false
                             currentScreen = Screen.ME
                             snackbarHostState.showSnackbar(AppText.t("super_mode_disabled_success"))
@@ -1903,8 +2403,7 @@ fun HomeRoute(
             source = source,
             onViewBenefits = {
                 proUpsellSource = null
-                currentScreen = Screen.ME
-                openMeProBenefitsDialog = true
+                currentScreen = Screen.ME_PRO
             },
             onDismiss = { proUpsellSource = null },
         )
@@ -2266,11 +2765,13 @@ fun HomeScreen(
     accessibilityServiceEnabled: Boolean,
     notificationPermissionGranted: Boolean,
     isIgnoringBattery: Boolean,
+    permissionReliabilitySnapshot: PermissionReliabilitySnapshot,
     installedApps: List<ManagedApp>,
     groupsWithApps: List<AppGroupWithApps>,
     activeRewardEffects: List<ActiveRewardEffectEntity>,
     userPoints: Double,
     todayPoints: Double,
+    overviewInputsReady: Boolean = true,
     isLoadingApps: Boolean,
     superModeStatus: com.rrrrz.tinyvow.data.supermode.SuperModeStatus,
     onNavigateToRedeem: () -> Unit,
@@ -2301,6 +2802,15 @@ fun HomeScreen(
     val coroutineScope = rememberCoroutineScope()
     val homeScrollState = rememberScrollState()
     var usageMap by remember { mutableStateOf<Map<String, Long>>(emptyMap()) }
+    var periodUsageMap by remember { mutableStateOf<Map<String, Long>>(emptyMap()) }
+    var todayAppUsageMap by remember { mutableStateOf<Map<String, Long>>(emptyMap()) }
+    var todayAppOpenCountMap by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
+    var todaySessions by remember { mutableStateOf<List<AppSession>>(emptyList()) }
+    var isOverviewUsageReady by remember { mutableStateOf(false) }
+    var createFirstVowRequest by remember { mutableIntStateOf(0) }
+    var openBattleGroupDetailRequest by remember { mutableIntStateOf(0) }
+    var openBattleGroupDetailGroup by remember { mutableStateOf<AppGroupWithApps?>(null) }
+    var showHomeBehaviorRadarDialog by remember { mutableStateOf(false) }
     val historicalArchives =
         archiveRepository?.let { repository ->
             val archives by repository.getRecentArchives(limit = 3650).collectAsStateWithLifecycle(
@@ -2309,37 +2819,117 @@ fun HomeScreen(
             )
             archives
         } ?: emptyList()
-    
+    val recentGroupArchives =
+        archiveRepository?.let { repository ->
+            val today = LocalDate.now()
+            val from = today.minusDays(7).toString()
+            val to = today.minusDays(1).toString()
+            val archives by repository.getGroupArchivesByRange(from, to).collectAsStateWithLifecycle(
+                initialValue = emptyList(),
+                lifecycle = lifecycle,
+            )
+            archives
+        } ?: emptyList()
+    val yesterdayArchiveDate = remember { LocalDate.now().minusDays(1).toString() }
+    val yesterdayGroupArchives =
+        archiveRepository?.let { repository ->
+            val archives by repository.getGroupArchivesByDate(yesterdayArchiveDate).collectAsStateWithLifecycle(
+                initialValue = emptyList(),
+                lifecycle = lifecycle,
+            )
+            archives
+        } ?: emptyList()
+    val yesterdayAppArchives =
+        archiveRepository?.let { repository ->
+            val archives by repository.getAppArchivesByDate(yesterdayArchiveDate).collectAsStateWithLifecycle(
+                initialValue = emptyList(),
+                lifecycle = lifecycle,
+            )
+            archives
+        } ?: emptyList()
     // Periodically refresh group usage by querying UsageStats once and aggregating packages in memory.
     LaunchedEffect(groupsWithApps, usageAccessStatus) {
         if (usageAccessStatus != UsageAccessStatus.GRANTED) {
+            isOverviewUsageReady = false
             usageMap = emptyMap()
+            periodUsageMap = emptyMap()
+            todayAppUsageMap = emptyMap()
+            todayAppOpenCountMap = emptyMap()
+            todaySessions = emptyList()
             return@LaunchedEffect
         }
+        isOverviewUsageReady = false
         val usageRepo = MergedUsageRepository(context)
         while (true) {
-            val todayStart = java.time.LocalDate.now(java.time.ZoneId.systemDefault())
-                .atStartOfDay(java.time.ZoneId.systemDefault()).toInstant().toEpochMilli()
-            // 涓€娆℃€ц幏寰楁墍鏈夊寘鍚嶇殑鐢ㄩ噺 Map
-            val newMap = mutableMapOf<String, Long>()
-            groupsWithApps.forEach { groupWithApps ->
-                val allUsage = usageRepo.getUsageStats(todayStart, System.currentTimeMillis(), groupWithApps.group.type)
-                newMap[groupWithApps.group.id] =
-                    groupWithApps.packageNames.sumOf { allUsage[it] ?: 0L }
+            runCatching {
+                val zoneId = ZoneId.systemDefault()
+                val today = LocalDate.now(zoneId)
+                val todayStart = today.atStartOfDay(zoneId).toInstant().toEpochMilli()
+                val now = System.currentTimeMillis()
+                val newTodayAppUsageMap = usageRepo.getUsageStats(todayStart, now, null)
+                val newTodayAppOpenCountMap = usageRepo.getAppOpenCount(todayStart, now)
+                val newTodaySessions = usageRepo.getUsageSessions(todayStart, now)
+                val todayUsageByGroupType = mutableMapOf<GroupType, Map<String, Long>>()
+                groupsWithApps
+                    .map { it.group.type }
+                    .distinct()
+                    .forEach { groupType ->
+                        todayUsageByGroupType[groupType] = usageRepo.getUsageStats(todayStart, now, groupType)
+                    }
+                val periodUsageByGroupConfig = mutableMapOf<Pair<GroupType, LimitPeriod>, Map<String, Long>>()
+                groupsWithApps
+                    .map { it.group.type to it.group.limitPeriod }
+                    .distinct()
+                    .forEach { (groupType, limitPeriod) ->
+                        periodUsageByGroupConfig[groupType to limitPeriod] =
+                            usageRepo.getUsageStatsInPeriod(limitPeriod, groupType)
+                    }
+                val newUsageMap =
+                    groupsWithApps.associate { groupWithApps ->
+                        val groupUsage = todayUsageByGroupType[groupWithApps.group.type].orEmpty()
+                        groupWithApps.group.id to
+                            groupWithApps.packageNames.sumOf { packageName ->
+                                groupUsage[packageName] ?: 0L
+                            }
+                    }
+                val newPeriodUsageMap =
+                    groupsWithApps.associate { groupWithApps ->
+                        val groupUsage =
+                            periodUsageByGroupConfig[
+                                groupWithApps.group.type to groupWithApps.group.limitPeriod
+                            ].orEmpty()
+                        groupWithApps.group.id to
+                            groupWithApps.packageNames.sumOf { packageName ->
+                                groupUsage[packageName] ?: 0L
+                            }
+                    }
+                usageMap = newUsageMap
+                periodUsageMap = newPeriodUsageMap
+                todayAppUsageMap = newTodayAppUsageMap
+                todayAppOpenCountMap = newTodayAppOpenCountMap
+                todaySessions = newTodaySessions
+                isOverviewUsageReady = true
             }
-            usageMap = newMap
-            kotlinx.coroutines.delay(5000L) // 5绉掑埛鏂颁竴娆?
+            kotlinx.coroutines.delay(5000L)
         }
     }
     val usageAccessGranted = usageAccessStatus == UsageAccessStatus.GRANTED
     val statusColor = if (usageAccessGranted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+    val isOverviewReady = overviewInputsReady && isOverviewUsageReady
 
     val overviewState =
         remember(
             context,
             groupsWithApps,
             usageMap,
+            periodUsageMap,
+            todayAppUsageMap,
+            todayAppOpenCountMap,
+            todaySessions,
             activeRewardEffects,
+            recentGroupArchives,
+            yesterdayGroupArchives,
+            yesterdayAppArchives,
             historicalArchives,
             userPoints,
             todayPoints,
@@ -2349,12 +2939,50 @@ fun HomeScreen(
                 context = context,
                 groupsWithApps = groupsWithApps,
                 usageMap = usageMap,
+                periodUsageMap = periodUsageMap,
+                todayAppUsageMap = todayAppUsageMap,
+                todayAppOpenCountMap = todayAppOpenCountMap,
+                todaySessions = todaySessions,
                 activeRewardEffects = activeRewardEffects,
+                recentGroupArchives = recentGroupArchives,
+                yesterdayGroupArchives = yesterdayGroupArchives,
+                yesterdayAppArchives = yesterdayAppArchives,
                 historicalArchives = historicalArchives,
                 userPoints = userPoints,
                 todayPoints = todayPoints,
                 achievementProgress = achievementProgress,
             )
+        }
+    val battleActions =
+        remember(
+            overviewState.battleActions,
+            usageAccessGranted,
+            accessibilityServiceEnabled,
+        ) {
+            buildList {
+                if (!usageAccessGranted) {
+                    add(
+                        HomeBattleAction(
+                            type = HomeBattleActionType.PERMISSION_USAGE,
+                            title = AppText.t("home_battle_permission_usage_title"),
+                            subtitle = AppText.t("home_battle_permission_usage_body"),
+                            value = AppText.t("home_battle_permission_fix"),
+                            progress = 0f,
+                        ),
+                    )
+                } else if (!accessibilityServiceEnabled) {
+                    add(
+                        HomeBattleAction(
+                            type = HomeBattleActionType.PERMISSION_ACCESSIBILITY,
+                            title = AppText.t("home_battle_permission_accessibility_title"),
+                            subtitle = AppText.t("home_battle_permission_accessibility_body"),
+                            value = AppText.t("home_battle_permission_fix"),
+                            progress = 0f,
+                        ),
+                    )
+                }
+                addAll(overviewState.battleActions)
+            }.take(2)
         }
 
     Scaffold(modifier = modifier.fillMaxSize()) { innerPadding ->
@@ -2364,34 +2992,17 @@ fun HomeScreen(
                 .padding(innerPadding)
                 .verticalScroll(homeScrollState)
         ) {
-            val pendingPermissionPrompts =
-                listOfNotNull(
-                    if (!usageAccessGranted && PermissionPromptIds.USAGE_ACCESS !in dismissedPermissionPrompts) {
-                        PermissionPromptIds.USAGE_ACCESS to AppText.t("home_usage_access")
-                    } else {
-                        null
-                    },
-                    if (!accessibilityServiceEnabled && PermissionPromptIds.ACCESSIBILITY !in dismissedPermissionPrompts) {
-                        PermissionPromptIds.ACCESSIBILITY to AppText.t("home_accessibility_blocking")
-                    } else {
-                        null
-                    },
-                    if (!isAutoStartDismissed && PermissionPromptIds.BACKGROUND_START !in dismissedPermissionPrompts) {
-                        PermissionPromptIds.BACKGROUND_START to AppText.t("home_background_start")
-                    } else {
-                        null
-                    },
-                    if (!isIgnoringBattery && PermissionPromptIds.BATTERY !in dismissedPermissionPrompts) {
-                        PermissionPromptIds.BATTERY to AppText.t("home_battery_allowlist")
-                    } else {
-                        null
-                    },
-                    if (!notificationPermissionGranted && PermissionPromptIds.NOTIFICATION !in dismissedPermissionPrompts) {
-                        PermissionPromptIds.NOTIFICATION to AppText.t("home_notifications_permission")
-                    } else {
-                        null
-                    },
+            val startupDismissIds =
+                startupReliabilityDismissIds(
+                    snapshot = permissionReliabilitySnapshot,
+                    dismissedPermissionPrompts = dismissedPermissionPrompts,
                 )
+            val showStartupReliabilityCard =
+                when (permissionReliabilitySnapshot.primaryStep) {
+                    StartupReliabilityStep.CREATE_FIRST_VOW -> true
+                    StartupReliabilityStep.READY -> startupDismissIds.isNotEmpty()
+                    else -> startupDismissIds.isNotEmpty()
+                }
 
             Column(
                 modifier = Modifier
@@ -2404,26 +3015,76 @@ fun HomeScreen(
                 verticalArrangement = Arrangement.spacedBy(TinyVowSpacing.CardGap)
             ) {
                 if (usageAccessGranted) {
-                    HomeOverviewHeader(dateLabel = overviewState.dateLabel)
-                    HomeOverviewPaperCard(
-                        state = overviewState,
+                    HomeOverviewHeader(
+                        dateLabel = overviewState.dateLabel,
+                        superModeStatus = superModeStatus,
+                        onOpenSuperModeInfo = onOpenSuperModeEntry,
+                    )
+                    if (isOverviewReady) {
+                        HomeOverviewPaperCard(
+                            state = overviewState,
+                            onOpenBehaviorRadar = { showHomeBehaviorRadarDialog = true },
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                    } else {
+                        HomeOverviewLoadingCard(modifier = Modifier.fillMaxWidth())
+                    }
+                }
+
+                HomeBattleStation(
+                    actions = battleActions,
+                    onActionClick = { action ->
+                        when (action.type) {
+                            HomeBattleActionType.CONTROL,
+                            HomeBattleActionType.ENCOURAGE -> {
+                                action.group?.let { group ->
+                                    openBattleGroupDetailGroup = group
+                                    openBattleGroupDetailRequest += 1
+                                }
+                            }
+                            HomeBattleActionType.REWARD -> onNavigateToRedeem()
+                            HomeBattleActionType.CREATE -> createFirstVowRequest += 1
+                            HomeBattleActionType.PERMISSION_USAGE -> onOpenUsageAccessSettings()
+                            HomeBattleActionType.PERMISSION_ACCESSIBILITY -> onOpenAccessibilitySettings()
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+
+                if (usageAccessGranted && activeRewardEffects.isNotEmpty()) {
+                    HomeActiveEffectsCard(
+                        effects = activeRewardEffects,
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }
-                
-                if (pendingPermissionPrompts.isNotEmpty()) {
-                    CompactPermissionBanner(
-                        prompts = pendingPermissionPrompts,
-                        onOpen = onOpenPermissionDiagnostics,
-                        onDismiss = {
-                            onDismissPermissionPrompts(pendingPermissionPrompts.map { it.first })
+
+                if (showStartupReliabilityCard) {
+                    StartupReliabilityCard(
+                        snapshot = permissionReliabilitySnapshot,
+                        onCreateFirstVow = {
+                            createFirstVowRequest += 1
                         },
+                        onOpenUsageAccessSettings = onOpenUsageAccessSettings,
+                        onOpenAccessibilitySettings = onOpenAccessibilitySettings,
+                        onOpenPermissionDiagnostics = onOpenPermissionDiagnostics,
+                        onDismiss =
+                            startupDismissIds
+                                .takeIf { it.isNotEmpty() }
+                                ?.let { ids -> { onDismissPermissionPrompts(ids) } },
                     )
                 }
             }
 
-            if (usageAccessGranted) {
-                val dashboardTopSpacing = if (pendingPermissionPrompts.isEmpty()) 16.dp else 8.dp
+            if (showHomeBehaviorRadarDialog) {
+                HomeBehaviorRadarDialog(
+                    metrics = homeOverviewScoreMetrics(overviewState),
+                    comparisonMetrics = overviewState.behaviorComparisonMetrics,
+                    onDismiss = { showHomeBehaviorRadarDialog = false },
+                )
+            }
+
+            if (installedApps.isNotEmpty() || groupsWithApps.isNotEmpty() || isLoadingApps) {
+                val dashboardTopSpacing = if (showStartupReliabilityCard) 8.dp else 16.dp
                 Column(
                     modifier =
                         Modifier
@@ -2446,10 +3107,13 @@ fun HomeScreen(
                         onReorderGroups = { type, ids ->
                             coroutineScope.launch { appLimitRepository?.reorderGroups(type, ids) }
                         },
+                        createGroupRequest = createFirstVowRequest,
                         archiveRepository = archiveRepository,
                         isProActive = isProActive,
                         onShowProUpsell = onShowProUpsell,
                         onGuardAction = onGuardAction,
+                        openGroupDetailRequest = openBattleGroupDetailRequest,
+                        openGroupDetailGroup = openBattleGroupDetailGroup,
                         modifier = Modifier.fillMaxWidth(),
                     )
 
@@ -2490,6 +3154,179 @@ fun HomeScreen(
         }
     }
 }
+
+@Composable
+private fun StartupReliabilityCard(
+    snapshot: PermissionReliabilitySnapshot,
+    onCreateFirstVow: () -> Unit,
+    onOpenUsageAccessSettings: () -> Unit,
+    onOpenAccessibilitySettings: () -> Unit,
+    onOpenPermissionDiagnostics: () -> Unit,
+    onDismiss: (() -> Unit)?,
+) {
+    val themeColors = LocalThemeColors.current
+    val (titleKey, bodyKey, actionKey, action) =
+        when (snapshot.primaryStep) {
+            StartupReliabilityStep.CREATE_FIRST_VOW ->
+                Quadruple(
+                    "startup_reliability_create_vow_title",
+                    "startup_reliability_create_vow_body",
+                    "startup_reliability_create_vow_action",
+                    onCreateFirstVow,
+                )
+            StartupReliabilityStep.ENABLE_USAGE_ACCESS ->
+                Quadruple(
+                    "startup_reliability_usage_access_title",
+                    "startup_reliability_usage_access_body",
+                    "permission_primary_action",
+                    onOpenUsageAccessSettings,
+                )
+            StartupReliabilityStep.ACCEPT_ACCESSIBILITY_DISCLOSURE ->
+                Quadruple(
+                    "startup_reliability_accessibility_disclosure_title",
+                    "startup_reliability_accessibility_disclosure_body",
+                    "startup_reliability_accessibility_action",
+                    onOpenAccessibilitySettings,
+                )
+            StartupReliabilityStep.ENABLE_ACCESSIBILITY_SERVICE ->
+                Quadruple(
+                    "startup_reliability_accessibility_service_title",
+                    "startup_reliability_accessibility_service_body",
+                    "accessibility_card_action",
+                    onOpenAccessibilitySettings,
+                )
+            StartupReliabilityStep.CHECK_ACCESSIBILITY_HEALTH ->
+                Quadruple(
+                    "startup_reliability_accessibility_health_title",
+                    "startup_reliability_accessibility_health_body",
+                    "startup_reliability_review_action",
+                    onOpenPermissionDiagnostics,
+                )
+            StartupReliabilityStep.READY ->
+                Quadruple(
+                    if (snapshot.optionalSuggestionCount > 0) {
+                        "startup_reliability_optional_title"
+                    } else {
+                        "startup_reliability_ready_title"
+                    },
+                    if (snapshot.optionalSuggestionCount > 0) {
+                        "startup_reliability_optional_body"
+                    } else {
+                        "startup_reliability_ready_body"
+                    },
+                    "startup_reliability_review_action",
+                    onOpenPermissionDiagnostics,
+                )
+        }
+
+    TinyVowCard(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(TinyVowRadius.FeaturedCard),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+        borderAlpha = 0.22f,
+    ) {
+        Column(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(
+                        horizontal = TinyVowSpacing.CardHorizontal,
+                        vertical = TinyVowSpacing.CardVertical,
+                    ),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                Surface(
+                    modifier = Modifier.size(34.dp),
+                    shape = RoundedCornerShape(12.dp),
+                    color = if (snapshot.coreReady) themeColors.encourageContainer else themeColors.controlContainer,
+                    tonalElevation = 0.dp,
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = if (snapshot.coreReady) Icons.Default.CheckCircle else Icons.Default.Shield,
+                            contentDescription = null,
+                            tint = if (snapshot.coreReady) themeColors.encourage else themeColors.control,
+                            modifier = Modifier.size(19.dp),
+                        )
+                    }
+                }
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = AppText.t(titleKey),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = themeColors.inkStrong,
+                    )
+                }
+            }
+
+            Text(
+                text =
+                    if (bodyKey == "startup_reliability_optional_body") {
+                        AppText.t(bodyKey, snapshot.optionalSuggestionCount)
+                    } else {
+                        AppText.t(bodyKey)
+                    },
+                style = MaterialTheme.typography.bodyMedium,
+                color = themeColors.ink,
+                maxLines = 2,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                if (onDismiss != null) {
+                    OutlinedButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Text(AppText.t("home_dismiss"), maxLines = 1)
+                    }
+                }
+                Button(
+                    onClick = action,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text(AppText.t(actionKey), maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
+                }
+            }
+        }
+    }
+}
+
+private data class Quadruple<A, B, C, D>(
+    val first: A,
+    val second: B,
+    val third: C,
+    val fourth: D,
+)
+
+private fun startupReliabilityDismissIds(
+    snapshot: PermissionReliabilitySnapshot,
+    dismissedPermissionPrompts: Set<String>,
+): List<String> =
+    when (snapshot.primaryStep) {
+        StartupReliabilityStep.CREATE_FIRST_VOW -> emptyList()
+        StartupReliabilityStep.ENABLE_USAGE_ACCESS ->
+            listOf(PermissionPromptIds.USAGE_ACCESS).filterNot { it in dismissedPermissionPrompts }
+        StartupReliabilityStep.ACCEPT_ACCESSIBILITY_DISCLOSURE,
+        StartupReliabilityStep.ENABLE_ACCESSIBILITY_SERVICE,
+        StartupReliabilityStep.CHECK_ACCESSIBILITY_HEALTH ->
+            listOf(PermissionPromptIds.ACCESSIBILITY).filterNot { it in dismissedPermissionPrompts }
+        StartupReliabilityStep.READY ->
+            buildList {
+                if (!snapshot.notificationPermissionGranted) add(PermissionPromptIds.NOTIFICATION)
+                if (!snapshot.isIgnoringBatteryOptimizations) add(PermissionPromptIds.BATTERY)
+                if (!snapshot.isAutoStartDismissed) add(PermissionPromptIds.BACKGROUND_START)
+            }.filterNot { it in dismissedPermissionPrompts }
+    }
 
 @Composable
 private fun CompactPermissionBanner(
@@ -2533,14 +3370,189 @@ private fun CompactPermissionBanner(
 }
 
 @Composable
+private fun FirstRunCoachmarkOverlay(
+    onTargetScreenChange: (Screen) -> Unit,
+    onComplete: () -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val themeColors = LocalThemeColors.current
+    val steps =
+        remember {
+            listOf(
+                FirstRunCoachmarkStep(
+                    screen = Screen.HOME,
+                    icon = Icons.Default.Home,
+                    titleKey = "tutorial_bubble_home_title",
+                    bodyKey = "tutorial_bubble_home_body",
+                    alignment = CoachmarkBubbleAlignment.Top,
+                ),
+                FirstRunCoachmarkStep(
+                    screen = Screen.HOME,
+                    icon = Icons.Default.AddCircle,
+                    titleKey = "tutorial_bubble_groups_title",
+                    bodyKey = "tutorial_bubble_groups_body",
+                    alignment = CoachmarkBubbleAlignment.Center,
+                ),
+                FirstRunCoachmarkStep(
+                    screen = Screen.STATS,
+                    icon = Icons.Default.BarChart,
+                    titleKey = "tutorial_bubble_stats_title",
+                    bodyKey = "tutorial_bubble_stats_body",
+                    alignment = CoachmarkBubbleAlignment.Bottom,
+                ),
+                FirstRunCoachmarkStep(
+                    screen = Screen.REWARDS,
+                    icon = Icons.Default.CardGiftcard,
+                    titleKey = "tutorial_bubble_rewards_title",
+                    bodyKey = "tutorial_bubble_rewards_body",
+                    alignment = CoachmarkBubbleAlignment.Bottom,
+                ),
+                FirstRunCoachmarkStep(
+                    screen = Screen.ME,
+                    icon = Icons.Default.Person,
+                    titleKey = "tutorial_bubble_me_title",
+                    bodyKey = "tutorial_bubble_me_body",
+                    alignment = CoachmarkBubbleAlignment.Bottom,
+                ),
+            )
+        }
+    var stepIndex by remember { mutableIntStateOf(0) }
+    val currentStep = steps[stepIndex]
+    val isLastStep = stepIndex == steps.lastIndex
+
+    LaunchedEffect(currentStep.screen) {
+        onTargetScreenChange(currentStep.screen)
+    }
+
+    Box(
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .background(Color.Black.copy(alpha = 0.38f))
+                .padding(horizontal = 18.dp, vertical = 24.dp),
+        contentAlignment =
+            when (currentStep.alignment) {
+                CoachmarkBubbleAlignment.Top -> Alignment.TopCenter
+                CoachmarkBubbleAlignment.Center -> Alignment.Center
+                CoachmarkBubbleAlignment.Bottom -> Alignment.BottomCenter
+            },
+    ) {
+        Surface(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .widthIn(max = 420.dp)
+                    .padding(bottom = if (currentStep.alignment == CoachmarkBubbleAlignment.Bottom) 88.dp else 0.dp),
+            shape = RoundedCornerShape(24.dp),
+            color = MaterialTheme.colorScheme.surface,
+            tonalElevation = 6.dp,
+            shadowElevation = 8.dp,
+        ) {
+            Column(
+                modifier = Modifier.padding(horizontal = 18.dp, vertical = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Surface(
+                        modifier = Modifier.size(42.dp),
+                        shape = RoundedCornerShape(16.dp),
+                        color = themeColors.baseContainer,
+                        tonalElevation = 0.dp,
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            Icon(
+                                imageVector = currentStep.icon,
+                                contentDescription = null,
+                                tint = themeColors.base,
+                                modifier = Modifier.size(23.dp),
+                            )
+                        }
+                    }
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = AppText.t(currentStep.titleKey),
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = themeColors.inkStrong,
+                        )
+                        Text(
+                            text = AppText.t("tutorial_bubble_step_count", stepIndex + 1, steps.size),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = themeColors.inkMuted,
+                        )
+                    }
+                }
+
+                Text(
+                    text = AppText.t(currentStep.bodyKey),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = themeColors.ink,
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    TextButton(
+                        onClick = onDismiss,
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Text(AppText.t("tutorial_bubble_skip"))
+                    }
+                    Button(
+                        onClick = {
+                            if (isLastStep) {
+                                onComplete()
+                            } else {
+                                stepIndex += 1
+                            }
+                        },
+                        modifier = Modifier.weight(1f),
+                    ) {
+                        Text(
+                            if (isLastStep) {
+                                AppText.t("tutorial_bubble_finish")
+                            } else {
+                                AppText.t("welcome_intro_next")
+                            },
+                            maxLines = 1,
+                            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun HomeOverviewPaperCard(
     state: HomeOverviewUiState,
+    onOpenBehaviorRadar: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val themeColors = LocalThemeColors.current
-    val controlRatio = state.control.scoreRatio
     val score = homeOverviewScore(state)
+    val scoreMetrics = homeOverviewScoreMetrics(state)
     val ringTrackColor = themeColors.inkFaint.copy(alpha = 0.30f)
+    val revealProgress = remember { Animatable(0f) }
+
+    LaunchedEffect(Unit) {
+        revealProgress.snapTo(0f)
+        revealProgress.animateTo(
+            targetValue = 1f,
+            animationSpec =
+                tween(
+                    durationMillis = 720,
+                    easing = FastOutSlowInEasing,
+                ),
+        )
+    }
 
     TinyVowCard(
         modifier = modifier.fillMaxWidth(),
@@ -2554,7 +3566,7 @@ private fun HomeOverviewPaperCard(
                 vertical = TinyVowSpacing.CardVertical,
             ),
         ) {
-            val centerSize = if (maxWidth < 360.dp) 108.dp else 116.dp
+            val centerSize = if (maxWidth < 360.dp) 126.dp else 134.dp
             val wingHeight = if (maxWidth < 360.dp) 232.dp else 242.dp
             val centerGap = centerSize - 38.dp
             val density = LocalDensity.current
@@ -2596,6 +3608,7 @@ private fun HomeOverviewPaperCard(
                             contentColor = themeColors.onControlContainer,
                             accent = themeColors.control,
                             compact = compact,
+                            revealProgress = revealProgress,
                             centerGapPx = centerGapPx,
                             notchRadiusPx = notchRadiusPx,
                             modifier = Modifier.weight(1f),
@@ -2621,6 +3634,7 @@ private fun HomeOverviewPaperCard(
                             contentColor = themeColors.onEncourageContainer,
                             accent = themeColors.encourage,
                             compact = compact,
+                            revealProgress = revealProgress,
                             centerGapPx = centerGapPx,
                             notchRadiusPx = notchRadiusPx,
                             modifier = Modifier.weight(1f),
@@ -2629,11 +3643,11 @@ private fun HomeOverviewPaperCard(
 
                     HomeOverviewScoreDial(
                         score = score,
-                        controlRatio = controlRatio,
+                        metrics = scoreMetrics,
                         ringTrackColor = ringTrackColor,
-                        controlColor = themeColors.control,
-                        encourageColor = themeColors.encourage,
                         scoreColor = themeColors.inkStrong,
+                        revealProgress = revealProgress,
+                        onClick = onOpenBehaviorRadar,
                         modifier = Modifier.size(centerSize),
                     )
                 }
@@ -2643,48 +3657,158 @@ private fun HomeOverviewPaperCard(
 }
 
 @Composable
-private fun HomeOverviewScoreDial(
-    score: Int,
-    controlRatio: Float,
-    ringTrackColor: Color,
-    controlColor: Color,
-    encourageColor: Color,
-    scoreColor: Color,
+private fun HomeOverviewLoadingCard(
     modifier: Modifier = Modifier,
 ) {
-    val boundedControl = controlRatio.coerceIn(0f, 1f)
+    TinyVowCard(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(TinyVowRadius.FeaturedCard),
+        borderAlpha = 0.24f,
+        shadowElevation = TinyVowElevation.FeaturedCard,
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(242.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            CircularProgressIndicator(strokeWidth = 2.5.dp)
+        }
+    }
+}
+
+@Composable
+private fun HomeBehaviorRadarDialog(
+    metrics: List<DailyBehaviorScoreMetric>,
+    comparisonMetrics: List<DailyBehaviorScoreMetric>,
+    onDismiss: () -> Unit,
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = RoundedCornerShape(24.dp),
+            color = MaterialTheme.colorScheme.surface,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.28f)),
+        ) {
+            Column(
+                modifier =
+                    Modifier
+                        .padding(20.dp)
+                        .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                Text(
+                    text = AppText.t("home_behavior_radar_title"),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                )
+                Text(
+                    text = AppText.t("home_behavior_radar_subtitle"),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                BehaviorRadarPanel(
+                    metrics = metrics,
+                    comparisonMetrics = comparisonMetrics,
+                )
+                TinyVowButton(
+                    text = AppText.t("stats_score_info_close"),
+                    onClick = onDismiss,
+                    modifier = Modifier.fillMaxWidth(),
+                    tone = TinyVowButtonTone.Primary,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun HomeOverviewScoreDial(
+    score: Int,
+    metrics: List<DailyBehaviorScoreMetric>,
+    ringTrackColor: Color,
+    scoreColor: Color,
+    revealProgress: Animatable<Float, AnimationVector1D>,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val displaySegments = metrics.take(5)
+    val boundedRevealProgress = revealProgress.value.coerceIn(0f, 1f)
 
     Box(
-        modifier = modifier,
+        modifier =
+            modifier
+                .clip(CircleShape)
+                .clickable(
+                    onClickLabel = AppText.t("home_behavior_radar_action"),
+                    onClick = onClick,
+                ),
         contentAlignment = Alignment.Center,
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
             val strokeWidth = 16.dp.toPx()
+            val arcInset = strokeWidth / 2f
+            val arcTopLeft = Offset(arcInset, arcInset)
+            val arcSize =
+                androidx.compose.ui.geometry.Size(
+                    width = size.width - strokeWidth,
+                    height = size.height - strokeWidth,
+                )
             drawArc(
                 color = ringTrackColor,
                 startAngle = -90f,
                 sweepAngle = 360f,
                 useCenter = false,
+                topLeft = arcTopLeft,
+                size = arcSize,
                 style = Stroke(width = strokeWidth, cap = StrokeCap.Round),
             )
-            drawArc(
-                color = encourageColor,
-                startAngle = -90f,
-                sweepAngle = 360f * (score / 100f),
-                useCenter = false,
-                style = Stroke(width = strokeWidth, cap = StrokeCap.Round),
-            )
-            drawArc(
-                color = controlColor,
-                startAngle = -90f,
-                sweepAngle = 360f * boundedControl * 0.28f,
-                useCenter = false,
-                style = Stroke(width = strokeWidth, cap = StrokeCap.Round),
-            )
+            val segmentCapacity = 360f / displaySegments.size.coerceAtLeast(1)
+            val targetSweeps =
+                displaySegments.map { segment ->
+                    segmentCapacity * (segment.score.coerceIn(0, 100) / 100f)
+                }
+            var remainingRevealSweep = targetSweeps.sum() * boundedRevealProgress
+            var startAngle = -90f
+            val center = Offset(size.width / 2f, size.height / 2f)
+            val radiusX = arcSize.width / 2f
+            val radiusY = arcSize.height / 2f
+            val forwardCaps = mutableListOf<Pair<Color, Float>>()
+            targetSweeps.forEachIndexed { index, sweep ->
+                val color = displaySegments.getOrNull(index)?.let { behaviorScoreAccentColor(it.accentIndex) } ?: scoreColor
+                val visibleSweep = min(sweep, remainingRevealSweep)
+                if (visibleSweep <= 0f) return@forEachIndexed
+                drawArc(
+                    color = color,
+                    startAngle = startAngle,
+                    sweepAngle = visibleSweep,
+                    useCenter = false,
+                    topLeft = arcTopLeft,
+                    size = arcSize,
+                    style = Stroke(width = strokeWidth, cap = StrokeCap.Butt),
+                )
+                forwardCaps += color to (startAngle + visibleSweep)
+                remainingRevealSweep -= visibleSweep
+                startAngle += sweep
+            }
+            forwardCaps.asReversed().forEach { (color, capAngle) ->
+                drawHomeOverviewForwardHalfCap(
+                    color = color,
+                    arcCenter = center,
+                    radiusX = radiusX,
+                    radiusY = radiusY,
+                    capRadius = strokeWidth / 2f,
+                    angleDegrees = capAngle,
+                )
+            }
         }
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            val animatedScore = homeAnimatedNumberText(
+                targetText = score.toString(),
+                progress = boundedRevealProgress,
+            )
             Text(
-                text = score.toString(),
+                text = animatedScore,
                 style = MaterialTheme.typography.displaySmall.copy(fontSize = 44.sp),
                 fontWeight = FontWeight.ExtraBold,
                 color = scoreColor,
@@ -2699,6 +3823,66 @@ private fun HomeOverviewScoreDial(
                 overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
             )
         }
+    }
+}
+
+private fun homeOverviewArcPoint(
+    arcCenter: Offset,
+    radiusX: Float,
+    radiusY: Float,
+    angleDegrees: Float,
+): Offset {
+    val radians = Math.toRadians(angleDegrees.toDouble())
+    val cosValue = kotlin.math.cos(radians).toFloat()
+    val sinValue = kotlin.math.sin(radians).toFloat()
+    return Offset(
+        x = arcCenter.x + cosValue * radiusX,
+        y = arcCenter.y + sinValue * radiusY,
+    )
+}
+
+private fun DrawScope.drawHomeOverviewForwardHalfCap(
+    color: Color,
+    arcCenter: Offset,
+    radiusX: Float,
+    radiusY: Float,
+    capRadius: Float,
+    angleDegrees: Float,
+) {
+    val radians = Math.toRadians(angleDegrees.toDouble())
+    val cosValue = kotlin.math.cos(radians).toFloat()
+    val sinValue = kotlin.math.sin(radians).toFloat()
+    val capCenter =
+        Offset(
+            x = arcCenter.x + cosValue * radiusX,
+            y = arcCenter.y + sinValue * radiusY,
+        )
+    val rawTangentX = -radiusX * sinValue
+    val rawTangentY = radiusY * cosValue
+    val tangentLength =
+        kotlin.math.sqrt(rawTangentX * rawTangentX + rawTangentY * rawTangentY)
+            .coerceAtLeast(0.001f)
+    val tangentX = rawTangentX / tangentLength
+    val tangentY = rawTangentY / tangentLength
+    val normalX = -tangentY
+    val normalY = tangentX
+    val reach = size.maxDimension * 2f + capRadius
+    val clip =
+        Path().apply {
+            moveTo(capCenter.x + normalX * reach, capCenter.y + normalY * reach)
+            lineTo(
+                capCenter.x + tangentX * reach + normalX * reach,
+                capCenter.y + tangentY * reach + normalY * reach,
+            )
+            lineTo(
+                capCenter.x + tangentX * reach - normalX * reach,
+                capCenter.y + tangentY * reach - normalY * reach,
+            )
+            lineTo(capCenter.x - normalX * reach, capCenter.y - normalY * reach)
+            close()
+        }
+    clipPath(clip) {
+        drawCircle(color = color, radius = capRadius, center = capCenter)
     }
 }
 
@@ -2738,6 +3922,7 @@ private fun HomeOverviewWingPanel(
     contentColor: Color,
     accent: Color,
     compact: Boolean,
+    revealProgress: Animatable<Float, AnimationVector1D>,
     centerGapPx: Float,
     notchRadiusPx: Float,
     modifier: Modifier = Modifier,
@@ -2782,7 +3967,7 @@ private fun HomeOverviewWingPanel(
                     fontWeight = FontWeight.Bold,
                     color = contentColor,
                     textAlign = textAlign,
-                    maxLines = 1,
+                    maxLines = 2,
                     overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                     modifier = Modifier.fillMaxWidth(),
                 )
@@ -2801,36 +3986,14 @@ private fun HomeOverviewWingPanel(
             }
 
             Column(horizontalAlignment = horizontalAlignment, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = if (isLeft) Arrangement.Start else Arrangement.End,
-                    verticalAlignment = Alignment.Bottom,
-                ) {
-                    Text(
-                        text = value,
-                        style =
-                            if (compact) {
-                                MaterialTheme.typography.headlineMedium.copy(fontSize = 30.sp, lineHeight = 34.sp)
-                            } else {
-                                MaterialTheme.typography.headlineLarge.copy(fontSize = 34.sp, lineHeight = 38.sp)
-                            },
-                        fontWeight = FontWeight.ExtraBold,
-                        color = contentColor,
-                        maxLines = 1,
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = unit,
-                        style = MaterialTheme.typography.labelLarge.copy(
-                            fontSize = if (compact) 11.5.sp else 12.5.sp,
-                            lineHeight = 15.sp,
-                        ),
-                        fontWeight = FontWeight.SemiBold,
-                        color = contentColor.copy(alpha = 0.72f),
-                        modifier = Modifier.padding(bottom = 5.dp),
-                        maxLines = 1,
-                    )
-                }
+                HomeOverviewWingMainMetric(
+                    value = value,
+                    unit = unit,
+                    contentColor = contentColor,
+                    compact = compact,
+                    alignEnd = !isLeft,
+                    revealProgress = revealProgress,
+                )
                 HomeOverviewWingPillRow(
                     first = progress,
                     second = streak,
@@ -2856,6 +4019,48 @@ private fun HomeOverviewWingPanel(
                 )
             }
         }
+    }
+}
+
+@Composable
+private fun HomeOverviewWingMainMetric(
+    value: String,
+    unit: String,
+    contentColor: Color,
+    compact: Boolean,
+    alignEnd: Boolean,
+    revealProgress: Animatable<Float, AnimationVector1D>,
+) {
+    val animatedValue = homeAnimatedNumberText(value, revealProgress.value.coerceIn(0f, 1f))
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = if (alignEnd) Arrangement.End else Arrangement.Start,
+        verticalAlignment = Alignment.Bottom,
+    ) {
+        Text(
+            text = animatedValue,
+            style =
+                if (compact) {
+                    MaterialTheme.typography.headlineMedium.copy(fontSize = 30.sp, lineHeight = 34.sp)
+                } else {
+                    MaterialTheme.typography.headlineLarge.copy(fontSize = 34.sp, lineHeight = 38.sp)
+                },
+            fontWeight = FontWeight.ExtraBold,
+            color = contentColor,
+            maxLines = 1,
+        )
+        Spacer(modifier = Modifier.width(4.dp))
+        Text(
+            text = unit,
+            style = MaterialTheme.typography.labelLarge.copy(
+                fontSize = if (compact) 11.5.sp else 12.5.sp,
+                lineHeight = 15.sp,
+            ),
+            fontWeight = FontWeight.SemiBold,
+            color = contentColor.copy(alpha = 0.72f),
+            modifier = Modifier.padding(bottom = 5.dp),
+            maxLines = 1,
+        )
     }
 }
 
@@ -2901,6 +4106,25 @@ private fun HomeOverviewWingPill(
         maxLines = 1,
         overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
     )
+}
+
+private fun homeAnimatedNumberText(
+    targetText: String,
+    progress: Float,
+): String {
+    val target = targetText.replace(",", "").toFloatOrNull() ?: return targetText
+    val decimalCount = targetText.substringAfter('.', "").takeIf { targetText.contains('.') }?.length ?: 0
+    val animatedValue = target * progress.coerceIn(0f, 1f)
+
+    return if (decimalCount > 0) {
+        java.lang.String.format(
+            java.util.Locale.getDefault(),
+            "%.${decimalCount}f",
+            animatedValue,
+        )
+    } else {
+        animatedValue.roundToInt().toString()
+    }
 }
 
 private fun homeOverviewEmphasizedNumberText(
@@ -3723,17 +4947,287 @@ private fun HomeOverviewPill(
 @Composable
 private fun HomeOverviewHeader(
     dateLabel: String,
+    superModeStatus: SuperModeStatus,
+    onOpenSuperModeInfo: () -> Unit,
 ) {
-    Text(
-        text = dateLabel,
-        style = MaterialTheme.typography.titleLarge,
-        fontWeight = FontWeight.SemiBold,
-        color = MaterialTheme.colorScheme.primary,
+    Row(
         modifier = Modifier.fillMaxWidth(),
-        maxLines = 1,
-        softWrap = false,
-        overflow = androidx.compose.ui.text.style.TextOverflow.Clip,
-    )
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = dateLabel,
+            style = MaterialTheme.typography.titleLarge,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.weight(1f),
+            maxLines = 1,
+            softWrap = false,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Clip,
+        )
+        if (superModeStatus.isConfigured && superModeStatus.isEnabled) {
+            Surface(
+                modifier = Modifier.clickable(onClick = onOpenSuperModeInfo),
+                shape = RoundedCornerShape(999.dp),
+                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)),
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.VerifiedUser,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(16.dp),
+                    )
+                    Text(
+                        text = AppText.t("super_mode_title"),
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        maxLines = 1,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun HomeBattleStation(
+    actions: List<HomeBattleAction>,
+    onActionClick: (HomeBattleAction) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    if (actions.isEmpty()) return
+    TinyVowCard(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(TinyVowRadius.FeaturedCard),
+        borderAlpha = 0.30f,
+        shadowElevation = TinyVowElevation.FeaturedCard,
+    ) {
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 10.dp, vertical = 9.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            actions.forEach { action ->
+                HomeBattleActionTile(
+                    action = action,
+                    onClick = { onActionClick(action) },
+                    modifier =
+                        Modifier
+                            .weight(1f)
+                            .heightIn(min = 52.dp),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun HomeBattleActionTile(
+    action: HomeBattleAction,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val themeColors = LocalThemeColors.current
+    val accent =
+        when (action.type) {
+            HomeBattleActionType.CONTROL -> themeColors.control
+            HomeBattleActionType.ENCOURAGE -> themeColors.encourage
+            HomeBattleActionType.REWARD -> MaterialTheme.colorScheme.primary
+            HomeBattleActionType.CREATE -> MaterialTheme.colorScheme.primary
+            HomeBattleActionType.PERMISSION_USAGE,
+            HomeBattleActionType.PERMISSION_ACCESSIBILITY -> MaterialTheme.colorScheme.error
+        }
+    val icon =
+        when (action.type) {
+            HomeBattleActionType.CONTROL -> Icons.Default.Shield
+            HomeBattleActionType.ENCOURAGE -> Icons.Default.Star
+            HomeBattleActionType.REWARD -> Icons.Default.CardGiftcard
+            HomeBattleActionType.CREATE -> Icons.Default.AddCircle
+            HomeBattleActionType.PERMISSION_USAGE,
+            HomeBattleActionType.PERMISSION_ACCESSIBILITY -> Icons.Default.VerifiedUser
+        }
+
+    Surface(
+        color = Color.Transparent,
+        modifier =
+            modifier
+                .clip(RoundedCornerShape(TinyVowRadius.Control))
+                .clickable(onClick = onClick),
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
+            verticalArrangement = Arrangement.spacedBy(5.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Box(
+                    modifier =
+                        Modifier
+                            .size(22.dp)
+                            .clip(RoundedCornerShape(9.dp))
+                            .background(accent.copy(alpha = 0.12f)),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        tint = accent,
+                        modifier = Modifier.size(14.dp),
+                    )
+                }
+                Text(
+                    text = action.title,
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.sp, lineHeight = 15.sp),
+                    fontWeight = FontWeight.SemiBold,
+                    color = themeColors.inkStrong,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                )
+            }
+            Text(
+                text =
+                    homeBattleHintText(
+                        value = action.value,
+                        subtitle = action.subtitle,
+                        subtitleGroupName = action.subtitleGroupName,
+                        valueColor = accent,
+                        restColor = themeColors.inkMuted,
+                    ),
+                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.8.sp, lineHeight = 14.sp),
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+private fun homeBattleHintText(
+    value: String,
+    subtitle: String,
+    subtitleGroupName: String? = null,
+    valueColor: Color,
+    restColor: Color,
+) = buildAnnotatedString {
+    withStyle(SpanStyle(color = valueColor, fontWeight = FontWeight.SemiBold)) {
+        append(value)
+    }
+    withStyle(SpanStyle(color = restColor)) {
+        append(AppText.t("home_battle_action_hint_separator"))
+    }
+    val name = subtitleGroupName
+    if (name != null && name.isNotEmpty()) {
+        val idx = subtitle.indexOf(name)
+        if (idx >= 0) {
+            withStyle(SpanStyle(color = restColor)) { append(subtitle.substring(0, idx)) }
+            withStyle(SpanStyle(color = valueColor, fontWeight = FontWeight.SemiBold)) { append(name) }
+            withStyle(SpanStyle(color = restColor)) { append(subtitle.substring(idx + name.length)) }
+        } else {
+            withStyle(SpanStyle(color = restColor)) { append(subtitle) }
+        }
+    } else {
+        withStyle(SpanStyle(color = restColor)) { append(subtitle) }
+    }
+}
+
+@Composable
+private fun HomeActiveEffectsCard(
+    effects: List<ActiveRewardEffectEntity>,
+    modifier: Modifier = Modifier,
+) {
+    val themeColors = LocalThemeColors.current
+    TinyVowCard(
+        modifier = modifier,
+        shape = RoundedCornerShape(TinyVowRadius.Card),
+        borderAlpha = 0.30f,
+    ) {
+        Column(
+            modifier = Modifier.padding(
+                horizontal = TinyVowSpacing.CardHorizontal,
+                vertical = TinyVowSpacing.CardVertical,
+            ),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = AppText.t("redeem_effects_active_title"),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = themeColors.inkStrong,
+                )
+                Text(
+                    text = AppText.t("redeem_effects_active_count", effects.size),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
+            effects.take(3).forEach { effect ->
+                HomeActiveEffectRow(effect = effect)
+            }
+        }
+    }
+}
+
+@Composable
+private fun HomeActiveEffectRow(effect: ActiveRewardEffectEntity) {
+    val payload = remember(effect.payloadJson) { parseRewardPayload(effect.payloadJson) }
+    val target = effect.targetGroupNameSnapshot ?: AppText.t("generic_target_group")
+    val title =
+        when (effect.effectType) {
+            RewardType.TIME_ADD -> AppText.t("redeem_effects_active_time_add", target, payload.minutes)
+            RewardType.PERIOD_PASS -> AppText.t("redeem_effects_active_period_pass", target)
+            RewardType.EMERGENCY_UNLOCK -> AppText.t("redeem_effects_active_emergency_unlock", target, payload.minutes)
+            RewardType.DOUBLE_POINTS_DAY -> AppText.t("redeem_effects_active_double_points", target, trimHomeMultiplier(payload.pointsMultiplier))
+            RewardType.STREAK_SHIELD -> AppText.t("redeem_effects_active_streak_shield")
+            RewardType.CUSTOM -> AppText.t("redeem_rule_keep_in_inventory")
+        }
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = title,
+            modifier = Modifier.weight(1f),
+            style = MaterialTheme.typography.bodyMedium,
+            color = LocalThemeColors.current.ink,
+            maxLines = 1,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+        )
+        Text(
+            text = AppText.t("redeem_effects_remaining", formatHomeEffectDuration(effect.expireAt - System.currentTimeMillis())),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+private fun formatHomeEffectDuration(durationMillis: Long): String {
+    val totalMinutes = durationMillis.coerceAtLeast(0L) / 60_000L
+    val hours = totalMinutes / 60
+    val minutes = totalMinutes % 60
+    return when {
+        hours > 0 && minutes > 0 -> AppText.t("duration_value_h_value_min", hours, minutes)
+        hours > 0 -> AppText.t("duration_value_h", hours)
+        else -> AppText.t("duration_value_min", minutes)
+    }
 }
 
 @Composable
@@ -3964,10 +5458,8 @@ private fun formatHomePointWholeValue(points: Double): String =
 
 private fun homeStreakLabel(
     archivedStreak: Int,
-    completedGroups: Int,
-    totalGroups: Int,
+    todayCompleted: Boolean,
 ): String {
-    val todayCompleted = totalGroups > 0 && completedGroups >= totalGroups
     return when {
         todayCompleted -> AppText.t("home_streak_value", archivedStreak + 1)
         archivedStreak > 0 -> AppText.t("home_streak_pending_value", archivedStreak, archivedStreak + 1)
@@ -3979,7 +5471,9 @@ private fun trimHomeMultiplier(value: Double): String =
     if (value % 1.0 == 0.0) {
         value.toInt().toString()
     } else {
-        value.toString().trimEnd('0').trimEnd('.')
+        java.lang.String.format(java.util.Locale.getDefault(), "%.1f", value)
+            .trimEnd('0')
+            .trimEnd('.')
     }
 
 private const val HOME_SURPRISE_COUNT = 100
@@ -3993,10 +5487,11 @@ private fun Long.floorMod(modulus: Long): Long = ((this % modulus) + modulus) % 
 
 private const val HOME_CONTROL_SCORE_TOTAL = 60f
 private const val HOME_ENCOURAGE_SCORE_TOTAL = 40f
-private const val HOME_CONTROL_BASE_RATIO = 0.60f
-private const val HOME_CONTROL_TOLERANCE_MINUTES = 5
 
 private fun homeOverviewScore(state: HomeOverviewUiState): Int {
+    if (state.behaviorScoreMetrics.isNotEmpty()) {
+        return state.behaviorScoreMetrics.map { it.score }.average().roundToInt().coerceIn(0, 100)
+    }
     val controlPoints = if (state.control.totalGroups > 0) {
         state.control.scoreRatio.coerceAtLeast(0f) * HOME_CONTROL_SCORE_TOTAL
     } else {
@@ -4010,27 +5505,698 @@ private fun homeOverviewScore(state: HomeOverviewUiState): Int {
     return (controlPoints + encouragePoints).roundToInt().coerceIn(0, 100)
 }
 
-private fun controlGroupScore(usageMinutes: Int, limitMinutes: Int): Float {
-    val limit = limitMinutes.coerceAtLeast(1)
-    val overMinutes = usageMinutes - limit
-    return if (overMinutes <= HOME_CONTROL_TOLERANCE_MINUTES) {
-        val remainingRatio = (limit - usageMinutes).coerceAtLeast(0).toFloat() / limit
-        HOME_CONTROL_BASE_RATIO + remainingRatio.coerceIn(0f, 1f) * (1f - HOME_CONTROL_BASE_RATIO)
+private fun homeOverviewScoreMetrics(
+    state: HomeOverviewUiState,
+): List<DailyBehaviorScoreMetric> =
+    state.behaviorScoreMetrics.ifEmpty {
+        listOf(
+            DailyBehaviorScoreMetric(
+                label = AppText.t("stats_score_kept_vow"),
+                score = (state.control.scoreRatio.coerceIn(0f, 1f) * 100f).roundToInt(),
+                detail = AppText.t("stats_score_value", (state.control.scoreRatio.coerceIn(0f, 1f) * 100f).roundToInt()),
+                accentIndex = 0,
+            ),
+            DailyBehaviorScoreMetric(
+                label = AppText.t("stats_score_gains"),
+                score = (state.encourage.scoreRatio.coerceIn(0f, 1f) * 100f).roundToInt(),
+                detail = AppText.t("stats_score_value", (state.encourage.scoreRatio.coerceIn(0f, 1f) * 100f).roundToInt()),
+                accentIndex = 1,
+            ),
+            DailyBehaviorScoreMetric(label = AppText.t("stats_score_focus"), score = 60, detail = AppText.t("stats_score_value", 60), accentIndex = 2),
+            DailyBehaviorScoreMetric(label = AppText.t("stats_score_rhythm"), score = 60, detail = AppText.t("stats_score_value", 60), accentIndex = 3),
+            DailyBehaviorScoreMetric(label = AppText.t("stats_score_restraint"), score = 60, detail = AppText.t("stats_score_value", 60), accentIndex = 4),
+        )
+    }
+
+private fun buildRealtimeHomeBehaviorScoreMetrics(
+    controlGroups: List<AppGroupWithApps>,
+    encourageGroups: List<AppGroupWithApps>,
+    periodUsageMap: Map<String, Long>,
+    activeRewardEffects: List<ActiveRewardEffectEntity>,
+    analysis: BehaviorScoreAnalysis,
+    yesterdayGroupArchives: List<DailyGroupArchiveEntity>,
+    yesterdayAppArchives: List<DailyAppArchiveEntity>,
+): List<DailyBehaviorScoreMetric> {
+    val yesterdaySnapshots = mergeArchivedAppSnapshots(yesterdayAppArchives)
+    val hasYesterdayData = yesterdayGroupArchives.isNotEmpty() || yesterdayAppArchives.isNotEmpty()
+    val yesterdayControlPackageNames =
+        yesterdayAppArchives
+            .filter { it.groupType == GroupType.CONTROL }
+            .mapTo(linkedSetOf()) { it.packageName }
+    val yesterdayEncouragePackageNames =
+        yesterdayAppArchives
+            .filter { it.groupType == GroupType.ENCOURAGE }
+            .mapTo(linkedSetOf()) { it.packageName }
+    val yesterdayAnalysis =
+        analyzeBehaviorScores(
+            buildArchivedBehaviorScoreInputs(
+                items = yesterdaySnapshots,
+                groupArchives = yesterdayGroupArchives,
+                controlPackageNames = yesterdayControlPackageNames,
+                encouragePackageNames = yesterdayEncouragePackageNames,
+            ),
+        )
+    val yesterdayControlByName =
+        yesterdayGroupArchives
+            .filter { it.groupType == GroupType.CONTROL }
+            .associateBy { it.groupName }
+    val yesterdayEncourageByName =
+        yesterdayGroupArchives
+            .filter { it.groupType == GroupType.ENCOURAGE }
+            .associateBy { it.groupName }
+    return listOf(
+        DailyBehaviorScoreMetric(
+            label = AppText.t("stats_score_kept_vow"),
+            score = analysis.breakdown.guardScore,
+            detail = AppText.t("stats_score_value", analysis.breakdown.guardScore),
+            accentIndex = 0,
+            explanation =
+                BehaviorScoreMetricDetail(
+                    title = AppText.t("stats_score_kept_vow"),
+                    score = analysis.breakdown.guardScore,
+                    formulaLines =
+                        listOf(
+                            AppText.t("stats_score_metric_guard_formula_1"),
+                            AppText.t("stats_score_metric_guard_formula_2"),
+                        ),
+                    comparisonRows =
+                        buildList {
+                            add(
+                                BehaviorScoreMetricComparisonRow(
+                                    label = AppText.t("stats_score_metric_completion_groups_label"),
+                                    todayValue = "${analysis.guard.completedGroups} / ${analysis.guard.totalGroups}",
+                                    yesterdayValue =
+                                        if (hasYesterdayData) {
+                                            buildCompletedGroupsValue(
+                                                yesterdayAnalysis.guard.completedGroups,
+                                                yesterdayAnalysis.guard.totalGroups,
+                                            )
+                                        } else {
+                                            AppText.t("stats_score_metric_empty_value")
+                                        },
+                                ),
+                            )
+                            add(
+                                BehaviorScoreMetricComparisonRow(
+                                    label = AppText.t("stats_score_metric_remaining_limit_label"),
+                                    todayValue = buildUsageSlashValue(analysis.guard.remainingMillis, analysis.guard.totalLimitMillis),
+                                    yesterdayValue =
+                                        if (hasYesterdayData) {
+                                            buildUsageSlashValue(
+                                                yesterdayAnalysis.guard.remainingMillis,
+                                                yesterdayAnalysis.guard.totalLimitMillis,
+                                            )
+                                        } else {
+                                            AppText.t("stats_score_metric_empty_value")
+                                        },
+                                ),
+                            )
+                            controlGroups.forEach { group ->
+                                val usedMillis = periodUsageMap[group.group.id] ?: 0L
+                                add(
+                                    BehaviorScoreMetricComparisonRow(
+                                        label = group.group.name,
+                                        todayValue =
+                                            buildUsageSlashValue(
+                                                usedMillis,
+                                                homeEffectiveControlLimitMillis(
+                                                    activeRewardEffects,
+                                                    group.group.id,
+                                                    group.group.limitMinutes,
+                                                ),
+                                            ),
+                                        yesterdayValue =
+                                            if (!hasYesterdayData) {
+                                                AppText.t("stats_score_metric_empty_value")
+                                            } else {
+                                                yesterdayControlByName[group.group.name]?.let {
+                                                    buildUsageSlashValue(
+                                                        it.periodUsageMillisAtClose,
+                                                        it.effectiveLimitMillisAtClose,
+                                                    )
+                                                } ?: AppText.t("stats_score_metric_empty_value")
+                                            },
+                                    ),
+                                )
+                            }
+                        },
+                ),
+        ),
+        DailyBehaviorScoreMetric(
+            label = AppText.t("stats_score_gains"),
+            score = analysis.breakdown.gainScore,
+            detail = AppText.t("stats_score_value", analysis.breakdown.gainScore),
+            accentIndex = 1,
+            explanation =
+                BehaviorScoreMetricDetail(
+                    title = AppText.t("stats_score_gains"),
+                    score = analysis.breakdown.gainScore,
+                    formulaLines =
+                        listOf(
+                            AppText.t("stats_score_metric_gain_formula_1"),
+                            AppText.t("stats_score_metric_gain_formula_2"),
+                        ),
+                    comparisonRows =
+                        buildList {
+                            add(
+                                BehaviorScoreMetricComparisonRow(
+                                    label = AppText.t("stats_score_metric_completion_groups_label"),
+                                    todayValue = "${analysis.gain.completedGroups} / ${analysis.gain.totalGroups}",
+                                    yesterdayValue =
+                                        if (hasYesterdayData) {
+                                            buildCompletedGroupsValue(
+                                                yesterdayAnalysis.gain.completedGroups,
+                                                yesterdayAnalysis.gain.totalGroups,
+                                            )
+                                        } else {
+                                            AppText.t("stats_score_metric_empty_value")
+                                        },
+                                ),
+                            )
+                            encourageGroups.forEachIndexed { index, group ->
+                                val groupAnalysis = analysis.gain.groups.getOrNull(index) ?: return@forEachIndexed
+                                add(
+                                    BehaviorScoreMetricComparisonRow(
+                                        label = group.group.name,
+                                        todayValue =
+                                            buildProgressSlashValue(
+                                                groupAnalysis.usedMillis,
+                                                groupAnalysis.targetMillis,
+                                                groupAnalysis.progress,
+                                            ),
+                                        yesterdayValue =
+                                            if (!hasYesterdayData) {
+                                                AppText.t("stats_score_metric_empty_value")
+                                            } else {
+                                                yesterdayEncourageByName[group.group.name]?.let {
+                                                    buildProgressSlashValue(
+                                                        it.periodUsageMillisAtClose,
+                                                        it.effectiveLimitMillisAtClose.coerceAtLeast(1L),
+                                                        it.periodUsageMillisAtClose.toFloat() /
+                                                            it.effectiveLimitMillisAtClose.coerceAtLeast(1L).toFloat(),
+                                                    )
+                                                } ?: AppText.t("stats_score_metric_empty_value")
+                                            },
+                                    ),
+                                )
+                            }
+                        },
+                ),
+        ),
+        DailyBehaviorScoreMetric(
+            label = AppText.t("stats_score_focus"),
+            score = analysis.breakdown.focusScore,
+            detail = AppText.t("stats_score_value", analysis.breakdown.focusScore),
+            accentIndex = 2,
+            explanation =
+                buildHomeRatioScoreDetail(
+                    title = AppText.t("stats_score_focus"),
+                    score = analysis.breakdown.focusScore,
+                    formula = AppText.t("stats_score_metric_focus_formula"),
+                    numeratorLabel = AppText.t("stats_score_metric_encourage_usage_label"),
+                    numeratorToday = formatDuration(analysis.focus.numerator),
+                    numeratorYesterday = if (hasYesterdayData) formatDuration(yesterdayAnalysis.focus.numerator) else AppText.t("stats_score_metric_empty_value"),
+                    denominatorLabel = AppText.t("stats_score_metric_control_usage_label"),
+                    denominatorToday = formatDuration(analysis.focus.denominator),
+                    denominatorYesterday = if (hasYesterdayData) formatDuration(yesterdayAnalysis.focus.denominator) else AppText.t("stats_score_metric_empty_value"),
+                    ratioToday = analysis.focus.ratio,
+                    ratioYesterday = yesterdayAnalysis.focus.ratio.takeIf { hasYesterdayData },
+                ),
+        ),
+        DailyBehaviorScoreMetric(
+            label = AppText.t("stats_score_rhythm"),
+            score = analysis.breakdown.rhythmScore,
+            detail = AppText.t("stats_score_value", analysis.breakdown.rhythmScore),
+            accentIndex = 3,
+            explanation =
+                BehaviorScoreMetricDetail(
+                    title = AppText.t("stats_score_rhythm"),
+                    score = analysis.breakdown.rhythmScore,
+                    formulaLines = listOf(AppText.t("stats_score_metric_rhythm_formula")),
+                    comparisonRows =
+                        listOf(
+                            BehaviorScoreMetricComparisonRow(
+                                label = AppText.t("stats_score_metric_night_outside_label"),
+                                todayValue = formatDuration(analysis.rhythm.nightOutsideEncourageMillis),
+                                yesterdayValue =
+                                    if (hasYesterdayData) {
+                                        formatDuration(yesterdayAnalysis.rhythm.nightOutsideEncourageMillis)
+                                    } else {
+                                        AppText.t("stats_score_metric_empty_value")
+                                    },
+                            ),
+                        ),
+                ),
+        ),
+        DailyBehaviorScoreMetric(
+            label = AppText.t("stats_score_restraint"),
+            score = analysis.breakdown.restraintScore,
+            detail = AppText.t("stats_score_value", analysis.breakdown.restraintScore),
+            accentIndex = 4,
+            explanation =
+                buildHomeRatioScoreDetail(
+                    title = AppText.t("stats_score_restraint"),
+                    score = analysis.breakdown.restraintScore,
+                    formula = AppText.t("stats_score_metric_restraint_formula"),
+                    numeratorLabel = AppText.t("stats_score_metric_encourage_launches_label"),
+                    numeratorToday = analysis.restraint.numerator.toString(),
+                    numeratorYesterday = if (hasYesterdayData) yesterdayAnalysis.restraint.numerator.toString() else AppText.t("stats_score_metric_empty_value"),
+                    denominatorLabel = AppText.t("stats_score_metric_control_launches_label"),
+                    denominatorToday = analysis.restraint.denominator.toString(),
+                    denominatorYesterday = if (hasYesterdayData) yesterdayAnalysis.restraint.denominator.toString() else AppText.t("stats_score_metric_empty_value"),
+                    ratioToday = analysis.restraint.ratio,
+                    ratioYesterday = yesterdayAnalysis.restraint.ratio.takeIf { hasYesterdayData },
+                ),
+        ),
+    )
+}
+
+private fun buildHomeRatioScoreDetail(
+    title: String,
+    score: Int,
+    formula: String,
+    numeratorLabel: String,
+    numeratorToday: String,
+    numeratorYesterday: String,
+    denominatorLabel: String,
+    denominatorToday: String,
+    denominatorYesterday: String,
+    ratioToday: Float?,
+    ratioYesterday: Float?,
+): BehaviorScoreMetricDetail =
+    BehaviorScoreMetricDetail(
+        title = title,
+        score = score,
+        formulaLines = listOf(formula),
+        comparisonRows =
+            listOf(
+                BehaviorScoreMetricComparisonRow(
+                    label = numeratorLabel,
+                    todayValue = numeratorToday,
+                    yesterdayValue = numeratorYesterday,
+                ),
+                BehaviorScoreMetricComparisonRow(
+                    label = denominatorLabel,
+                    todayValue = denominatorToday,
+                    yesterdayValue = denominatorYesterday,
+                ),
+                BehaviorScoreMetricComparisonRow(
+                    label = AppText.t("stats_score_metric_ratio_label"),
+                    todayValue = formatBehaviorRatioValue(ratioToday),
+                    yesterdayValue = formatBehaviorRatioValue(ratioYesterday),
+                ),
+            ),
+    )
+
+private fun formatBehaviorMultiplier(value: Float): String {
+    val rounded = kotlin.math.round(value * 10f) / 10f
+    return if (rounded % 1f == 0f) {
+        "${rounded.toInt()}x"
     } else {
-        0f
+        "${rounded}x"
     }
 }
 
-private fun encourageGroupScore(usageMinutes: Int, targetMinutes: Int): Float {
-    val target = targetMinutes.coerceAtLeast(1)
-    return (usageMinutes.toFloat() / target).coerceAtLeast(0f)
+private fun buildCompletedGroupsValue(
+    completed: Int,
+    total: Int,
+): String = "$completed / $total"
+
+private fun buildUsageSlashValue(
+    usedMillis: Long,
+    limitMillis: Long,
+): String = "${formatDuration(usedMillis)} / ${formatDuration(limitMillis)}"
+
+private fun buildProgressSlashValue(
+    usedMillis: Long,
+    targetMillis: Long,
+    ratio: Float,
+): String = "${formatDuration(usedMillis)} / ${formatDuration(targetMillis)} (${formatBehaviorMultiplier(ratio)})"
+
+private fun formatBehaviorRatioValue(ratio: Float?): String =
+    ratio?.let(::formatBehaviorMultiplier) ?: AppText.t("stats_score_metric_empty_value")
+
+private enum class HomeControlRiskLevel {
+    HALF,
+    NEAR_LIMIT,
+    DEPLETED,
+    OVER_LIMIT,
 }
+
+private data class HomeControlRisk(
+    val group: AppGroupWithApps,
+    val level: HomeControlRiskLevel,
+    val usedMillis: Long,
+    val effectiveLimitMillis: Long,
+)
+
+private data class HomeEncouragePromptCandidate(
+    val group: AppGroupWithApps,
+    val usedMillis: Long,
+    val targetMillis: Long,
+    val remainingMillis: Long,
+    val earnablePoints: Double,
+)
+
+private fun buildHomeBattleActions(
+    controlGroups: List<AppGroupWithApps>,
+    encourageGroups: List<AppGroupWithApps>,
+    usageMap: Map<String, Long>,
+    activeRewardEffects: List<ActiveRewardEffectEntity>,
+    recentGroupArchives: List<DailyGroupArchiveEntity>,
+    achievementProgress: AchievementProgress,
+): List<HomeBattleAction> {
+    val anomalyAction =
+        controlGroups
+            .mapNotNull { group ->
+                if (hasActivePeriodPass(activeRewardEffects, group.group.id)) return@mapNotNull null
+                val usedMillis = usageMap[group.group.id] ?: 0L
+                val effectiveLimitMillis =
+                    homeEffectiveControlLimitMillis(
+                        activeRewardEffects = activeRewardEffects,
+                        groupId = group.group.id,
+                        limitMinutes = group.group.limitMinutes,
+                    )
+                val level =
+                    homeControlRiskLevel(
+                        usedMillis = usedMillis,
+                        effectiveLimitMillis = effectiveLimitMillis,
+                    ) ?: return@mapNotNull null
+                HomeControlRisk(
+                    group = group,
+                    level = level,
+                    usedMillis = usedMillis,
+                    effectiveLimitMillis = effectiveLimitMillis,
+                )
+            }
+            .groupBy { it.level }
+            .maxByOrNull { (level, _) -> level.ordinal }
+            ?.let { (level, risks) ->
+                val worstRisk =
+                    risks.maxByOrNull { risk ->
+                        risk.usedMillis.toDouble() / risk.effectiveLimitMillis.coerceAtLeast(1L).toDouble()
+                    } ?: return@let null
+                val groupNames = risks.joinToString(AppText.t("home_battle_group_name_separator")) { it.group.group.name }
+                val detail =
+                    when (level) {
+                        HomeControlRiskLevel.HALF -> AppText.t("home_battle_control_groups_half", groupNames, achievementProgress.controlStreak + 1)
+                        HomeControlRiskLevel.NEAR_LIMIT -> AppText.t("home_battle_control_groups_near_limit", groupNames, achievementProgress.controlStreak + 1)
+                        HomeControlRiskLevel.DEPLETED -> AppText.t("home_battle_control_groups_depleted", groupNames, achievementProgress.controlStreak + 1)
+                        HomeControlRiskLevel.OVER_LIMIT -> AppText.t("home_battle_control_groups_over_limit", groupNames)
+                    }
+                val title =
+                    when (level) {
+                        HomeControlRiskLevel.HALF -> AppText.t("home_battle_control_half_title")
+                        HomeControlRiskLevel.NEAR_LIMIT -> AppText.t("home_battle_control_near_limit_title")
+                        HomeControlRiskLevel.DEPLETED -> AppText.t("home_battle_control_depleted_title")
+                        HomeControlRiskLevel.OVER_LIMIT -> AppText.t("home_battle_control_over_limit_title")
+                    }
+                val exceededMillis = (worstRisk.usedMillis - worstRisk.effectiveLimitMillis).coerceAtLeast(0L)
+                val remainingMillis = (worstRisk.effectiveLimitMillis - worstRisk.usedMillis).coerceAtLeast(0L)
+                val value =
+                    if (level == HomeControlRiskLevel.OVER_LIMIT) {
+                        AppText.t("home_battle_control_over_value", ceilHomeMinutes(exceededMillis))
+                    } else {
+                        AppText.t("home_battle_control_left_value", ceilHomeMinutes(remainingMillis))
+                    }
+                HomeBattleAction(
+                    type = HomeBattleActionType.CONTROL,
+                    title = title,
+                    subtitle = detail,
+                    subtitleGroupName = groupNames,
+                    value = value,
+                    progress =
+                        (worstRisk.usedMillis.toFloat() / worstRisk.effectiveLimitMillis.coerceAtLeast(1L).toFloat())
+                            .coerceIn(0f, 1f),
+                    group = worstRisk.group,
+                )
+            }
+            ?: controlGroups
+                .takeIf { it.isNotEmpty() }
+                ?.let {
+                    HomeBattleAction(
+                        type = HomeBattleActionType.CONTROL,
+                        title = AppText.t("home_battle_control_steady_title"),
+                        subtitle = AppText.t("home_battle_anomaly_clear_subtitle"),
+                        value = AppText.t("home_battle_anomaly_clear_value"),
+                        progress = 0f,
+                    )
+                }
+
+    val zoneId = ZoneId.systemDefault()
+    val todayStartMillis = LocalDate.now(zoneId).atStartOfDay(zoneId).toInstant().toEpochMilli()
+    val encouragePromptCandidates =
+        encourageGroups
+            .mapNotNull { group ->
+                val usedMillis = usageMap[group.group.id] ?: 0L
+                val targetMillis = group.group.limitMinutes.coerceAtLeast(1) * 60_000L
+                val remainingMillis = (targetMillis - usedMillis).coerceAtLeast(0L)
+                if (remainingMillis <= 0L) return@mapNotNull null
+                val pointsMultiplier = activeEncouragePointsMultiplier(activeRewardEffects, group.group.id)
+                val usagePoints = remainingMillis / 60_000.0 * group.group.pointsPerMinute * pointsMultiplier
+                val targetBonus =
+                    if (group.group.lastBonusAt < todayStartMillis) {
+                        group.group.limitMinutes.coerceAtLeast(0) * group.group.pointsPerMinute * pointsMultiplier
+                    } else {
+                        0.0
+                    }
+                HomeEncouragePromptCandidate(
+                    group = group,
+                    usedMillis = usedMillis,
+                    targetMillis = targetMillis,
+                    remainingMillis = remainingMillis,
+                    earnablePoints = usagePoints + targetBonus,
+                )
+            }
+    val shortcutAction =
+        when {
+            encourageGroups.isEmpty() -> null
+            encouragePromptCandidates.isEmpty() ->
+                HomeBattleAction(
+                    type = HomeBattleActionType.ENCOURAGE,
+                    title = AppText.t("home_battle_encourage_perfect_title"),
+                    subtitle = AppText.t("home_battle_encourage_perfect_subtitle"),
+                    value = AppText.t("home_battle_encourage_done_value"),
+                    progress = 1f,
+                )
+            encouragePromptCandidates.size == encourageGroups.size -> {
+                val candidate =
+                    encouragePromptCandidates.minByOrNull { it.remainingMillis }
+                        ?: error("Expected at least one unfinished encourage group")
+                HomeBattleAction(
+                    type = HomeBattleActionType.ENCOURAGE,
+                    title = AppText.t("home_battle_shortcut_streak_title"),
+                    subtitle = AppText.t("home_battle_shortcut_complete_group_subtitle", candidate.group.group.name, achievementProgress.encourageStreak + 1),
+                    subtitleGroupName = candidate.group.group.name,
+                    value = AppText.t("home_battle_encourage_left_value", ceilHomeMinutes(candidate.remainingMillis)),
+                    progress = (candidate.usedMillis.toFloat() / candidate.targetMillis.toFloat()).coerceIn(0f, 1f),
+                    group = candidate.group,
+                )
+            }
+            else -> {
+                val candidate =
+                    encouragePromptCandidates.maxByOrNull { it.earnablePoints }
+                        ?: error("Expected at least one unfinished encourage group")
+                HomeBattleAction(
+                    type = HomeBattleActionType.ENCOURAGE,
+                    title = AppText.t("home_battle_shortcut_points_title"),
+                    subtitle =
+                        AppText.t(
+                            "home_battle_shortcut_points_subtitle",
+                            candidate.group.group.name,
+                            formatHomePointWholeValue(candidate.earnablePoints),
+                        ),
+                    subtitleGroupName = candidate.group.group.name,
+                    value = AppText.t("home_battle_encourage_left_value", ceilHomeMinutes(candidate.remainingMillis)),
+                    progress = (candidate.usedMillis.toFloat() / candidate.targetMillis.toFloat()).coerceIn(0f, 1f),
+                    group = candidate.group,
+                )
+            }
+        }
+
+    val createAction =
+        if (controlGroups.isEmpty() && encourageGroups.isEmpty()) {
+            HomeBattleAction(
+                type = HomeBattleActionType.CREATE,
+                title = AppText.t("home_battle_create_title"),
+                subtitle = AppText.t("home_battle_create_subtitle"),
+                value = AppText.t("home_battle_create_value"),
+                progress = 0f,
+            )
+        } else {
+            null
+        }
+
+    return listOfNotNull(createAction, anomalyAction, shortcutAction).take(2)
+}
+
+private fun homeControlRiskLevel(
+    usedMillis: Long,
+    effectiveLimitMillis: Long,
+): HomeControlRiskLevel? {
+    val limit = effectiveLimitMillis.coerceAtLeast(1L)
+    val exceededMillis = usedMillis - limit
+    return when {
+        exceededMillis > HOME_CONTROL_TOLERANCE_MINUTES * 60_000L -> HomeControlRiskLevel.OVER_LIMIT
+        usedMillis >= limit -> HomeControlRiskLevel.DEPLETED
+        usedMillis.toDouble() / limit.toDouble() > 0.8 -> HomeControlRiskLevel.NEAR_LIMIT
+        usedMillis.toDouble() / limit.toDouble() > 0.6 -> HomeControlRiskLevel.HALF
+        else -> null
+    }
+}
+
+private fun ceilHomeMinutes(millis: Long): Int =
+    if (millis <= 0L) {
+        0
+    } else {
+        ((millis + 59_999L) / 60_000L).toInt()
+    }
+
+private fun activeRewardExtraMinutes(
+    activeRewardEffects: List<ActiveRewardEffectEntity>,
+    groupId: String,
+): Int =
+    activeRewardEffects
+        .filter {
+            it.targetGroupId == groupId &&
+                (it.effectType == RewardType.TIME_ADD || it.effectType == RewardType.EMERGENCY_UNLOCK)
+        }
+        .sumOf { parseRewardPayload(it.payloadJson).minutes }
+
+private fun hasActivePeriodPass(
+    activeRewardEffects: List<ActiveRewardEffectEntity>,
+    groupId: String,
+): Boolean =
+    activeRewardEffects.any {
+        it.targetGroupId == groupId &&
+            it.effectType == RewardType.PERIOD_PASS
+    }
+
+private fun homeEffectiveControlLimitMillis(
+    activeRewardEffects: List<ActiveRewardEffectEntity>,
+    groupId: String,
+    limitMinutes: Int,
+): Long = (limitMinutes + activeRewardExtraMinutes(activeRewardEffects, groupId)).coerceAtLeast(1) * 60_000L
+
+private fun activeEncouragePointsMultiplier(
+    activeRewardEffects: List<ActiveRewardEffectEntity>,
+    groupId: String,
+): Double =
+    activeRewardEffects
+        .firstOrNull {
+            it.targetGroupId == groupId &&
+                it.effectType == RewardType.DOUBLE_POINTS_DAY
+        }
+        ?.let { parseRewardPayload(it.payloadJson).pointsMultiplier.coerceAtLeast(1.0) }
+        ?: 1.0
+
+private fun homeControlGroupCompleted(
+    activeRewardEffects: List<ActiveRewardEffectEntity>,
+    groupId: String,
+    usedMillis: Long,
+    limitMinutes: Int,
+): Boolean =
+    hasActivePeriodPass(activeRewardEffects, groupId) ||
+        usedMillis <= homeEffectiveControlLimitMillis(activeRewardEffects, groupId, limitMinutes)
+
+private fun calculateRealtimeNightOutsideEncourageMillis(
+    sessions: List<AppSession>,
+    encouragePackageNames: Set<String>,
+): Long {
+    if (sessions.isEmpty()) return 0L
+
+    val zoneId = ZoneId.systemDefault()
+    return sessions.sumOf { session ->
+        if (session.packageName in encouragePackageNames) {
+            0L
+        } else {
+            var total = 0L
+            var cursor = session.startTime
+            val end = max(session.startTime, session.endTime)
+            while (cursor < end) {
+                val dateTime = java.time.Instant.ofEpochMilli(cursor).atZone(zoneId)
+                val nextHour =
+                    dateTime
+                        .truncatedTo(java.time.temporal.ChronoUnit.HOURS)
+                        .plusHours(1)
+                        .toInstant()
+                        .toEpochMilli()
+                val sliceEnd = min(end, nextHour)
+                if (dateTime.hour >= 22 || dateTime.hour < 4) {
+                    total += (sliceEnd - cursor).coerceAtLeast(0L)
+                }
+                cursor = sliceEnd
+            }
+            total
+        }
+    }
+}
+
+private fun buildHomeBehaviorScoreInputs(
+    controlGroups: List<AppGroupWithApps>,
+    encourageGroups: List<AppGroupWithApps>,
+    periodUsageMap: Map<String, Long>,
+    todayAppUsageMap: Map<String, Long>,
+    todayAppOpenCountMap: Map<String, Int>,
+    todaySessions: List<AppSession>,
+    activeRewardEffects: List<ActiveRewardEffectEntity>,
+): BehaviorScoreInputs {
+    val controlPackageNames = controlGroups.flatMapTo(linkedSetOf()) { it.packageNames }
+    val encouragePackageNames = encourageGroups.flatMapTo(linkedSetOf()) { it.packageNames }
+
+    return BehaviorScoreInputs(
+        controlGroups =
+            controlGroups.map { group ->
+                val usedMillis = periodUsageMap[group.group.id] ?: 0L
+                BehaviorControlScoreInput(
+                    usedMillis = usedMillis,
+                    effectiveLimitMillis = homeEffectiveControlLimitMillis(activeRewardEffects, group.group.id, group.group.limitMinutes),
+                    completed = homeControlGroupCompleted(activeRewardEffects, group.group.id, usedMillis, group.group.limitMinutes),
+                )
+            },
+        encourageGroups =
+            encourageGroups.map { group ->
+                val targetMillis = group.group.limitMinutes.coerceAtLeast(1) * 60_000L
+                val usedMillis = periodUsageMap[group.group.id] ?: 0L
+                BehaviorEncourageScoreInput(
+                    usedMillis = usedMillis,
+                    targetMillis = targetMillis,
+                    completed = usedMillis >= targetMillis,
+                )
+            },
+        packageStats = buildHomeBehaviorPackageStats(todayAppUsageMap, todayAppOpenCountMap),
+        controlPackageNames = controlPackageNames,
+        encouragePackageNames = encouragePackageNames,
+        nightOutsideEncourageMillis = calculateRealtimeNightOutsideEncourageMillis(todaySessions, encouragePackageNames),
+    )
+}
+
+private fun buildHomeBehaviorPackageStats(
+    todayAppUsageMap: Map<String, Long>,
+    todayAppOpenCountMap: Map<String, Int>,
+): List<BehaviorPackageScoreInput> =
+    (todayAppUsageMap.keys + todayAppOpenCountMap.keys)
+        .distinct()
+        .map { packageName ->
+            BehaviorPackageScoreInput(
+                packageName = packageName,
+                usageMillis = todayAppUsageMap[packageName] ?: 0L,
+                openCount = todayAppOpenCountMap[packageName] ?: 0,
+            )
+        }
 
 private fun buildHomeOverviewUiState(
     context: android.content.Context,
     groupsWithApps: List<AppGroupWithApps>,
     usageMap: Map<String, Long>,
+    periodUsageMap: Map<String, Long>,
+    todayAppUsageMap: Map<String, Long>,
+    todayAppOpenCountMap: Map<String, Int>,
+    todaySessions: List<AppSession>,
     activeRewardEffects: List<ActiveRewardEffectEntity>,
+    recentGroupArchives: List<DailyGroupArchiveEntity>,
+    yesterdayGroupArchives: List<DailyGroupArchiveEntity>,
+    yesterdayAppArchives: List<DailyAppArchiveEntity>,
     historicalArchives: List<com.rrrrz.tinyvow.data.db.DailyArchiveEntity>,
     userPoints: Double,
     todayPoints: Double,
@@ -4038,53 +6204,47 @@ private fun buildHomeOverviewUiState(
 ): HomeOverviewUiState {
     val controlGroups = groupsWithApps.filter { it.group.type == GroupType.CONTROL }
     val encourageGroups = groupsWithApps.filter { it.group.type == GroupType.ENCOURAGE }
-
-    val controlUsageMinutesByGroup =
+    val controlPeriodUsageMinutesByGroup =
         controlGroups.associate { group ->
-            group.group.id to ((usageMap[group.group.id] ?: 0L) / 60_000L).toInt()
+            group.group.id to ((periodUsageMap[group.group.id] ?: 0L) / 60_000L).toInt()
         }
-    val encourageUsageMinutesByGroup =
+    val encouragePeriodUsageMinutesByGroup =
         encourageGroups.associate { group ->
-            group.group.id to ((usageMap[group.group.id] ?: 0L) / 60_000L).toInt()
+            group.group.id to ((periodUsageMap[group.group.id] ?: 0L) / 60_000L).toInt()
         }
     val controlCompletedGroups =
         controlGroups.count { group ->
-            val usageMinutes = controlUsageMinutesByGroup[group.group.id] ?: 0
-            usageMinutes <= group.group.limitMinutes + HOME_CONTROL_TOLERANCE_MINUTES
+            homeControlGroupCompleted(
+                activeRewardEffects = activeRewardEffects,
+                groupId = group.group.id,
+                usedMillis = periodUsageMap[group.group.id] ?: 0L,
+                limitMinutes = group.group.limitMinutes,
+            )
         }
     val encourageCompletedGroups =
         encourageGroups.count { group ->
-            val usageMinutes = encourageUsageMinutesByGroup[group.group.id] ?: 0
+            val usageMinutes = encouragePeriodUsageMinutesByGroup[group.group.id] ?: 0
             usageMinutes >= group.group.limitMinutes
         }
-    val controlScoreRatio =
-        controlGroups
-            .takeIf { it.isNotEmpty() }
-            ?.map { group ->
-                controlGroupScore(
-                    usageMinutes = controlUsageMinutesByGroup[group.group.id] ?: 0,
-                    limitMinutes = group.group.limitMinutes,
-                )
-            }
-            ?.average()
-            ?.toFloat()
-            ?: 0f
-    val encourageScoreRatio =
-        encourageGroups
-            .takeIf { it.isNotEmpty() }
-            ?.map { group ->
-                encourageGroupScore(
-                    usageMinutes = encourageUsageMinutesByGroup[group.group.id] ?: 0,
-                    targetMinutes = group.group.limitMinutes,
-                )
-            }
-            ?.average()
-            ?.toFloat()
-            ?: 0f
+    val behaviorScoreInputs =
+        buildHomeBehaviorScoreInputs(
+            controlGroups = controlGroups,
+            encourageGroups = encourageGroups,
+            periodUsageMap = periodUsageMap,
+            todayAppUsageMap = todayAppUsageMap,
+            todayAppOpenCountMap = todayAppOpenCountMap,
+            todaySessions = todaySessions,
+            activeRewardEffects = activeRewardEffects,
+        )
+    val behaviorScoreAnalysis = analyzeBehaviorScores(behaviorScoreInputs)
+    val behaviorScoreBreakdown = behaviorScoreAnalysis.breakdown
+    val controlScoreRatio = if (controlGroups.isNotEmpty()) behaviorScoreBreakdown.guardScore / 100f else 0f
+    val encourageScoreRatio = if (encourageGroups.isNotEmpty()) behaviorScoreBreakdown.gainScore / 100f else 0f
     val controlTodaySavedMinutes =
         controlGroups.sumOf { group ->
-            val usageMinutes = controlUsageMinutesByGroup[group.group.id] ?: 0
-            (group.group.limitMinutes - usageMinutes).coerceAtLeast(0)
+            val todayUsageMinutes = ((usageMap[group.group.id] ?: 0L) / 60_000L).toInt()
+            val effectiveLimitMinutes = (homeEffectiveControlLimitMillis(activeRewardEffects, group.group.id, group.group.limitMinutes) / 60_000L).toInt()
+            (effectiveLimitMinutes - todayUsageMinutes).coerceAtLeast(0)
         }
     val encourageTodayEarnedPoints =
         encourageGroups.sumOf { group ->
@@ -4112,6 +6272,29 @@ private fun buildHomeOverviewUiState(
     val totalSavedMinutes = historicalArchives.sumOf { it.savedMillis } / 60_000L
     val extendedLifeMinutes = totalSavedMinutes * 3L
     val totalEarnedPoints = historicalArchives.sumOf { it.pointsEarned } + todayPoints
+    val behaviorScoreMetrics =
+        buildRealtimeHomeBehaviorScoreMetrics(
+            controlGroups = controlGroups,
+            encourageGroups = encourageGroups,
+            periodUsageMap = periodUsageMap,
+            activeRewardEffects = activeRewardEffects,
+            analysis = behaviorScoreAnalysis,
+            yesterdayGroupArchives = yesterdayGroupArchives,
+            yesterdayAppArchives = yesterdayAppArchives,
+        )
+    val behaviorComparisonMetrics =
+        buildDailyBehaviorScoreMetrics(
+            items = mergeArchivedAppSnapshots(yesterdayAppArchives),
+            groupArchives = yesterdayGroupArchives,
+            controlPackageNames =
+                yesterdayAppArchives
+                    .filter { it.groupType == GroupType.CONTROL }
+                    .mapTo(linkedSetOf()) { it.packageName },
+            encouragePackageNames =
+                yesterdayAppArchives
+                    .filter { it.groupType == GroupType.ENCOURAGE }
+                    .mapTo(linkedSetOf()) { it.packageName },
+        )
     val locale = context.resources.configuration.locales[0] ?: java.util.Locale.getDefault()
     val today = LocalDate.now()
     val currentDate =
@@ -4132,8 +6315,7 @@ private fun buildHomeOverviewUiState(
                 streakLabel =
                     homeStreakLabel(
                         archivedStreak = achievementProgress.controlStreak,
-                        completedGroups = controlCompletedGroups,
-                        totalGroups = controlGroups.size,
+                        todayCompleted = controlGroups.isNotEmpty() && controlCompletedGroups >= controlGroups.size,
                     ),
             ),
         encourage =
@@ -4146,8 +6328,7 @@ private fun buildHomeOverviewUiState(
                 streakLabel =
                     homeStreakLabel(
                         archivedStreak = achievementProgress.encourageStreak,
-                        completedGroups = encourageCompletedGroups,
-                        totalGroups = encourageGroups.size,
+                        todayCompleted = encourageCompletedGroups > 0,
                     ),
                 pointsMultiplierLabel = encouragePointsMultiplierLabel,
             ),
@@ -4158,6 +6339,17 @@ private fun buildHomeOverviewUiState(
                 totalEarnedPoints = totalEarnedPoints,
                 currentPoints = userPoints,
             ),
+        behaviorScoreMetrics = behaviorScoreMetrics,
+        behaviorComparisonMetrics = behaviorComparisonMetrics,
+        battleActions =
+            buildHomeBattleActions(
+                controlGroups = controlGroups,
+                encourageGroups = encourageGroups,
+                usageMap = periodUsageMap,
+                activeRewardEffects = activeRewardEffects,
+                recentGroupArchives = recentGroupArchives,
+                achievementProgress = achievementProgress,
+            ),
     )
 }
 
@@ -4165,6 +6357,8 @@ private fun buildRuntimeDiagnostics(
     generatedAtMillis: Long,
     usageAccessGranted: Boolean,
     accessibilityServiceEnabled: Boolean,
+    accessibilityHeartbeatHealthy: Boolean,
+    lastAccessibilityHeartbeatAtMillis: Long?,
     notificationPermissionGranted: Boolean,
     isIgnoringBattery: Boolean,
     groupsWithApps: List<AppGroupWithApps>,
@@ -4217,6 +6411,11 @@ private fun buildRuntimeDiagnostics(
                     isHealthy = accessibilityServiceEnabled,
                 ),
                 RuntimeDiagnosticItem(
+                    label = AppText.t("diagnostics_label_accessibility_heartbeat"),
+                    value = accessibilityHeartbeatStatusText(generatedAtMillis, lastAccessibilityHeartbeatAtMillis),
+                    isHealthy = accessibilityHeartbeatHealthy,
+                ),
+                RuntimeDiagnosticItem(
                     label = AppText.t("diagnostics_label_notifications"),
                     value = permissionStatusText(notificationPermissionGranted),
                     isHealthy = notificationPermissionGranted,
@@ -4252,6 +6451,18 @@ private fun permissionStatusText(granted: Boolean): String =
 
 private fun enabledStatusText(enabled: Boolean): String =
     if (enabled) AppText.t("diagnostics_status_enabled") else AppText.t("diagnostics_status_disabled")
+
+private fun accessibilityHeartbeatStatusText(nowMillis: Long, lastHeartbeatAtMillis: Long?): String {
+    if (lastHeartbeatAtMillis == null) {
+        return AppText.t("diagnostics_accessibility_heartbeat_never")
+    }
+    val ageMinutes = ((nowMillis - lastHeartbeatAtMillis).coerceAtLeast(0L) + 59_999L) / 60_000L
+    return if (ageMinutes <= 1L) {
+        AppText.t("diagnostics_accessibility_heartbeat_recent")
+    } else {
+        AppText.t("diagnostics_accessibility_heartbeat_minutes_ago", ageMinutes)
+    }
+}
 
 private fun formatDiagnosticsRemaining(millis: Long): String {
     val minutes = ((millis + 59_999L) / 60_000L).coerceAtLeast(1L).toInt()
@@ -4921,6 +7132,18 @@ private fun HomeScreenPreviewDenied() {
             superModeStatus = SuperModeStatus(false, false, false, false, "06:00 - 10:00", 360, 600, null, 0L),
             notificationPermissionGranted = false,
             isIgnoringBattery = false,
+            permissionReliabilitySnapshot =
+                PermissionReliabilitySnapshot.build(
+                    groups = emptyList(),
+                    usageAccessGranted = false,
+                    accessibilityDisclosureAccepted = false,
+                    accessibilityServiceEnabled = false,
+                    notificationPermissionGranted = false,
+                    isIgnoringBatteryOptimizations = false,
+                    isAutoStartDismissed = false,
+                    lastAccessibilityHeartbeatAtMillis = null,
+                    nowMillis = System.currentTimeMillis(),
+                ),
             isAutoStartDismissed = false,
             dismissedPermissionPrompts = emptySet(),
             onNavigateToRedeem = {},
@@ -4964,6 +7187,18 @@ private fun HomeScreenPreviewGranted() {
             superModeStatus = SuperModeStatus(true, true, true, true, "06:00 - 10:00", 360, 600, System.currentTimeMillis() + 300_000L, 300_000L),
             notificationPermissionGranted = true,
             isIgnoringBattery = true,
+            permissionReliabilitySnapshot =
+                PermissionReliabilitySnapshot.build(
+                    groups = emptyList(),
+                    usageAccessGranted = true,
+                    accessibilityDisclosureAccepted = true,
+                    accessibilityServiceEnabled = true,
+                    notificationPermissionGranted = true,
+                    isIgnoringBatteryOptimizations = true,
+                    isAutoStartDismissed = false,
+                    lastAccessibilityHeartbeatAtMillis = System.currentTimeMillis(),
+                    nowMillis = System.currentTimeMillis(),
+                ),
             isAutoStartDismissed = false,
             dismissedPermissionPrompts = emptySet(),
             onNavigateToRedeem = {},

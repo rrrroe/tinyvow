@@ -39,6 +39,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -83,6 +84,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.asImageBitmap
@@ -134,14 +136,18 @@ import java.time.format.TextStyle
 import java.io.File
 import java.io.FileOutputStream
 import kotlin.math.ceil
+import kotlin.math.PI
+import kotlin.math.cos
 import kotlin.math.max
 import kotlin.math.roundToInt
 import kotlin.math.roundToLong
+import kotlin.math.sin
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun DailyBattleHeroCard(
     heroState: SectionState<HeroSectionData>,
+    animateValues: Boolean = false,
 ) {
     val data = (heroState as? SectionState.Ready)?.data
     val summary = data?.summary
@@ -208,14 +214,23 @@ internal fun DailyBattleHeroCard(
                         fontWeight = FontWeight.SemiBold,
                         color = themeColors.inkStrong,
                     )
-                    AnimatedMetricText(
-                        rawText = summary.primaryValue,
-                        label = "daily_battle_primary_${summary.title}_${summary.primaryValue}",
-                        style = MaterialTheme.typography.displaySmall,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.primary,
-                        delayMillis = 80,
-                    )
+                    if (animateValues) {
+                        AnimatedMetricText(
+                            rawText = summary.primaryValue,
+                            label = "daily_battle_primary_${summary.title}_${summary.primaryValue}",
+                            style = MaterialTheme.typography.displaySmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary,
+                            delayMillis = 80,
+                        )
+                    } else {
+                        Text(
+                            text = summary.primaryValue,
+                            style = MaterialTheme.typography.displaySmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
                     Text(
                         text = summary.message,
                         style = MaterialTheme.typography.titleSmall,
@@ -233,12 +248,14 @@ internal fun DailyBattleHeroCard(
                                 label = AppText.t("stats_vs_previous_day_decreased"),
                                 value = summary.secondaryValue,
                                 accent = reportColors.danger,
+                                animateValue = animateValues,
                                 modifier = modifier,
                             )
                             else -> BattleHeadlineChip(
                                 label = AppText.t("stats_last_7_days_daily_average"),
                                 value = summary.tertiaryValue,
                                 accent = reportColors.positive,
+                                animateValue = animateValues,
                                 modifier = modifier,
                             )
                         }
@@ -255,12 +272,14 @@ internal fun DailyBattleHeroCard(
                                 label = AppText.t("stats_launches"),
                                 value = AppText.t("stats_value_times_12", overview.openCount),
                                 accent = reportColors.danger,
+                                animateValue = animateValues,
                                 modifier = modifier,
                             )
                             else -> BattleMetricTile(
                                 label = AppText.t("stats_night_use"),
                                 value = formatDuration(data.nightUsageMillis),
                                 accent = reportColors.positive,
+                                animateValue = animateValues,
                                 modifier = modifier,
                             )
                         }
@@ -442,8 +461,8 @@ internal fun DailyRhythmCard(
         Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
             SectionHeader(
                 icon = Icons.Default.Timeline,
-                title = AppText.t("stats_24_hour_distribution"),
-                subtitle = AppText.t("stats_time_heatmap"),
+                title = AppText.t("stats_time_flow"),
+                subtitle = AppText.t("stats_time_flow_description"),
             )
             when (timelineState) {
                 SectionState.Loading -> {
@@ -522,12 +541,8 @@ internal fun DailyRhythmCard(
 }
 
 @Composable
-internal fun DailyAppsAndAnalysisCard(
+internal fun DailyAppFocusCard(
     topAppsState: SectionState<TopAppsSectionData>,
-    behaviorState: SectionState<BehaviorSectionData>,
-    comparisonState: SectionState<ComparisonSectionData>,
-    isProActive: Boolean,
-    onShowProUpsell: (ProUpsellSource) -> Unit,
 ) {
     val usageTopApps = (topAppsState as? SectionState.Ready)?.data?.usageTopApps.orEmpty()
     val appColors = rememberAppChartColors(usageTopApps.map { it.packageName })
@@ -535,7 +550,7 @@ internal fun DailyAppsAndAnalysisCard(
         Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
             SectionHeader(
                 icon = Icons.Default.BarChart,
-                title = AppText.t("stats_top_10_apps"),
+                title = AppText.t("stats_app_focus"),
                 subtitle = AppText.t("stats_current_day_top_10_apps_only"),
             )
             when (topAppsState) {
@@ -558,22 +573,11 @@ internal fun DailyAppsAndAnalysisCard(
             }
         }
     }
-    if (isProActive) {
-        DailyAnalysisPanel(
-            behaviorState = behaviorState,
-            comparisonState = comparisonState,
-        )
-    } else {
-        CompactLockedAnalysisPanel(
-            onClick = { onShowProUpsell(ProUpsellSource.ADVANCED_REPORT) },
-        )
-    }
 }
 
 @Composable
-internal fun DailyAnalysisPanel(
+internal fun DailyBehaviorProfileCard(
     behaviorState: SectionState<BehaviorSectionData>,
-    comparisonState: SectionState<ComparisonSectionData>,
 ) {
     val structure = (behaviorState as? SectionState.Ready)?.data?.structure
     ReportCard {
@@ -617,6 +621,10 @@ internal fun DailyAnalysisPanel(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             } else {
+                BehaviorRadarPanel(
+                    metrics = structure.scoreMetrics,
+                    comparisonMetrics = structure.comparisonScoreMetrics,
+                )
                 AdaptiveRowGrid(
                     itemCount = structure.metrics.size,
                     compactColumns = 2,
@@ -640,6 +648,533 @@ internal fun DailyAnalysisPanel(
                 }
             }
         }
+    }
+}
+
+@Composable
+internal fun DailyInsightCard(
+    comparisonState: SectionState<ComparisonSectionData>,
+) {
+    ReportCard {
+        Column(
+            verticalArrangement = Arrangement.spacedBy(14.dp),
+        ) {
+            SectionHeader(
+                icon = Icons.AutoMirrored.Filled.CompareArrows,
+                title = AppText.t("stats_daily_insights"),
+                subtitle = AppText.t("stats_daily_insights_description"),
+            )
+            when (comparisonState) {
+                SectionState.Loading -> {
+                    repeat(2) {
+                        SkeletonBlock(
+                            modifier = Modifier.fillMaxWidth(),
+                            height = 92.dp,
+                            shape = RoundedCornerShape(18.dp),
+                        )
+                    }
+                }
+                SectionState.Empty -> {
+                    Text(
+                        text = AppText.t("stats_not_enough_earlier_archive_samples"),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                is SectionState.Ready -> {
+                    AdaptiveRowGrid(
+                        itemCount = comparisonState.data.comparisons.size,
+                        compactColumns = 1,
+                        expandedColumns = 2,
+                        horizontalSpacing = 10.dp,
+                        verticalSpacing = 10.dp,
+                    ) { modifier, index ->
+                        ComparisonRow(
+                            item = comparisonState.data.comparisons[index],
+                            showChips = true,
+                            modifier = modifier,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+internal fun BehaviorRadarPanel(
+    metrics: List<DailyBehaviorScoreMetric>,
+    comparisonMetrics: List<DailyBehaviorScoreMetric> = emptyList(),
+) {
+    val displayMetrics = metrics.take(5)
+    val comparisonByLabel = comparisonMetrics.associateBy { it.label }
+    val displayComparisonMetrics =
+        displayMetrics.mapNotNull { metric ->
+            comparisonByLabel[metric.label]
+        }
+    val themeColors = LocalThemeColors.current
+    val primary = MaterialTheme.colorScheme.primary
+    val radarLineColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.52f)
+    val radarAxisColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.40f)
+    val previousColor = themeColors.inkMuted
+    var selectedMetric by remember { mutableStateOf<DailyBehaviorScoreMetric?>(null) }
+    val averageScore =
+        displayMetrics
+            .takeIf { it.isNotEmpty() }
+            ?.map { it.score }
+            ?.average()
+            ?.roundToInt()
+            ?: 0
+    Surface(
+        shape = RoundedCornerShape(22.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.86f),
+        border = BorderStroke(1.dp, primary.copy(alpha = 0.16f)),
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(278.dp)
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(
+                        Brush.radialGradient(
+                            colors = listOf(
+                                primary.copy(alpha = 0.14f),
+                                MaterialTheme.colorScheme.surface.copy(alpha = 0.38f),
+                                MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
+                            ),
+                        ),
+                    )
+                    .padding(vertical = 8.dp, horizontal = 6.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                val labelWidth = 58.dp
+                val labelHeight = 48.dp
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .size(width = 250.dp, height = 218.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Canvas(modifier = Modifier.size(208.dp)) {
+                        if (displayMetrics.size < 3) return@Canvas
+                        val center = Offset(size.width / 2f, size.height / 2f)
+                        val radius = size.minDimension * 0.39f
+                        val axisCount = displayMetrics.size
+                        fun pointFor(index: Int, ratio: Float): Offset {
+                            val angle = -PI.toFloat() / 2f + (2f * PI.toFloat() * index / axisCount)
+                            return Offset(
+                                x = center.x + cos(angle) * radius * ratio,
+                                y = center.y + sin(angle) * radius * ratio,
+                            )
+                        }
+                        fun pointsFor(scoreMetrics: List<DailyBehaviorScoreMetric>): List<Offset> =
+                            scoreMetrics.mapIndexed { index, metric ->
+                                pointFor(index, (metric.score / 100f).coerceIn(0.08f, 1f))
+                            }
+                        fun pathFor(points: List<Offset>): Path {
+                            return Path().apply {
+                                points.forEachIndexed { index, point ->
+                                    if (index == 0) moveTo(point.x, point.y) else lineTo(point.x, point.y)
+                                }
+                                close()
+                            }
+                        }
+                        repeat(4) { ringIndex ->
+                            val ratio = (ringIndex + 1) / 4f
+                            val path = Path()
+                            repeat(axisCount) { index ->
+                                val point = pointFor(index, ratio)
+                                if (index == 0) path.moveTo(point.x, point.y) else path.lineTo(point.x, point.y)
+                            }
+                            path.close()
+                            drawPath(
+                                path = path,
+                                color = radarLineColor,
+                                style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.1f),
+                            )
+                        }
+                        repeat(axisCount) { index ->
+                            val edge = pointFor(index, 1f)
+                            drawLine(
+                                color = radarAxisColor,
+                                start = center,
+                                end = edge,
+                                strokeWidth = 1.7f,
+                            )
+                        }
+                        if (displayComparisonMetrics.size == displayMetrics.size) {
+                            val previousPath = pathFor(pointsFor(displayComparisonMetrics))
+                            drawPath(
+                                path = previousPath,
+                                color = previousColor.copy(alpha = 0.16f),
+                            )
+                            drawPath(
+                                path = previousPath,
+                                color = previousColor.copy(alpha = 0.42f),
+                                style = androidx.compose.ui.graphics.drawscope.Stroke(width = 3.2f),
+                            )
+                        }
+                        val metricPoints = pointsFor(displayMetrics)
+                        val valuePath = pathFor(metricPoints)
+                        drawPath(
+                            path = valuePath,
+                            color = primary.copy(alpha = 0.22f),
+                        )
+                        metricPoints.forEachIndexed { index, start ->
+                            val end = metricPoints[(index + 1) % metricPoints.size]
+                            val startColor = behaviorScoreAccentColor(displayMetrics[index].accentIndex)
+                            val endColor = behaviorScoreAccentColor(displayMetrics[(index + 1) % displayMetrics.size].accentIndex)
+                            drawLine(
+                                brush = Brush.linearGradient(
+                                    colors = listOf(startColor, endColor),
+                                    start = start,
+                                    end = end,
+                                ),
+                                start = start,
+                                end = end,
+                                strokeWidth = 5f,
+                            )
+                        }
+                        displayMetrics.forEachIndexed { index, metric ->
+                            val point = pointFor(index, (metric.score / 100f).coerceIn(0.08f, 1f))
+                            drawCircle(
+                                color = behaviorScoreAccentColor(metric.accentIndex),
+                                radius = 8f,
+                                center = point,
+                            )
+                        }
+                    }
+                    displayMetrics.getOrNull(0)?.let {
+                        BehaviorScoreVertexLabel(
+                            metric = it,
+                            onClick = { selectedMetric = it },
+                            modifier = Modifier
+                                .align(Alignment.TopCenter)
+                                .offset(y = (-15).dp)
+                                .size(width = labelWidth, height = labelHeight),
+                        )
+                    }
+                    displayMetrics.getOrNull(1)?.let {
+                        BehaviorScoreVertexLabel(
+                            metric = it,
+                            onClick = { selectedMetric = it },
+                            modifier = Modifier
+                                .align(Alignment.CenterEnd)
+                                .padding(bottom = 44.dp)
+                                .size(width = labelWidth, height = labelHeight),
+                        )
+                    }
+                    displayMetrics.getOrNull(2)?.let {
+                        BehaviorScoreVertexLabel(
+                            metric = it,
+                            onClick = { selectedMetric = it },
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .padding(end = 24.dp, bottom = 24.dp)
+                                .size(width = labelWidth, height = labelHeight),
+                        )
+                    }
+                    displayMetrics.getOrNull(3)?.let {
+                        BehaviorScoreVertexLabel(
+                            metric = it,
+                            onClick = { selectedMetric = it },
+                            modifier = Modifier
+                                .align(Alignment.BottomStart)
+                                .padding(start = 24.dp, bottom = 24.dp)
+                                .size(width = labelWidth, height = labelHeight),
+                        )
+                    }
+                    displayMetrics.getOrNull(4)?.let {
+                        BehaviorScoreVertexLabel(
+                            metric = it,
+                            onClick = { selectedMetric = it },
+                            modifier = Modifier
+                                .align(Alignment.CenterStart)
+                                .padding(bottom = 44.dp)
+                                .size(width = labelWidth, height = labelHeight),
+                        )
+                    }
+                }
+                Column(
+                    modifier = Modifier
+                        .align(Alignment.TopStart)
+                        .padding(start = 12.dp, top = 10.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp),
+                    horizontalAlignment = Alignment.Start,
+                ) {
+                    BehaviorScoreLegendChip(
+                        label = AppText.t("stats_score_current"),
+                        color = primary,
+                    )
+                    if (displayComparisonMetrics.size == displayMetrics.size) {
+                        BehaviorScoreLegendChip(
+                            label = AppText.t("stats_score_previous"),
+                            color = previousColor,
+                        )
+                    }
+                }
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(bottom = 4.dp),
+                ) {
+                    BehaviorOverallScoreChip(score = averageScore)
+                }
+            }
+            selectedMetric?.explanation?.let { explanation ->
+                BehaviorScoreMetricDetailDialog(
+                    title = explanation.title,
+                    score = explanation.score,
+                    accentColor = behaviorScoreAccentColor(selectedMetric?.accentIndex ?: 0),
+                    formulaLines = explanation.formulaLines,
+                    comparisonRows = explanation.comparisonRows,
+                    onDismiss = { selectedMetric = null },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun BehaviorOverallScoreChip(
+    score: Int,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(999.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.86f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.28f)),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 7.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = AppText.t("stats_score_overall"),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                text = score.toString(),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary,
+            )
+        }
+    }
+}
+
+@Composable
+private fun BehaviorScoreVertexLabel(
+    metric: DailyBehaviorScoreMetric,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val accentColor = behaviorScoreAccentColor(metric.accentIndex)
+    Column(
+        modifier =
+            modifier.then(
+                if (metric.explanation != null) {
+                    Modifier
+                        .clip(RoundedCornerShape(14.dp))
+                        .clickable(
+                            onClickLabel = AppText.t("stats_score_metric_open_detail", metric.label),
+                            onClick = onClick,
+                        )
+                        .padding(vertical = 2.dp)
+                } else {
+                    Modifier
+                },
+            ),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        Text(
+            text = metric.label,
+            style = MaterialTheme.typography.labelSmall,
+            color = accentColor,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Text(
+            text = metric.score.toString(),
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.Bold,
+            color = accentColor,
+            maxLines = 1,
+        )
+    }
+}
+
+@Composable
+private fun BehaviorScoreMetricDetailDialog(
+    title: String,
+    score: Int,
+    accentColor: Color,
+    formulaLines: List<String>,
+    comparisonRows: List<BehaviorScoreMetricComparisonRow>,
+    onDismiss: () -> Unit,
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = RoundedCornerShape(24.dp),
+            color = MaterialTheme.colorScheme.surface,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.28f)),
+        ) {
+            Column(
+                modifier =
+                    Modifier
+                        .padding(20.dp)
+                        .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = accentColor,
+                )
+                Text(
+                    text = AppText.t("stats_score_value", score),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = accentColor,
+                )
+                BehaviorScoreMetricDetailSection(
+                    title = AppText.t("stats_score_metric_formula_title"),
+                    titleColor = accentColor,
+                    lines = formulaLines,
+                )
+                BehaviorScoreMetricComparisonTable(
+                    accentColor = accentColor,
+                    rows = comparisonRows,
+                )
+                TinyVowButton(
+                    text = AppText.t("stats_score_info_close"),
+                    onClick = onDismiss,
+                    modifier = Modifier.fillMaxWidth(),
+                    tone = TinyVowButtonTone.Primary,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun BehaviorScoreMetricDetailSection(
+    title: String,
+    titleColor: Color,
+    lines: List<String>,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.SemiBold,
+            color = titleColor,
+        )
+        lines.forEach { line ->
+            Text(
+                text = "- $line",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
+private fun BehaviorScoreMetricComparisonTable(
+    accentColor: Color,
+    rows: List<BehaviorScoreMetricComparisonRow>,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            text = AppText.t("stats_score_metric_current_data_title"),
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.SemiBold,
+            color = accentColor,
+        )
+        Surface(
+            shape = RoundedCornerShape(18.dp),
+            color = MaterialTheme.colorScheme.surfaceContainerLow,
+            border = BorderStroke(1.dp, accentColor.copy(alpha = 0.18f)),
+        ) {
+            Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = "",
+                        modifier = Modifier.weight(1.2f),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Text(
+                        text = AppText.t("stats_score_metric_today_column"),
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = accentColor,
+                    )
+                    Text(
+                        text = AppText.t("stats_score_metric_yesterday_column"),
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = accentColor,
+                    )
+                }
+                rows.forEach { row ->
+                    Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(
+                            text = row.label,
+                            modifier = Modifier.weight(1.2f),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Text(
+                            text = row.todayValue,
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                        Text(
+                            text = row.yesterdayValue,
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurface,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun BehaviorScoreLegendChip(
+    label: String,
+    color: Color,
+) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier
+                .size(7.dp)
+                .clip(CircleShape)
+                .background(color),
+        )
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
     }
 }
 

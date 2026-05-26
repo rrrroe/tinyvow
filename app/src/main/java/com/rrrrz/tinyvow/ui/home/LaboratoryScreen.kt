@@ -39,6 +39,8 @@ fun LaboratoryScreen(
     onResetSummary: () -> Unit,
     onTriggerSummary: () -> Unit,
     onTriggerWelcomeIntro: () -> Unit,
+    onTriggerCoachmarkTutorial: () -> Unit,
+    onTriggerAdvancedCenterTest: () -> Unit,
     showDebugProControls: Boolean,
     onExtendDebugPro: (Int) -> Unit,
     onClearDebugPro: () -> Unit,
@@ -100,6 +102,26 @@ fun LaboratoryScreen(
             HorizontalDivider()
 
             Text(
+                AppText.t("lab_advanced_center_test"),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = themeColors.inkStrong,
+            )
+            Text(
+                AppText.t("lab_advanced_center_test_description"),
+                style = MaterialTheme.typography.bodySmall,
+                color = themeColors.inkMuted,
+            )
+            Button(
+                onClick = onTriggerAdvancedCenterTest,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(AppText.t("lab_trigger_advanced_center_test"))
+            }
+
+            HorizontalDivider()
+
+            Text(
                 AppText.t("lab_achievement_test"),
                 style = MaterialTheme.typography.titleMedium,
                 fontWeight = FontWeight.SemiBold,
@@ -135,6 +157,12 @@ fun LaboratoryScreen(
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Text(AppText.t("lab_trigger_welcome_intro"))
+            }
+            Button(
+                onClick = onTriggerCoachmarkTutorial,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(AppText.t("lab_trigger_coachmark_tutorial"))
             }
 
             if (showDebugProControls) {

@@ -9,6 +9,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
+import java.time.LocalDate
+import java.lang.Math.floorMod
 
 @Stable
 data class ThemeSeed(
@@ -58,6 +60,8 @@ data class ThemeTokens(
     val navSelectedContainer: Color,
     val navUnselected: Color,
 )
+
+const val DailyRandomThemeId = "daily_random"
 
 val ThemePresets = listOf(
     ThemeSeed(
@@ -320,6 +324,97 @@ val ThemePresets = listOf(
         baseColor = 0xFF526C37.toInt(),
         neutralAccentColor = 0xFFE2E7D6.toInt(),
     ),
+    ThemeSeed(
+        id = "preset_plum_ink",
+        name = "Plum Ink",
+        backgroundColor = 0xFFFBF6FA.toInt(),
+        surfaceColor = 0xFFFFF8FC.toInt(),
+        textColor = 0xFF2F2630.toInt(),
+        mutedTextColor = 0xFF887786.toInt(),
+        primaryColor = 0xFF8A637A.toInt(),
+        controlColor = 0xFFA67893.toInt(),
+        encourageColor = 0xFF657B73.toInt(),
+        baseColor = 0xFF8A637A.toInt(),
+        neutralAccentColor = 0xFFEADDE5.toInt(),
+    ),
+    ThemeSeed(
+        id = "preset_paper_latte",
+        name = "Paper Latte",
+        backgroundColor = 0xFFFAF3E9.toInt(),
+        surfaceColor = 0xFFFFFDF8.toInt(),
+        textColor = 0xFF342B27.toInt(),
+        mutedTextColor = 0xFF8D7E74.toInt(),
+        primaryColor = 0xFFA36F4C.toInt(),
+        controlColor = 0xFFB46C48.toInt(),
+        encourageColor = 0xFF6F7B57.toInt(),
+        baseColor = 0xFFA36F4C.toInt(),
+        neutralAccentColor = 0xFFE6D6C3.toInt(),
+    ),
+    ThemeSeed(
+        id = "preset_amber_lamp",
+        name = "Amber Lamp",
+        backgroundColor = 0xFFFCF2E2.toInt(),
+        surfaceColor = 0xFFFFF9EE.toInt(),
+        textColor = 0xFF3A2A20.toInt(),
+        mutedTextColor = 0xFF8B7A6B.toInt(),
+        primaryColor = 0xFF9B6E34.toInt(),
+        controlColor = 0xFFD39A54.toInt(),
+        encourageColor = 0xFF6F7543.toInt(),
+        baseColor = 0xFF9B6E34.toInt(),
+        neutralAccentColor = 0xFFE9D7B5.toInt(),
+    ),
+    ThemeSeed(
+        id = "preset_iris_cover",
+        name = "Iris Cover",
+        backgroundColor = 0xFFF5F4FB.toInt(),
+        surfaceColor = 0xFFFFFEFF.toInt(),
+        textColor = 0xFF262538.toInt(),
+        mutedTextColor = 0xFF7F7A8F.toInt(),
+        primaryColor = 0xFF6B668D.toInt(),
+        controlColor = 0xFF8B86B5.toInt(),
+        encourageColor = 0xFF557D8A.toInt(),
+        baseColor = 0xFF6B668D.toInt(),
+        neutralAccentColor = 0xFFE2E0EF.toInt(),
+    ),
+    ThemeSeed(
+        id = "preset_mist_blue",
+        name = "Mist Blue",
+        backgroundColor = 0xFFF3F7F9.toInt(),
+        surfaceColor = 0xFFFFFFFF.toInt(),
+        textColor = 0xFF22313B.toInt(),
+        mutedTextColor = 0xFF71808A.toInt(),
+        primaryColor = 0xFF5C7D90.toInt(),
+        controlColor = 0xFF6B6F86.toInt(),
+        encourageColor = 0xFF5D8C8A.toInt(),
+        baseColor = 0xFF5C7D90.toInt(),
+        neutralAccentColor = 0xFFDDE7EC.toInt(),
+    ),
+    ThemeSeed(
+        id = "preset_forest_shelf",
+        name = "Forest Shelf",
+        backgroundColor = 0xFFF5F4EC.toInt(),
+        surfaceColor = 0xFFFFFCF4.toInt(),
+        textColor = 0xFF243020.toInt(),
+        mutedTextColor = 0xFF7B8173.toInt(),
+        primaryColor = 0xFF60794F.toInt(),
+        controlColor = 0xFF8B6A47.toInt(),
+        encourageColor = 0xFF6F8D55.toInt(),
+        baseColor = 0xFF60794F.toInt(),
+        neutralAccentColor = 0xFFE3E0CE.toInt(),
+    ),
+    ThemeSeed(
+        id = "preset_espresso_note",
+        name = "Espresso Note",
+        backgroundColor = 0xFFF8F0E8.toInt(),
+        surfaceColor = 0xFFFFFDF8.toInt(),
+        textColor = 0xFF30251F.toInt(),
+        mutedTextColor = 0xFF88796E.toInt(),
+        primaryColor = 0xFF7B5946.toInt(),
+        controlColor = 0xFF8C6953.toInt(),
+        encourageColor = 0xFF5E7665.toInt(),
+        baseColor = 0xFF7B5946.toInt(),
+        neutralAccentColor = 0xFFE7D8C8.toInt(),
+    ),
 )
 
 val MemberThemePresets = listOf(
@@ -373,10 +468,29 @@ val LocalThemeColors = staticCompositionLocalOf {
 fun resolveThemeSeed(
     selectedThemeId: String?,
     customThemes: List<ThemeSeed>,
+    today: LocalDate = LocalDate.now(),
 ): ThemeSeed {
+    if (selectedThemeId == DailyRandomThemeId) return dailyRandomThemeSeed(today)
     val themes = ThemePresets + MemberThemePresets + customThemes
     return themes.firstOrNull { it.id == selectedThemeId } ?: DefaultThemeSeed
 }
+
+fun dailyRandomThemeSeed(today: LocalDate = LocalDate.now()): ThemeSeed {
+    val mixed = today.toEpochDay() * 1_103_515_245L + 12_345L
+    val index = floorMod(mixed, ThemePresets.size.toLong()).toInt()
+    return ThemePresets[index]
+}
+
+fun selectedThemeDisplayName(
+    selectedThemeId: String?,
+    customThemes: List<ThemeSeed>,
+    today: LocalDate = LocalDate.now(),
+): String =
+    if (selectedThemeId == DailyRandomThemeId) {
+        AppText.t("theme_random_daily_selected", dailyRandomThemeSeed(today).localizedName())
+    } else {
+        resolveThemeSeed(selectedThemeId, customThemes, today).localizedName()
+    }
 
 fun legacyThemeId(index: Int): String =
     ThemePresets.getOrElse(index.coerceAtLeast(0) % ThemePresets.size) { DefaultThemeSeed }.id

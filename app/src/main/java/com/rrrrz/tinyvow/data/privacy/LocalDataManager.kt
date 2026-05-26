@@ -105,6 +105,7 @@ class LocalDataManager(
             LocalDataTable("reward_use_history", "Local reward use history."),
             LocalDataTable("bonus_times", "Temporary time-pack bonus records."),
             LocalDataTable("active_reward_effects", "Currently active local reward effects."),
+            LocalDataTable("reward_effect_benefits", "Local benefit summaries produced by reward effects."),
             LocalDataTable("streak_shield_pending", "Pending streak shield decisions."),
             LocalDataTable("achievements", "Local achievement progress and unlock state."),
             LocalDataTable("block_events", "Local records of app blocking events."),
@@ -112,6 +113,7 @@ class LocalDataManager(
             LocalDataTable("special_app_configs", "Local special app data-source settings without API keys."),
             LocalDataTable("special_app_usage_snapshots", "Local cached special app WeRead reading durations and phone foreground durations."),
             LocalDataTable("special_app_point_credits", "Local counters preventing duplicate special app point credits."),
+            LocalDataTable("protection_events", "Local Super Mode and guarded-setting change history."),
         )
 
         val localDataStores = listOf(

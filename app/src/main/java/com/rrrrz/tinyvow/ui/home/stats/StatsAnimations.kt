@@ -19,6 +19,8 @@ import java.util.Locale
 import kotlin.math.roundToInt
 import kotlin.math.roundToLong
 
+private const val STAT_ANIMATIONS_ENABLED = true
+
 @Composable
 internal fun animateLongValue(
     targetValue: Long,
@@ -26,8 +28,11 @@ internal fun animateLongValue(
     durationMillis: Int = 800,
     delayMillis: Int = 0,
 ): Long {
+    val sanitizedTarget = targetValue.coerceAtLeast(0L)
+    if (!STAT_ANIMATIONS_ENABLED) return sanitizedTarget
+
     val delayedTargetValue = rememberDelayedLongTarget(
-        targetValue = targetValue.coerceAtLeast(0L),
+        targetValue = sanitizedTarget,
         delayMillis = delayMillis,
     )
     val animatedValue by animateFloatAsState(
@@ -45,8 +50,11 @@ internal fun animateIntValue(
     durationMillis: Int = 700,
     delayMillis: Int = 0,
 ): Int {
+    val sanitizedTarget = targetValue.coerceAtLeast(0)
+    if (!STAT_ANIMATIONS_ENABLED) return sanitizedTarget
+
     val delayedTargetValue = rememberDelayedIntTarget(
-        targetValue = targetValue.coerceAtLeast(0),
+        targetValue = sanitizedTarget,
         delayMillis = delayMillis,
     )
     val animatedValue by animateFloatAsState(
@@ -64,8 +72,11 @@ internal fun animateFractionValue(
     durationMillis: Int = 760,
     delayMillis: Int = 0,
 ): Float {
+    val sanitizedTarget = targetValue.coerceIn(0f, 1f)
+    if (!STAT_ANIMATIONS_ENABLED) return sanitizedTarget
+
     val delayedTargetValue = rememberDelayedFloatTarget(
-        targetValue = targetValue.coerceIn(0f, 1f),
+        targetValue = sanitizedTarget,
         delayMillis = delayMillis,
     )
     val animatedValue by animateFloatAsState(
@@ -83,8 +94,11 @@ internal fun animateDecimalValue(
     durationMillis: Int = 760,
     delayMillis: Int = 0,
 ): Float {
+    val sanitizedTarget = targetValue.coerceAtLeast(0f)
+    if (!STAT_ANIMATIONS_ENABLED) return sanitizedTarget
+
     val delayedTargetValue = rememberDelayedFloatTarget(
-        targetValue = targetValue.coerceAtLeast(0f),
+        targetValue = sanitizedTarget,
         delayMillis = delayMillis,
     )
     val animatedValue by animateFloatAsState(
@@ -101,6 +115,8 @@ internal fun animateMetricDisplayText(
     label: String,
     delayMillis: Int = 0,
 ): String {
+    if (!STAT_ANIMATIONS_ENABLED) return rawText
+
     val durationMatch = Regex("""(\d+)h(?: (\d+)m)?|(\d+)m""").find(rawText)
     if (durationMatch != null) {
         val animatedDuration = animateLongValue(
@@ -155,7 +171,7 @@ internal fun animateMetricDisplayText(
 }
 
 private fun slowedMetricDuration(durationMillis: Int): Int =
-    (durationMillis * 2).coerceAtMost(2_400)
+    durationMillis.coerceAtMost(1_100)
 
 @Composable
 internal fun AnimatedMetricText(
@@ -192,6 +208,8 @@ internal fun rememberDelayedLongTarget(
     delayMillis: Int,
 ): Long {
     val sanitizedTarget = targetValue.coerceAtLeast(0L)
+    if (!STAT_ANIMATIONS_ENABLED) return sanitizedTarget
+
     val delayedTarget by produceState(
         initialValue = if (delayMillis > 0) 0L else sanitizedTarget,
         key1 = sanitizedTarget,
@@ -212,6 +230,8 @@ internal fun rememberDelayedIntTarget(
     delayMillis: Int,
 ): Int {
     val sanitizedTarget = targetValue.coerceAtLeast(0)
+    if (!STAT_ANIMATIONS_ENABLED) return sanitizedTarget
+
     val delayedTarget by produceState(
         initialValue = if (delayMillis > 0) 0 else sanitizedTarget,
         key1 = sanitizedTarget,
@@ -232,6 +252,8 @@ internal fun rememberDelayedFloatTarget(
     delayMillis: Int,
 ): Float {
     val sanitizedTarget = targetValue.coerceAtLeast(0f)
+    if (!STAT_ANIMATIONS_ENABLED) return sanitizedTarget
+
     val delayedTarget by produceState(
         initialValue = if (delayMillis > 0) 0f else sanitizedTarget,
         key1 = sanitizedTarget,

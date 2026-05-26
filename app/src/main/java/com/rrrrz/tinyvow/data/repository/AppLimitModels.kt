@@ -129,6 +129,7 @@ sealed interface UseRewardResult {
         val rewardTitle: String,
         val messageKey: String,
         val messageArgs: List<Any> = emptyList(),
+        val pendingEffectId: String? = null,
     ) : UseRewardResult
 
     data object NotOwned : UseRewardResult
@@ -136,6 +137,10 @@ sealed interface UseRewardResult {
     data object InvalidTargetGroup : UseRewardResult
 
     data object AlreadyActive : UseRewardResult
+
+    data object PeriodPassAlreadyActive : UseRewardResult
+
+    data object DoublePointsAlreadyActive : UseRewardResult
 
     data object AlreadyCompleted : UseRewardResult
 

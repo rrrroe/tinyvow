@@ -4,11 +4,15 @@ import com.rrrrz.tinyvow.i18n.AppText
 
 import android.accessibilityservice.AccessibilityService
 import android.annotation.SuppressLint
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.os.SystemClock
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
 import androidx.core.graphics.toColorInt
+import com.rrrrz.tinyvow.BuildConfig
 import com.rrrrz.tinyvow.data.db.AppDatabase
 import com.rrrrz.tinyvow.data.db.AppGroupEntity
 import com.rrrrz.tinyvow.data.db.BlockEventEntity
@@ -76,6 +80,25 @@ class AppLimitAccessibilityService : AccessibilityService() {
     private var encourageAppsCache: List<EncourageGroupCache> = emptyList()
     private var overlayPackageName: String? = null
     private var emergencyUnlockConsumedPackage: String? = null
+    private var debugReceiverRegistered: Boolean = false
+    private val debugOverlayReceiver =
+        object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                if (intent?.action != ACTION_DEBUG_SHOW_TEST_OVERLAY || !BuildConfig.DEBUG) return
+                if (!accessibilityDisclosureAccepted) return
+                serviceScope.launch(Dispatchers.Main) {
+                    removeBlockOverlay()
+                    showBlockOverlay(
+                        packageName = DEBUG_OVERLAY_PACKAGE_NAME,
+                        groupId = DEBUG_OVERLAY_GROUP_ID,
+                        groupName = AppText.t("lab_block_overlay_preview_group_name"),
+                        exceededMillis = DEBUG_OVERLAY_EXCEEDED_MILLIS,
+                        encourageGroups = emptyList(),
+                        canUseEmergencyUnlock = false,
+                    )
+                }
+            }
+        }
 
     override fun onServiceConnected() {
         super.onServiceConnected()
@@ -93,6 +116,31 @@ class AppLimitAccessibilityService : AccessibilityService() {
         startEventConsumer()
         startThemeWatcher()
         startDisclosureWatcher()
+        startServiceHeartbeat()
+        registerDebugReceiverIfNeeded()
+    }
+
+    private fun registerDebugReceiverIfNeeded() {
+        if (!BuildConfig.DEBUG || debugReceiverRegistered) return
+        registerReceiver(
+            debugOverlayReceiver,
+            IntentFilter(ACTION_DEBUG_SHOW_TEST_OVERLAY),
+            Context.RECEIVER_NOT_EXPORTED,
+        )
+        debugReceiverRegistered = true
+    }
+
+    private fun startServiceHeartbeat() {
+        serviceScope.launch(Dispatchers.IO) {
+            while (this.isActive) {
+                runCatching {
+                    preferences.touchAccessibilityServiceHeartbeat()
+                }.onFailure {
+                    Log.w(TAG, "Failed to update accessibility heartbeat", it)
+                }
+                kotlinx.coroutines.delay(SERVICE_HEARTBEAT_INTERVAL_MS)
+            }
+        }
     }
 
     private fun startDisclosureWatcher() {
@@ -922,6 +970,10 @@ class AppLimitAccessibilityService : AccessibilityService() {
 
     override fun onDestroy() {
         removeBlockOverlay()
+        if (debugReceiverRegistered) {
+            runCatching { unregisterReceiver(debugOverlayReceiver) }
+            debugReceiverRegistered = false
+        }
         eventChannel.close()
         serviceScope.cancel()
         super.onDestroy()
@@ -929,11 +981,19 @@ class AppLimitAccessibilityService : AccessibilityService() {
 
     companion object {
         private const val TAG = "AppLimitService"
+        const val ACTION_DEBUG_SHOW_TEST_OVERLAY = "com.rrrrz.tinyvow.action.DEBUG_SHOW_TEST_OVERLAY"
         /** 评估防抖窗口：缩短以提升响应速度 */
         private const val CHECK_DEBOUNCE_MS = 300L
         /** 阻断弹窗防抖窗口：缩短以确保点击关闭后能较快再次生效 */
         private const val BLOCK_DEBOUNCE_MS = 500L
         private const val POINTS_TICK_INTERVAL_MS = 60_000L
         private const val MIN_CREDIT_DURATION_MS = 1_000L
+        private const val SERVICE_HEARTBEAT_INTERVAL_MS = 60_000L
+        private const val DEBUG_OVERLAY_GROUP_ID = "debug-overlay-group"
+        private const val DEBUG_OVERLAY_PACKAGE_NAME = "debug.overlay.package"
+        private const val DEBUG_OVERLAY_EXCEEDED_MILLIS = 27L * 60_000L
+
+        fun debugShowTestOverlayIntent(context: Context): Intent =
+            Intent(ACTION_DEBUG_SHOW_TEST_OVERLAY).setPackage(context.packageName)
     }
 }

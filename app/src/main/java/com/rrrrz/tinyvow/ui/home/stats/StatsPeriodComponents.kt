@@ -143,6 +143,7 @@ import kotlin.math.roundToLong
 @Composable
 internal fun PeriodReportScreen(
     state: DailyReportUiState,
+    animateValues: Boolean = false,
 ) {
     when (val periodState = state.periodReportState) {
         SectionState.Loading -> {
@@ -157,8 +158,14 @@ internal fun PeriodReportScreen(
         }
         is SectionState.Ready -> {
             val data = periodState.data
-            PeriodHeroCard(hero = data.hero)
-            PeriodFocusCard(data.windowFocus)
+            PeriodHeroCard(
+                hero = data.hero,
+                animateValues = animateValues,
+            )
+            PeriodFocusCard(
+                data = data.windowFocus,
+                animateValues = animateValues,
+            )
             when (data.tab) {
                 ReportTab.WEEK -> {
                     PeriodTrendCard(data.trend)
@@ -186,7 +193,10 @@ internal fun PeriodReportScreen(
 }
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-internal fun PeriodFocusCard(data: WindowFocusSectionData) {
+internal fun PeriodFocusCard(
+    data: WindowFocusSectionData,
+    animateValues: Boolean = false,
+) {
     ReportCard {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
             AdaptiveRowGrid(
@@ -200,7 +210,7 @@ internal fun PeriodFocusCard(data: WindowFocusSectionData) {
                     summary = if (index == 0) data.control else data.encourage,
                     icon = if (index == 0) Icons.Default.Bolt else Icons.Default.RocketLaunch,
                     compact = true,
-                    animateValues = index == 1,
+                    animateValues = animateValues,
                     modifier = modifier,
                 )
             }
@@ -209,7 +219,10 @@ internal fun PeriodFocusCard(data: WindowFocusSectionData) {
 }
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-internal fun PeriodHeroCard(hero: PeriodHeroData) {
+internal fun PeriodHeroCard(
+    hero: PeriodHeroData,
+    animateValues: Boolean = false,
+) {
     val reportColors = LocalReportColors.current
     ReportCard {
         Box(
@@ -260,13 +273,21 @@ internal fun PeriodHeroCard(hero: PeriodHeroData) {
                         )
                     }
                 }
-                AnimatedMetricText(
-                    rawText = hero.primaryValue,
-                    label = "period_hero_primary_${hero.title}_${hero.rangeLabel}",
-                    style = MaterialTheme.typography.displaySmall,
-                    color = MaterialTheme.colorScheme.primary,
-                    delayMillis = 80,
-                )
+                if (animateValues) {
+                    AnimatedMetricText(
+                        rawText = hero.primaryValue,
+                        label = "period_hero_primary_${hero.title}_${hero.rangeLabel}",
+                        style = MaterialTheme.typography.displaySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        delayMillis = 80,
+                    )
+                } else {
+                    Text(
+                        text = hero.primaryValue,
+                        style = MaterialTheme.typography.displaySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
                 Text(
                     text = hero.message,
                     style = MaterialTheme.typography.titleSmall,
@@ -283,6 +304,7 @@ internal fun PeriodHeroCard(hero: PeriodHeroData) {
                         label = if (index == 0) AppText.t("stats_vs_previous_period_decreased") else hero.averageLabel,
                         value = if (index == 0) hero.comparisonValue else hero.tertiaryValue,
                         accent = if (index == 0) reportColors.danger else reportColors.positive,
+                        animateValue = animateValues,
                         modifier = modifier,
                     )
                 }
@@ -304,6 +326,7 @@ internal fun PeriodHeroCard(hero: PeriodHeroData) {
                             muted = MaterialTheme.colorScheme.outline,
                             reportColors = reportColors,
                         ),
+                        animateValue = animateValues,
                         modifier = modifier,
                     )
                 }

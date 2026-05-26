@@ -63,7 +63,11 @@ import com.rrrrz.tinyvow.data.db.DailyArchiveEntity
 import com.rrrrz.tinyvow.data.db.DailyGroupArchiveEntity
 import com.rrrrz.tinyvow.data.db.GroupType
 import com.rrrrz.tinyvow.data.db.LimitPeriod
+import com.rrrrz.tinyvow.data.db.ProtectionEventEntity
+import com.rrrrz.tinyvow.data.db.RewardEffectBenefitEntity
+import com.rrrrz.tinyvow.data.db.RewardEffectBenefitType
 import com.rrrrz.tinyvow.data.repository.DailyArchiveRepository
+import com.rrrrz.tinyvow.data.repository.ProtectionEventRepository
 import com.rrrrz.tinyvow.i18n.AppText
 import com.rrrrz.tinyvow.ui.theme.LocalThemeColors
 import com.rrrrz.tinyvow.ui.theme.TinyVowCard
@@ -75,6 +79,7 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlinx.coroutines.launch
+import org.json.JSONArray
 
 private enum class HistoryListSort {
     DATE,
@@ -114,6 +119,7 @@ private enum class AppSortMode {
 @Composable
 fun HistoryRoute(
     archiveRepository: DailyArchiveRepository,
+    protectionEventRepository: ProtectionEventRepository,
     onBack: () -> Unit,
 ) {
     var selectedDate by rememberSaveable { mutableStateOf<String?>(null) }
@@ -126,13 +132,17 @@ fun HistoryRoute(
     val coroutineScope = rememberCoroutineScope()
 
     val archives by archiveRepository.getRecentArchives().collectAsStateWithLifecycle(initialValue = emptyList(), lifecycle = lifecycle)
+    val protectionEvents by protectionEventRepository.observeAll().collectAsStateWithLifecycle(initialValue = emptyList(), lifecycle = lifecycle)
     val currentArchive by (selectedDate?.let { archiveRepository.getArchiveByDate(it) })
         ?.collectAsStateWithLifecycle(initialValue = null, lifecycle = lifecycle) ?: remember { mutableStateOf<DailyArchiveEntity?>(null) }
     val groupArchives by (selectedDate?.let { archiveRepository.getGroupArchivesByDate(it) })
         ?.collectAsStateWithLifecycle(initialValue = emptyList(), lifecycle = lifecycle) ?: remember { mutableStateOf(emptyList()) }
     val appArchives by (selectedDate?.let { archiveRepository.getAppArchivesByDate(it) })
         ?.collectAsStateWithLifecycle(initialValue = emptyList(), lifecycle = lifecycle) ?: remember { mutableStateOf(emptyList()) }
+    val rewardEffectBenefits by (selectedDate?.let { archiveRepository.getRewardEffectBenefitsByDate(it) })
+        ?.collectAsStateWithLifecycle(initialValue = emptyList(), lifecycle = lifecycle) ?: remember { mutableStateOf(emptyList()) }
     val themeColors = LocalThemeColors.current
+    val protectionEventsByDate = remember(protectionEvents) { protectionEvents.groupBy { it.eventDate } }
 
     val archiveDatesDesc = remember(archives) { archives.map { it.archiveDate }.sortedDescending() }
     val selectedIndex = remember(selectedDate, archiveDatesDesc) { archiveDatesDesc.indexOf(selectedDate) }
@@ -182,6 +192,7 @@ fun HistoryRoute(
         if (selectedDate == null) {
             HistoryListScreen(
                 archives = archives,
+                protectionEventsByDate = protectionEventsByDate,
                 sortMode = listSortMode,
                 onSortModeChange = { listSortMode = it },
                 rangeFilter = rangeFilter,
@@ -196,6 +207,8 @@ fun HistoryRoute(
                 archive = currentArchive,
                 groupArchives = groupArchives,
                 appArchives = appArchives,
+                protectionEvents = selectedDate?.let { protectionEventsByDate[it] }.orEmpty(),
+                rewardEffectBenefits = rewardEffectBenefits,
                 previousDate = previousDate,
                 nextDate = nextDate,
                 onSelectDate = { selectedDate = it },
@@ -225,6 +238,7 @@ fun HistoryRoute(
 @Composable
 private fun HistoryListScreen(
     archives: List<DailyArchiveEntity>,
+    protectionEventsByDate: Map<String, List<ProtectionEventEntity>>,
     sortMode: HistoryListSort,
     onSortModeChange: (HistoryListSort) -> Unit,
     rangeFilter: HistoryRangeFilter,
@@ -442,6 +456,9 @@ private fun HistoryListScreen(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp),
                     ) {
+                        protectionEventsByDate[archive.archiveDate]?.takeIf { it.isNotEmpty() }?.let { events ->
+                            HistoryTagChip(AppText.t("history_tag_key_setting_changes", events.size))
+                        }
                         HistoryTagChip(AppText.t("history_tag_redemptions", archive.redemptionCount))
                         when (groupFilter) {
                             HistoryGroupFilter.ALL -> {
@@ -476,6 +493,8 @@ private fun HistoryDetailScreen(
     archive: DailyArchiveEntity?,
     groupArchives: List<DailyGroupArchiveEntity>,
     appArchives: List<DailyAppArchiveEntity>,
+    protectionEvents: List<ProtectionEventEntity>,
+    rewardEffectBenefits: List<RewardEffectBenefitEntity>,
     previousDate: String?,
     nextDate: String?,
     onSelectDate: (String) -> Unit,
@@ -617,6 +636,10 @@ private fun HistoryDetailScreen(
             }
         }
 
+        ProtectionEventSection(events = protectionEvents)
+
+        RewardEffectBenefitSection(benefits = rewardEffectBenefits)
+
         orderedSections.forEach { (title, color, items) ->
             GroupArchiveSection(
                 title = title,
@@ -708,6 +731,153 @@ private fun DetailDateNavigator(
         }
     }
 }
+
+@Composable
+private fun ProtectionEventSection(events: List<ProtectionEventEntity>) {
+    if (events.isEmpty()) return
+    TinyVowCard {
+        Column(
+            modifier = Modifier.padding(
+                horizontal = TinyVowSpacing.CardHorizontal,
+                vertical = TinyVowSpacing.CardVertical,
+            ),
+            verticalArrangement = Arrangement.spacedBy(TinyVowSpacing.CardGap),
+        ) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    imageVector = Icons.Default.History,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                )
+                Text(
+                    text = AppText.t("history_key_setting_changes"),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                )
+            }
+            events.sortedByDescending { it.occurredAt }.forEach { event ->
+                ProtectionEventRow(event = event)
+            }
+        }
+    }
+}
+
+@Composable
+private fun ProtectionEventRow(event: ProtectionEventEntity) {
+    val themeColors = LocalThemeColors.current
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.Top,
+        ) {
+            Text(
+                text = AppText.t(event.titleKey),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                color = themeColors.inkStrong,
+                modifier = Modifier.weight(1f),
+            )
+            Text(
+                text = formatEventTime(event.occurredAt),
+                style = MaterialTheme.typography.labelSmall,
+                color = themeColors.inkMuted,
+            )
+        }
+        Text(
+            text = localizedProtectionEventMessage(event),
+            style = MaterialTheme.typography.bodySmall,
+            color = themeColors.inkMuted,
+        )
+        if (event.withinWindow == false) {
+            HistoryTagChip(AppText.t("history_tag_outside_window_attempt"))
+        }
+    }
+}
+
+@Composable
+private fun RewardEffectBenefitSection(benefits: List<RewardEffectBenefitEntity>) {
+    if (benefits.isEmpty()) return
+    TinyVowCard {
+        Column(
+            modifier = Modifier.padding(
+                horizontal = TinyVowSpacing.CardHorizontal,
+                vertical = TinyVowSpacing.CardVertical,
+            ),
+            verticalArrangement = Arrangement.spacedBy(TinyVowSpacing.CardGap),
+        ) {
+            Text(
+                text = AppText.t("history_reward_effect_benefits"),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = LocalThemeColors.current.inkStrong,
+            )
+            benefits.forEachIndexed { index, benefit ->
+                RewardEffectBenefitRow(benefit = benefit)
+                if (index != benefits.lastIndex) {
+                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.32f))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RewardEffectBenefitRow(benefit: RewardEffectBenefitEntity) {
+    val target = benefit.targetGroupNameSnapshot ?: AppText.t("generic_target_group")
+    val value =
+        when (benefit.benefitType) {
+            RewardEffectBenefitType.EXTRA_TIME_USED,
+            RewardEffectBenefitType.EMERGENCY_UNLOCK_USED,
+            RewardEffectBenefitType.PERIOD_PASS_EXEMPTED
+            -> formatHistoryDuration(benefit.benefitMinutes * 60_000L)
+            RewardEffectBenefitType.DOUBLE_POINTS_EARNED -> "+${formatPoints(benefit.benefitPoints)}"
+            RewardEffectBenefitType.STREAK_SHIELD_USED -> AppText.t("history_value_times", 1)
+        }
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = benefit.rewardBuiltinKey?.let { AppText.t("${it}_title") } ?: AppText.t("redeem_effects_unknown_reward"),
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = LocalThemeColors.current.ink,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = value,
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary,
+                fontWeight = FontWeight.SemiBold,
+            )
+        }
+        Text(
+            text = rewardEffectBenefitDescription(benefit, target),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+    }
+}
+
+private fun rewardEffectBenefitDescription(
+    benefit: RewardEffectBenefitEntity,
+    target: String,
+): String =
+    when (benefit.benefitType) {
+        RewardEffectBenefitType.EXTRA_TIME_USED -> AppText.t("redeem_effects_benefit_extra_time", target, benefit.benefitMinutes)
+        RewardEffectBenefitType.EMERGENCY_UNLOCK_USED -> AppText.t("redeem_effects_benefit_emergency_unlock", target, benefit.benefitMinutes)
+        RewardEffectBenefitType.PERIOD_PASS_EXEMPTED -> AppText.t("redeem_effects_benefit_period_pass", target, benefit.benefitMinutes)
+        RewardEffectBenefitType.DOUBLE_POINTS_EARNED -> AppText.t("redeem_effects_benefit_double_points", target, formatPoints(benefit.benefitPoints))
+        RewardEffectBenefitType.STREAK_SHIELD_USED -> AppText.t("redeem_effects_benefit_streak_shield")
+    }
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -1841,6 +2011,31 @@ private fun formatArchiveTimestamp(epochMillis: Long): String {
         .ofEpochMilli(epochMillis)
         .atZone(ZoneId.systemDefault())
         .format(DateTimeFormatter.ofPattern("M/d HH:mm", Locale.CHINA))
+}
+
+private fun formatEventTime(epochMillis: Long): String {
+    if (epochMillis <= 0L) return "--"
+    return Instant
+        .ofEpochMilli(epochMillis)
+        .atZone(ZoneId.systemDefault())
+        .format(DateTimeFormatter.ofPattern("HH:mm", Locale.CHINA))
+}
+
+private fun localizedProtectionEventMessage(event: ProtectionEventEntity): String {
+    val args = parseProtectionEventArgs(event.messageArgsJson)
+    return if (args.isEmpty()) {
+        AppText.t(event.messageKey)
+    } else {
+        AppText.t(event.messageKey, *args.toTypedArray())
+    }
+}
+
+private fun parseProtectionEventArgs(json: String?): List<String> {
+    if (json.isNullOrBlank()) return emptyList()
+    return runCatching {
+        val array = JSONArray(json)
+        List(array.length()) { index -> array.optString(index) }
+    }.getOrDefault(emptyList())
 }
 
 private fun appHourlyBuckets(appItem: DailyAppArchiveEntity): LongArray {

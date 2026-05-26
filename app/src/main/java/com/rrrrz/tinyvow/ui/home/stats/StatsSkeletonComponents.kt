@@ -141,6 +141,8 @@ import kotlin.math.max
 import kotlin.math.roundToInt
 import kotlin.math.roundToLong
 
+private const val SKELETON_ANIMATIONS_ENABLED = false
+
 @Composable
 internal fun HeroSkeletonCard() {
     ReportCard {
@@ -1285,6 +1287,17 @@ internal fun SkeletonBlock(
 
 @Composable
 internal fun rememberSkeletonBrush(): Brush {
+    val reportColors = LocalReportColors.current
+    val base = reportColors.skeletonBase.copy(alpha = 0.92f)
+    val highlight = reportColors.skeletonHighlight
+    if (!SKELETON_ANIMATIONS_ENABLED) {
+        return Brush.linearGradient(
+            colors = listOf(base, highlight, base),
+            start = Offset(0f, 0f),
+            end = Offset(420f, 180f),
+        )
+    }
+
     val transition = rememberInfiniteTransition(label = "skeleton_shimmer")
     val progress by transition.animateFloat(
         initialValue = -1f,
@@ -1295,9 +1308,6 @@ internal fun rememberSkeletonBrush(): Brush {
         ),
         label = "skeleton_shimmer_progress",
     )
-    val reportColors = LocalReportColors.current
-    val base = reportColors.skeletonBase.copy(alpha = 0.92f)
-    val highlight = reportColors.skeletonHighlight
     return Brush.linearGradient(
         colors = listOf(base, highlight, base),
         start = Offset(progress * 420f - 220f, progress * 180f - 120f),
@@ -1307,6 +1317,13 @@ internal fun rememberSkeletonBrush(): Brush {
 
 @Composable
 internal fun rememberSkeletonColors(): Pair<Color, Color> {
+    val reportColors = LocalReportColors.current
+    val base = reportColors.skeletonBase.copy(alpha = 0.92f)
+    val accent = reportColors.skeletonAccent.copy(alpha = 0.72f)
+    if (!SKELETON_ANIMATIONS_ENABLED) {
+        return base to accent
+    }
+
     val transition = rememberInfiniteTransition(label = "skeleton_pulse")
     val pulse by transition.animateFloat(
         initialValue = 0f,
@@ -1317,10 +1334,8 @@ internal fun rememberSkeletonColors(): Pair<Color, Color> {
         ),
         label = "skeleton_pulse_progress",
     )
-    val reportColors = LocalReportColors.current
-    val base = reportColors.skeletonBase.copy(alpha = 0.92f + 0.08f * pulse)
-    val accent = reportColors.skeletonAccent.copy(alpha = 0.72f + 0.18f * pulse)
-    return base to accent
+    return reportColors.skeletonBase.copy(alpha = 0.92f + 0.08f * pulse) to
+        reportColors.skeletonAccent.copy(alpha = 0.72f + 0.18f * pulse)
 }
 
 

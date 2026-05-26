@@ -17,11 +17,20 @@ interface ActiveRewardEffectDao {
     @Query(
         """
         SELECT * FROM active_reward_effects
-        WHERE status = 'ACTIVE' AND expire_at > :now
+        WHERE status = 'ACTIVE' AND start_at <= :now AND expire_at > :now
         ORDER BY created_at DESC
         """
     )
     fun observeActive(now: Long): Flow<List<ActiveRewardEffectEntity>>
+
+    @Query(
+        """
+        SELECT * FROM active_reward_effects
+        WHERE status = 'PENDING_CONFIRM' AND confirm_deadline_at > :now
+        ORDER BY created_at DESC
+        """
+    )
+    fun observePendingConfirm(now: Long): Flow<List<ActiveRewardEffectEntity>>
 
     @Query(
         """
@@ -57,6 +66,24 @@ interface ActiveRewardEffectDao {
         """
         SELECT * FROM active_reward_effects
         WHERE target_group_id = :groupId
+            AND effect_type = :effectType
+            AND status IN ('ACTIVE', 'PENDING_CONFIRM')
+            AND period_start_date = :periodStartDate
+            AND period_end_date = :periodEndDate
+        LIMIT 1
+        """
+    )
+    suspend fun getBlockingForGroupAndPeriod(
+        groupId: String,
+        effectType: RewardType,
+        periodStartDate: String,
+        periodEndDate: String,
+    ): ActiveRewardEffectEntity?
+
+    @Query(
+        """
+        SELECT * FROM active_reward_effects
+        WHERE target_group_id = :groupId
             AND status = 'ACTIVE'
             AND effect_type IN ('TIME_ADD', 'PERIOD_PASS', 'EMERGENCY_UNLOCK', 'DOUBLE_POINTS_DAY')
             AND period_start_date <= :archiveDate
@@ -76,6 +103,24 @@ interface ActiveRewardEffectDao {
         """
     )
     suspend fun updateStatus(effectId: String, status: ActiveRewardEffectStatus, consumedAt: Long?)
+
+    @Query(
+        """
+        UPDATE active_reward_effects
+        SET status = :status,
+            confirmed_at = :confirmedAt,
+            canceled_at = :canceledAt,
+            consumed_at = :consumedAt
+        WHERE id = :effectId
+        """
+    )
+    suspend fun updateLifecycle(
+        effectId: String,
+        status: ActiveRewardEffectStatus,
+        confirmedAt: Long?,
+        canceledAt: Long?,
+        consumedAt: Long?,
+    )
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(item: ActiveRewardEffectEntity)

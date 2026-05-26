@@ -39,6 +39,7 @@ internal fun createRefreshingUiState(
         isPermissionGranted = true,
         selectedTab = selectedTab,
         isRefreshing = true,
+        animateValues = true,
         heroState = if (selectedTab == ReportTab.DAY) SectionState.Loading else SectionState.Empty,
         dailyFocusState =
             if (selectedTab == ReportTab.DAY) {
@@ -197,7 +198,12 @@ internal suspend fun buildArchivedWindowReportUiState(
     val daySummaries = buildPeriodDaySummaries(periodBounds.startDate, periodBounds.endDate, currentArchives, currentSnapshots)
     val hourBuckets = buildPeriodHourBuckets(currentSnapshots)
     val behaviorInsight = buildArchivedDayBehaviorInsight(currentSnapshots, hourBuckets)
-    val behaviorStructure = buildArchivedDayBehaviorStructure(currentSnapshots, hourBuckets)
+    val behaviorStructure =
+        buildArchivedDayBehaviorStructure(
+            items = currentSnapshots,
+            timelineBuckets = hourBuckets,
+            groupArchives = currentGroupArchives,
+        )
     val windowFocusData =
         buildWindowFocusSectionData(
             selectedTab = selectedTab,
@@ -1591,17 +1597,34 @@ internal suspend fun buildArchivedDayReportUiState(
     val selectedArchive = archivesDesc[selectedIndex]
     val previousArchive = archivesDesc.getOrNull(selectedIndex + 1)
     val nextArchive = archivesDesc.getOrNull(selectedIndex - 1)
-    val currentSnapshots =
-        mergeArchivedAppSnapshots(
-            archiveRepository.getAppArchivesByDate(selectedArchive.archiveDate).first(),
-        )
+    val currentAppArchives = archiveRepository.getAppArchivesByDate(selectedArchive.archiveDate).first()
+    val currentSnapshots = mergeArchivedAppSnapshots(currentAppArchives)
     val currentGroupArchives = archiveRepository.getGroupArchivesByDate(selectedArchive.archiveDate).first()
-    val previousSnapshots =
+    val previousGroupArchives =
         previousArchive?.let {
-            mergeArchivedAppSnapshots(
-                archiveRepository.getAppArchivesByDate(it.archiveDate).first(),
-            )
+            archiveRepository.getGroupArchivesByDate(it.archiveDate).first()
         }.orEmpty()
+    val previousAppArchives =
+        previousArchive?.let {
+            archiveRepository.getAppArchivesByDate(it.archiveDate).first()
+        }.orEmpty()
+    val previousSnapshots = mergeArchivedAppSnapshots(previousAppArchives)
+    val currentControlPackageNames =
+        currentAppArchives
+            .filter { it.groupType == GroupType.CONTROL }
+            .mapTo(linkedSetOf()) { it.packageName }
+    val currentEncouragePackageNames =
+        currentAppArchives
+            .filter { it.groupType == GroupType.ENCOURAGE }
+            .mapTo(linkedSetOf()) { it.packageName }
+    val previousControlPackageNames =
+        previousAppArchives
+            .filter { it.groupType == GroupType.CONTROL }
+            .mapTo(linkedSetOf()) { it.packageName }
+    val previousEncouragePackageNames =
+        previousAppArchives
+            .filter { it.groupType == GroupType.ENCOURAGE }
+            .mapTo(linkedSetOf()) { it.packageName }
     val currentMetrics = buildArchivedWindowMetrics(currentSnapshots)
     val previousMetrics = buildArchivedWindowMetrics(previousSnapshots)
     val timelineBuckets = buildArchivedDayTimelineBuckets(currentSnapshots)
@@ -1666,7 +1689,33 @@ internal suspend fun buildArchivedDayReportUiState(
             dominantPeriod = periodUsage.maxByOrNull { it.deviceMillis }?.label ?: AppText.t("stats_all_day"),
         )
     val behaviorInsight = buildArchivedDayBehaviorInsight(currentSnapshots, timelineBuckets)
-    val behaviorStructure = buildArchivedDayBehaviorStructure(currentSnapshots, timelineBuckets)
+    val previousBehaviorStructure =
+        previousArchive?.let {
+            val previousTimelineBuckets = buildArchivedDayTimelineBuckets(previousSnapshots)
+            buildArchivedDayBehaviorStructure(
+                items = previousSnapshots,
+                timelineBuckets = previousTimelineBuckets,
+                archive = it,
+                groupArchives = previousGroupArchives,
+                controlPackageNames = previousControlPackageNames,
+                encouragePackageNames = previousEncouragePackageNames,
+            )
+        }
+    val behaviorStructure =
+        buildArchivedDayBehaviorStructure(
+            items = currentSnapshots,
+            timelineBuckets = timelineBuckets,
+            archive = selectedArchive,
+            groupArchives = currentGroupArchives,
+            controlPackageNames = currentControlPackageNames,
+            encouragePackageNames = currentEncouragePackageNames,
+            previousItems = previousSnapshots,
+            previousGroupArchives = previousGroupArchives,
+            previousControlPackageNames = previousControlPackageNames,
+            previousEncouragePackageNames = previousEncouragePackageNames,
+        )?.copy(
+            comparisonScoreMetrics = previousBehaviorStructure?.scoreMetrics.orEmpty(),
+        )
     val comparisons =
         buildArchivedDayComparisonMetrics(
             currentArchive = selectedArchive,
@@ -1988,6 +2037,14 @@ internal fun buildArchivedDayBehaviorInsight(
 internal fun buildArchivedDayBehaviorStructure(
     items: List<ArchivedAppSnapshot>,
     timelineBuckets: List<DailyTimelineBucket>,
+    archive: DailyArchiveEntity? = null,
+    groupArchives: List<DailyGroupArchiveEntity> = emptyList(),
+    controlPackageNames: Set<String> = emptySet(),
+    encouragePackageNames: Set<String> = emptySet(),
+    previousItems: List<ArchivedAppSnapshot> = emptyList(),
+    previousGroupArchives: List<DailyGroupArchiveEntity> = emptyList(),
+    previousControlPackageNames: Set<String> = emptySet(),
+    previousEncouragePackageNames: Set<String> = emptySet(),
 ): DailyBehaviorStructureData? {
     val totalUsage = items.sumOf { it.usageMillis }
     if (totalUsage <= 0L) return null
@@ -2032,6 +2089,17 @@ internal fun buildArchivedDayBehaviorStructure(
             nightShare < 0.35f -> AppText.t("stats_behavior_night_moderate")
             else -> AppText.t("stats_behavior_night_high")
         }
+    val scoreMetrics =
+        buildDailyBehaviorScoreMetrics(
+            items = items,
+            groupArchives = groupArchives,
+            controlPackageNames = controlPackageNames,
+            encouragePackageNames = encouragePackageNames,
+            previousItems = previousItems,
+            previousGroupArchives = previousGroupArchives,
+            previousControlPackageNames = previousControlPackageNames,
+            previousEncouragePackageNames = previousEncouragePackageNames,
+        )
 
     return DailyBehaviorStructureData(
         metrics =
@@ -2057,7 +2125,346 @@ internal fun buildArchivedDayBehaviorStructure(
                     visualRatio = nightShare,
                 ),
             ),
+        scoreMetrics = scoreMetrics,
     )
+}
+
+internal fun buildDailyBehaviorScoreMetrics(
+    items: List<ArchivedAppSnapshot>,
+    groupArchives: List<DailyGroupArchiveEntity>,
+    controlPackageNames: Set<String>,
+    encouragePackageNames: Set<String>,
+    previousItems: List<ArchivedAppSnapshot> = emptyList(),
+    previousGroupArchives: List<DailyGroupArchiveEntity> = emptyList(),
+    previousControlPackageNames: Set<String> = emptySet(),
+    previousEncouragePackageNames: Set<String> = emptySet(),
+): List<DailyBehaviorScoreMetric> {
+    val inputs =
+        buildArchivedBehaviorScoreInputs(
+            items = items,
+            groupArchives = groupArchives,
+            controlPackageNames = controlPackageNames,
+            encouragePackageNames = encouragePackageNames,
+        )
+    val analysis = analyzeBehaviorScores(inputs)
+    val previousAnalysis =
+        analyzeBehaviorScores(
+            buildArchivedBehaviorScoreInputs(
+                items = previousItems,
+                groupArchives = previousGroupArchives,
+                controlPackageNames = previousControlPackageNames,
+                encouragePackageNames = previousEncouragePackageNames,
+            ),
+        )
+    val controlGroups = groupArchives.filter { it.groupType == GroupType.CONTROL }
+    val encourageGroups = groupArchives.filter { it.groupType == GroupType.ENCOURAGE }
+    val previousControlGroups = previousGroupArchives.filter { it.groupType == GroupType.CONTROL }
+    val previousEncourageGroups = previousGroupArchives.filter { it.groupType == GroupType.ENCOURAGE }
+    val hasPreviousData = previousItems.isNotEmpty() || previousGroupArchives.isNotEmpty()
+
+    return listOf(
+        DailyBehaviorScoreMetric(
+            label = AppText.t("stats_score_kept_vow"),
+            score = analysis.breakdown.guardScore,
+            detail = AppText.t("stats_score_value", analysis.breakdown.guardScore),
+            accentIndex = 0,
+            explanation = buildArchivedGuardScoreDetail(analysis.guard, controlGroups, previousAnalysis.guard, previousControlGroups, hasPreviousData),
+        ),
+        DailyBehaviorScoreMetric(
+            label = AppText.t("stats_score_gains"),
+            score = analysis.breakdown.gainScore,
+            detail = AppText.t("stats_score_value", analysis.breakdown.gainScore),
+            accentIndex = 1,
+            explanation = buildArchivedGainScoreDetail(analysis.gain, encourageGroups, previousAnalysis.gain, previousEncourageGroups, hasPreviousData),
+        ),
+        DailyBehaviorScoreMetric(
+            label = AppText.t("stats_score_focus"),
+            score = analysis.breakdown.focusScore,
+            detail = AppText.t("stats_score_value", analysis.breakdown.focusScore),
+            accentIndex = 2,
+            explanation = buildFocusScoreDetail(analysis.focus, previousAnalysis.focus, hasPreviousData),
+        ),
+        DailyBehaviorScoreMetric(
+            label = AppText.t("stats_score_rhythm"),
+            score = analysis.breakdown.rhythmScore,
+            detail = AppText.t("stats_score_value", analysis.breakdown.rhythmScore),
+            accentIndex = 3,
+            explanation = buildRhythmScoreDetail(analysis.rhythm, previousAnalysis.rhythm, hasPreviousData),
+        ),
+        DailyBehaviorScoreMetric(
+            label = AppText.t("stats_score_restraint"),
+            score = analysis.breakdown.restraintScore,
+            detail = AppText.t("stats_score_value", analysis.breakdown.restraintScore),
+            accentIndex = 4,
+            explanation = buildRestraintScoreDetail(analysis.restraint, previousAnalysis.restraint, hasPreviousData),
+        ),
+    )
+}
+
+internal fun buildArchivedBehaviorScoreInputs(
+    items: List<ArchivedAppSnapshot>,
+    groupArchives: List<DailyGroupArchiveEntity>,
+    controlPackageNames: Set<String>,
+    encouragePackageNames: Set<String>,
+): BehaviorScoreInputs =
+    BehaviorScoreInputs(
+        controlGroups =
+            groupArchives
+                .filter { it.groupType == GroupType.CONTROL }
+                .map { group ->
+                    BehaviorControlScoreInput(
+                        usedMillis = group.periodUsageMillisAtClose,
+                        effectiveLimitMillis = group.effectiveLimitMillisAtClose,
+                        completed = group.completed,
+                    )
+                },
+        encourageGroups =
+            groupArchives
+                .filter { it.groupType == GroupType.ENCOURAGE }
+                .map { group ->
+                    BehaviorEncourageScoreInput(
+                        usedMillis = group.periodUsageMillisAtClose,
+                        targetMillis = group.effectiveLimitMillisAtClose.coerceAtLeast(1L),
+                        completed = group.completed,
+                    )
+                },
+        packageStats =
+            items.map { item ->
+                BehaviorPackageScoreInput(
+                    packageName = item.packageName,
+                    usageMillis = item.usageMillis,
+                    openCount = item.openCount,
+                )
+            },
+        controlPackageNames = controlPackageNames,
+        encouragePackageNames = encouragePackageNames,
+        nightOutsideEncourageMillis = archivedNightOutsideEncourageMillis(items, encouragePackageNames),
+    )
+
+private fun archivedNightOutsideEncourageMillis(
+    items: List<ArchivedAppSnapshot>,
+    encouragePackageNames: Set<String>,
+): Long =
+    items
+        .filter { it.packageName !in encouragePackageNames }
+        .sumOf { item ->
+            item.hourlyBuckets.getOrElse(0) { 0L } +
+                item.hourlyBuckets.getOrElse(1) { 0L } +
+                item.hourlyBuckets.getOrElse(2) { 0L } +
+                item.hourlyBuckets.getOrElse(3) { 0L } +
+                item.hourlyBuckets.getOrElse(22) { 0L } +
+                item.hourlyBuckets.getOrElse(23) { 0L }
+        }
+
+private fun buildArchivedGuardScoreDetail(
+    analysis: BehaviorGuardScoreAnalysis,
+    groups: List<DailyGroupArchiveEntity>,
+    previousAnalysis: BehaviorGuardScoreAnalysis,
+    previousGroups: List<DailyGroupArchiveEntity>,
+    hasPreviousData: Boolean,
+): BehaviorScoreMetricDetail =
+    BehaviorScoreMetricDetail(
+        title = AppText.t("stats_score_kept_vow"),
+        score = analysis.score,
+        formulaLines =
+            listOf(
+                AppText.t("stats_score_metric_guard_formula_1"),
+                AppText.t("stats_score_metric_guard_formula_2"),
+            ),
+        comparisonRows =
+            buildList {
+                add(
+                    BehaviorScoreMetricComparisonRow(
+                        label = AppText.t("stats_score_metric_completion_groups_label"),
+                        todayValue = "${analysis.completedGroups} / ${analysis.totalGroups}",
+                        yesterdayValue =
+                            if (hasPreviousData) {
+                                "${previousAnalysis.completedGroups} / ${previousAnalysis.totalGroups}"
+                            } else {
+                                AppText.t("stats_score_metric_empty_value")
+                            },
+                    ),
+                )
+                add(
+                    BehaviorScoreMetricComparisonRow(
+                        label = AppText.t("stats_score_metric_remaining_limit_label"),
+                        todayValue = "${formatDuration(analysis.remainingMillis)} / ${formatDuration(analysis.totalLimitMillis)}",
+                        yesterdayValue =
+                            if (hasPreviousData) {
+                                "${formatDuration(previousAnalysis.remainingMillis)} / ${formatDuration(previousAnalysis.totalLimitMillis)}"
+                            } else {
+                                AppText.t("stats_score_metric_empty_value")
+                            },
+                    ),
+                )
+                groups.forEach { group ->
+                    val previousGroup = previousGroups.firstOrNull { it.groupName == group.groupName }
+                    add(
+                        BehaviorScoreMetricComparisonRow(
+                            label = group.groupName,
+                            todayValue = "${formatDuration(group.periodUsageMillisAtClose)} / ${formatDuration(group.effectiveLimitMillisAtClose)}",
+                            yesterdayValue =
+                                if (!hasPreviousData) {
+                                    AppText.t("stats_score_metric_empty_value")
+                                } else {
+                                    previousGroup?.let {
+                                        "${formatDuration(it.periodUsageMillisAtClose)} / ${formatDuration(it.effectiveLimitMillisAtClose)}"
+                                    } ?: AppText.t("stats_score_metric_empty_value")
+                                },
+                        ),
+                    )
+                }
+            },
+    )
+
+private fun buildArchivedGainScoreDetail(
+    analysis: BehaviorGainScoreAnalysis,
+    groups: List<DailyGroupArchiveEntity>,
+    previousAnalysis: BehaviorGainScoreAnalysis,
+    previousGroups: List<DailyGroupArchiveEntity>,
+    hasPreviousData: Boolean,
+): BehaviorScoreMetricDetail =
+    BehaviorScoreMetricDetail(
+        title = AppText.t("stats_score_gains"),
+        score = analysis.score,
+        formulaLines =
+            listOf(
+                AppText.t("stats_score_metric_gain_formula_1"),
+                AppText.t("stats_score_metric_gain_formula_2"),
+            ),
+        comparisonRows =
+            buildList {
+                add(
+                    BehaviorScoreMetricComparisonRow(
+                        label = AppText.t("stats_score_metric_completion_groups_label"),
+                        todayValue = "${analysis.completedGroups} / ${analysis.totalGroups}",
+                        yesterdayValue =
+                            if (hasPreviousData) {
+                                "${previousAnalysis.completedGroups} / ${previousAnalysis.totalGroups}"
+                            } else {
+                                AppText.t("stats_score_metric_empty_value")
+                            },
+                    ),
+                )
+                groups.zip(analysis.groups).forEach { (group, groupAnalysis) ->
+                    val previousGroupIndex = previousGroups.indexOfFirst { it.groupName == group.groupName }
+                    val previousGroup = previousGroups.getOrNull(previousGroupIndex)
+                    val previousGroupAnalysis = previousAnalysis.groups.getOrNull(previousGroupIndex)
+                    add(
+                        BehaviorScoreMetricComparisonRow(
+                            label = group.groupName,
+                            todayValue =
+                                "${formatDuration(groupAnalysis.usedMillis)} / ${formatDuration(groupAnalysis.targetMillis)} (${formatBehaviorMultiplier(groupAnalysis.progress)})",
+                            yesterdayValue =
+                                if (!hasPreviousData) {
+                                    AppText.t("stats_score_metric_empty_value")
+                                } else if (previousGroup != null && previousGroupAnalysis != null) {
+                                    "${formatDuration(previousGroupAnalysis.usedMillis)} / ${formatDuration(previousGroupAnalysis.targetMillis)} (${formatBehaviorMultiplier(previousGroupAnalysis.progress)})"
+                                } else {
+                                    AppText.t("stats_score_metric_empty_value")
+                                },
+                        ),
+                    )
+                }
+            },
+    )
+
+private fun buildFocusScoreDetail(
+    analysis: BehaviorRatioScoreAnalysis,
+    previousAnalysis: BehaviorRatioScoreAnalysis,
+    hasPreviousData: Boolean,
+): BehaviorScoreMetricDetail =
+    BehaviorScoreMetricDetail(
+        title = AppText.t("stats_score_focus"),
+        score = analysis.score,
+        formulaLines = listOf(AppText.t("stats_score_metric_focus_formula")),
+        comparisonRows =
+            listOf(
+                BehaviorScoreMetricComparisonRow(
+                    label = AppText.t("stats_score_metric_encourage_usage_label"),
+                    todayValue = formatDuration(analysis.numerator),
+                    yesterdayValue = if (hasPreviousData) formatDuration(previousAnalysis.numerator) else AppText.t("stats_score_metric_empty_value"),
+                ),
+                BehaviorScoreMetricComparisonRow(
+                    label = AppText.t("stats_score_metric_control_usage_label"),
+                    todayValue = formatDuration(analysis.denominator),
+                    yesterdayValue = if (hasPreviousData) formatDuration(previousAnalysis.denominator) else AppText.t("stats_score_metric_empty_value"),
+                ),
+                BehaviorScoreMetricComparisonRow(
+                    label = AppText.t("stats_score_metric_ratio_label"),
+                    todayValue = buildBehaviorRatioLine(analysis.ratio),
+                    yesterdayValue = if (hasPreviousData) buildBehaviorRatioLine(previousAnalysis.ratio) else AppText.t("stats_score_metric_empty_value"),
+                ),
+            ),
+    )
+
+private fun buildRhythmScoreDetail(
+    analysis: BehaviorRhythmScoreAnalysis,
+    previousAnalysis: BehaviorRhythmScoreAnalysis,
+    hasPreviousData: Boolean,
+): BehaviorScoreMetricDetail =
+    BehaviorScoreMetricDetail(
+        title = AppText.t("stats_score_rhythm"),
+        score = analysis.score,
+        formulaLines = listOf(AppText.t("stats_score_metric_rhythm_formula")),
+        comparisonRows =
+            listOf(
+                BehaviorScoreMetricComparisonRow(
+                    label = AppText.t("stats_score_metric_night_outside_label"),
+                    todayValue = formatDuration(analysis.nightOutsideEncourageMillis),
+                    yesterdayValue =
+                        if (hasPreviousData) {
+                            formatDuration(previousAnalysis.nightOutsideEncourageMillis)
+                        } else {
+                            AppText.t("stats_score_metric_empty_value")
+                        },
+                ),
+            ),
+    )
+
+private fun buildRestraintScoreDetail(
+    analysis: BehaviorRatioScoreAnalysis,
+    previousAnalysis: BehaviorRatioScoreAnalysis,
+    hasPreviousData: Boolean,
+): BehaviorScoreMetricDetail =
+    BehaviorScoreMetricDetail(
+        title = AppText.t("stats_score_restraint"),
+        score = analysis.score,
+        formulaLines = listOf(AppText.t("stats_score_metric_restraint_formula")),
+        comparisonRows =
+            listOf(
+                BehaviorScoreMetricComparisonRow(
+                    label = AppText.t("stats_score_metric_encourage_launches_label"),
+                    todayValue = analysis.numerator.toString(),
+                    yesterdayValue = if (hasPreviousData) previousAnalysis.numerator.toString() else AppText.t("stats_score_metric_empty_value"),
+                ),
+                BehaviorScoreMetricComparisonRow(
+                    label = AppText.t("stats_score_metric_control_launches_label"),
+                    todayValue = analysis.denominator.toString(),
+                    yesterdayValue = if (hasPreviousData) previousAnalysis.denominator.toString() else AppText.t("stats_score_metric_empty_value"),
+                ),
+                BehaviorScoreMetricComparisonRow(
+                    label = AppText.t("stats_score_metric_ratio_label"),
+                    todayValue = buildBehaviorRatioLine(analysis.ratio),
+                    yesterdayValue = if (hasPreviousData) buildBehaviorRatioLine(previousAnalysis.ratio) else AppText.t("stats_score_metric_empty_value"),
+                ),
+            ),
+    )
+
+private fun buildBehaviorRatioLine(ratio: Float?): String =
+    if (ratio == null) {
+        AppText.t("stats_score_metric_empty_value")
+    } else {
+        formatBehaviorMultiplier(ratio)
+    }
+
+private fun formatBehaviorMultiplier(value: Float): String {
+    val rounded = kotlin.math.round(value * 10f) / 10f
+    return if (rounded % 1f == 0f) {
+        "${rounded.toInt()}x"
+    } else {
+        "${rounded}x"
+    }
 }
 
 internal fun buildArchivedDayComparisonMetrics(

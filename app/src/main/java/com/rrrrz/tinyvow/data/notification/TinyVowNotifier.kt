@@ -78,7 +78,73 @@ class TinyVowNotifier(
         NotificationManagerCompat.from(context).notify(packageName.hashCode(), notification)
     }
 
+    fun notifyControlRemaining(
+        groupId: String,
+        groupName: String,
+        remainingText: String,
+    ) {
+        ensureChannel()
+        val textContext = AppText.localizedContext(context)
+        val pendingIntent = PendingIntent.getActivity(
+            context,
+            groupId.hashCode(),
+            Intent(context, MainActivity::class.java),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+            .setSmallIcon(R.mipmap.ic_launcher)
+            .setContentTitle(textContext.getString(R.string.notification_control_remaining_title, groupName))
+            .setContentText(textContext.getString(R.string.notification_control_remaining_body, remainingText))
+            .setContentIntent(pendingIntent)
+            .setAutoCancel(true)
+            .build()
+        if (!canPostNotifications()) return
+        NotificationManagerCompat.from(context).notify(groupId.hashCode(), notification)
+    }
+
+    fun notifyEncourageIncomplete(
+        timeText: String,
+        groupNames: List<String>,
+    ) {
+        ensureChannel()
+        val textContext = AppText.localizedContext(context)
+        val pendingIntent = PendingIntent.getActivity(
+            context,
+            ENCOURAGE_INCOMPLETE_NOTIFICATION_ID,
+            Intent(context, MainActivity::class.java),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        val groupText = groupNames.take(3).joinToString(textContext.getString(R.string.list_separator))
+        val remainingCount = (groupNames.size - 3).coerceAtLeast(0)
+        val body =
+            if (remainingCount > 0) {
+                textContext.getString(
+                    R.string.notification_encourage_incomplete_body_more,
+                    groupText,
+                    remainingCount,
+                )
+            } else {
+                textContext.getString(R.string.notification_encourage_incomplete_body, groupText)
+            }
+        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+            .setSmallIcon(R.mipmap.ic_launcher)
+            .setContentTitle(textContext.getString(R.string.notification_encourage_incomplete_title, timeText))
+            .setContentText(body)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+            .setContentIntent(pendingIntent)
+            .setAutoCancel(true)
+            .build()
+        if (!canPostNotifications()) return
+        NotificationManagerCompat.from(context).notify(ENCOURAGE_INCOMPLETE_NOTIFICATION_ID, notification)
+    }
+
+    private fun canPostNotifications(): Boolean =
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) ==
+            PackageManager.PERMISSION_GRANTED
+
     companion object {
         const val CHANNEL_ID = "daily_limit_alerts"
+        private const val ENCOURAGE_INCOMPLETE_NOTIFICATION_ID = 20_240_501
     }
 }

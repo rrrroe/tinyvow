@@ -17,6 +17,8 @@ import com.rrrrz.tinyvow.data.db.GroupType
 import com.rrrrz.tinyvow.data.db.LimitPeriod
 import com.rrrrz.tinyvow.data.db.PointLedgerEntity
 import com.rrrrz.tinyvow.data.db.PointLedgerEntryType
+import com.rrrrz.tinyvow.data.db.RewardEffectBenefitEntity
+import com.rrrrz.tinyvow.data.db.RewardEffectBenefitType
 import com.rrrrz.tinyvow.data.db.RewardType
 import com.rrrrz.tinyvow.data.db.TopAppArchiveSummary
 import com.rrrrz.tinyvow.data.settings.ManagedAppPreferences
@@ -32,6 +34,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import kotlin.math.max
+import kotlin.math.roundToInt
 
 class DailyArchiveRepository(
     private val context: Context,
@@ -49,6 +52,7 @@ class DailyArchiveRepository(
     private val crossRefDao = database.crossRefDao()
     private val bonusTimeDao = database.bonusTimeDao()
     private val activeRewardEffectDao = database.activeRewardEffectDao()
+    private val rewardEffectBenefitDao = database.rewardEffectBenefitDao()
     private val redemptionHistoryDao = database.redemptionHistoryDao()
     private val dailyArchiveDao = database.dailyArchiveDao()
     private val dailyGroupArchiveDao = database.dailyGroupArchiveDao()
@@ -72,6 +76,9 @@ class DailyArchiveRepository(
         dailyGroupArchiveDao.getByDateRange(from, to)
 
     fun getAppArchivesByDate(date: String): Flow<List<DailyAppArchiveEntity>> = dailyAppArchiveDao.getByDate(date)
+
+    fun getRewardEffectBenefitsByDate(date: String): Flow<List<RewardEffectBenefitEntity>> =
+        rewardEffectBenefitDao.observeByDate(date)
 
     fun getUngroupedAppArchivesByDate(date: String): Flow<List<DailyAppArchiveEntity>> =
         dailyAppArchiveDao.getUngroupedByDate(date)
@@ -328,6 +335,7 @@ class DailyArchiveRepository(
                 )
             }
         val groupSnapshots = groupBuildResults.map { it.archive }
+        val rewardEffectBenefits = groupBuildResults.flatMap { it.rewardEffectBenefits }
         val groupedAppArchives =
             groupBuildResults.flatMap { groupResult ->
                 val allocatedEarnedPoints =
@@ -470,6 +478,8 @@ class DailyArchiveRepository(
             dailyAppArchiveDao.replaceForDate(archiveDate, appArchives)
             dailyGroupArchiveDao.deleteByDate(archiveDate)
             dailyGroupArchiveDao.insertAll(groupSnapshots)
+            rewardEffectBenefitDao.deleteByDate(archiveDate)
+            rewardEffectBenefits.forEach { benefit -> rewardEffectBenefitDao.upsert(benefit) }
             dailyArchiveDao.upsert(dailyArchive)
         }
         if (appliedArchiveEarnPoints > 0.0) {
@@ -618,6 +628,17 @@ class DailyArchiveRepository(
             } else {
                 0.0
             }
+        val rewardEffectBenefits =
+            buildRewardEffectBenefits(
+                archiveDate = archiveDate,
+                archiveTime = archiveTime,
+                group = group,
+                effects = archiveEffects,
+                rewardExtraMinutes = rewardExtraMinutes,
+                hasPeriodPass = hasPeriodPass,
+                exceededMillisAtClose = exceededMillisAtClose,
+                rewardBonusPoints = rewardBonusPoints,
+            )
         val earnedPoints =
             when (group.type) {
                 GroupType.CONTROL -> pointLedgerDao.sumEarnedByDateAndGroup(archiveDate, group.id)
@@ -679,8 +700,98 @@ class DailyArchiveRepository(
             packageNames = packageNames,
             dailyUsageByPackage = dailyUsageByPackage,
             rewardBonusPoints = rewardBonusPoints,
+            rewardEffectBenefits = rewardEffectBenefits,
         )
     }
+
+    private fun buildRewardEffectBenefits(
+        archiveDate: String,
+        archiveTime: Long,
+        group: ArchiveGroupConfig,
+        effects: List<com.rrrrz.tinyvow.data.db.ActiveRewardEffectEntity>,
+        rewardExtraMinutes: Int,
+        hasPeriodPass: Boolean,
+        exceededMillisAtClose: Long,
+        rewardBonusPoints: Double,
+    ): List<RewardEffectBenefitEntity> =
+        buildList {
+            val timeEffects =
+                effects.filter { it.effectType == RewardType.TIME_ADD || it.effectType == RewardType.EMERGENCY_UNLOCK }
+            if (timeEffects.isNotEmpty() && rewardExtraMinutes > 0) {
+                val usedExtraMinutes =
+                    minOf(rewardExtraMinutes, (exceededMillisAtClose / 60_000L).toInt().coerceAtLeast(0))
+                timeEffects.forEach { effect ->
+                    val payload = parseRewardPayload(effect.payloadJson)
+                    val share =
+                        if (rewardExtraMinutes > 0) {
+                            (usedExtraMinutes * (payload.minutes.toDouble() / rewardExtraMinutes.toDouble())).roundToInt()
+                        } else {
+                            0
+                        }
+                    if (share > 0) {
+                        add(
+                            RewardEffectBenefitEntity(
+                                id = "${effect.id}:$archiveDate",
+                                effectId = effect.id,
+                                rewardId = effect.sourceRewardId,
+                                rewardBuiltinKey = effect.sourceBuiltinKey,
+                                rewardType = effect.effectType,
+                                archiveDate = archiveDate,
+                                targetGroupId = group.id,
+                                targetGroupNameSnapshot = effect.targetGroupNameSnapshot ?: group.name,
+                                benefitType =
+                                    if (effect.effectType == RewardType.EMERGENCY_UNLOCK) {
+                                        RewardEffectBenefitType.EMERGENCY_UNLOCK_USED
+                                    } else {
+                                        RewardEffectBenefitType.EXTRA_TIME_USED
+                                    },
+                                benefitMinutes = share,
+                                createdAt = archiveTime,
+                            ),
+                        )
+                    }
+                }
+            }
+            val periodPass = effects.firstOrNull { it.effectType == RewardType.PERIOD_PASS }
+            if (hasPeriodPass && periodPass != null) {
+                val exemptedMinutes = (exceededMillisAtClose / 60_000L).toInt().coerceAtLeast(0)
+                if (exemptedMinutes > 0) {
+                    add(
+                        RewardEffectBenefitEntity(
+                            id = "${periodPass.id}:$archiveDate",
+                            effectId = periodPass.id,
+                            rewardId = periodPass.sourceRewardId,
+                            rewardBuiltinKey = periodPass.sourceBuiltinKey,
+                            rewardType = periodPass.effectType,
+                            archiveDate = archiveDate,
+                            targetGroupId = group.id,
+                            targetGroupNameSnapshot = periodPass.targetGroupNameSnapshot ?: group.name,
+                            benefitType = RewardEffectBenefitType.PERIOD_PASS_EXEMPTED,
+                            benefitMinutes = exemptedMinutes,
+                            createdAt = archiveTime,
+                        ),
+                    )
+                }
+            }
+            val doublePoints = effects.firstOrNull { it.effectType == RewardType.DOUBLE_POINTS_DAY }
+            if (doublePoints != null && rewardBonusPoints > 0.0) {
+                add(
+                    RewardEffectBenefitEntity(
+                        id = "${doublePoints.id}:$archiveDate",
+                        effectId = doublePoints.id,
+                        rewardId = doublePoints.sourceRewardId,
+                        rewardBuiltinKey = doublePoints.sourceBuiltinKey,
+                        rewardType = doublePoints.effectType,
+                        archiveDate = archiveDate,
+                        targetGroupId = group.id,
+                        targetGroupNameSnapshot = doublePoints.targetGroupNameSnapshot ?: group.name,
+                        benefitType = RewardEffectBenefitType.DOUBLE_POINTS_EARNED,
+                        benefitPoints = rewardBonusPoints,
+                        createdAt = archiveTime,
+                    ),
+                )
+            }
+        }
 
     private fun buildDailyAppArchive(
         archiveDate: String,
@@ -793,6 +904,7 @@ class DailyArchiveRepository(
         val packageNames: List<String>,
         val dailyUsageByPackage: Map<String, Long>,
         val rewardBonusPoints: Double = 0.0,
+        val rewardEffectBenefits: List<RewardEffectBenefitEntity> = emptyList(),
     )
 
     private data class ArchiveGroupConfig(

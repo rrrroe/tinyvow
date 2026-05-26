@@ -42,7 +42,9 @@ class ManagedAppPreferences(
         val dismissedPermissionPrompts = stringSetPreferencesKey("dismissed_permission_prompts")
         val usageAccessDisclosureAccepted = booleanPreferencesKey("usage_access_disclosure_accepted")
         val accessibilityDisclosureAccepted = booleanPreferencesKey("accessibility_disclosure_accepted")
+        val accessibilityServiceHeartbeatAtMillis = longPreferencesKey("accessibility_service_heartbeat_at_millis")
         val welcomeIntroCompleted = booleanPreferencesKey("welcome_intro_completed")
+        val firstRunCoachmarkCompleted = booleanPreferencesKey("first_run_coachmark_completed")
         val selectedAppLanguage = stringPreferencesKey("selected_app_language")
         val profileDisplayName = stringPreferencesKey("profile_display_name")
         val profileAvatarUri = stringPreferencesKey("profile_avatar_uri")
@@ -59,6 +61,10 @@ class ManagedAppPreferences(
         val superModeWindowStartMinutes = intPreferencesKey("super_mode_window_start_minutes")
         val superModeWindowEndMinutes = intPreferencesKey("super_mode_window_end_minutes")
         val encryptedWeReadApiKey = stringPreferencesKey("encrypted_weread_api_key")
+        val notificationRemindersEnabled = booleanPreferencesKey("notification_reminders_enabled")
+        val controlRemainingReminderMinutes = intPreferencesKey("control_remaining_reminder_minutes")
+        val encourageReminderTimesMinutes = stringPreferencesKey("encourage_reminder_times_minutes")
+        val sentReminderKeys = stringSetPreferencesKey("sent_reminder_keys")
     }
 
     val selectedPackageName: Flow<String?> = context.managedAppDataStore.data.map { preferences ->
@@ -128,8 +134,16 @@ class ManagedAppPreferences(
         preferences[Keys.accessibilityDisclosureAccepted] ?: false
     }
 
+    val accessibilityServiceHeartbeatAtMillis: Flow<Long?> = context.managedAppDataStore.data.map { preferences ->
+        preferences[Keys.accessibilityServiceHeartbeatAtMillis]
+    }
+
     val welcomeIntroCompleted: Flow<Boolean> = context.managedAppDataStore.data.map { preferences ->
         preferences[Keys.welcomeIntroCompleted] ?: false
+    }
+
+    val firstRunCoachmarkCompleted: Flow<Boolean> = context.managedAppDataStore.data.map { preferences ->
+        preferences[Keys.firstRunCoachmarkCompleted] ?: false
     }
 
     val selectedAppLanguage: Flow<AppLanguage> = context.managedAppDataStore.data.map { preferences ->
@@ -166,6 +180,18 @@ class ManagedAppPreferences(
 
     val encryptedWeReadApiKey: Flow<String?> = context.managedAppDataStore.data.map { preferences ->
         preferences[Keys.encryptedWeReadApiKey]?.takeIf { it.isNotBlank() }
+    }
+
+    val notificationRemindersEnabled: Flow<Boolean> = context.managedAppDataStore.data.map { preferences ->
+        preferences[Keys.notificationRemindersEnabled] ?: true
+    }
+
+    val controlRemainingReminderMinutes: Flow<Int> = context.managedAppDataStore.data.map { preferences ->
+        preferences[Keys.controlRemainingReminderMinutes] ?: DEFAULT_CONTROL_REMAINING_REMINDER_MINUTES
+    }
+
+    val encourageReminderTimesMinutes: Flow<List<Int>> = context.managedAppDataStore.data.map { preferences ->
+        parseReminderTimes(preferences[Keys.encourageReminderTimesMinutes])
     }
 
     suspend fun addUserPoints(points: Double) {
@@ -284,9 +310,21 @@ class ManagedAppPreferences(
         }
     }
 
+    suspend fun touchAccessibilityServiceHeartbeat(nowMillis: Long = System.currentTimeMillis()) {
+        context.managedAppDataStore.edit { preferences ->
+            preferences[Keys.accessibilityServiceHeartbeatAtMillis] = nowMillis
+        }
+    }
+
     suspend fun setWelcomeIntroCompleted(completed: Boolean) {
         context.managedAppDataStore.edit { preferences ->
             preferences[Keys.welcomeIntroCompleted] = completed
+        }
+    }
+
+    suspend fun setFirstRunCoachmarkCompleted(completed: Boolean) {
+        context.managedAppDataStore.edit { preferences ->
+            preferences[Keys.firstRunCoachmarkCompleted] = completed
         }
     }
 
@@ -431,6 +469,25 @@ class ManagedAppPreferences(
         }
     }
 
+    suspend fun setNotificationRemindersEnabled(enabled: Boolean) {
+        context.managedAppDataStore.edit { preferences ->
+            preferences[Keys.notificationRemindersEnabled] = enabled
+        }
+    }
+
+    suspend fun setControlRemainingReminderMinutes(minutes: Int) {
+        context.managedAppDataStore.edit { preferences ->
+            preferences[Keys.controlRemainingReminderMinutes] =
+                minutes.coerceIn(MIN_CONTROL_REMAINING_REMINDER_MINUTES, MAX_CONTROL_REMAINING_REMINDER_MINUTES)
+        }
+    }
+
+    suspend fun setEncourageReminderTimesMinutes(times: List<Int>) {
+        context.managedAppDataStore.edit { preferences ->
+            preferences[Keys.encourageReminderTimesMinutes] = encodeReminderTimes(times)
+        }
+    }
+
     suspend fun setDailyLimitMinutes(packageName: String, minutes: Int) {
         context.managedAppDataStore.edit { preferences ->
             preferences[intPreferencesKey("daily_limit_minutes_$packageName")] = minutes
@@ -455,8 +512,36 @@ class ManagedAppPreferences(
         return superModeState.first()
     }
 
+    suspend fun getDebugProExpiresAtMillisOnce(): Long? {
+        return debugProExpiresAtMillis.first()
+    }
+
     suspend fun getEncryptedWeReadApiKeyOnce(): String? {
         return encryptedWeReadApiKey.first()
+    }
+
+    suspend fun getNotificationRemindersEnabledOnce(): Boolean {
+        return notificationRemindersEnabled.first()
+    }
+
+    suspend fun getControlRemainingReminderMinutesOnce(): Int {
+        return controlRemainingReminderMinutes.first()
+    }
+
+    suspend fun getEncourageReminderTimesMinutesOnce(): List<Int> {
+        return encourageReminderTimesMinutes.first()
+    }
+
+    suspend fun getSentReminderKeysOnce(): Set<String> {
+        return context.managedAppDataStore.data.map { preferences ->
+            preferences[Keys.sentReminderKeys].orEmpty()
+        }.first()
+    }
+
+    suspend fun addSentReminderKey(key: String) {
+        context.managedAppDataStore.edit { preferences ->
+            preferences[Keys.sentReminderKeys] = preferences[Keys.sentReminderKeys].orEmpty() + key
+        }
     }
 
     suspend fun getDailyLimitMinutesOnce(packageName: String): Int? {
@@ -536,5 +621,31 @@ class ManagedAppPreferences(
             )
         }
         return array.toString()
+    }
+
+    private fun parseReminderTimes(value: String?): List<Int> {
+        if (value.isNullOrBlank()) return DEFAULT_ENCOURAGE_REMINDER_TIMES_MINUTES
+        return value
+            .split(",")
+            .mapNotNull { it.trim().toIntOrNull() }
+            .filter { it in 0 until MINUTES_PER_DAY }
+            .distinct()
+            .sorted()
+            .ifEmpty { DEFAULT_ENCOURAGE_REMINDER_TIMES_MINUTES }
+    }
+
+    private fun encodeReminderTimes(times: List<Int>): String =
+        times
+            .filter { it in 0 until MINUTES_PER_DAY }
+            .distinct()
+            .sorted()
+            .joinToString(",")
+
+    companion object {
+        const val DEFAULT_CONTROL_REMAINING_REMINDER_MINUTES = 10
+        const val MIN_CONTROL_REMAINING_REMINDER_MINUTES = 1
+        const val MAX_CONTROL_REMAINING_REMINDER_MINUTES = 120
+        val DEFAULT_ENCOURAGE_REMINDER_TIMES_MINUTES = listOf(8 * 60, 18 * 60, 20 * 60)
+        private const val MINUTES_PER_DAY = 24 * 60
     }
 }

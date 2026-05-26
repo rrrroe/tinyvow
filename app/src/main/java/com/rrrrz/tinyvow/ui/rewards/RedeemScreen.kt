@@ -48,9 +48,12 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.rrrrz.tinyvow.data.db.GroupType
 import com.rrrrz.tinyvow.data.db.LimitPeriod
+import com.rrrrz.tinyvow.data.db.ActiveRewardEffectEntity
 import com.rrrrz.tinyvow.data.db.RedemptionEntity
 import com.rrrrz.tinyvow.data.db.RedemptionHistoryEntity
 import com.rrrrz.tinyvow.data.db.RedemptionHistoryType
+import com.rrrrz.tinyvow.data.db.RewardEffectBenefitEntity
+import com.rrrrz.tinyvow.data.db.RewardEffectBenefitType
 import com.rrrrz.tinyvow.data.db.RewardIconSource
 import com.rrrrz.tinyvow.data.db.RewardType
 import com.rrrrz.tinyvow.data.db.RewardUseHistoryEntity
@@ -83,6 +86,7 @@ import java.util.Locale
 
 private enum class InventorySubsection {
     ITEMS,
+    EFFECTS,
     PURCHASES,
     USES,
 }
@@ -408,6 +412,8 @@ private fun RewardConfigScreen(
 fun RewardInventoryScreen(
     inventoryItems: List<InventoryRewardItem>,
     pendingItems: List<PendingStreakShieldItem>,
+    activeRewardEffects: List<ActiveRewardEffectEntity>,
+    rewardEffectBenefits: List<RewardEffectBenefitEntity>,
     groups: List<AppGroupWithApps>,
     redemptionHistory: List<RedemptionHistoryEntity>,
     rewardUseHistory: List<RewardUseHistoryEntity>,
@@ -470,6 +476,26 @@ fun RewardInventoryScreen(
                                 }
                             },
                         )
+                    }
+                }
+            }
+
+            InventorySubsection.EFFECTS -> {
+                item { RewardSectionTitle(title = AppText.t("redeem_effects_active_title")) }
+                if (activeRewardEffects.isEmpty()) {
+                    item { EmptyRewardsCard(text = AppText.t("redeem_effects_active_empty")) }
+                } else {
+                    items(activeRewardEffects, key = { it.id }) { effect ->
+                        ActiveRewardEffectCard(effect = effect)
+                    }
+                }
+
+                item { RewardSectionTitle(title = AppText.t("redeem_effects_benefit_title")) }
+                if (rewardEffectBenefits.isEmpty()) {
+                    item { EmptyRewardsCard(text = AppText.t("redeem_effects_benefit_empty")) }
+                } else {
+                    items(rewardEffectBenefits.take(20), key = { it.id }) { benefit ->
+                        RewardEffectBenefitCard(benefit = benefit)
                     }
                 }
             }
@@ -552,6 +578,12 @@ private fun SubsectionSwitcher(
             selected = current == InventorySubsection.ITEMS,
             title = AppText.t("redeem_inventory_title"),
             onClick = { onChange(InventorySubsection.ITEMS) },
+            modifier = Modifier.weight(1f),
+        )
+        InventorySwitchButton(
+            selected = current == InventorySubsection.EFFECTS,
+            title = AppText.t("redeem_effects_active_short"),
+            onClick = { onChange(InventorySubsection.EFFECTS) },
             modifier = Modifier.weight(1f),
         )
         InventorySwitchButton(
@@ -1701,4 +1733,74 @@ private fun RedemptionHistoryEntity.localizedRewardTitle(): String =
 
 private fun RewardUseHistoryEntity.localizedRewardTitle(): String =
     rewardBuiltinKey?.let { AppText.t("${it}_title") } ?: rewardTitle
+
+@Composable
+private fun ActiveRewardEffectCard(effect: ActiveRewardEffectEntity) {
+    val payload = remember(effect.payloadJson) { parseRewardPayload(effect.payloadJson) }
+    val title = effect.localizedSourceTitle()
+    val target = effect.targetGroupNameSnapshot ?: AppText.t("generic_target_group")
+    val subtitle =
+        when (effect.effectType) {
+            RewardType.TIME_ADD -> AppText.t("redeem_effects_active_time_add", target, payload.minutes)
+            RewardType.PERIOD_PASS -> AppText.t("redeem_effects_active_period_pass", target)
+            RewardType.EMERGENCY_UNLOCK -> AppText.t("redeem_effects_active_emergency_unlock", target, payload.minutes)
+            RewardType.DOUBLE_POINTS_DAY -> AppText.t("redeem_effects_active_double_points", target, trimRewardMultiplier(payload.pointsMultiplier))
+            RewardType.STREAK_SHIELD -> AppText.t("redeem_effects_active_streak_shield")
+            RewardType.CUSTOM -> AppText.t("redeem_rule_keep_in_inventory")
+        }
+    val remaining = (effect.expireAt - System.currentTimeMillis()).coerceAtLeast(0L)
+    HistoryCard(
+        title = title,
+        timestamp = AppText.t("redeem_effects_remaining", formatRewardEffectDuration(remaining)),
+        subtitle = subtitle,
+        trailing = AppText.t("redeem_effects_active_short"),
+        trailingColor = MaterialTheme.colorScheme.primary,
+    )
+}
+
+@Composable
+private fun RewardEffectBenefitCard(benefit: RewardEffectBenefitEntity) {
+    val title = benefit.localizedRewardTitle()
+    val target = benefit.targetGroupNameSnapshot ?: AppText.t("generic_target_group")
+    val subtitle =
+        when (benefit.benefitType) {
+            RewardEffectBenefitType.EXTRA_TIME_USED ->
+                AppText.t("redeem_effects_benefit_extra_time", target, benefit.benefitMinutes)
+            RewardEffectBenefitType.EMERGENCY_UNLOCK_USED ->
+                AppText.t("redeem_effects_benefit_emergency_unlock", target, benefit.benefitMinutes)
+            RewardEffectBenefitType.PERIOD_PASS_EXEMPTED ->
+                AppText.t("redeem_effects_benefit_period_pass", target, benefit.benefitMinutes)
+            RewardEffectBenefitType.DOUBLE_POINTS_EARNED ->
+                AppText.t("redeem_effects_benefit_double_points", target, String.format(Locale.CHINA, "%.1f", benefit.benefitPoints))
+            RewardEffectBenefitType.STREAK_SHIELD_USED ->
+                AppText.t("redeem_effects_benefit_streak_shield")
+        }
+    HistoryCard(
+        title = title,
+        timestamp = benefit.archiveDate,
+        subtitle = subtitle,
+        trailing = AppText.t("redeem_effects_benefit_short"),
+        trailingColor = MaterialTheme.colorScheme.secondary,
+    )
+}
+
+private fun ActiveRewardEffectEntity.localizedSourceTitle(): String =
+    sourceBuiltinKey?.let { AppText.t("${it}_title") } ?: AppText.t("redeem_effects_unknown_reward")
+
+private fun RewardEffectBenefitEntity.localizedRewardTitle(): String =
+    rewardBuiltinKey?.let { AppText.t("${it}_title") } ?: AppText.t("redeem_effects_unknown_reward")
+
+private fun formatRewardEffectDuration(durationMillis: Long): String {
+    val totalMinutes = (durationMillis / 60_000L).coerceAtLeast(0L)
+    val hours = totalMinutes / 60
+    val minutes = totalMinutes % 60
+    return when {
+        hours > 0 && minutes > 0 -> AppText.t("duration_value_h_value_min", hours, minutes)
+        hours > 0 -> AppText.t("duration_value_h", hours)
+        else -> AppText.t("duration_value_min", minutes)
+    }
+}
+
+private fun trimRewardMultiplier(value: Double): String =
+    if (value % 1.0 == 0.0) value.toInt().toString() else value.toString().trimEnd('0').trimEnd('.')
 

@@ -2,6 +2,7 @@
 
 import com.rrrrz.tinyvow.data.apps.ManagedApp
 import com.rrrrz.tinyvow.i18n.AppText
+import com.rrrrz.tinyvow.ui.home.BehaviorScoreMetricDetail
 import java.time.LocalDate
 import java.time.YearMonth
 
@@ -137,12 +138,22 @@ internal data class BehaviorSectionData(
 
 internal data class DailyBehaviorStructureData(
     val metrics: List<DailyBehaviorStructureMetric>,
+    val scoreMetrics: List<DailyBehaviorScoreMetric> = emptyList(),
+    val comparisonScoreMetrics: List<DailyBehaviorScoreMetric> = emptyList(),
 )
 
 internal data class DailyBehaviorStructureMetric(
     val label: String,
     val value: String,
     val visualRatio: Float,
+)
+
+internal data class DailyBehaviorScoreMetric(
+    val label: String,
+    val score: Int,
+    val detail: String,
+    val accentIndex: Int,
+    val explanation: BehaviorScoreMetricDetail? = null,
 )
 
 internal data class ComparisonSectionData(
@@ -432,6 +443,7 @@ internal data class DailyReportUiState(
     val isPermissionGranted: Boolean = false,
     val selectedTab: ReportTab = ReportTab.DAY,
     val isRefreshing: Boolean = true,
+    val animateValues: Boolean = true,
     val heroState: SectionState<HeroSectionData> = SectionState.Loading,
     val dailyFocusState: SectionState<DailyFocusSectionData> = SectionState.Loading,
     val windowFocusState: SectionState<WindowFocusSectionData> = SectionState.Loading,

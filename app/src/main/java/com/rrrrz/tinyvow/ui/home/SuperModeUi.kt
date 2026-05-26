@@ -25,15 +25,19 @@ import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -733,6 +737,72 @@ fun SuperModeWindowDialog(
         dismissButton = {
             TextButton(onClick = onDismiss) {
                 Text(AppText.t("group_cancel"))
+            }
+        },
+    )
+}
+
+@Composable
+fun SuperModeInfoDialog(
+    status: SuperModeStatus,
+    currentTimeLabel: String,
+    onDismiss: () -> Unit,
+    onOpenSettings: () -> Unit,
+) {
+    val themeColors = LocalThemeColors.current
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(AppText.t("super_mode_info_title")) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    text = AppText.t("super_mode_info_body"),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = themeColors.ink,
+                )
+                TinyVowCard(shape = RoundedCornerShape(TinyVowRadius.Card)) {
+                    Column(
+                        modifier = androidx.compose.ui.Modifier.padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        SuperModeStatusRow(
+                            label = AppText.t("super_mode_status_label"),
+                            value = describeSuperModeStatus(status),
+                        )
+                        SuperModeStatusRow(
+                            label = AppText.t("super_mode_current_time_label"),
+                            value = currentTimeLabel,
+                        )
+                        SuperModeStatusRow(
+                            label = AppText.t("super_mode_window_label"),
+                            value = status.windowLabel,
+                        )
+                        SuperModeStatusRow(
+                            label = AppText.t("super_mode_short_session_label"),
+                            value =
+                                if (status.isActive) {
+                                    AppText.t("super_mode_remaining_short", formatDurationMinutes(status.remainingMillis))
+                                } else {
+                                    AppText.t("super_mode_short_session_inactive")
+                                },
+                        )
+                    }
+                }
+                Text(
+                    text = AppText.t("super_mode_info_protected_actions"),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = themeColors.inkMuted,
+                )
+            }
+        },
+        confirmButton = {
+            Button(onClick = onOpenSettings) {
+                Text(AppText.t("super_mode_info_open_settings"))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(AppText.t("generic_ok"))
             }
         },
     )

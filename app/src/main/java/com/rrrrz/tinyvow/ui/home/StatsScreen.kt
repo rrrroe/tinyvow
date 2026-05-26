@@ -41,6 +41,7 @@ import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -144,6 +145,69 @@ import kotlin.math.max
 import kotlin.math.roundToInt
 import kotlin.math.roundToLong
 
+private const val STAT_CHART_ANIMATIONS_ENABLED = false
+
+private data class ReportCacheKey(
+    val tab: ReportTab,
+    val value: String,
+)
+
+class StatsReportMemoryCache {
+    private val reportStates = linkedMapOf<ReportCacheKey, DailyReportUiState>()
+    private var recentArchives: List<DailyArchiveEntity>? = null
+    private var lastState: DailyReportUiState? = null
+
+    internal fun restoreState(): DailyReportUiState? = lastState
+
+    internal fun getRecentArchives(): List<DailyArchiveEntity>? = recentArchives
+
+    internal fun putRecentArchives(archives: List<DailyArchiveEntity>) {
+        recentArchives = archives
+    }
+
+    internal fun getReport(
+        selectedTab: ReportTab,
+        selectedArchiveDate: String?,
+        selectedWeekStart: LocalDate?,
+        selectedMonth: YearMonth?,
+        selectedYear: Int?,
+    ): DailyReportUiState? =
+        reportCacheKey(
+            selectedTab = selectedTab,
+            selectedArchiveDate = selectedArchiveDate,
+            selectedWeekStart = selectedWeekStart,
+            selectedMonth = selectedMonth,
+            selectedYear = selectedYear,
+        )?.let(reportStates::get)
+
+    internal fun rememberReport(state: DailyReportUiState) {
+        if (!state.isPermissionGranted || state.isRefreshing) return
+        val cacheKey =
+            reportCacheKey(
+                selectedTab = state.selectedTab,
+                selectedArchiveDate = state.selectedArchiveDate,
+                selectedWeekStart = state.selectedWeekStart,
+                selectedMonth = state.selectedMonth,
+                selectedYear = state.selectedYear,
+            ) ?: return
+        val cachedState = state.copy(animateValues = false)
+        reportStates[cacheKey] = cachedState
+        lastState = cachedState
+    }
+
+    internal fun rememberLastState(state: DailyReportUiState) {
+        if (state.isPermissionGranted && !state.isRefreshing) {
+            lastState = state.copy(animateValues = false)
+        }
+    }
+
+    internal fun clear() {
+        reportStates.clear()
+        recentArchives = null
+        lastState = null
+    }
+}
+
 @Composable
 fun StatsRoute(
     usageAccessStatus: UsageAccessStatus,
@@ -151,39 +215,47 @@ fun StatsRoute(
     userPoints: Double,
     todayPoints: Double,
     archiveRepository: DailyArchiveRepository,
+    reportMemoryCache: StatsReportMemoryCache,
     isProActive: Boolean,
     onShowProUpsell: (ProUpsellSource) -> Unit,
     onRequestUsageAccess: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val zoneId = remember { ZoneId.systemDefault() }
-    var selectedTab by remember { mutableStateOf(ReportTab.DAY) }
-    var selectedArchiveDate by remember { mutableStateOf<String?>(null) }
-    var selectedWeekStart by remember { mutableStateOf<LocalDate?>(null) }
-    var selectedMonth by remember { mutableStateOf<YearMonth?>(null) }
-    var selectedYear by remember { mutableStateOf<Int?>(null) }
-    var uiState by remember {
+    val restoredState = remember(reportMemoryCache) { reportMemoryCache.restoreState() }
+    var selectedTab by remember(reportMemoryCache) { mutableStateOf(restoredState?.selectedTab ?: ReportTab.DAY) }
+    var selectedArchiveDate by remember(reportMemoryCache) { mutableStateOf(restoredState?.selectedArchiveDate) }
+    var selectedWeekStart by remember(reportMemoryCache) { mutableStateOf(restoredState?.selectedWeekStart) }
+    var selectedMonth by remember(reportMemoryCache) { mutableStateOf(restoredState?.selectedMonth) }
+    var selectedYear by remember(reportMemoryCache) { mutableStateOf(restoredState?.selectedYear) }
+    var uiState by remember(reportMemoryCache) {
         mutableStateOf(
-            DailyReportUiState(
+            restoredState?.copy(
+                isPermissionGranted = usageAccessStatus == UsageAccessStatus.GRANTED,
+                isRefreshing = false,
+                animateValues = false,
+            ) ?: DailyReportUiState(
                 isPermissionGranted = usageAccessStatus == UsageAccessStatus.GRANTED,
                 selectedTab = selectedTab,
             ),
         )
     }
 
+    fun applyUiState(nextState: DailyReportUiState) {
+        uiState = nextState
+        reportMemoryCache.rememberLastState(nextState)
+    }
+
     LaunchedEffect(
         usageAccessStatus,
-        groupsWithApps,
         selectedTab,
         selectedArchiveDate,
         selectedWeekStart,
         selectedMonth,
         selectedYear,
-        userPoints,
-        todayPoints,
     ) {
         if (usageAccessStatus != UsageAccessStatus.GRANTED) {
-            uiState = DailyReportUiState(
+            applyUiState(DailyReportUiState(
                 isPermissionGranted = false,
                 selectedTab = selectedTab,
                 isRefreshing = false,
@@ -191,11 +263,27 @@ fun StatsRoute(
                 selectedWeekStart = selectedWeekStart,
                 selectedMonth = selectedMonth,
                 selectedYear = selectedYear,
-            )
+            ))
             return@LaunchedEffect
         }
 
-        uiState =
+        reportMemoryCache.getReport(
+            selectedTab = selectedTab,
+            selectedArchiveDate = selectedArchiveDate,
+            selectedWeekStart = selectedWeekStart,
+            selectedMonth = selectedMonth,
+            selectedYear = selectedYear,
+        )?.let { cachedState ->
+            applyUiState(cachedState.copy(
+                isPermissionGranted = true,
+                selectedTab = selectedTab,
+                isRefreshing = false,
+                animateValues = false,
+            ))
+            return@LaunchedEffect
+        }
+
+        applyUiState(
             createRefreshingUiState(
                 selectedTab = selectedTab,
                 previous = uiState,
@@ -204,14 +292,16 @@ fun StatsRoute(
                 selectedMonth = selectedMonth,
                 selectedYear = selectedYear,
             )
+        )
 
         val recentArchives =
-            withContext(Dispatchers.IO) {
-                archiveRepository
-                    .getRecentArchives(limit = 3650)
-                    .first()
-                    .sortedByDescending { it.archiveDate }
-            }
+            reportMemoryCache.getRecentArchives()
+                ?: withContext(Dispatchers.IO) {
+                    archiveRepository
+                        .getRecentArchives(limit = 3650)
+                        .first()
+                        .sortedByDescending { it.archiveDate }
+                }.also(reportMemoryCache::putRecentArchives)
 
         when (selectedTab) {
             ReportTab.DAY -> {
@@ -224,12 +314,32 @@ fun StatsRoute(
                     }
                 if (normalizedSelectedDate != selectedArchiveDate) {
                     selectedArchiveDate = normalizedSelectedDate
+                    return@LaunchedEffect
+                }
+                reportMemoryCache.getReport(
+                    selectedTab = ReportTab.DAY,
+                    selectedArchiveDate = normalizedSelectedDate,
+                    selectedWeekStart = null,
+                    selectedMonth = null,
+                    selectedYear = null,
+                )?.let { cachedState ->
+                    applyUiState(cachedState.copy(
+                        isPermissionGranted = true,
+                        selectedTab = selectedTab,
+                        isRefreshing = false,
+                        animateValues = false,
+                    ))
+                    return@LaunchedEffect
                 }
                 buildArchivedDayReportUiState(
                     selectedDate = normalizedSelectedDate,
                     recentArchives = recentArchives,
                     archiveRepository = archiveRepository,
-                    updateState = { transform -> uiState = transform(uiState) },
+                    updateState = { transform ->
+                        val nextState = transform(uiState)
+                        applyUiState(nextState)
+                        reportMemoryCache.rememberReport(nextState)
+                    },
                 )
                 return@LaunchedEffect
             }
@@ -251,12 +361,30 @@ fun StatsRoute(
                         ?: availableYears.firstOrNull()
                 if (selectedTab == ReportTab.WEEK && normalizedWeekStart != selectedWeekStart) {
                     selectedWeekStart = normalizedWeekStart
+                    return@LaunchedEffect
                 }
                 if (selectedTab == ReportTab.MONTH && normalizedMonth != selectedMonth) {
                     selectedMonth = normalizedMonth
+                    return@LaunchedEffect
                 }
                 if (selectedTab == ReportTab.YEAR && normalizedYear != selectedYear) {
                     selectedYear = normalizedYear
+                    return@LaunchedEffect
+                }
+                reportMemoryCache.getReport(
+                    selectedTab = selectedTab,
+                    selectedArchiveDate = null,
+                    selectedWeekStart = normalizedWeekStart,
+                    selectedMonth = normalizedMonth,
+                    selectedYear = normalizedYear,
+                )?.let { cachedState ->
+                    applyUiState(cachedState.copy(
+                        isPermissionGranted = true,
+                        selectedTab = selectedTab,
+                        isRefreshing = false,
+                        animateValues = false,
+                    ))
+                    return@LaunchedEffect
                 }
                 buildArchivedWindowReportUiState(
                     selectedTab = selectedTab,
@@ -266,7 +394,11 @@ fun StatsRoute(
                     selectedWeekStart = normalizedWeekStart,
                     selectedMonth = normalizedMonth,
                     selectedYear = normalizedYear,
-                    updateState = { transform -> uiState = transform(uiState) },
+                    updateState = { transform ->
+                        val nextState = transform(uiState)
+                        applyUiState(nextState)
+                        reportMemoryCache.rememberReport(nextState)
+                    },
                 )
                 return@LaunchedEffect
             }
@@ -398,50 +530,73 @@ private fun DailyReportScreen(
     isProActive: Boolean,
     onShowProUpsell: (ProUpsellSource) -> Unit,
 ) {
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        verticalArrangement = Arrangement.spacedBy(TinyVowSpacing.SectionGap),
+    val listState = rememberLazyListState()
+    LaunchedEffect(
+        state.selectedTab,
+        state.selectedWeekStart,
+        state.selectedMonth,
+        state.selectedYear,
     ) {
-        item {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(
-                        horizontal = TinyVowSpacing.PageHorizontal,
-                        vertical = TinyVowSpacing.CardVertical,
-                    ),
-                verticalArrangement = Arrangement.spacedBy(TinyVowSpacing.SectionGap),
-            ) {
-                ReportTabRow(selectedTab = state.selectedTab, onTabSelected = onTabSelected)
-                ReportNavigator(
-                    state = state,
-                    onPreviousArchiveDate = onPreviousArchiveDate,
-                    onNextArchiveDate = onNextArchiveDate,
-                    onSelectArchiveDate = onSelectArchiveDate,
-                    onPreviousWeek = onPreviousWeek,
-                    onNextWeek = onNextWeek,
-                    onSelectWeekStart = onSelectWeekStart,
-                    onPreviousMonth = onPreviousMonth,
-                    onNextMonth = onNextMonth,
-                    onSelectMonth = onSelectMonth,
-                    onPreviousYear = onPreviousYear,
-                    onNextYear = onNextYear,
-                    onSelectYear = onSelectYear,
-                )
-                ReportPageContent(
-                    state = state,
-                    isProActive = isProActive,
-                    onShowProUpsell = onShowProUpsell,
-                )
-                ReportShareActionCard(
-                    state = state,
-                    isProActive = isProActive,
-                )
-                Spacer(modifier = Modifier.height(24.dp))
+        listState.scrollToItem(0)
+    }
+    Column(modifier = Modifier.fillMaxSize()) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .background(MaterialTheme.colorScheme.background)
+                .padding(
+                    horizontal = TinyVowSpacing.PageHorizontal,
+                    vertical = TinyVowSpacing.CardVertical,
+                ),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            ReportTabRow(selectedTab = state.selectedTab, onTabSelected = onTabSelected)
+            ReportNavigator(
+                state = state,
+                onPreviousArchiveDate = onPreviousArchiveDate,
+                onNextArchiveDate = onNextArchiveDate,
+                onSelectArchiveDate = onSelectArchiveDate,
+                onPreviousWeek = onPreviousWeek,
+                onNextWeek = onNextWeek,
+                onSelectWeekStart = onSelectWeekStart,
+                onPreviousMonth = onPreviousMonth,
+                onNextMonth = onNextMonth,
+                onSelectMonth = onSelectMonth,
+                onPreviousYear = onPreviousYear,
+                onNextYear = onNextYear,
+                onSelectYear = onSelectYear,
+            )
+        }
+        LazyColumn(
+            state = listState,
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f),
+            verticalArrangement = Arrangement.spacedBy(TinyVowSpacing.SectionGap),
+        ) {
+            item {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = TinyVowSpacing.PageHorizontal),
+                    verticalArrangement = Arrangement.spacedBy(TinyVowSpacing.SectionGap),
+                ) {
+                    ReportPageContent(
+                        state = state,
+                        isProActive = isProActive,
+                        onShowProUpsell = onShowProUpsell,
+                    )
+                    ReportShareActionCard(
+                        state = state,
+                        isProActive = isProActive,
+                    )
+                    Spacer(modifier = Modifier.height(24.dp))
+                }
             }
         }
     }
 }
+
 @Composable
 private fun ReportPageContent(
     state: DailyReportUiState,
@@ -457,24 +612,40 @@ private fun ReportPageContent(
         if (!isProActive && !isDayReport) {
             LockedAdvancedReportCard(onClick = { onShowProUpsell(ProUpsellSource.ADVANCED_REPORT) })
         } else if (isDayReport) {
-            DailyBattleHeroCard(heroState = state.heroState)
+            DailyBattleHeroCard(
+                heroState = state.heroState,
+                animateValues = state.animateValues,
+            )
             DailyFocusCard(
                 focusState = state.dailyFocusState,
                 compactLayout = false,
+                animateValues = state.animateValues,
+            )
+            DailyAppFocusCard(
+                topAppsState = state.topAppsState,
             )
             DailyRhythmCard(timelineState = state.timelineState)
-            DailyAppsAndAnalysisCard(
-                topAppsState = state.topAppsState,
-                behaviorState = state.behaviorState,
-                comparisonState = state.comparisonState,
-                isProActive = isProActive,
-                onShowProUpsell = onShowProUpsell,
-            )
+            if (isProActive) {
+                DailyBehaviorProfileCard(
+                    behaviorState = state.behaviorState,
+                )
+                DailyInsightCard(
+                    comparisonState = state.comparisonState,
+                )
+            } else {
+                CompactLockedAnalysisPanel(
+                    onClick = { onShowProUpsell(ProUpsellSource.ADVANCED_REPORT) },
+                )
+            }
         } else {
-            PeriodReportScreen(state = state)
+            PeriodReportScreen(
+                state = state,
+                animateValues = state.animateValues,
+            )
         }
     }
 }
+
 @Composable
 private fun ReportNavigator(
     state: DailyReportUiState,
@@ -806,6 +977,20 @@ private fun PeriodWeekPickerDialog(
         },
     )
 }
+
+private fun reportCacheKey(
+    selectedTab: ReportTab,
+    selectedArchiveDate: String?,
+    selectedWeekStart: LocalDate?,
+    selectedMonth: YearMonth?,
+    selectedYear: Int?,
+): ReportCacheKey? =
+    when (selectedTab) {
+        ReportTab.DAY -> selectedArchiveDate?.let { ReportCacheKey(selectedTab, it) }
+        ReportTab.WEEK -> selectedWeekStart?.let { ReportCacheKey(selectedTab, it.toString()) }
+        ReportTab.MONTH -> selectedMonth?.let { ReportCacheKey(selectedTab, it.toString()) }
+        ReportTab.YEAR -> selectedYear?.let { ReportCacheKey(selectedTab, it.toString()) }
+    }
 
 @Composable
 private fun PeriodMonthPickerDialog(
@@ -1699,6 +1884,7 @@ internal fun AdaptiveRowGrid(
 private fun DailyFocusCard(
     focusState: SectionState<DailyFocusSectionData>,
     compactLayout: Boolean = false,
+    animateValues: Boolean = false,
 ) {
     when (focusState) {
         SectionState.Empty -> Unit
@@ -1718,7 +1904,7 @@ private fun DailyFocusCard(
                         summary = focusState.data.control,
                         icon = Icons.Default.Bolt,
                         compact = compactLayout,
-                        animateValues = false,
+                        animateValues = animateValues,
                         modifier = modifier,
                     )
                 } else {
@@ -1726,7 +1912,7 @@ private fun DailyFocusCard(
                         summary = focusState.data.encourage,
                         icon = Icons.Default.RocketLaunch,
                         compact = compactLayout,
-                        animateValues = true,
+                        animateValues = animateValues,
                         modifier = modifier,
                     )
                 }
@@ -1768,7 +1954,7 @@ private fun WindowFocusCard(
                         DailyModeSummaryCard(
                             summary = focusState.data.control,
                             icon = Icons.Default.Bolt,
-                            animateValues = false,
+                            animateValues = true,
                             modifier = modifier,
                         )
                     } else {
@@ -2546,7 +2732,7 @@ private fun FocusProgressRing(
     modifier: Modifier = Modifier,
 ) {
     val displayProgress =
-        if (animateValue) {
+        if (animateValue && STAT_CHART_ANIMATIONS_ENABLED) {
             animateFractionValue(
                 targetValue = progress.coerceIn(0f, 1f),
                 label = "focus_progress_ring_$label",
@@ -2556,7 +2742,7 @@ private fun FocusProgressRing(
             progress.coerceIn(0f, 1f)
         }
     val displayLabel =
-        if (animateValue) {
+        if (animateValue && STAT_CHART_ANIMATIONS_ENABLED) {
             animateMetricDisplayText(
                 rawText = label,
                 label = "focus_progress_ring_$label",
@@ -2611,7 +2797,7 @@ private fun FocusMetricPill(
 ) {
     val themeColors = LocalThemeColors.current
     val displayValue =
-        if (animateValue) {
+        if (animateValue && STAT_CHART_ANIMATIONS_ENABLED) {
             animateMetricDisplayText(
                 rawText = metric.value,
                 label = "daily_focus_metric_${metric.label}_${metric.value}",
@@ -3050,7 +3236,7 @@ private fun PeriodDonutChart(
     val total = values.sum().coerceAtLeast(1L)
     val targetProgress = if (values.any { it > 0L }) 1f else 0f
     val revealProgress =
-        if (animateValue) {
+        if (animateValue && STAT_CHART_ANIMATIONS_ENABLED) {
             val stagedRevealTarget = rememberDelayedFloatTarget(
                 targetValue = targetProgress,
                 delayMillis = delayMillis,
@@ -3064,7 +3250,7 @@ private fun PeriodDonutChart(
             targetProgress
         }
     val rotationProgress =
-        if (animateValue) {
+        if (animateValue && STAT_CHART_ANIMATIONS_ENABLED) {
             val stagedRevealTarget = rememberDelayedFloatTarget(
                 targetValue = targetProgress,
                 delayMillis = delayMillis,
@@ -3296,7 +3482,7 @@ private fun GradientProgressBar(
     modifier: Modifier = Modifier,
 ) {
     val displayProgress =
-        if (animateValue) {
+        if (animateValue && STAT_CHART_ANIMATIONS_ENABLED) {
             val stagedProgress = rememberDelayedFloatTarget(
                 targetValue = progress.coerceIn(0f, 1f),
                 delayMillis = delayMillis,

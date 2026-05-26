@@ -6,9 +6,11 @@ import androidx.room.Index
 import androidx.room.PrimaryKey
 
 enum class ActiveRewardEffectStatus {
+    PENDING_CONFIRM,
     ACTIVE,
     CONSUMED,
     EXPIRED,
+    CANCELED,
 }
 
 @Entity(
@@ -26,10 +28,14 @@ data class ActiveRewardEffectEntity(
     val effectType: RewardType,
     @ColumnInfo(name = "source_reward_id")
     val sourceRewardId: String,
+    @ColumnInfo(name = "source_inventory_id")
+    val sourceInventoryId: String? = null,
     @ColumnInfo(name = "source_builtin_key")
     val sourceBuiltinKey: String? = null,
     @ColumnInfo(name = "target_group_id")
     val targetGroupId: String? = null,
+    @ColumnInfo(name = "target_group_name_snapshot")
+    val targetGroupNameSnapshot: String? = null,
     @ColumnInfo(name = "target_group_type")
     val targetGroupType: GroupType? = null,
     @ColumnInfo(name = "start_at")
@@ -43,8 +49,18 @@ data class ActiveRewardEffectEntity(
     val status: ActiveRewardEffectStatus = ActiveRewardEffectStatus.ACTIVE,
     @ColumnInfo(name = "payload_json")
     val payloadJson: String? = null,
+    @ColumnInfo(name = "effect_value_json")
+    val effectValueJson: String? = null,
+    @ColumnInfo(name = "benefit_json")
+    val benefitJson: String? = null,
     @ColumnInfo(name = "created_at")
     val createdAt: Long,
+    @ColumnInfo(name = "confirm_deadline_at")
+    val confirmDeadlineAt: Long? = null,
+    @ColumnInfo(name = "confirmed_at")
+    val confirmedAt: Long? = null,
     @ColumnInfo(name = "consumed_at")
     val consumedAt: Long? = null,
+    @ColumnInfo(name = "canceled_at")
+    val canceledAt: Long? = null,
 )

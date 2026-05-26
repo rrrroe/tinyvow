@@ -39,9 +39,9 @@ fun BlockOverlayScreen(
     val infiniteTransition = rememberInfiniteTransition(label = "iconPulse")
     val scale by infiniteTransition.animateFloat(
         initialValue = 1f,
-        targetValue = 1.05f,
+        targetValue = 1.03f,
         animationSpec = infiniteRepeatable(
-            animation = tween(2000, easing = FastOutSlowInEasing),
+            animation = tween(1600, easing = FastOutSlowInEasing),
             repeatMode = RepeatMode.Reverse
         ),
         label = "scale"
@@ -79,7 +79,7 @@ fun BlockOverlayScreen(
                 border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.2f))
             ) {
                 Image(
-                    painter = painterResource(id = R.mipmap.ic_launcher),
+                    painter = painterResource(id = R.mipmap.ic_launcher_foreground),
                     contentDescription = AppText.t("block_logo_content_description"),
                     modifier = Modifier.padding(20.dp),
                     contentScale = ContentScale.Fit

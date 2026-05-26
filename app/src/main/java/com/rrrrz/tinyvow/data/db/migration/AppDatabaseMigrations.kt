@@ -782,6 +782,89 @@ object AppDatabaseMigrations {
             }
         }
 
+    val MIGRATION_21_22 =
+        object : Migration(21, 22) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `active_reward_effects` ADD COLUMN `source_inventory_id` TEXT")
+                db.execSQL("ALTER TABLE `active_reward_effects` ADD COLUMN `target_group_name_snapshot` TEXT")
+                db.execSQL("ALTER TABLE `active_reward_effects` ADD COLUMN `effect_value_json` TEXT")
+                db.execSQL("ALTER TABLE `active_reward_effects` ADD COLUMN `benefit_json` TEXT")
+                db.execSQL("ALTER TABLE `active_reward_effects` ADD COLUMN `confirm_deadline_at` INTEGER")
+                db.execSQL("ALTER TABLE `active_reward_effects` ADD COLUMN `confirmed_at` INTEGER")
+                db.execSQL("ALTER TABLE `active_reward_effects` ADD COLUMN `canceled_at` INTEGER")
+                db.execSQL(
+                    """
+                    UPDATE `active_reward_effects`
+                    SET `confirmed_at` = `created_at`
+                    WHERE `status` = 'ACTIVE'
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `reward_effect_benefits` (
+                        `id` TEXT NOT NULL,
+                        `effect_id` TEXT NOT NULL,
+                        `reward_id` TEXT NOT NULL,
+                        `reward_builtin_key` TEXT,
+                        `reward_type` TEXT NOT NULL,
+                        `archive_date` TEXT NOT NULL,
+                        `target_group_id` TEXT,
+                        `target_group_name_snapshot` TEXT,
+                        `benefit_type` TEXT NOT NULL,
+                        `benefit_minutes` INTEGER NOT NULL,
+                        `benefit_points` REAL NOT NULL,
+                        `created_at` INTEGER NOT NULL,
+                        PRIMARY KEY(`id`)
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS `index_reward_effect_benefits_effect_id_archive_date` ON `reward_effect_benefits` (`effect_id`, `archive_date`)"
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_reward_effect_benefits_archive_date` ON `reward_effect_benefits` (`archive_date`)"
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_reward_effect_benefits_reward_id` ON `reward_effect_benefits` (`reward_id`)"
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_reward_effect_benefits_target_group_id_archive_date` ON `reward_effect_benefits` (`target_group_id`, `archive_date`)"
+                )
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `protection_events` (
+                        `id` TEXT NOT NULL,
+                        `event_type` TEXT NOT NULL,
+                        `event_date` TEXT NOT NULL,
+                        `occurred_at` INTEGER NOT NULL,
+                        `title_key` TEXT NOT NULL,
+                        `message_key` TEXT NOT NULL,
+                        `message_args_json` TEXT,
+                        `target_id` TEXT,
+                        `target_label` TEXT,
+                        `before_json` TEXT,
+                        `after_json` TEXT,
+                        `within_window` INTEGER,
+                        `protection_enabled` INTEGER NOT NULL,
+                        PRIMARY KEY(`id`)
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_protection_events_event_date` ON `protection_events` (`event_date`)"
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_protection_events_event_type_event_date` ON `protection_events` (`event_type`, `event_date`)"
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_protection_events_occurred_at` ON `protection_events` (`occurred_at`)"
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_protection_events_target_id` ON `protection_events` (`target_id`)"
+                )
+            }
+        }
+
     val ALL: Array<Migration> = arrayOf(
         MIGRATION_9_10,
         MIGRATION_10_11,
@@ -795,5 +878,6 @@ object AppDatabaseMigrations {
         MIGRATION_18_19,
         MIGRATION_19_20,
         MIGRATION_20_21,
+        MIGRATION_21_22,
     )
 }

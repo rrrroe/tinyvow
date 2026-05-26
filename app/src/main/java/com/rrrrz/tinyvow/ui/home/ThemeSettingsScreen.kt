@@ -40,6 +40,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.rrrrz.tinyvow.data.pro.ProFeatureGate
 import com.rrrrz.tinyvow.i18n.AppText
+import com.rrrrz.tinyvow.ui.theme.DailyRandomThemeId
 import com.rrrrz.tinyvow.ui.theme.MemberThemePresets
 import com.rrrrz.tinyvow.ui.theme.LocalThemeColors
 import com.rrrrz.tinyvow.ui.theme.ThemePresets
@@ -48,7 +49,9 @@ import com.rrrrz.tinyvow.ui.theme.TinyVowCard
 import com.rrrrz.tinyvow.ui.theme.TinyVowElevation
 import com.rrrrz.tinyvow.ui.theme.TinyVowRadius
 import com.rrrrz.tinyvow.ui.theme.TinyVowSpacing
+import com.rrrrz.tinyvow.ui.theme.dailyRandomThemeSeed
 import com.rrrrz.tinyvow.ui.theme.localizedName
+import com.rrrrz.tinyvow.ui.theme.selectedThemeDisplayName
 import com.rrrrz.tinyvow.ui.theme.themeTokensFromSeed
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -66,6 +69,8 @@ fun ThemeSettingsScreen(
 ) {
     val allThemes = ThemePresets + MemberThemePresets
     val themeColors = LocalThemeColors.current
+    val todayRandomTheme = dailyRandomThemeSeed()
+    val currentThemeName = selectedThemeDisplayName(selectedThemeId, customThemes)
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -110,16 +115,33 @@ fun ThemeSettingsScreen(
                     color = MaterialTheme.colorScheme.primaryContainer,
                     borderAlpha = 0.18f,
                 ) {
-                    Text(
-                        text = AppText.t("theme_manage_preset_and_custom_three_color_themes"),
+                    Column(
                         modifier = Modifier.padding(
                             horizontal = TinyVowSpacing.CardHorizontal,
                             vertical = TinyVowSpacing.CardVertical,
                         ),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.82f),
-                    )
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Text(
+                            text = AppText.t("theme_manage_preset_and_custom_three_color_themes"),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.82f),
+                        )
+                        Text(
+                            text = AppText.t("theme_current_selection", currentThemeName),
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                        )
+                    }
                 }
+            }
+            item {
+                DailyRandomThemeCard(
+                    todayTheme = todayRandomTheme,
+                    selected = selectedThemeId == DailyRandomThemeId,
+                    onClick = { onSelectTheme(DailyRandomThemeId) },
+                )
             }
             items(allThemes, key = { it.id }) { theme ->
                 val locked = !ProFeatureGate.canSelectTheme(isProActive, theme.id)
@@ -136,6 +158,75 @@ fun ThemeSettingsScreen(
                     },
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun DailyRandomThemeCard(
+    todayTheme: ThemeSeed,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    val tokens = themeTokensFromSeed(todayTheme)
+    val borderColor = if (selected) tokens.base else tokens.colorScheme.outlineVariant
+
+    TinyVowCard(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(TinyVowRadius.Card),
+        color = tokens.colorScheme.surface,
+        borderAlpha = 0f,
+        shadowElevation = if (selected) TinyVowElevation.SelectedCard else TinyVowElevation.Card,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(TinyVowRadius.Card))
+                .border(
+                    BorderStroke(1.dp, borderColor.copy(alpha = if (selected) 0.72f else 0.28f)),
+                    RoundedCornerShape(TinyVowRadius.Card),
+                )
+                .background(tokens.colorScheme.background.copy(alpha = 0.36f))
+                .padding(TinyVowSpacing.CardHorizontal),
+            verticalArrangement = Arrangement.spacedBy(TinyVowSpacing.CardGap),
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                ThemeMark(theme = todayTheme, selected = selected, locked = false)
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(
+                        text = AppText.t("theme_random_daily_name"),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = tokens.inkStrong,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        text = AppText.t("theme_random_daily_description"),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = tokens.inkMuted,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        text = AppText.t("theme_random_daily_current", todayTheme.localizedName()),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = tokens.base,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                if (selected) {
+                    Icon(Icons.Default.Check, contentDescription = null, tint = tokens.base)
+                }
+            }
+
+            ThemeRoleSwatches(theme = todayTheme)
         }
     }
 }
