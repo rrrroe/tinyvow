@@ -4,10 +4,13 @@ import com.rrrrz.tinyvow.i18n.AppText
 
 import android.Manifest
 import android.app.Activity
+import android.app.AlarmManager
+import android.app.PendingIntent
 import android.content.ClipData
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.Intent
+import android.graphics.drawable.Drawable
 import android.net.Uri
 import android.os.Build
 import android.provider.Settings
@@ -21,6 +24,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.*
+import androidx.compose.material.icons.outlined.*
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -33,6 +37,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
+import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.animation.core.*
 import androidx.compose.ui.unit.sp
@@ -41,6 +46,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -56,6 +62,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.GenericShape
@@ -63,7 +70,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.MaterialTheme
@@ -83,6 +89,7 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.rememberSaveableStateHolder
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -96,8 +103,10 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.Popup
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -162,6 +171,7 @@ import androidx.compose.foundation.BorderStroke
 import java.time.LocalDate
 import java.time.LocalTime
 import java.time.ZoneId
+import java.io.FileInputStream
 import org.json.JSONObject
 import kotlin.math.atan2
 import kotlin.math.PI
@@ -172,6 +182,7 @@ import kotlin.math.roundToInt
 import kotlin.math.roundToLong
 import kotlin.math.sin
 import kotlin.math.sqrt
+import kotlin.system.exitProcess
 import com.rrrrz.tinyvow.data.usage.MergedUsageRepository
 import com.rrrrz.tinyvow.data.usage.UsageRepository
 
@@ -181,6 +192,7 @@ import com.rrrrz.tinyvow.data.db.AchievementEntity
 import com.rrrrz.tinyvow.data.db.AchievementTier
 import com.rrrrz.tinyvow.data.db.ActiveRewardEffectEntity
 import com.rrrrz.tinyvow.data.db.ActiveRewardEffectStatus
+import com.rrrrz.tinyvow.data.db.DailyArchiveEntity
 import com.rrrrz.tinyvow.data.db.DailyAppArchiveEntity
 import com.rrrrz.tinyvow.data.db.DailyGroupArchiveEntity
 import com.rrrrz.tinyvow.data.db.RedemptionEntity
@@ -207,9 +219,10 @@ import com.rrrrz.tinyvow.ui.theme.TinyVowSnackbarHost
 enum class Screen { HOME, REWARDS, STATS, ME, ME_PRO, ME_PERMISSIONS, ME_NOTIFICATIONS, ME_DATA_PRIVACY, ME_VERSION, SUPER_MODE, LABORATORY, HISTORY, THEME, LANGUAGE, HELP_FEEDBACK, CONTACT_US, SPECIAL_APPS, WEREAD_SPECIAL_APP, PERMISSION_DIAGNOSTICS }
 enum class RewardsSection { STORE, INVENTORY, ACHIEVEMENTS }
 
-private const val CONTACT_EMAIL = "rrrr.zhao@gmail.com"
+private const val CONTACT_EMAIL = "rrrr.zhao@qq.com"
 private const val WEREAD_AUTO_SYNC_DEBOUNCE_MS = 60_000L
 private const val HOME_CONTROL_TOLERANCE_MINUTES = 5L
+private const val HOME_OVERVIEW_DATA_REVEAL_MILLIS = 1_440
 
 private data class PendingSuperModeRequest(
     val message: String,
@@ -219,7 +232,8 @@ private data class PendingSuperModeRequest(
 private data class BottomNavDestination(
     val screen: Screen,
     val label: String,
-    val icon: ImageVector,
+    val selectedIcon: ImageVector,
+    val unselectedIcon: ImageVector,
 )
 
 private enum class CoachmarkBubbleAlignment {
@@ -244,11 +258,12 @@ private fun QuietBottomNavigation(
     val themeColors = LocalThemeColors.current
     val destinations =
         listOf(
-            BottomNavDestination(Screen.HOME, AppText.t("home_home"), Icons.Default.Home),
-            BottomNavDestination(Screen.STATS, AppText.t("home_report"), Icons.Default.BarChart),
-            BottomNavDestination(Screen.REWARDS, AppText.t("home_rewards"), Icons.Default.CardGiftcard),
-            BottomNavDestination(Screen.ME, AppText.t("home_me"), Icons.Default.Person),
+            BottomNavDestination(Screen.HOME, AppText.t("home_home"), Icons.Filled.Home, Icons.Outlined.Home),
+            BottomNavDestination(Screen.STATS, AppText.t("home_report"), Icons.Filled.BarChart, Icons.Outlined.BarChart),
+            BottomNavDestination(Screen.REWARDS, AppText.t("home_rewards"), Icons.Filled.CardGiftcard, Icons.Outlined.CardGiftcard),
+            BottomNavDestination(Screen.ME, AppText.t("home_me"), Icons.Filled.Person, Icons.Outlined.Person),
         )
+    val selectedIndex = destinations.indexOfFirst { it.screen == currentScreen }.coerceAtLeast(0)
 
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -261,25 +276,47 @@ private fun QuietBottomNavigation(
                 color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.28f),
                 thickness = 0.5.dp,
             )
-            Row(
+            BoxWithConstraints(
                 modifier =
                     Modifier
                         .fillMaxWidth()
-                        .height(76.dp)
-                        .padding(horizontal = 20.dp, vertical = 8.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
+                        .height(64.dp)
+                        .padding(horizontal = 22.dp, vertical = 7.dp),
             ) {
-                destinations.forEach { destination ->
-                    val selected = currentScreen == destination.screen
-                    QuietBottomNavigationItem(
-                        destination = destination,
-                        selected = selected,
-                        selectedContainer = themeColors.navSelectedContainer,
-                        selectedColor = themeColors.base,
-                        unselectedColor = themeColors.navUnselected,
-                        onClick = { onSelect(destination.screen) },
-                    )
+                val itemWidth = maxWidth / destinations.size
+                val indicatorWidth = 28.dp
+                val indicatorOffset by animateDpAsState(
+                    targetValue = itemWidth * selectedIndex.toFloat() + (itemWidth - indicatorWidth) / 2f,
+                    animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing),
+                    label = "bottomNavIndicatorOffset",
+                )
+
+                Box(
+                    modifier =
+                        Modifier
+                            .align(Alignment.BottomStart)
+                            .offset(x = indicatorOffset)
+                            .size(width = indicatorWidth, height = 3.dp)
+                            .clip(RoundedCornerShape(100.dp))
+                            .background(themeColors.base.copy(alpha = 0.72f)),
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxSize(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    destinations.forEach { destination ->
+                        val selected = currentScreen == destination.screen
+                        QuietBottomNavigationItem(
+                            destination = destination,
+                            selected = selected,
+                            selectedColor = themeColors.base,
+                            unselectedColor = themeColors.navUnselected,
+                            modifier = Modifier.width(itemWidth),
+                            onClick = { onSelect(destination.screen) },
+                        )
+                    }
                 }
             }
         }
@@ -290,47 +327,34 @@ private fun QuietBottomNavigation(
 private fun QuietBottomNavigationItem(
     destination: BottomNavDestination,
     selected: Boolean,
-    selectedContainer: Color,
     selectedColor: Color,
     unselectedColor: Color,
+    modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
+    val contentColor by animateColorAsState(
+        targetValue = if (selected) selectedColor else unselectedColor,
+        animationSpec = tween(durationMillis = 180),
+        label = "bottomNavContentColor",
+    )
     Column(
         modifier =
-            Modifier
-                .width(64.dp)
-                .clip(RoundedCornerShape(18.dp))
+            modifier
+                .fillMaxHeight()
+                .clip(RoundedCornerShape(14.dp))
                 .clickable(onClick = onClick)
-                .padding(vertical = 2.dp),
+                .padding(vertical = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(3.dp),
+        verticalArrangement = Arrangement.Center,
     ) {
-        Box(
-            modifier =
-                Modifier
-                    .size(width = 38.dp, height = 32.dp)
-                    .clip(RoundedCornerShape(14.dp))
-                    .background(if (selected) selectedContainer else Color.Transparent),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                imageVector = destination.icon,
-                contentDescription = destination.label,
-                modifier = Modifier.size(22.dp),
-                tint = if (selected) selectedColor else unselectedColor,
-            )
-        }
-        Text(
-            text = destination.label,
-            style = MaterialTheme.typography.labelMedium,
-            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
-            color = if (selected) selectedColor else unselectedColor,
-            maxLines = 1,
-            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+        Icon(
+            imageVector = if (selected) destination.selectedIcon else destination.unselectedIcon,
+            contentDescription = destination.label,
+            modifier = Modifier.size(28.dp),
+            tint = contentColor,
         )
     }
 }
-
 private object PermissionPromptIds {
     const val USAGE_ACCESS = "usage_access"
     const val ACCESSIBILITY = "accessibility"
@@ -353,9 +377,46 @@ private data class HomeOverviewUiState(
     val control: HomeControlOverviewUiState,
     val encourage: HomeEncourageOverviewUiState,
     val history: HomeHistoryOverviewUiState,
+    val totalUsageMillis: Long,
+    val controlUsageMillis: Long,
+    val encourageUsageMillis: Long,
+    val savedMillis: Long,
     val behaviorScoreMetrics: List<DailyBehaviorScoreMetric>,
     val behaviorComparisonMetrics: List<DailyBehaviorScoreMetric>,
     val battleActions: List<HomeBattleAction>,
+)
+
+private data class YesterdayReportUiState(
+    val archiveDate: String,
+    val dateLabel: String,
+    val footerLine: String,
+    val message: String,
+    val totalUsageLabel: String,
+    val savedLabel: String,
+    val pointsNetLabel: String,
+    val blockCountLabel: String,
+    val redemptionCountLabel: String,
+    val controlCompletedLabel: String,
+    val controlExceededLabel: String,
+    val encourageCompletedLabel: String,
+    val nightUsageLabel: String,
+    val peakPeriodLabel: String,
+    val topApps: List<AppDisplayItem>,
+    val totalUsageMillis: Long,
+    val controlUsageMillis: Long,
+    val encourageUsageMillis: Long,
+    val savedMillis: Long,
+    val scoreMetrics: List<DailyBehaviorScoreMetric>,
+    val comparisonScoreMetrics: List<DailyBehaviorScoreMetric>,
+)
+
+data class HomeOverviewRuntimeState(
+    val usageMap: Map<String, Long> = emptyMap(),
+    val periodUsageMap: Map<String, Long> = emptyMap(),
+    val todayAppUsageMap: Map<String, Long> = emptyMap(),
+    val todayAppOpenCountMap: Map<String, Int> = emptyMap(),
+    val todaySessions: List<AppSession> = emptyList(),
+    val isUsageReady: Boolean = false,
 )
 
 private enum class HomeBattleActionType {
@@ -755,6 +816,9 @@ fun HomeRoute(
 
     var currentScreen by remember { mutableStateOf(Screen.HOME) }
     var rewardsSection by remember { mutableStateOf(RewardsSection.STORE) }
+    var hasPlayedHomeOverviewDataReveal by rememberSaveable { mutableStateOf(false) }
+    var homeOverviewRuntimeState by remember { mutableStateOf(HomeOverviewRuntimeState()) }
+    var homeAppIconCache by remember { mutableStateOf<Map<String, Drawable>>(emptyMap()) }
     val snackbarHostState = remember { SnackbarHostState() }
     val screenStateHolder = rememberSaveableStateHolder()
     var proUpsellSource by remember { mutableStateOf<ProUpsellSource?>(null) }
@@ -776,10 +840,9 @@ fun HomeRoute(
         meHistoricalArchives.sumOf { it.savedMillis } / 60_000L
     }
 
-    var showYesterdaySummary by remember { mutableStateOf(false) }
+    var yesterdayReportState by remember { mutableStateOf<YesterdayReportUiState?>(null) }
     var showWelcomeIntro by remember { mutableStateOf(false) }
     var showFirstRunCoachmark by remember { mutableStateOf(false) }
-    var yesterdaySavedMinutes by remember { mutableIntStateOf(0) }
     var showSuperModeCredentialDialog by remember { mutableStateOf(false) }
     var isEditingSuperModeCredentials by remember { mutableStateOf(false) }
     var showSuperModePasswordDialog by remember { mutableStateOf(false) }
@@ -940,6 +1003,44 @@ fun HomeRoute(
     ) {
         notificationPermissionGranted = notificationPermissionChecker.isGranted()
     }
+    val backupImportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        uri ?: return@rememberLauncherForActivityResult
+        coroutineScope.launch {
+            runCatching {
+                val result = localDataManager.restoreLocalBackup(uri)
+                if (result.requiresRestart) {
+                    val warning = if (result.warnings.contains("weread_key_material_not_restored")) {
+                        "\n" + AppText.t("me_backup_restore_weread_key_note")
+                    } else {
+                        ""
+                    }
+                    snackbarHostState.showSnackbar(AppText.t("me_import_local_backup_success_restart") + warning)
+                    context.restartAppAfterRestore()
+                }
+            }.onFailure {
+                snackbarHostState.showSnackbar(AppText.t("me_import_local_backup_failed"))
+            }
+        }
+    }
+    val backupSaveLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/zip"),
+    ) { uri ->
+        uri ?: return@rememberLauncherForActivityResult
+        coroutineScope.launch {
+            runCatching {
+                val file = localDataManager.exportLocalBackup()
+                context.contentResolver.openOutputStream(uri)?.use { output ->
+                    FileInputStream(file).use { input -> input.copyTo(output) }
+                } ?: error("Unable to open backup output file.")
+            }.onSuccess {
+                snackbarHostState.showSnackbar(AppText.t("me_export_backup_saved"))
+            }.onFailure {
+                snackbarHostState.showSnackbar(AppText.t("home_export_local_data_failed"))
+            }
+        }
+    }
 
     fun triggerWeReadAutoSync() {
         val now = System.currentTimeMillis()
@@ -1002,30 +1103,22 @@ fun HomeRoute(
         appLimitRepository.confirmExpiredPendingRewardEffects()
         dailyArchiveRepository.ensureArchivesUpToYesterday()
         
-        // Daily summary logic.
-        val today = LocalDate.now().toString()
+        // Daily morning report logic.
+        val todayDate = LocalDate.now()
+        val today = todayDate.toString()
         val lastShownFlow = preferences.lastSummaryShownDate
         val lastShown = lastShownFlow.first()
         if (lastShown != today) {
-            val groups = appLimitRepository.getAllGroupsWithApps().first()
-            var totalSavedMillis = 0L
-            for (groupWithApps in groups) {
-                if (groupWithApps.group.type == GroupType.CONTROL) {
-                    var groupUsage = 0L
-                    for (pkg in groupWithApps.packageNames) {
-                        groupUsage += usageRepository.getYesterdayUsageMillis(pkg)
-                    }
-                    val limitMillis = groupWithApps.group.limitMinutes * 60_000L
-                    if (groupUsage < limitMillis) {
-                        totalSavedMillis += (limitMillis - groupUsage)
-                    }
-                }
+            val report =
+                buildYesterdayReportUiState(
+                    archiveRepository = dailyArchiveRepository,
+                    reportDate = todayDate.minusDays(1),
+                    context = context,
+                )
+            if (report != null) {
+                yesterdayReportState = report
+                preferences.setLastSummaryShownDate(today)
             }
-            if (totalSavedMillis > 0) {
-                yesterdaySavedMinutes = (totalSavedMillis / 60_000).toInt()
-                showYesterdaySummary = true
-            }
-            preferences.setLastSummaryShownDate(today)
         }
     }
 
@@ -1209,9 +1302,19 @@ fun HomeRoute(
                         installedApps = installedApps,
                         groupsWithApps = groupsWithApps,
                         activeRewardEffects = activeRewardEffects,
+                        appIconCache = homeAppIconCache,
+                        onAppIconLoaded = { packageName, icon ->
+                            homeAppIconCache = homeAppIconCache + (packageName to icon)
+                        },
                         userPoints = userPoints,
                         todayPoints = todayPoints,
                         overviewInputsReady = homeOverviewInputsReady,
+                        overviewRuntimeState = homeOverviewRuntimeState,
+                        onOverviewRuntimeStateChange = { homeOverviewRuntimeState = it },
+                        shouldPlayOverviewDataReveal = !hasPlayedHomeOverviewDataReveal,
+                        onOverviewDataRevealStarted = {
+                            hasPlayedHomeOverviewDataReveal = true
+                        },
                         isLoadingApps = isLoadingApps,
                         superModeStatus = superModeStatus,
                         onNavigateToRedeem = {
@@ -1826,48 +1929,47 @@ fun HomeRoute(
                 Screen.ME_DATA_PRIVACY -> {
                     DataPrivacyPage(
                         onBack = { currentScreen = Screen.ME },
-                        onExportLocalData = {
+                        onSaveLocalBackup = {
+                            runCatching {
+                                backupSaveLauncher.launch(defaultBackupFileName())
+                            }.onFailure {
+                                coroutineScope.launch {
+                                    snackbarHostState.showSnackbar(AppText.t("home_export_local_data_failed"))
+                                }
+                            }
+                        },
+                        onShareLocalBackup = {
                             coroutineScope.launch {
                                 runCatching {
-                                    val diagnostics =
-                                        buildRuntimeDiagnostics(
-                                            generatedAtMillis = currentTimeMillis,
-                                            usageAccessGranted = effectiveUsageAccessStatus == UsageAccessStatus.GRANTED,
-                                            accessibilityServiceEnabled = effectiveAccessibilityServiceEnabled,
-                                            accessibilityHeartbeatHealthy = permissionReliabilitySnapshot.accessibilityHeartbeatHealthy,
-                                            lastAccessibilityHeartbeatAtMillis = accessibilityServiceHeartbeatAtMillis,
-                                            notificationPermissionGranted = notificationPermissionGranted,
-                                            isIgnoringBattery = isIgnoringBattery,
-                                            groupsWithApps = groupsWithApps,
-                                            archiveCount = meHistoricalArchives.size,
-                                            latestArchiveDate = meHistoricalArchives.maxByOrNull { it.archiveDate }?.archiveDate,
-                                            proEntitlement = proEntitlement,
-                                            superModeStatus = superModeStatus,
-                                        ).asPlainText(AppText.t("diagnostics_runtime_summary"))
-                                    val file = localDataManager.exportPrivacyReport(diagnostics)
+                                    val file = localDataManager.exportLocalBackup()
                                     val uri = FileProvider.getUriForFile(
                                         context,
                                         "${context.packageName}.fileprovider",
                                         file,
                                     )
                                     val intent = Intent(Intent.ACTION_SEND).apply {
-                                        type = "application/json"
+                                        type = "application/zip"
                                         putExtra(Intent.EXTRA_STREAM, uri)
-                                        putExtra(Intent.EXTRA_TITLE, AppText.t("home_tiny_vow_local_data_export"))
+                                        putExtra(Intent.EXTRA_TITLE, AppText.t("me_export_recoverable_backup"))
                                         clipData = ClipData.newUri(
                                             context.contentResolver,
-                                            AppText.t("home_tiny_vow_local_data_export"),
+                                            AppText.t("me_export_recoverable_backup"),
                                             uri,
                                         )
                                         addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
                                     }
-                                    context.startActivity(Intent.createChooser(intent, AppText.t("home_export_local_data")))
+                                    context.startActivityKeepingCurrentTask(
+                                        Intent.createChooser(intent, AppText.t("me_export_recoverable_backup")),
+                                    )
                                 }.onSuccess {
                                     // The share sheet is now open; no snackbar needed.
                                 }.onFailure {
                                     snackbarHostState.showSnackbar(AppText.t("home_export_local_data_failed"))
                                 }
                             }
+                        },
+                        onImportLocalBackup = {
+                            backupImportLauncher.launch(arrayOf("application/zip", "*/*"))
                         },
                         onClearLocalData = {
                             coroutineScope.launch {
@@ -2057,6 +2159,10 @@ fun HomeRoute(
                                 context.copyContactEmail()
                             }
                         },
+                        onReplayTutorial = {
+                            currentScreen = Screen.HOME
+                            showFirstRunCoachmark = true
+                        },
                     )
                 }
                 Screen.CONTACT_US -> {
@@ -2112,7 +2218,19 @@ fun HomeRoute(
                             }
                         },
                         onResetSummary = { coroutineScope.launch { preferences.setLastSummaryShownDate("reset") } },
-                        onTriggerSummary = { showYesterdaySummary = true },
+                        onTriggerSummary = {
+                            coroutineScope.launch {
+                                yesterdayReportState =
+                                    buildYesterdayReportUiState(
+                                        archiveRepository = dailyArchiveRepository,
+                                        reportDate = LocalDate.now().minusDays(1),
+                                        context = context,
+                                    )
+                                if (yesterdayReportState == null) {
+                                    snackbarHostState.showSnackbar(AppText.t("home_yesterday_report_unavailable"))
+                                }
+                            }
+                        },
                         onTriggerWelcomeIntro = { showWelcomeIntro = true },
                         onTriggerCoachmarkTutorial = {
                             currentScreen = Screen.HOME
@@ -2409,55 +2527,14 @@ fun HomeRoute(
         )
     }
 
-    if (showYesterdaySummary) {
-        val themeColors = LocalThemeColors.current
-        AlertDialog(
-            onDismissRequest = { showYesterdaySummary = false },
-            title = { 
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    androidx.compose.material3.Icon(
-                        androidx.compose.material.icons.Icons.Default.Star,
-                        contentDescription = null,
-                        tint = themeColors.encourage,
-                        modifier = Modifier.size(32.dp)
-                    )
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Text(
-                        text = AppText.t("home_yesterday_s_report"),
-                        style = MaterialTheme.typography.titleLarge,
-                    )
-                }
+    yesterdayReportState?.takeIf { !showWelcomeIntro && !showFirstRunCoachmark }?.let { report ->
+        YesterdayReportDialog(
+            state = report,
+            onDismiss = { yesterdayReportState = null },
+            onViewDailyReport = {
+                yesterdayReportState = null
+                currentScreen = Screen.STATS
             },
-            text = {
-                Column {
-                    Text(AppText.t("home_well_done_yesterday_your_strong_will_saved_this"))
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Box(
-                        modifier = Modifier.fillMaxWidth().background(
-                            themeColors.baseContainer,
-                            RoundedCornerShape(12.dp)
-                        ).padding(16.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = if (yesterdaySavedMinutes >= 60) {
-                                AppText.t("home_value_h_value_min", yesterdaySavedMinutes / 60, yesterdaySavedMinutes % 60)
-                            } else {
-                                AppText.t("home_value_minutes", yesterdaySavedMinutes)
-                            },
-                            style = MaterialTheme.typography.headlineMedium,
-                            color = themeColors.base
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Text(AppText.t("home_keep_going_discipline_is_freedom"), style = MaterialTheme.typography.bodyMedium)
-                }
-            },
-            confirmButton = {
-                Button(onClick = { showYesterdaySummary = false }) {
-                    Text(AppText.t("home_got_it"))
-                }
-            }
         )
     }
 
@@ -2536,6 +2613,9 @@ fun HomeRoute(
 
 private const val PRIVACY_POLICY_URL = "https://rrrroe.github.io/tinyvow/privacy.html"
 
+private fun defaultBackupFileName(): String =
+    "tinyvow-local-backup-${System.currentTimeMillis()}.zip"
+
 private tailrec fun Context.findActivity(): Activity? =
     when (this) {
         is Activity -> this
@@ -2548,6 +2628,23 @@ private fun Context.startActivityKeepingCurrentTask(intent: Intent) {
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
     }
     startActivity(intent)
+}
+
+private fun Context.restartAppAfterRestore() {
+    val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
+    if (launchIntent != null) {
+        val restartIntent = launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+        val pendingIntent = PendingIntent.getActivity(
+            this,
+            9086,
+            restartIntent,
+            PendingIntent.FLAG_CANCEL_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        getSystemService(AlarmManager::class.java)
+            ?.set(AlarmManager.RTC, System.currentTimeMillis() + 200L, pendingIntent)
+    }
+    findActivity()?.finishAffinity()
+    exitProcess(0)
 }
 
 private fun android.content.Context.openSupportEmail(
@@ -2769,9 +2866,15 @@ fun HomeScreen(
     installedApps: List<ManagedApp>,
     groupsWithApps: List<AppGroupWithApps>,
     activeRewardEffects: List<ActiveRewardEffectEntity>,
+    appIconCache: Map<String, Drawable> = emptyMap(),
+    onAppIconLoaded: (String, Drawable) -> Unit = { _, _ -> },
     userPoints: Double,
     todayPoints: Double,
     overviewInputsReady: Boolean = true,
+    overviewRuntimeState: HomeOverviewRuntimeState = HomeOverviewRuntimeState(),
+    onOverviewRuntimeStateChange: (HomeOverviewRuntimeState) -> Unit = {},
+    shouldPlayOverviewDataReveal: Boolean = false,
+    onOverviewDataRevealStarted: () -> Unit = {},
     isLoadingApps: Boolean,
     superModeStatus: com.rrrrz.tinyvow.data.supermode.SuperModeStatus,
     onNavigateToRedeem: () -> Unit,
@@ -2801,12 +2904,12 @@ fun HomeScreen(
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val coroutineScope = rememberCoroutineScope()
     val homeScrollState = rememberScrollState()
-    var usageMap by remember { mutableStateOf<Map<String, Long>>(emptyMap()) }
-    var periodUsageMap by remember { mutableStateOf<Map<String, Long>>(emptyMap()) }
-    var todayAppUsageMap by remember { mutableStateOf<Map<String, Long>>(emptyMap()) }
-    var todayAppOpenCountMap by remember { mutableStateOf<Map<String, Int>>(emptyMap()) }
-    var todaySessions by remember { mutableStateOf<List<AppSession>>(emptyList()) }
-    var isOverviewUsageReady by remember { mutableStateOf(false) }
+    val usageMap = overviewRuntimeState.usageMap
+    val periodUsageMap = overviewRuntimeState.periodUsageMap
+    val todayAppUsageMap = overviewRuntimeState.todayAppUsageMap
+    val todayAppOpenCountMap = overviewRuntimeState.todayAppOpenCountMap
+    val todaySessions = overviewRuntimeState.todaySessions
+    val isOverviewUsageReady = overviewRuntimeState.isUsageReady
     var createFirstVowRequest by remember { mutableIntStateOf(0) }
     var openBattleGroupDetailRequest by remember { mutableIntStateOf(0) }
     var openBattleGroupDetailGroup by remember { mutableStateOf<AppGroupWithApps?>(null) }
@@ -2850,15 +2953,9 @@ fun HomeScreen(
     // Periodically refresh group usage by querying UsageStats once and aggregating packages in memory.
     LaunchedEffect(groupsWithApps, usageAccessStatus) {
         if (usageAccessStatus != UsageAccessStatus.GRANTED) {
-            isOverviewUsageReady = false
-            usageMap = emptyMap()
-            periodUsageMap = emptyMap()
-            todayAppUsageMap = emptyMap()
-            todayAppOpenCountMap = emptyMap()
-            todaySessions = emptyList()
+            onOverviewRuntimeStateChange(HomeOverviewRuntimeState())
             return@LaunchedEffect
         }
-        isOverviewUsageReady = false
         val usageRepo = MergedUsageRepository(context)
         while (true) {
             runCatching {
@@ -2903,12 +3000,16 @@ fun HomeScreen(
                                 groupUsage[packageName] ?: 0L
                             }
                     }
-                usageMap = newUsageMap
-                periodUsageMap = newPeriodUsageMap
-                todayAppUsageMap = newTodayAppUsageMap
-                todayAppOpenCountMap = newTodayAppOpenCountMap
-                todaySessions = newTodaySessions
-                isOverviewUsageReady = true
+                onOverviewRuntimeStateChange(
+                    HomeOverviewRuntimeState(
+                        usageMap = newUsageMap,
+                        periodUsageMap = newPeriodUsageMap,
+                        todayAppUsageMap = newTodayAppUsageMap,
+                        todayAppOpenCountMap = newTodayAppOpenCountMap,
+                        todaySessions = newTodaySessions,
+                        isUsageReady = true,
+                    ),
+                )
             }
             kotlinx.coroutines.delay(5000L)
         }
@@ -3020,15 +3121,14 @@ fun HomeScreen(
                         superModeStatus = superModeStatus,
                         onOpenSuperModeInfo = onOpenSuperModeEntry,
                     )
-                    if (isOverviewReady) {
-                        HomeOverviewPaperCard(
-                            state = overviewState,
-                            onOpenBehaviorRadar = { showHomeBehaviorRadarDialog = true },
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                    } else {
-                        HomeOverviewLoadingCard(modifier = Modifier.fillMaxWidth())
-                    }
+                    HomeOverviewPaperCard(
+                        state = overviewState,
+                        isDataReady = isOverviewReady,
+                        shouldPlayDataReveal = shouldPlayOverviewDataReveal,
+                        onDataRevealStarted = onOverviewDataRevealStarted,
+                        onOpenBehaviorRadar = { showHomeBehaviorRadarDialog = true },
+                        modifier = Modifier.fillMaxWidth(),
+                    )
                 }
 
                 HomeBattleStation(
@@ -3077,8 +3177,7 @@ fun HomeScreen(
 
             if (showHomeBehaviorRadarDialog) {
                 HomeBehaviorRadarDialog(
-                    metrics = homeOverviewScoreMetrics(overviewState),
-                    comparisonMetrics = overviewState.behaviorComparisonMetrics,
+                    state = overviewState,
                     onDismiss = { showHomeBehaviorRadarDialog = false },
                 )
             }
@@ -3100,6 +3199,8 @@ fun HomeScreen(
                         groupsWithApps = groupsWithApps,
                         usageMap = usageMap,
                         activeRewardEffects = activeRewardEffects,
+                        appIconCache = appIconCache,
+                        onAppIconLoaded = onAppIconLoaded,
                         installedApps = installedApps,
                         isLoadingApps = isLoadingApps,
                         onSaveGroup = onSaveGroup,
@@ -3151,6 +3252,608 @@ fun HomeScreen(
             }
 
             Spacer(modifier = Modifier.height(20.dp))
+        }
+    }
+}
+
+@Composable
+private fun YesterdayReportDialog(
+    state: YesterdayReportUiState,
+    onDismiss: () -> Unit,
+    onViewDailyReport: () -> Unit,
+) {
+    val themeColors = LocalThemeColors.current
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+    ) {
+        Surface(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .fillMaxHeight(0.82f)
+                    .padding(16.dp)
+                    .widthIn(max = 460.dp),
+            shape = RoundedCornerShape(26.dp),
+            color = MaterialTheme.colorScheme.surface,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.28f)),
+            tonalElevation = 6.dp,
+            shadowElevation = 12.dp,
+        ) {
+            Column(
+                modifier =
+                    Modifier
+                        .verticalScroll(rememberScrollState())
+                        .padding(horizontal = 18.dp, vertical = 18.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = AppText.t("home_yesterday_report_title"),
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = themeColors.inkStrong,
+                    )
+                    IconButton(onClick = onDismiss) {
+                        Icon(Icons.Default.Close, contentDescription = AppText.t("group_close"))
+                    }
+                }
+
+                Text(
+                    text = state.dateLabel,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = themeColors.inkMuted,
+                )
+                HomeBehaviorOverviewPanel(
+                    metrics = state.scoreMetrics,
+                    comparisonMetrics = state.comparisonScoreMetrics,
+                    totalUsageMillis = state.totalUsageMillis,
+                    controlUsageMillis = state.controlUsageMillis,
+                    encourageUsageMillis = state.encourageUsageMillis,
+                    savedMillis = state.savedMillis,
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                ) {
+                    TinyVowButton(
+                        text = AppText.t("home_yesterday_report_view_daily"),
+                        onClick = onViewDailyReport,
+                        modifier = Modifier.weight(1f),
+                    )
+                    TinyVowButton(
+                        text = AppText.t("home_yesterday_report_start_today"),
+                        onClick = onDismiss,
+                        modifier = Modifier.weight(1f),
+                        tone = TinyVowButtonTone.Primary,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun YesterdayReportPentagonCard(
+    metrics: List<DailyBehaviorScoreMetric>,
+    comparisonMetrics: List<DailyBehaviorScoreMetric>,
+) {
+    val themeColors = LocalThemeColors.current
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(26.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.28f)),
+        tonalElevation = 2.dp,
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                    Text(
+                        text = AppText.t("home_yesterday_report_five_star_title"),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = themeColors.inkStrong,
+                    )
+                    Text(
+                        text = AppText.t("home_yesterday_report_five_star_subtitle"),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = themeColors.inkMuted,
+                    )
+                }
+                YesterdayReportOverallChip(metrics)
+            }
+            YesterdayReportPentagonChart(
+                metrics = metrics,
+                comparisonMetrics = comparisonMetrics,
+                modifier = Modifier.fillMaxWidth().height(260.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun YesterdayReportOverallChip(metrics: List<DailyBehaviorScoreMetric>) {
+    val score =
+        metrics
+            .takeIf { it.isNotEmpty() }
+            ?.map { it.score }
+            ?.average()
+            ?.roundToInt()
+            ?: 0
+    Surface(
+        shape = RoundedCornerShape(999.dp),
+        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.10f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.20f)),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
+            horizontalArrangement = Arrangement.spacedBy(7.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = AppText.t("stats_score_overall"),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                text = score.toString(),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.primary,
+            )
+        }
+    }
+}
+
+@Composable
+private fun YesterdayReportPentagonChart(
+    metrics: List<DailyBehaviorScoreMetric>,
+    comparisonMetrics: List<DailyBehaviorScoreMetric>,
+    modifier: Modifier = Modifier,
+) {
+    val displayMetrics = metrics.take(5)
+    val comparisonByLabel = comparisonMetrics.associateBy { it.label }
+    val displayComparisonMetrics = displayMetrics.mapNotNull { comparisonByLabel[it.label] }
+    val primary = MaterialTheme.colorScheme.primary
+    val radarLineColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.46f)
+    val radarAxisColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.34f)
+    val previousColor = LocalThemeColors.current.inkMuted
+    var selectedMetric by remember { mutableStateOf<DailyBehaviorScoreMetric?>(null) }
+    val overall =
+        displayMetrics
+            .takeIf { it.isNotEmpty() }
+            ?.map { it.score }
+            ?.average()
+            ?.roundToInt()
+            ?: 0
+
+    Box(modifier = modifier, contentAlignment = Alignment.Center) {
+        Canvas(modifier = Modifier.size(218.dp)) {
+            if (displayMetrics.size < 3) return@Canvas
+            val center = Offset(size.width / 2f, size.height / 2f)
+            val radius = size.minDimension * 0.42f
+            val axisCount = displayMetrics.size
+            fun pointFor(index: Int, ratio: Float): Offset {
+                val angle = -PI.toFloat() / 2f + (2f * PI.toFloat() * index / axisCount)
+                return Offset(
+                    x = center.x + cos(angle) * radius * ratio,
+                    y = center.y + sin(angle) * radius * ratio,
+                )
+            }
+            fun pathFor(scoreMetrics: List<DailyBehaviorScoreMetric>): Path =
+                Path().apply {
+                    scoreMetrics.forEachIndexed { index, metric ->
+                        val point = pointFor(index, (metric.score / 100f).coerceIn(0.08f, 1f))
+                        if (index == 0) moveTo(point.x, point.y) else lineTo(point.x, point.y)
+                    }
+                    close()
+                }
+            repeat(4) { ringIndex ->
+                val ringPath = Path()
+                val ratio = (ringIndex + 1) / 4f
+                repeat(axisCount) { index ->
+                    val point = pointFor(index, ratio)
+                    if (index == 0) ringPath.moveTo(point.x, point.y) else ringPath.lineTo(point.x, point.y)
+                }
+                ringPath.close()
+                drawPath(
+                    path = ringPath,
+                    color = radarLineColor,
+                    style = Stroke(width = 1.8f),
+                )
+            }
+            repeat(axisCount) { index ->
+                drawLine(
+                    color = radarAxisColor,
+                    start = center,
+                    end = pointFor(index, 1f),
+                    strokeWidth = 1.4f,
+                )
+            }
+            if (displayComparisonMetrics.size == displayMetrics.size) {
+                val previousPath = pathFor(displayComparisonMetrics)
+                drawPath(path = previousPath, color = previousColor.copy(alpha = 0.12f))
+                drawPath(path = previousPath, color = previousColor.copy(alpha = 0.42f), style = Stroke(width = 3f))
+            }
+            val currentPath = pathFor(displayMetrics)
+            drawPath(path = currentPath, color = primary.copy(alpha = 0.20f))
+            drawPath(path = currentPath, color = primary.copy(alpha = 0.58f), style = Stroke(width = 3.5f))
+            displayMetrics.forEachIndexed { index, metric ->
+                val point = pointFor(index, (metric.score / 100f).coerceIn(0.08f, 1f))
+                drawCircle(
+                    color = behaviorScoreAccentColor(metric.accentIndex),
+                    radius = 7.5f,
+                    center = point,
+                )
+            }
+        }
+        Surface(
+            shape = CircleShape,
+            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+            border = BorderStroke(1.dp, primary.copy(alpha = 0.26f)),
+        ) {
+            Column(
+                modifier = Modifier.size(76.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+            ) {
+                Text(
+                    text = overall.toString(),
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = primary,
+                )
+                Text(
+                    text = AppText.t("stats_score_overall"),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+        YesterdayReportVertexLabel(displayMetrics.getOrNull(0), Alignment.TopCenter, 0.dp, (-2).dp) { selectedMetric = it }
+        YesterdayReportVertexLabel(displayMetrics.getOrNull(1), Alignment.CenterEnd, 0.dp, (-44).dp) { selectedMetric = it }
+        YesterdayReportVertexLabel(displayMetrics.getOrNull(2), Alignment.BottomEnd, (-18).dp, (-6).dp) { selectedMetric = it }
+        YesterdayReportVertexLabel(displayMetrics.getOrNull(3), Alignment.BottomStart, 18.dp, (-6).dp) { selectedMetric = it }
+        YesterdayReportVertexLabel(displayMetrics.getOrNull(4), Alignment.CenterStart, 0.dp, (-44).dp) { selectedMetric = it }
+
+        selectedMetric?.explanation?.let { explanation ->
+            YesterdayReportScoreDetailDialog(
+                title = explanation.title,
+                score = explanation.score,
+                accentColor = behaviorScoreAccentColor(selectedMetric?.accentIndex ?: 0),
+                formulaLines = explanation.formulaLines,
+                comparisonRows = explanation.comparisonRows,
+                onDismiss = { selectedMetric = null },
+            )
+        }
+    }
+}
+
+@Composable
+private fun BoxScope.YesterdayReportVertexLabel(
+    metric: DailyBehaviorScoreMetric?,
+    alignment: Alignment,
+    xOffset: Dp,
+    yOffset: Dp,
+    onSelect: (DailyBehaviorScoreMetric) -> Unit,
+) {
+    metric ?: return
+    val accent = behaviorScoreAccentColor(metric.accentIndex)
+    Surface(
+        modifier =
+            Modifier
+                .align(alignment)
+                .offset(x = xOffset, y = yOffset)
+                .width(72.dp)
+                .clickable(
+                    onClickLabel = AppText.t("stats_score_metric_open_detail", metric.label),
+                    onClick = { onSelect(metric) },
+                ),
+        shape = RoundedCornerShape(15.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.90f),
+        border = BorderStroke(1.dp, accent.copy(alpha = 0.24f)),
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 6.dp, vertical = 6.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(1.dp),
+        ) {
+            Text(
+                text = metric.label,
+                style = MaterialTheme.typography.labelSmall,
+                color = accent,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            )
+            Text(
+                text = metric.score.toString(),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                color = accent,
+                maxLines = 1,
+            )
+        }
+    }
+}
+
+@Composable
+private fun YesterdayReportMetricGrid(state: YesterdayReportUiState) {
+    AdaptiveRowGrid(
+        itemCount = 3,
+        compactColumns = 3,
+        expandedColumns = 3,
+        horizontalSpacing = 10.dp,
+        verticalSpacing = 10.dp,
+    ) { modifier, index ->
+        when (index) {
+            0 -> YesterdayReportMetricCard(Icons.Default.PhoneAndroid, AppText.t("home_yesterday_report_total_usage"), state.totalUsageLabel, modifier)
+            1 -> YesterdayReportMetricCard(Icons.Default.Shield, AppText.t("home_yesterday_report_saved"), state.savedLabel, modifier)
+            else -> YesterdayReportMetricCard(Icons.Default.EmojiEvents, AppText.t("home_yesterday_report_points_net"), state.pointsNetLabel, modifier)
+        }
+    }
+}
+
+@Composable
+private fun YesterdayReportMetricCard(
+    icon: ImageVector,
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(20.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.24f)),
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(17.dp),
+            )
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            )
+            Text(
+                text = value,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
+private fun YesterdayReportGroupSummary(state: YesterdayReportUiState) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.24f)),
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(
+                text = AppText.t("home_yesterday_report_key_stats"),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+            )
+            AdaptiveRowGrid(
+                itemCount = 5,
+                compactColumns = 2,
+                expandedColumns = 3,
+                horizontalSpacing = 8.dp,
+                verticalSpacing = 8.dp,
+            ) { modifier, index ->
+                val pair =
+                    when (index) {
+                        0 -> AppText.t("home_yesterday_report_control_done") to state.controlCompletedLabel
+                        1 -> AppText.t("home_yesterday_report_control_exceeded") to state.controlExceededLabel
+                        2 -> AppText.t("home_yesterday_report_encourage_done") to state.encourageCompletedLabel
+                        3 -> AppText.t("home_yesterday_report_night_use") to state.nightUsageLabel
+                        else -> AppText.t("home_yesterday_report_peak_period") to state.peakPeriodLabel
+                    }
+                YesterdayReportMiniStat(pair.first, pair.second, modifier)
+            }
+            YesterdayReportMiniStat(
+                label = AppText.t("home_yesterday_report_redemptions"),
+                value = state.redemptionCountLabel,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+    }
+}
+
+@Composable
+private fun YesterdayReportMiniStat(
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.72f),
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 11.dp, vertical = 9.dp),
+            verticalArrangement = Arrangement.spacedBy(3.dp),
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            )
+            Text(
+                text = value,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
+private fun YesterdayReportTopApps(topApps: List<AppDisplayItem>) {
+    if (topApps.isEmpty()) return
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.24f)),
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(
+                text = AppText.t("home_yesterday_report_top_apps"),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+            )
+            topApps.forEachIndexed { index, app ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = (index + 1).toString(),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.width(22.dp),
+                    )
+                    AppIconCircle(pkg = app.packageName, size = 34.dp)
+                    Text(
+                        text = app.label,
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.Medium,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        text = formatDuration(app.value),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun YesterdayReportScoreDetailDialog(
+    title: String,
+    score: Int,
+    accentColor: Color,
+    formulaLines: List<String>,
+    comparisonRows: List<BehaviorScoreMetricComparisonRow>,
+    onDismiss: () -> Unit,
+) {
+    Dialog(onDismissRequest = onDismiss) {
+        Surface(
+            shape = RoundedCornerShape(24.dp),
+            color = MaterialTheme.colorScheme.surface,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.28f)),
+        ) {
+            Column(
+                modifier =
+                    Modifier
+                        .padding(20.dp)
+                        .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                Text(text = title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.Bold, color = accentColor)
+                Text(text = AppText.t("stats_score_value", score), style = MaterialTheme.typography.titleSmall, fontWeight = FontWeight.SemiBold, color = accentColor)
+                Text(
+                    text = AppText.t("stats_score_metric_formula_title"),
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    color = accentColor,
+                )
+                formulaLines.forEach { line ->
+                    Text(
+                        text = "- $line",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Surface(
+                    shape = RoundedCornerShape(18.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerLow,
+                    border = BorderStroke(1.dp, accentColor.copy(alpha = 0.18f)),
+                ) {
+                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Text("", modifier = Modifier.weight(1.2f), style = MaterialTheme.typography.labelSmall)
+                            Text(
+                                text = AppText.t("home_yesterday_report_yesterday_column"),
+                                modifier = Modifier.weight(1f),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = accentColor,
+                            )
+                            Text(
+                                text = AppText.t("home_yesterday_report_previous_column"),
+                                modifier = Modifier.weight(1f),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = accentColor,
+                            )
+                        }
+                        comparisonRows.forEach { row ->
+                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                Text(
+                                    text = row.label,
+                                    modifier = Modifier.weight(1.2f),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                                Text(text = row.todayValue, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
+                                Text(text = row.yesterdayValue, modifier = Modifier.weight(1f), style = MaterialTheme.typography.bodySmall)
+                            }
+                        }
+                    }
+                }
+                TinyVowButton(
+                    text = AppText.t("stats_score_info_close"),
+                    onClick = onDismiss,
+                    modifier = Modifier.fillMaxWidth(),
+                    tone = TinyVowButtonTone.Primary,
+                )
+            }
         }
     }
 }
@@ -3533,6 +4236,9 @@ private fun FirstRunCoachmarkOverlay(
 @Composable
 private fun HomeOverviewPaperCard(
     state: HomeOverviewUiState,
+    isDataReady: Boolean,
+    shouldPlayDataReveal: Boolean,
+    onDataRevealStarted: () -> Unit,
     onOpenBehaviorRadar: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -3540,19 +4246,39 @@ private fun HomeOverviewPaperCard(
     val score = homeOverviewScore(state)
     val scoreMetrics = homeOverviewScoreMetrics(state)
     val ringTrackColor = themeColors.inkFaint.copy(alpha = 0.30f)
-    val revealProgress = remember { Animatable(0f) }
-
-    LaunchedEffect(Unit) {
-        revealProgress.snapTo(0f)
-        revealProgress.animateTo(
-            targetValue = 1f,
-            animationSpec =
-                tween(
-                    durationMillis = 720,
-                    easing = FastOutSlowInEasing,
-                ),
-        )
+    val dataRevealProgress = remember { Animatable(if (shouldPlayDataReveal && !isDataReady) 0f else 1f) }
+    LaunchedEffect(isDataReady) {
+        when {
+            !isDataReady && shouldPlayDataReveal -> dataRevealProgress.snapTo(0f)
+            !isDataReady -> dataRevealProgress.snapTo(1f)
+            shouldPlayDataReveal && dataRevealProgress.value < 1f -> {
+                onDataRevealStarted()
+                dataRevealProgress.animateTo(
+                    targetValue = 1f,
+                    animationSpec = tween(
+                        durationMillis = HOME_OVERVIEW_DATA_REVEAL_MILLIS,
+                        easing = FastOutSlowInEasing,
+                    ),
+                )
+            }
+            else -> dataRevealProgress.snapTo(1f)
+        }
     }
+    val boundedDataRevealProgress = dataRevealProgress.value.coerceIn(0f, 1f)
+    val displayControlTodaySavedMinutes = (state.control.todaySavedMinutes * boundedDataRevealProgress).roundToInt()
+    val displayControlCompletedGroups = (state.control.completedGroups * boundedDataRevealProgress).roundToInt()
+    val displayControlTotalGroups = (state.control.totalGroups * boundedDataRevealProgress).roundToInt()
+    val displayControlStreakLabel =
+        if (boundedDataRevealProgress >= 1f) state.control.streakLabel else homeStreakLabel(archivedStreak = 0, todayCompleted = false)
+    val displayEncourageTodayEarnedPoints = state.encourage.todayEarnedPoints * boundedDataRevealProgress
+    val displayEncourageCompletedGroups = (state.encourage.completedGroups * boundedDataRevealProgress).roundToInt()
+    val displayEncourageTotalGroups = (state.encourage.totalGroups * boundedDataRevealProgress).roundToInt()
+    val displayEncourageStreakLabel =
+        if (boundedDataRevealProgress >= 1f) state.encourage.streakLabel else homeStreakLabel(archivedStreak = 0, todayCompleted = false)
+    val displayHistoryTotalSavedMinutes = (state.history.totalSavedMinutes * boundedDataRevealProgress).roundToLong()
+    val displayHistoryExtendedLifeMinutes = (state.history.extendedLifeMinutes * boundedDataRevealProgress).roundToLong()
+    val displayHistoryTotalEarnedPoints = state.history.totalEarnedPoints * boundedDataRevealProgress
+    val displayHistoryCurrentPoints = state.history.currentPoints * boundedDataRevealProgress
 
     TinyVowCard(
         modifier = modifier.fillMaxWidth(),
@@ -3571,7 +4297,7 @@ private fun HomeOverviewPaperCard(
             val centerGap = centerSize - 38.dp
             val density = LocalDensity.current
             val centerGapPx = with(density) { centerGap.toPx() }
-            val notchRadiusPx = with(density) { (centerSize / 2 + 26.dp).toPx() }
+            val notchRadiusPx = with(density) { (centerSize / 2 + 21.dp).toPx() }
             val compact = maxWidth < 380.dp
             Column(
                 modifier = Modifier.fillMaxWidth(),
@@ -3594,21 +4320,24 @@ private fun HomeOverviewPaperCard(
                             isLeft = true,
                             title = AppText.t("home_commitment_panel"),
                             label = AppText.t("home_saved_today"),
-                            value = state.control.todaySavedMinutes.toString(),
+                            value = displayControlTodaySavedMinutes.toString(),
                             unit = AppText.t("group_minutes"),
-                            progress = AppText.t("home_commitment_progress_value", state.control.completedGroups, state.control.totalGroups),
-                            streak = state.control.streakLabel,
+                            progress = AppText.t(
+                                "home_commitment_progress_value",
+                                displayControlCompletedGroups,
+                                displayControlTotalGroups,
+                            ),
+                            streak = displayControlStreakLabel,
                             primaryMetricLabel = AppText.t("home_total_saved"),
-                            primaryMetricValue = state.history.totalSavedMinutes.toString(),
+                            primaryMetricValue = displayHistoryTotalSavedMinutes.toString(),
                             primaryMetricUnit = AppText.t("group_minutes"),
                             secondaryMetricLabel = AppText.t("home_equivalent_live_more"),
-                            secondaryMetricValue = roundedDaysValue(state.history.extendedLifeMinutes).toString(),
+                            secondaryMetricValue = roundedDaysValue(displayHistoryExtendedLifeMinutes).toString(),
                             secondaryMetricUnit = AppText.t("home_day_unit"),
                             color = themeColors.controlContainer,
                             contentColor = themeColors.onControlContainer,
                             accent = themeColors.control,
                             compact = compact,
-                            revealProgress = revealProgress,
                             centerGapPx = centerGapPx,
                             notchRadiusPx = notchRadiusPx,
                             modifier = Modifier.weight(1f),
@@ -3620,21 +4349,24 @@ private fun HomeOverviewPaperCard(
                             label = state.encourage.pointsMultiplierLabel?.let {
                                 AppText.t("home_earned_today_with_badge", it)
                             } ?: AppText.t("home_earned_today"),
-                            value = formatHomePointWholeValue(state.encourage.todayEarnedPoints),
+                            value = formatHomePointWholeValue(displayEncourageTodayEarnedPoints),
                             unit = AppText.t("group_points"),
-                            progress = AppText.t("home_encouragement_progress_value", state.encourage.completedGroups, state.encourage.totalGroups),
-                            streak = state.encourage.streakLabel,
+                            progress = AppText.t(
+                                "home_encouragement_progress_value",
+                                displayEncourageCompletedGroups,
+                                displayEncourageTotalGroups,
+                            ),
+                            streak = displayEncourageStreakLabel,
                             primaryMetricLabel = AppText.t("home_total_earned"),
-                            primaryMetricValue = formatHomePointValue(state.history.totalEarnedPoints),
+                            primaryMetricValue = formatHomePointValue(displayHistoryTotalEarnedPoints),
                             primaryMetricUnit = AppText.t("group_points"),
                             secondaryMetricLabel = AppText.t("home_current_remaining"),
-                            secondaryMetricValue = formatHomePointValue(state.history.currentPoints),
+                            secondaryMetricValue = formatHomePointValue(displayHistoryCurrentPoints),
                             secondaryMetricUnit = AppText.t("group_points"),
                             color = themeColors.encourageContainer,
                             contentColor = themeColors.onEncourageContainer,
                             accent = themeColors.encourage,
                             compact = compact,
-                            revealProgress = revealProgress,
                             centerGapPx = centerGapPx,
                             notchRadiusPx = notchRadiusPx,
                             modifier = Modifier.weight(1f),
@@ -3646,7 +4378,7 @@ private fun HomeOverviewPaperCard(
                         metrics = scoreMetrics,
                         ringTrackColor = ringTrackColor,
                         scoreColor = themeColors.inkStrong,
-                        revealProgress = revealProgress,
+                        revealProgress = boundedDataRevealProgress,
                         onClick = onOpenBehaviorRadar,
                         modifier = Modifier.size(centerSize),
                     )
@@ -3657,30 +4389,8 @@ private fun HomeOverviewPaperCard(
 }
 
 @Composable
-private fun HomeOverviewLoadingCard(
-    modifier: Modifier = Modifier,
-) {
-    TinyVowCard(
-        modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(TinyVowRadius.FeaturedCard),
-        borderAlpha = 0.24f,
-        shadowElevation = TinyVowElevation.FeaturedCard,
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(242.dp),
-            contentAlignment = Alignment.Center,
-        ) {
-            CircularProgressIndicator(strokeWidth = 2.5.dp)
-        }
-    }
-}
-
-@Composable
 private fun HomeBehaviorRadarDialog(
-    metrics: List<DailyBehaviorScoreMetric>,
-    comparisonMetrics: List<DailyBehaviorScoreMetric>,
+    state: HomeOverviewUiState,
     onDismiss: () -> Unit,
 ) {
     Dialog(onDismissRequest = onDismiss) {
@@ -3697,7 +4407,7 @@ private fun HomeBehaviorRadarDialog(
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
                 Text(
-                    text = AppText.t("home_behavior_radar_title"),
+                    text = AppText.t("home_today_overview"),
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface,
@@ -3707,9 +4417,18 @@ private fun HomeBehaviorRadarDialog(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                BehaviorRadarPanel(
-                    metrics = metrics,
-                    comparisonMetrics = comparisonMetrics,
+                HomeBehaviorOverviewPanel(
+                    metrics = homeOverviewScoreMetrics(state),
+                    comparisonMetrics = state.behaviorComparisonMetrics,
+                    totalUsageMillis = state.totalUsageMillis,
+                    controlUsageMillis = state.controlUsageMillis,
+                    encourageUsageMillis = state.encourageUsageMillis,
+                    savedMillis = state.savedMillis,
+                    modifier =
+                        Modifier.graphicsLayer {
+                            scaleX = 0.88f
+                            scaleY = 0.88f
+                        },
                 )
                 TinyVowButton(
                     text = AppText.t("stats_score_info_close"),
@@ -3723,17 +4442,90 @@ private fun HomeBehaviorRadarDialog(
 }
 
 @Composable
+private fun HomeBehaviorOverviewPanel(
+    metrics: List<DailyBehaviorScoreMetric>,
+    comparisonMetrics: List<DailyBehaviorScoreMetric>,
+    totalUsageMillis: Long,
+    controlUsageMillis: Long,
+    encourageUsageMillis: Long,
+    savedMillis: Long,
+    modifier: Modifier = Modifier,
+) {
+    val themeColors = LocalThemeColors.current
+    val savedAccent = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f)
+    val totalScore =
+        metrics
+            .takeIf { it.isNotEmpty() }
+            ?.map { it.score }
+            ?.average()
+            ?.roundToInt()
+            ?: 0
+    BehaviorRadarPanel(
+        metrics = metrics,
+        comparisonMetrics = comparisonMetrics,
+        cornerMetrics =
+            listOf(
+                BehaviorCornerMetric(
+                    label = AppText.t("stats_behavior_corner_usage"),
+                    value = formatHomeBehaviorMetricMinutes(totalUsageMillis),
+                    unit = AppText.t("stats_behavior_unit_minutes_short"),
+                    accent = themeColors.base,
+                    rawMillis = totalUsageMillis,
+                    align = Alignment.TopStart,
+                ),
+                BehaviorCornerMetric(
+                    label = AppText.t("stats_behavior_corner_investment"),
+                    value = formatHomeBehaviorMetricMinutes(encourageUsageMillis),
+                    unit = AppText.t("stats_behavior_unit_minutes_short"),
+                    accent = themeColors.encourage,
+                    rawMillis = encourageUsageMillis,
+                    align = Alignment.TopEnd,
+                ),
+                BehaviorCornerMetric(
+                    label = AppText.t("stats_behavior_corner_control"),
+                    value = formatHomeBehaviorMetricMinutes(controlUsageMillis),
+                    unit = AppText.t("stats_behavior_unit_minutes_short"),
+                    accent = themeColors.control,
+                    rawMillis = controlUsageMillis,
+                    align = Alignment.BottomStart,
+                ),
+                BehaviorCornerMetric(
+                    label = AppText.t("stats_behavior_corner_savings"),
+                    value = formatHomeBehaviorMetricMinutes(savedMillis),
+                    unit = AppText.t("stats_behavior_unit_minutes_short"),
+                    accent = savedAccent,
+                    rawMillis = savedMillis,
+                    align = Alignment.BottomEnd,
+                ),
+            ),
+        totalMetric =
+            BehaviorTotalMetric(
+                label = AppText.t("stats_behavior_total_score"),
+                value = totalScore.toString(),
+                unit = "",
+                accent = themeColors.base,
+            ),
+        modifier = modifier,
+    )
+}
+
+private fun formatHomeBehaviorMetricMinutes(durationMillis: Long): String {
+    if (durationMillis <= 0L) return "0"
+    return ((durationMillis + 59_999L) / 60_000L).toString()
+}
+
+@Composable
 private fun HomeOverviewScoreDial(
     score: Int,
     metrics: List<DailyBehaviorScoreMetric>,
     ringTrackColor: Color,
     scoreColor: Color,
-    revealProgress: Animatable<Float, AnimationVector1D>,
+    revealProgress: Float,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val displaySegments = metrics.take(5)
-    val boundedRevealProgress = revealProgress.value.coerceIn(0f, 1f)
+    val boundedRevealProgress = revealProgress.coerceIn(0f, 1f)
 
     Box(
         modifier =
@@ -3803,18 +4595,15 @@ private fun HomeOverviewScoreDial(
             }
         }
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
-            val animatedScore = homeAnimatedNumberText(
-                targetText = score.toString(),
-                progress = boundedRevealProgress,
-            )
+            val displayScore = (score * boundedRevealProgress).roundToInt()
             Text(
-                text = animatedScore,
+                text = displayScore.toString(),
                 style = MaterialTheme.typography.displaySmall.copy(fontSize = 44.sp),
                 fontWeight = FontWeight.ExtraBold,
                 color = scoreColor,
             )
             Text(
-                text = AppText.t(homeOverviewScoreStatusKey(score, LocalDate.now())),
+                text = AppText.t(homeOverviewScoreStatusKey(displayScore, LocalDate.now())),
                 modifier = Modifier.padding(top = 0.dp),
                 style = MaterialTheme.typography.labelLarge.copy(fontSize = 14.sp),
                 fontWeight = FontWeight.Bold,
@@ -3922,7 +4711,6 @@ private fun HomeOverviewWingPanel(
     contentColor: Color,
     accent: Color,
     compact: Boolean,
-    revealProgress: Animatable<Float, AnimationVector1D>,
     centerGapPx: Float,
     notchRadiusPx: Float,
     modifier: Modifier = Modifier,
@@ -3992,7 +4780,6 @@ private fun HomeOverviewWingPanel(
                     contentColor = contentColor,
                     compact = compact,
                     alignEnd = !isLeft,
-                    revealProgress = revealProgress,
                 )
                 HomeOverviewWingPillRow(
                     first = progress,
@@ -4029,16 +4816,14 @@ private fun HomeOverviewWingMainMetric(
     contentColor: Color,
     compact: Boolean,
     alignEnd: Boolean,
-    revealProgress: Animatable<Float, AnimationVector1D>,
 ) {
-    val animatedValue = homeAnimatedNumberText(value, revealProgress.value.coerceIn(0f, 1f))
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = if (alignEnd) Arrangement.End else Arrangement.Start,
         verticalAlignment = Alignment.Bottom,
     ) {
         Text(
-            text = animatedValue,
+            text = value,
             style =
                 if (compact) {
                     MaterialTheme.typography.headlineMedium.copy(fontSize = 30.sp, lineHeight = 34.sp)
@@ -4106,25 +4891,6 @@ private fun HomeOverviewWingPill(
         maxLines = 1,
         overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
     )
-}
-
-private fun homeAnimatedNumberText(
-    targetText: String,
-    progress: Float,
-): String {
-    val target = targetText.replace(",", "").toFloatOrNull() ?: return targetText
-    val decimalCount = targetText.substringAfter('.', "").takeIf { targetText.contains('.') }?.length ?: 0
-    val animatedValue = target * progress.coerceIn(0f, 1f)
-
-    return if (decimalCount > 0) {
-        java.lang.String.format(
-            java.util.Locale.getDefault(),
-            "%.${decimalCount}f",
-            animatedValue,
-        )
-    } else {
-        animatedValue.roundToInt().toString()
-    }
 }
 
 private fun homeOverviewEmphasizedNumberText(
@@ -5055,13 +5821,17 @@ private fun HomeBattleActionTile(
             HomeBattleActionType.PERMISSION_USAGE,
             HomeBattleActionType.PERMISSION_ACCESSIBILITY -> Icons.Default.VerifiedUser
         }
+    val isStatusOnly =
+        action.type == HomeBattleActionType.CONTROL ||
+            action.type == HomeBattleActionType.ENCOURAGE
+    val roleIconBorderAlpha = if (isStatusOnly) 0.45f else 0.24f
 
     Surface(
         color = Color.Transparent,
         modifier =
             modifier
                 .clip(RoundedCornerShape(TinyVowRadius.Control))
-                .clickable(onClick = onClick),
+                .then(if (isStatusOnly) Modifier else Modifier.clickable(onClick = onClick)),
     ) {
         Column(
             modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
@@ -5077,7 +5847,12 @@ private fun HomeBattleActionTile(
                         Modifier
                             .size(22.dp)
                             .clip(RoundedCornerShape(9.dp))
-                            .background(accent.copy(alpha = 0.12f)),
+                            .background(accent.copy(alpha = 0.12f))
+                            .border(
+                                width = 1.dp,
+                                color = accent.copy(alpha = roleIconBorderAlpha),
+                                shape = RoundedCornerShape(9.dp),
+                            ),
                     contentAlignment = Alignment.Center,
                 ) {
                     Icon(
@@ -6185,6 +6960,140 @@ private fun buildHomeBehaviorPackageStats(
             )
         }
 
+private suspend fun buildYesterdayReportUiState(
+    archiveRepository: DailyArchiveRepository,
+    reportDate: LocalDate,
+    context: Context,
+): YesterdayReportUiState? {
+    val archiveDate = reportDate.toString()
+    val archive = archiveRepository.getArchiveByDate(archiveDate).first() ?: return null
+    val groupArchives = archiveRepository.getGroupArchivesByDate(archiveDate).first()
+    val appArchives = archiveRepository.getAppArchivesByDate(archiveDate).first()
+    val snapshots = mergeArchivedAppSnapshots(appArchives)
+    if (archive.totalUsageMillis <= 0L && snapshots.isEmpty() && groupArchives.isEmpty()) {
+        return null
+    }
+    val previousArchive =
+        archiveRepository
+            .getRecentArchives(limit = 3650)
+            .first()
+            .filter { it.archiveDate < archive.archiveDate }
+            .maxByOrNull { it.archiveDate }
+    val previousGroupArchives =
+        previousArchive?.let {
+            archiveRepository.getGroupArchivesByDate(it.archiveDate).first()
+        }.orEmpty()
+    val previousAppArchives =
+        previousArchive?.let {
+            archiveRepository.getAppArchivesByDate(it.archiveDate).first()
+        }.orEmpty()
+    val previousSnapshots = mergeArchivedAppSnapshots(previousAppArchives)
+    val controlPackageNames =
+        appArchives
+            .filter { it.groupType == GroupType.CONTROL }
+            .mapTo(linkedSetOf()) { it.packageName }
+    val encouragePackageNames =
+        appArchives
+            .filter { it.groupType == GroupType.ENCOURAGE }
+            .mapTo(linkedSetOf()) { it.packageName }
+    val previousControlPackageNames =
+        previousAppArchives
+            .filter { it.groupType == GroupType.CONTROL }
+            .mapTo(linkedSetOf()) { it.packageName }
+    val previousEncouragePackageNames =
+        previousAppArchives
+            .filter { it.groupType == GroupType.ENCOURAGE }
+            .mapTo(linkedSetOf()) { it.packageName }
+    val scoreMetrics =
+        buildDailyBehaviorScoreMetrics(
+            items = snapshots,
+            groupArchives = groupArchives,
+            controlPackageNames = controlPackageNames,
+            encouragePackageNames = encouragePackageNames,
+            previousItems = previousSnapshots,
+            previousGroupArchives = previousGroupArchives,
+            previousControlPackageNames = previousControlPackageNames,
+            previousEncouragePackageNames = previousEncouragePackageNames,
+        )
+    val comparisonScoreMetrics =
+        if (previousArchive == null) {
+            emptyList()
+        } else {
+            buildDailyBehaviorScoreMetrics(
+                items = previousSnapshots,
+                groupArchives = previousGroupArchives,
+                controlPackageNames = previousControlPackageNames,
+                encouragePackageNames = previousEncouragePackageNames,
+            )
+        }
+    val timelineBuckets = buildArchivedDayTimelineBuckets(snapshots)
+    val peakBucket = timelineBuckets.maxByOrNull { it.deviceMillis }
+    val topApps =
+        snapshots
+            .filter { it.usageMillis > 0L }
+            .sortedByDescending { it.usageMillis }
+            .take(3)
+            .map {
+                AppDisplayItem(
+                    packageName = it.packageName,
+                    label = it.label,
+                    value = it.usageMillis,
+                )
+            }
+    val locale = context.resources.configuration.locales[0] ?: java.util.Locale.getDefault()
+    val reportLocalDate = runCatching { LocalDate.parse(archive.archiveDate) }.getOrElse { reportDate }
+    val dateLabel =
+        runCatching {
+            reportLocalDate.format(java.time.format.DateTimeFormatter.ofPattern(AppText.t("home_mmm_d_eeee"), locale))
+        }.getOrElse { archive.archiveDate }
+    val averageScore =
+        scoreMetrics
+            .takeIf { it.isNotEmpty() }
+            ?.map { it.score }
+            ?.average()
+            ?.roundToInt()
+            ?: 0
+    val messageKey =
+        when {
+            averageScore >= 85 -> "home_yesterday_report_message_great"
+            averageScore >= 70 -> "home_yesterday_report_message_good"
+            averageScore >= 55 -> "home_yesterday_report_message_steady"
+            else -> "home_yesterday_report_message_reset"
+        }
+    val controlGroupCount = groupArchives.count { it.groupType == GroupType.CONTROL }
+    val encourageGroupCount = groupArchives.count { it.groupType == GroupType.ENCOURAGE }
+
+    return YesterdayReportUiState(
+        archiveDate = archive.archiveDate,
+        dateLabel = dateLabel,
+        footerLine =
+            AppText.t(
+                "home_surprise_footer_format",
+                context.getString(R.string.app_name),
+                AppText.t(homeSurpriseKeyForDate(reportLocalDate)),
+            ),
+        message = AppText.t(messageKey),
+        totalUsageLabel = formatDuration(archive.totalUsageMillis),
+        savedLabel = formatDuration(archive.savedMillis),
+        pointsNetLabel = formatSignedPointsLocal(archive.pointsNet),
+        blockCountLabel = AppText.t("home_yesterday_report_count_times", archive.controlBlockEventCount),
+        redemptionCountLabel = AppText.t("home_yesterday_report_count_times", archive.redemptionCount),
+        controlCompletedLabel = AppText.t("home_yesterday_report_group_count", archive.controlCompletedGroupCount, controlGroupCount),
+        controlExceededLabel = AppText.t("home_yesterday_report_group_count", archive.controlExceededGroupCount, controlGroupCount),
+        encourageCompletedLabel = AppText.t("home_yesterday_report_group_count", archive.encourageCompletedGroupCount, encourageGroupCount),
+        nightUsageLabel = formatDuration(snapshots.sumOf { it.nightUsageMillis }),
+        peakPeriodLabel = peakBucket?.takeIf { it.deviceMillis > 0L }?.let { "${it.label} · ${formatDuration(it.deviceMillis)}" }
+            ?: AppText.t("stats_no_records_yet"),
+        topApps = topApps,
+        totalUsageMillis = archive.totalUsageMillis,
+        controlUsageMillis = archive.controlUsageMillis,
+        encourageUsageMillis = archive.encourageUsageMillis,
+        savedMillis = archive.savedMillis,
+        scoreMetrics = scoreMetrics,
+        comparisonScoreMetrics = comparisonScoreMetrics,
+    )
+}
+
 private fun buildHomeOverviewUiState(
     context: android.content.Context,
     groupsWithApps: List<AppGroupWithApps>,
@@ -6301,6 +7210,10 @@ private fun buildHomeOverviewUiState(
         today.format(
             java.time.format.DateTimeFormatter.ofPattern(AppText.t("home_mmm_d_eeee"), locale),
         )
+    val totalUsageMillis = todayAppUsageMap.values.sum()
+    val controlUsageMillis = controlGroups.sumOf { group -> periodUsageMap[group.group.id] ?: 0L }
+    val encourageUsageMillis = encourageGroups.sumOf { group -> periodUsageMap[group.group.id] ?: 0L }
+    val savedMillis = controlTodaySavedMinutes * 60_000L
 
     return HomeOverviewUiState(
         dateLabel = currentDate,
@@ -6339,6 +7252,10 @@ private fun buildHomeOverviewUiState(
                 totalEarnedPoints = totalEarnedPoints,
                 currentPoints = userPoints,
             ),
+        totalUsageMillis = totalUsageMillis,
+        controlUsageMillis = controlUsageMillis,
+        encourageUsageMillis = encourageUsageMillis,
+        savedMillis = savedMillis,
         behaviorScoreMetrics = behaviorScoreMetrics,
         behaviorComparisonMetrics = behaviorComparisonMetrics,
         battleActions =

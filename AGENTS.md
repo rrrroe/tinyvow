@@ -231,11 +231,20 @@
 - `PURCHASED tinyvow_pro` 才解锁 PRO；`PENDING` 只显示待完成，不解锁高级权益；非 `tinyvow_pro` 购买不能影响权益。
 - Play Console 必须创建并激活 `tinyvow_pro` 订阅和至少一个 base plan；本地代码不能替代商品、价格、国家地区、测试轨道和 license tester 配置。
 - 本地调试构建不一定能完成真实购买，不要把它当成代码必然错误。
-- `LocalDataManager.exportPrivacyReport()` 导出本地表级摘要到缓存分享目录。
-- 隐私导出表清单要覆盖当前 Room 本地数据，包括奖励库存、主动效果、连胜保护待处理和奖励使用历史；新增本地表时同步 `LocalDataManager.localDataTables`。
+- `LocalDataManager` 当前同时维护两条本地数据导出链路：
+  - `exportPrivacyReport()` 生成 `tinyvow-local-data-<timestamp>.json`，内容是表级摘要和本地存储摘要，不含完整表内容，输出到 `cache/share`。
+  - `exportLocalBackup()` 生成 `tinyvow-local-backup-<timestamp>.zip`，这是当前“我的 > 本地数据管理”实际暴露给用户的可恢复备份入口。
+- 可恢复备份 zip 当前包含：
+  - Room 数据库主文件和 `-wal` / `-shm`。
+  - DataStore 文件：`managed_app_preferences`、`auth_preferences`、`activation_preferences`。
+  - `files/reward_icons` 下的导入奖励图标文件。
+- `managed_app_preferences` 备份里会带上加密后的微信读书 Key 字段，但导入恢复不会恢复 Android Keystore 里的 `tinyvow_weread_api_key` 密钥材料；恢复后要提示用户去特殊应用里重新填写 WeRead Key。
+- 导入备份会校验 `backup_manifest.json` 中的 `format` 和 `schemaVersion`，恢复数据库 / DataStore / 奖励图标后立即重启应用；涉及这条链路的改动要手动验证“导入成功提示 + 重启 + 重启后状态恢复”。
+- 隐私导出表清单要覆盖当前 Room 本地数据，包括奖励库存、主动效果、连胜保护待处理、奖励使用历史和保护事件；新增本地表时同步 `LocalDataManager.localDataTables`。
 - 国内版账号是 `LocalAuthRepository.ensureLocalSession()` 生成的本地用户 ID；`LocalActivationSubscriptionRepository` 将激活码绑定到该 ID，并用 `activation_preferences` 记录激活状态、已用 codeId 和最后一次墙钟时间。
 - 账号删除、隐私说明相关改动要同步检查 `docs/account-delete.html`、`docs/privacy.html` 和应用内支持页文案。
-- 导出/清理本地数据时必须覆盖 Room 数据、`managed_app_preferences`、国内 `auth_preferences` / `activation_preferences`、奖励导入图标等用户能感知的本地状态；不要误删应用安装外部数据。
+- 导出/清理本地数据时必须覆盖 Room 数据、`managed_app_preferences`、国内 `auth_preferences` / `activation_preferences`、奖励导入图标、分享缓存和 WeRead Key 的 Keystore 材料等用户能感知的本地状态；不要误删应用安装外部数据。
+- 不要把 Android Auto Backup / device transfer 当成本地备份恢复方案：Manifest 当前虽然开启了 `allowBackup`，但 `backup_rules.xml` / `data_extraction_rules.xml` 已排除数据库、DataStore 和 `share` 缓存，核心恢复仍应以 `LocalDataManager` 的手动备份导入导出为准。
 
 ## 测试和检查
 

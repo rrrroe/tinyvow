@@ -57,7 +57,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun protectionEventDao(): ProtectionEventDao
 
     companion object {
-        private const val DEFAULT_DATABASE_NAME = "tinyvow_database"
+        const val DEFAULT_DATABASE_NAME = "tinyvow_database"
 
         val MIGRATION_9_10 = AppDatabaseMigrations.MIGRATION_9_10
         val MIGRATION_10_11 = AppDatabaseMigrations.MIGRATION_10_11
@@ -98,6 +98,14 @@ abstract class AppDatabase : RoomDatabase() {
                 INSTANCE = instance
                 instanceDatabaseName = databaseName
                 instance
+            }
+        }
+
+        fun closeActiveInstance() {
+            synchronized(this) {
+                INSTANCE?.close()
+                INSTANCE = null
+                instanceDatabaseName = null
             }
         }
     }

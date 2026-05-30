@@ -17,6 +17,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Email
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -38,13 +39,14 @@ import com.rrrrz.tinyvow.ui.theme.TinyVowCard
 import com.rrrrz.tinyvow.ui.theme.TinyVowRadius
 import com.rrrrz.tinyvow.ui.theme.TinyVowSpacing
 
-private const val SUPPORT_EMAIL = "rrrr.zhao@gmail.com"
+private const val SUPPORT_EMAIL = "rrrr.zhao@qq.com"
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun HelpFeedbackScreen(
     onBack: () -> Unit,
     onSendFeedback: () -> Unit,
+    onReplayTutorial: () -> Unit,
 ) {
     val themeColors = LocalThemeColors.current
     Scaffold(
@@ -98,6 +100,13 @@ fun HelpFeedbackScreen(
                 title = AppText.t("support_what_should_i_include_in_feedback"),
                 body = AppText.t("support_please_include_your_phone_model_system_version_where"),
             )
+            TinyVowButton(
+                onClick = onReplayTutorial,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Icon(Icons.Default.Refresh, contentDescription = null)
+                Text(AppText.t("support_replay_tutorial"))
+            }
             TinyVowButton(
                 onClick = onSendFeedback,
                 tone = TinyVowButtonTone.Primary,

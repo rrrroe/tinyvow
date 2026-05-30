@@ -1012,13 +1012,17 @@ internal fun buildDailyFocusSectionData(
                 spotlightValue =
                     if (bestEncourageGroup != null) {
                         val points = formatSignedPointsLocal(bestEncourageGroup.earnedPoints)
-                        "${bestEncourageGroup.groupName} · $points / ${formatDuration(bestEncourageGroup.dailyUsageMillis)}"
+                        "${bestEncourageGroup.groupName} · $points"
                     } else {
                         AppText.t("stats_no_group_archive")
                     },
                 isWarning = archive.pointsNet < 0.0,
                 groupItems = buildEncourageGroupProgressItems(encourageGroups),
             ),
+        controlUsageMillis = archive.controlUsageMillis,
+        controlSavedMillis = archive.savedMillis,
+        encourageUsageMillis = archive.encourageUsageMillis,
+        encouragePointsNet = archive.pointsNet,
     )
 }
 
@@ -1280,7 +1284,7 @@ internal fun buildWindowFocusSectionData(
                 spotlightLabel = if (bestEncourage != null) AppText.t("stats_best_encourage_group") else AppText.t("stats_encourage_group"),
                 spotlightValue =
                     if (bestEncourage != null) {
-                        "${bestEncourage.groupName} · ${formatSignedPointsLocal(bestEncourage.earnedPoints)} / ${formatDuration(bestEncourage.usageMillis)}"
+                        "${bestEncourage.groupName} · ${formatSignedPointsLocal(bestEncourage.earnedPoints)}"
                     } else {
                         AppText.t("stats_no_archived_encourage_groups_yet")
                     },

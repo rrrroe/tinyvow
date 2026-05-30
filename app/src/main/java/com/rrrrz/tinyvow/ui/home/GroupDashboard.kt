@@ -11,6 +11,7 @@ import android.graphics.Bitmap
 import android.graphics.Paint
 import android.graphics.RectF
 import android.graphics.drawable.ColorDrawable
+import android.graphics.drawable.Drawable
 import android.text.TextPaint
 import android.text.TextUtils
 import android.view.Window
@@ -137,6 +138,8 @@ fun GroupDashboard(
     groupsWithApps: List<AppGroupWithApps>,
     usageMap: Map<String, Long>,
     activeRewardEffects: List<ActiveRewardEffectEntity>,
+    appIconCache: Map<String, Drawable> = emptyMap(),
+    onAppIconLoaded: (String, Drawable) -> Unit = { _, _ -> },
     isLoadingApps: Boolean,
     installedApps: List<ManagedApp>,
     onSaveGroup: (
@@ -204,6 +207,8 @@ fun GroupDashboard(
                 groups = controlGroups,
                 usageMap = usageMap,
                 activeRewardEffects = activeRewardEffects,
+                appIconCache = appIconCache,
+                onAppIconLoaded = onAppIconLoaded,
                 accent = themeColors.control,
                 onAdd = {
                     if (ProFeatureGate.canAddGroup(isProActive, GroupType.CONTROL, controlGroups.size)) {
@@ -236,6 +241,8 @@ fun GroupDashboard(
                 groups = encourageGroups,
                 usageMap = usageMap,
                 activeRewardEffects = activeRewardEffects,
+                appIconCache = appIconCache,
+                onAppIconLoaded = onAppIconLoaded,
                 accent = themeColors.encourage,
                 onAdd = {
                     if (ProFeatureGate.canAddGroup(isProActive, GroupType.ENCOURAGE, encourageGroups.size)) {
@@ -280,6 +287,8 @@ fun GroupDashboard(
             group = editingGroup,
             forcedType = forcedType,
             installedApps = installedApps,
+            appIconCache = appIconCache,
+            onAppIconLoaded = onAppIconLoaded,
             isProActive = isProActive,
             onShowProUpsell = onShowProUpsell,
             onDismiss = { showDialog = false },
@@ -333,6 +342,8 @@ private fun SectionCard(
     groups: List<AppGroupWithApps>,
     usageMap: Map<String, Long>,
     activeRewardEffects: List<ActiveRewardEffectEntity>,
+    appIconCache: Map<String, Drawable>,
+    onAppIconLoaded: (String, Drawable) -> Unit,
     accent: Color,
     onAdd: () -> Unit,
     onSort: () -> Unit,
@@ -407,6 +418,8 @@ private fun SectionCard(
                         groupData = item,
                         usedMinutes = ((usageMap[item.group.id] ?: 0L) / 60_000L).toInt(),
                         activeEffects = activeRewardEffects.filter { it.targetGroupId == item.group.id },
+                        appIconCache = appIconCache,
+                        onAppIconLoaded = onAppIconLoaded,
                         accent = accent,
                         onClick = { onOpen(item) },
                         onLongClick = { onEdit(item) },
@@ -423,6 +436,8 @@ private fun GroupCard(
     groupData: AppGroupWithApps,
     usedMinutes: Int,
     activeEffects: List<ActiveRewardEffectEntity>,
+    appIconCache: Map<String, Drawable>,
+    onAppIconLoaded: (String, Drawable) -> Unit,
     accent: Color,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
@@ -493,10 +508,14 @@ private fun GroupCard(
             Box(modifier = Modifier.width(iconWidth.dp), contentAlignment = Alignment.CenterStart) {
                 iconPackages.forEachIndexed { index, packageName ->
                     // 异步加载图标，避免同步 Binder IPC 阻塞主线程
-                    var icon by remember(packageName) { mutableStateOf<android.graphics.drawable.Drawable?>(null) }
-                    LaunchedEffect(packageName) {
-                        icon = withContext(Dispatchers.IO) {
+                    val icon = appIconCache[packageName]
+                    LaunchedEffect(packageName, icon) {
+                        if (icon != null) return@LaunchedEffect
+                        val loadedIcon = withContext(Dispatchers.IO) {
                             runCatching { context.packageManager.getApplicationIcon(packageName) }.getOrNull()
+                        }
+                        if (loadedIcon != null) {
+                            onAppIconLoaded(packageName, loadedIcon)
                         }
                     }
                     Surface(
@@ -1022,6 +1041,8 @@ private fun GroupEditDialog(
     group: AppGroupWithApps?,
     forcedType: GroupType,
     installedApps: List<ManagedApp>,
+    appIconCache: Map<String, Drawable>,
+    onAppIconLoaded: (String, Drawable) -> Unit,
     isProActive: Boolean,
     onShowProUpsell: (ProUpsellSource) -> Unit,
     onDismiss: () -> Unit,
@@ -1259,6 +1280,8 @@ private fun GroupEditDialog(
                         AppSelectionItem(
                             app = app,
                             checked = app.packageName in selectedPackages,
+                            icon = appIconCache[app.packageName],
+                            onIconLoaded = onAppIconLoaded,
                             onCheckedChange = { checked ->
                                 selectedPackages = if (checked) {
                                     if (selectedPackages.size >= appLimit) {
@@ -1423,14 +1446,19 @@ private fun FieldContainer(
 private fun AppSelectionItem(
     app: ManagedApp,
     checked: Boolean,
+    icon: Drawable?,
+    onIconLoaded: (String, Drawable) -> Unit,
     onCheckedChange: (Boolean) -> Unit
 ) {
     val context = LocalContext.current
     // 异步加载图标，避免同步 Binder IPC 阻塞主线程
-    var icon by remember(app.packageName) { mutableStateOf<android.graphics.drawable.Drawable?>(null) }
-    LaunchedEffect(app.packageName) {
-        icon = withContext(Dispatchers.IO) {
+    LaunchedEffect(app.packageName, icon) {
+        if (icon != null) return@LaunchedEffect
+        val loadedIcon = withContext(Dispatchers.IO) {
             runCatching { context.packageManager.getApplicationIcon(app.packageName) }.getOrNull()
+        }
+        if (loadedIcon != null) {
+            onIconLoaded(app.packageName, loadedIcon)
         }
     }
 

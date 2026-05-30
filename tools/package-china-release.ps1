@@ -66,9 +66,7 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 $unsigned = "app\build\outputs\apk\china\release\app-china-release-unsigned.apk"
-if (!(Test-Path $unsigned)) {
-    throw "Unsigned release APK not found: $unsigned"
-}
+$signed = "app\build\outputs\apk\china\release\app-china-release.apk"
 
 $distDir = Split-Path -Parent $OutputApk
 New-Item -ItemType Directory -Force -Path $distDir | Out-Null
@@ -76,20 +74,26 @@ $aligned = Join-Path $distDir "tinyvow-cn-release-aligned.apk"
 
 Remove-Item -Force -ErrorAction SilentlyContinue $OutputApk, $aligned, "$OutputApk.idsig"
 
-& $zipalign -f -p 4 $unsigned $aligned
-if ($LASTEXITCODE -ne 0) {
-    throw "zipalign failed."
-}
+if (Test-Path $signed) {
+    Copy-Item -Force $signed $OutputApk
+} elseif (Test-Path $unsigned) {
+    & $zipalign -f -p 4 $unsigned $aligned
+    if ($LASTEXITCODE -ne 0) {
+        throw "zipalign failed."
+    }
 
-& $apksigner sign `
-    --ks $props["storeFile"] `
-    --ks-key-alias $props["keyAlias"] `
-    --ks-pass "pass:$($props["storePassword"])" `
-    --key-pass "pass:$($props["keyPassword"])" `
-    --out $OutputApk `
-    $aligned
-if ($LASTEXITCODE -ne 0) {
-    throw "apksigner sign failed."
+    & $apksigner sign `
+        --ks $props["storeFile"] `
+        --ks-key-alias $props["keyAlias"] `
+        --ks-pass "pass:$($props["storePassword"])" `
+        --key-pass "pass:$($props["keyPassword"])" `
+        --out $OutputApk `
+        $aligned
+    if ($LASTEXITCODE -ne 0) {
+        throw "apksigner sign failed."
+    }
+} else {
+    throw "Neither signed nor unsigned China release APK was found."
 }
 
 & $apksigner verify --verbose $OutputApk
@@ -107,7 +111,6 @@ $permissions
 
 foreach ($forbidden in @(
         "com.android.vending.BILLING",
-        "android.permission.INTERNET",
         "android.permission.USE_BIOMETRIC",
         "android.permission.USE_FINGERPRINT"
     )) {

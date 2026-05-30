@@ -476,9 +476,23 @@ fun resolveThemeSeed(
 }
 
 fun dailyRandomThemeSeed(today: LocalDate = LocalDate.now()): ThemeSeed {
-    val mixed = today.toEpochDay() * 1_103_515_245L + 12_345L
-    val index = floorMod(mixed, ThemePresets.size.toLong()).toInt()
-    return ThemePresets[index]
+    return ThemePresets[dailyRandomThemeIndex(today, ThemePresets.size)]
+}
+
+internal fun dailyRandomThemeIndex(
+    today: LocalDate,
+    presetCount: Int,
+): Int {
+    require(presetCount > 0) { "presetCount must be greater than 0." }
+    val mixed = mixDailyThemeSeed(today.toEpochDay())
+    return floorMod(mixed, presetCount.toLong()).toInt()
+}
+
+private fun mixDailyThemeSeed(epochDay: Long): Long {
+    var value = epochDay - 7_046_029_254_386_353_131L
+    value = (value xor (value ushr 30)) * -4_658_895_280_553_007_687L
+    value = (value xor (value ushr 27)) * -7_723_592_293_110_705_685L
+    return value xor (value ushr 31)
 }
 
 fun selectedThemeDisplayName(

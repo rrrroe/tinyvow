@@ -163,6 +163,10 @@ internal data class ComparisonSectionData(
 internal data class DailyFocusSectionData(
     val control: DailyModeSummary,
     val encourage: DailyModeSummary,
+    val controlUsageMillis: Long = 0L,
+    val controlSavedMillis: Long = 0L,
+    val encourageUsageMillis: Long = 0L,
+    val encouragePointsNet: Double = 0.0,
 )
 
 internal data class DailyModeSummary(

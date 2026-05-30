@@ -5,6 +5,7 @@ import android.security.keystore.KeyGenParameterSpec
 import android.security.keystore.KeyProperties
 import android.util.Base64
 import com.rrrrz.tinyvow.data.settings.ManagedAppPreferences
+import java.io.File
 import java.security.KeyStore
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
@@ -28,6 +29,7 @@ class WeReadApiKeyStore(
 
     suspend fun get(): String? =
         withContext(Dispatchers.IO) {
+            consumePendingRestoredKey()
             preferences.getEncryptedWeReadApiKeyOnce()?.let(::decrypt)?.let(::normalize)
         }
 
@@ -71,10 +73,21 @@ class WeReadApiKeyStore(
         return keyGenerator.generateKey()
     }
 
+    private suspend fun consumePendingRestoredKey() {
+        val pendingFile = pendingRestoreFile(context)
+        if (!pendingFile.isFile) return
+        val restoredKey = normalize(pendingFile.readText(Charsets.UTF_8))
+        if (restoredKey.isNotBlank()) {
+            preferences.setEncryptedWeReadApiKey(encrypt(restoredKey))
+        }
+        pendingFile.delete()
+    }
+
     companion object {
         private const val ANDROID_KEYSTORE = "AndroidKeyStore"
         private const val KEY_ALIAS = "tinyvow_weread_api_key"
         private const val TRANSFORMATION = "AES/GCM/NoPadding"
+        private const val PENDING_RESTORE_FILE_NAME = "weread_api_key_pending_restore"
 
         fun normalize(apiKey: String?): String =
             apiKey
@@ -92,5 +105,18 @@ class WeReadApiKeyStore(
                     .deleteEntry(KEY_ALIAS)
             }
         }
+
+        fun stageRestoredKey(context: Context, apiKey: String) {
+            val normalized = normalize(apiKey)
+            if (normalized.isBlank()) return
+            pendingRestoreFile(context).writeText(normalized, Charsets.UTF_8)
+        }
+
+        fun deletePendingRestoredKey(context: Context) {
+            pendingRestoreFile(context).delete()
+        }
+
+        private fun pendingRestoreFile(context: Context): File =
+            File(context.filesDir, PENDING_RESTORE_FILE_NAME)
     }
 }

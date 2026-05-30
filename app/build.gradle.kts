@@ -37,6 +37,26 @@ val activationPublicKeyBase64 = providers.gradleProperty("TINYVOW_ACTIVATION_PUB
         },
     )
     .get()
+val chinaSigningPropertiesFile = rootProject.layout.projectDirectory
+    .file("release-signing/tinyvow-cn-release.properties")
+    .asFile
+val chinaSigningProperties = mutableMapOf<String, String>().apply {
+    if (chinaSigningPropertiesFile.isFile) {
+        chinaSigningPropertiesFile.forEachLine { line ->
+            val separator = line.indexOf('=')
+            if (separator > 0) {
+                val key = line.substring(0, separator).trim()
+                val value = line.substring(separator + 1).trim()
+                if (key.isNotEmpty()) {
+                    put(key, value)
+                }
+            }
+        }
+    }
+}
+val hasChinaSigningConfig = listOf("storeFile", "storePassword", "keyAlias", "keyPassword").all {
+    !chinaSigningProperties[it].isNullOrBlank()
+}
 
 android {
     namespace = "com.rrrrz.tinyvow"
@@ -61,6 +81,17 @@ android {
         )
     }
 
+    signingConfigs {
+        if (hasChinaSigningConfig) {
+            create("chinaShared") {
+                storeFile = file(chinaSigningProperties.getValue("storeFile"))
+                storePassword = chinaSigningProperties.getValue("storePassword")
+                keyAlias = chinaSigningProperties.getValue("keyAlias")
+                keyPassword = chinaSigningProperties.getValue("keyPassword")
+            }
+        }
+    }
+
     flavorDimensions += "store"
 
     productFlavors {
@@ -79,6 +110,9 @@ android {
             dimension = "store"
             applicationId = "com.rrrrz.tinyvow.cn"
             versionNameSuffix = "-cn"
+            if (hasChinaSigningConfig) {
+                signingConfig = signingConfigs.getByName("chinaShared")
+            }
             buildConfigField("String", "STORE_CHANNEL", "\"china\"")
             buildConfigField("Boolean", "ENABLE_GOOGLE_LOGIN", "false")
             buildConfigField("Boolean", "ENABLE_PLAY_BILLING", "false")
@@ -89,8 +123,17 @@ android {
     }
 
     buildTypes {
+        debug {
+            if (hasChinaSigningConfig) {
+                signingConfig = signingConfigs.getByName("chinaShared")
+            }
+        }
+
         release {
             isMinifyEnabled = true
+            if (hasChinaSigningConfig) {
+                signingConfig = signingConfigs.getByName("chinaShared")
+            }
             // AppText resolves many localized strings dynamically by key. Resource shrinking
             // can remove those strings because they are not all referenced as R.string.*.
             isShrinkResources = false

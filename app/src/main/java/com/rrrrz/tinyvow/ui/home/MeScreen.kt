@@ -31,17 +31,21 @@ import androidx.compose.material.icons.automirrored.filled.HelpOutline
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AccessTime
+import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Science
+import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.AlertDialog
@@ -202,9 +206,7 @@ fun MeScreen(
     val canTapToSignIn = isGoogleSignInEnabled && userSession == null && isGoogleSignInConfigured
     val isProMember = isProActive
     val appUsageDays = remember(context) { calculateInstalledDays(context) }
-    val currentThemeName = remember(selectedThemeId, customThemes, selectedAppLanguage) {
-        selectedThemeDisplayName(selectedThemeId, customThemes)
-    }
+    val currentThemeName = selectedThemeDisplayName(selectedThemeId, customThemes)
     val hasCustomDisplayName = !profileDisplayName.isNullOrBlank()
     val displayName =
         profileDisplayName
@@ -393,94 +395,96 @@ fun MeScreen(
                 )
             }
 
-            TinyVowCard(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(TinyVowRadius.Card),
-                shadowElevation = TinyVowElevation.Card,
-            ) {
-                Column {
+            MeMenuSection(title = AppText.t("me_features_and_access_section")) {
+                MeMenuItem(
+                    icon = Icons.Default.Security,
+                    title = AppText.t("me_permission_settings"),
+                    onClick = onNavigateToPermissionSettings,
+                )
+                SettingsDivider()
+                MeMenuItem(
+                    icon = Icons.Default.VerifiedUser,
+                    title = AppText.t("super_mode_title"),
+                    trailingText = describeSuperModeStatus(superModeStatus),
+                    onClick = onOpenSuperModeSettings,
+                )
+                SettingsDivider()
+                MeMenuItem(
+                    icon = Icons.Default.Apps,
+                    title = AppText.t("special_app_settings_title"),
+                    onClick = onNavigateToSpecialAppSettings,
+                )
+            }
+
+            MeMenuSection(title = AppText.t("me_preferences_section")) {
+                MeMenuItem(
+                    icon = Icons.Default.Palette,
+                    title = AppText.t("me_theme_management"),
+                    trailingText = currentThemeName,
+                    onClick = onNavigateToThemeSettings,
+                )
+                SettingsDivider()
+                MeMenuItem(
+                    icon = Icons.Default.Language,
+                    title = AppText.t("selected_language_title"),
+                    trailingText = selectedAppLanguage.displayName(),
+                    onClick = onNavigateToLanguageSettings,
+                )
+                SettingsDivider()
+                MeMenuItem(
+                    icon = Icons.Default.Notifications,
+                    title = AppText.t("notification_settings_title"),
+                    trailingText = if (notificationRemindersEnabled) {
+                        AppText.t("notification_settings_enabled")
+                    } else {
+                        AppText.t("notification_settings_disabled")
+                    },
+                    onClick = onNavigateToNotificationSettings,
+                )
+            }
+
+            MeMenuSection(title = AppText.t("me_data_and_privacy")) {
+                MeMenuItem(
+                    icon = Icons.Default.History,
+                    title = AppText.t("me_usage_history"),
+                    onClick = onNavigateToHistory,
+                )
+                SettingsDivider()
+                MeMenuItem(
+                    icon = Icons.Default.Storage,
+                    title = AppText.t("me_local_data_management"),
+                    onClick = onNavigateToDataPrivacy,
+                )
+            }
+
+            MeMenuSection(title = AppText.t("me_help_and_contact")) {
+                MeMenuItem(
+                    icon = Icons.AutoMirrored.Filled.HelpOutline,
+                    title = AppText.t("me_help_and_feedback"),
+                    onClick = onNavigateToHelpFeedback,
+                )
+                SettingsDivider()
+                MeMenuItem(
+                    icon = Icons.Default.Email,
+                    title = AppText.t("me_contact_us"),
+                    onClick = onNavigateToContactUs,
+                )
+                SettingsDivider()
+                MeMenuItem(
+                    icon = Icons.Default.Info,
+                    title = AppText.t("me_app_version"),
+                    trailingText = displayAppVersion,
+                    onClick = onNavigateToVersionInfo,
+                )
+            }
+
+            if (isDebugBuild) {
+                MeMenuSection(title = AppText.t("me_advanced_center")) {
                     MeMenuItem(
-                        icon = Icons.Default.Settings,
-                        title = AppText.t("me_permission_settings"),
-                        onClick = onNavigateToPermissionSettings,
-                    )
-                    SettingsDivider()
-                    MeMenuItem(
-                        icon = Icons.Default.Info,
-                        title = AppText.t("notification_settings_title"),
-                        trailingText = if (notificationRemindersEnabled) {
-                            AppText.t("notification_settings_enabled")
-                        } else {
-                            AppText.t("notification_settings_disabled")
-                        },
-                        onClick = onNavigateToNotificationSettings,
-                    )
-                    SettingsDivider()
-                    MeMenuItem(
-                        icon = Icons.Default.Person,
-                        title = AppText.t("selected_language_title"),
-                        trailingText = selectedAppLanguage.displayName(),
-                        onClick = onNavigateToLanguageSettings,
-                    )
-                    SettingsDivider()
-                    MeMenuItem(
-                        icon = Icons.Default.VerifiedUser,
-                        title = AppText.t("super_mode_title"),
-                        trailingText = describeSuperModeStatus(superModeStatus),
-                        onClick = onOpenSuperModeSettings,
-                    )
-                    SettingsDivider()
-                    MeMenuItem(
-                        icon = Icons.Default.Settings,
-                        title = AppText.t("special_app_settings_title"),
-                        onClick = onNavigateToSpecialAppSettings,
-                    )
-                    SettingsDivider()
-                    MeMenuItem(
-                        icon = Icons.Default.Palette,
-                        title = AppText.t("me_theme_management"),
-                        trailingText = currentThemeName,
-                        onClick = onNavigateToThemeSettings,
-                    )
-                    SettingsDivider()
-                    MeMenuItem(
-                        icon = Icons.Default.History,
-                        title = AppText.t("me_usage_history"),
-                        onClick = onNavigateToHistory,
-                    )
-                    SettingsDivider()
-                    MeMenuItem(
-                        icon = Icons.Default.Settings,
-                        title = AppText.t("me_local_data_management"),
-                        onClick = onNavigateToDataPrivacy,
-                    )
-                    SettingsDivider()
-                    MeMenuItem(
-                        icon = Icons.AutoMirrored.Filled.HelpOutline,
-                        title = AppText.t("me_help_and_feedback"),
-                        onClick = onNavigateToHelpFeedback,
-                    )
-                    SettingsDivider()
-                    MeMenuItem(
-                        icon = Icons.Default.Email,
-                        title = AppText.t("me_contact_us"),
-                        onClick = onNavigateToContactUs,
-                    )
-                    if (isDebugBuild) {
-                        SettingsDivider()
-                        MeMenuItem(
-                            icon = Icons.Default.Science,
-                            title = AppText.t("me_advanced_center"),
-                            onClick = onNavigateToLaboratory,
-                            color = themeColors.base,
-                        )
-                    }
-                    SettingsDivider()
-                    MeMenuItem(
-                        icon = Icons.Default.Info,
-                        title = AppText.t("me_app_version"),
-                        trailingText = displayAppVersion,
-                        onClick = onNavigateToVersionInfo,
+                        icon = Icons.Default.Science,
+                        title = AppText.t("me_advanced_center"),
+                        onClick = onNavigateToLaboratory,
+                        color = themeColors.base,
                     )
                 }
             }
@@ -685,11 +689,14 @@ private fun ProfileEditorDialog(
 @Composable
 internal fun DataPrivacyPage(
     onBack: () -> Unit,
-    onExportLocalData: () -> Unit,
+    onSaveLocalBackup: () -> Unit,
+    onShareLocalBackup: () -> Unit,
+    onImportLocalBackup: () -> Unit,
     onClearLocalData: () -> Unit,
     onOpenPrivacyPolicy: () -> Unit,
 ) {
     var showClearConfirm by remember { mutableStateOf(false) }
+    var showExportChoice by remember { mutableStateOf(false) }
 
     MeDetailPageScaffold(
         title = AppText.t("me_local_data_management"),
@@ -702,8 +709,11 @@ internal fun DataPrivacyPage(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            Button(onClick = onExportLocalData, modifier = Modifier.fillMaxWidth()) {
-                Text(AppText.t("home_export_local_data"))
+            Button(onClick = { showExportChoice = true }, modifier = Modifier.fillMaxWidth()) {
+                Text(AppText.t("me_export_recoverable_backup"))
+            }
+            OutlinedButton(onClick = onImportLocalBackup, modifier = Modifier.fillMaxWidth()) {
+                Text(AppText.t("me_import_local_backup"))
             }
             TextButton(onClick = onOpenPrivacyPolicy, modifier = Modifier.fillMaxWidth()) {
                 Text(AppText.t("me_view_privacy_policy"))
@@ -712,6 +722,34 @@ internal fun DataPrivacyPage(
                 Text(AppText.t("me_clear_local_data"), color = MaterialTheme.colorScheme.error)
             }
         }
+    }
+
+    if (showExportChoice) {
+        AlertDialog(
+            onDismissRequest = { showExportChoice = false },
+            title = { Text(AppText.t("me_export_backup_choose_method")) },
+            text = { Text(AppText.t("me_export_backup_choose_method_body")) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showExportChoice = false
+                        onSaveLocalBackup()
+                    },
+                ) {
+                    Text(AppText.t("me_export_backup_save_to_local"))
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        showExportChoice = false
+                        onShareLocalBackup()
+                    },
+                ) {
+                    Text(AppText.t("me_export_backup_share"))
+                }
+            },
+        )
     }
 
     if (showClearConfirm) {

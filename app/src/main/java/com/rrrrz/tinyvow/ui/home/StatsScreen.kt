@@ -147,6 +147,18 @@ import kotlin.math.roundToLong
 
 private const val STAT_CHART_ANIMATIONS_ENABLED = false
 
+private enum class SharePosterModule {
+    BEHAVIOR,
+    FOCUS,
+    APPS,
+    RHYTHM,
+    INSIGHTS,
+    OVERVIEW,
+    TREND,
+    HEATMAP,
+    STRUCTURE,
+}
+
 private data class ReportCacheKey(
     val tab: ReportTab,
     val value: String,
@@ -603,8 +615,11 @@ private fun ReportPageContent(
     isProActive: Boolean,
     onShowProUpsell: (ProUpsellSource) -> Unit,
     modifier: Modifier = Modifier,
+    shareModules: Set<SharePosterModule>? = null,
 ) {
     val isDayReport = state.selectedTab == ReportTab.DAY
+    fun isShareModuleEnabled(module: SharePosterModule): Boolean = shareModules == null || module in shareModules
+
     Column(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(TinyVowSpacing.SectionGap),
@@ -612,36 +627,104 @@ private fun ReportPageContent(
         if (!isProActive && !isDayReport) {
             LockedAdvancedReportCard(onClick = { onShowProUpsell(ProUpsellSource.ADVANCED_REPORT) })
         } else if (isDayReport) {
-            DailyBattleHeroCard(
-                heroState = state.heroState,
-                animateValues = state.animateValues,
-            )
-            DailyFocusCard(
-                focusState = state.dailyFocusState,
-                compactLayout = false,
-                animateValues = state.animateValues,
-            )
-            DailyAppFocusCard(
-                topAppsState = state.topAppsState,
-            )
-            DailyRhythmCard(timelineState = state.timelineState)
-            if (isProActive) {
+            if (isProActive && isShareModuleEnabled(SharePosterModule.BEHAVIOR)) {
                 DailyBehaviorProfileCard(
+                    heroState = state.heroState,
+                    focusState = state.dailyFocusState,
                     behaviorState = state.behaviorState,
                 )
-                DailyInsightCard(
-                    comparisonState = state.comparisonState,
-                )
-            } else {
+            } else if (!isProActive && shareModules == null) {
                 CompactLockedAnalysisPanel(
                     onClick = { onShowProUpsell(ProUpsellSource.ADVANCED_REPORT) },
                 )
             }
+            if (isShareModuleEnabled(SharePosterModule.FOCUS)) {
+                DailyFocusCard(
+                    focusState = state.dailyFocusState,
+                    compactLayout = false,
+                    animateValues = state.animateValues,
+                )
+            }
+            if (isShareModuleEnabled(SharePosterModule.APPS)) {
+                DailyAppFocusCard(
+                    topAppsState = state.topAppsState,
+                )
+            }
+            if (isShareModuleEnabled(SharePosterModule.RHYTHM)) {
+                DailyRhythmCard(timelineState = state.timelineState)
+            }
+            if (isProActive && isShareModuleEnabled(SharePosterModule.INSIGHTS)) {
+                DailyInsightCard(
+                    comparisonState = state.comparisonState,
+                )
+            }
         } else {
-            PeriodReportScreen(
-                state = state,
-                animateValues = state.animateValues,
+            if (shareModules == null) {
+                PeriodReportScreen(
+                    state = state,
+                    animateValues = state.animateValues,
+                )
+            } else {
+                PeriodShareReportContent(
+                    state = state,
+                    shareModules = shareModules,
+                    animateValues = state.animateValues,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun PeriodShareReportContent(
+    state: DailyReportUiState,
+    shareModules: Set<SharePosterModule>,
+    animateValues: Boolean,
+) {
+    when (val periodState = state.periodReportState) {
+        SectionState.Loading -> {
+            PeriodReportSkeleton(selectedTab = state.selectedTab)
+        }
+        SectionState.Empty -> {
+            Text(
+                text = AppText.t("stats_not_enough_samples"),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+        }
+        is SectionState.Ready -> {
+            val data = periodState.data
+            if (SharePosterModule.OVERVIEW in shareModules) {
+                PeriodHeroCard(
+                    hero = data.hero,
+                    animateValues = animateValues,
+                )
+            }
+            if (SharePosterModule.FOCUS in shareModules) {
+                PeriodFocusCard(
+                    data = data.windowFocus,
+                    animateValues = animateValues,
+                )
+            }
+            if (SharePosterModule.TREND in shareModules) {
+                PeriodTrendCard(data.trend)
+            }
+            if (SharePosterModule.HEATMAP in shareModules) {
+                data.heatmap?.let { PeriodHeatmapCard(it) }
+            }
+            if (SharePosterModule.STRUCTURE in shareModules) {
+                when (data.tab) {
+                    ReportTab.MONTH -> data.monthStructure?.let { PeriodMonthStructureCard(it) }
+                    ReportTab.YEAR -> data.quarterSection?.let { PeriodQuarterBreakdownCard(it) }
+                    ReportTab.DAY, ReportTab.WEEK -> Unit
+                }
+            }
+            if (SharePosterModule.APPS in shareModules) {
+                PeriodAppFocusCard(data.appFocus)
+            }
+            if (SharePosterModule.INSIGHTS in shareModules) {
+                PeriodInsightSection(data = data)
+            }
         }
     }
 }
@@ -2202,6 +2285,48 @@ private fun isReportShareReady(
     }
 }
 
+private fun availableSharePosterModules(
+    state: DailyReportUiState,
+    isProActive: Boolean,
+): List<SharePosterModule> {
+    return if (state.selectedTab == ReportTab.DAY) {
+        buildList {
+            if (isProActive) add(SharePosterModule.BEHAVIOR)
+            add(SharePosterModule.FOCUS)
+            add(SharePosterModule.APPS)
+            add(SharePosterModule.RHYTHM)
+            if (isProActive) add(SharePosterModule.INSIGHTS)
+        }
+    } else {
+        val periodData = (state.periodReportState as? SectionState.Ready)?.data
+        buildList {
+            add(SharePosterModule.OVERVIEW)
+            add(SharePosterModule.FOCUS)
+            add(SharePosterModule.TREND)
+            if (periodData?.heatmap != null) add(SharePosterModule.HEATMAP)
+            if (periodData?.monthStructure != null || periodData?.quarterSection != null) {
+                add(SharePosterModule.STRUCTURE)
+            }
+            add(SharePosterModule.APPS)
+            add(SharePosterModule.INSIGHTS)
+        }
+    }
+}
+
+private fun SharePosterModule.labelKey(): String =
+    when (this) {
+        SharePosterModule.BEHAVIOR -> "stats_share_module_behavior"
+        SharePosterModule.FOCUS -> "stats_share_module_focus"
+        SharePosterModule.APPS -> "stats_share_module_apps"
+        SharePosterModule.RHYTHM -> "stats_share_module_rhythm"
+        SharePosterModule.INSIGHTS -> "stats_share_module_insights"
+        SharePosterModule.OVERVIEW -> "stats_share_module_overview"
+        SharePosterModule.TREND -> "stats_share_module_trend"
+        SharePosterModule.HEATMAP -> "stats_share_module_heatmap"
+        SharePosterModule.STRUCTURE -> "stats_share_module_structure"
+    }
+
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun ReportPageSharePreviewDialog(
     state: DailyReportUiState,
@@ -2213,6 +2338,12 @@ private fun ReportPageSharePreviewDialog(
     val graphicsLayer = rememberGraphicsLayer()
     val scope = rememberCoroutineScope()
     val posterWidth = 390.dp
+    val availableModules = remember(state, isProActive) {
+        availableSharePosterModules(state = state, isProActive = isProActive)
+    }
+    var selectedModules by remember(state.selectedTab, state.selectedArchiveDate, state.selectedWeekStart, state.selectedMonth, state.selectedYear, isProActive) {
+        mutableStateOf(availableModules.toSet())
+    }
     var isSharing by remember { mutableStateOf(false) }
 
     fun shareCurrentPreview() {
@@ -2261,6 +2392,18 @@ private fun ReportPageSharePreviewDialog(
                     )
                     TextButton(onClick = onDismiss) { Text(AppText.t("group_close")) }
                 }
+                SharePosterModuleSelector(
+                    availableModules = availableModules,
+                    selectedModules = selectedModules,
+                    onToggleModule = { module ->
+                        selectedModules =
+                            if (module in selectedModules) {
+                                selectedModules - module
+                            } else {
+                                selectedModules + module
+                            }
+                    },
+                )
                 Surface(
                     modifier = Modifier.weight(1f),
                     shape = RoundedCornerShape(22.dp),
@@ -2306,6 +2449,7 @@ private fun ReportPageSharePreviewDialog(
                                     state = state,
                                     isProActive = isProActive,
                                     onShowProUpsell = {},
+                                    shareModules = selectedModules,
                                 )
                                 Spacer(modifier = Modifier.height(8.dp))
                                 Text(
@@ -2345,6 +2489,37 @@ private fun ReportPageSharePreviewDialog(
                         Text(AppText.t("group_share"))
                     }
                 }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun SharePosterModuleSelector(
+    availableModules: List<SharePosterModule>,
+    selectedModules: Set<SharePosterModule>,
+    onToggleModule: (SharePosterModule) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(
+            text = AppText.t("stats_share_modules"),
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        FlowRow(
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            availableModules.forEach { module ->
+                val selected = module in selectedModules
+                TinyVowButton(
+                    text = AppText.t(module.labelKey()),
+                    onClick = { onToggleModule(module) },
+                    enabled = selectedModules.size > 1 || !selected,
+                    selected = selected,
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                )
             }
         }
     }
@@ -2575,9 +2750,9 @@ private fun DailyGroupProgressRow(
     modifier: Modifier = Modifier,
 ) {
     val themeColors = LocalThemeColors.current
-    val resultColor = if (item.isWarning) accent else themeColors.inkMuted
+    val resultColor = if (item.isMuted && !item.isWarning) accent.copy(alpha = 0.72f) else accent
     val quietColor = if (item.isMuted) themeColors.inkFaint else themeColors.inkMuted
-    val progressFillColor = if (item.isWarning) accent else themeColors.inkFaint
+    val progressFillColor = accent
     val displayProgress =
         if (animateValues) {
             animateFractionValue(
@@ -2684,7 +2859,7 @@ private fun DailyGroupProgressRow(
                         .fillMaxWidth(fraction = displayProgress)
                         .fillMaxHeight()
                         .clip(RoundedCornerShape(3.dp))
-                        .background(progressFillColor.copy(alpha = if (item.isWarning) 0.86f else 0.56f))
+                        .background(progressFillColor.copy(alpha = if (item.isMuted && !item.isWarning) 0.42f else 0.78f))
                 )
             }
         }

@@ -7,7 +7,8 @@
 - 隐私政策 URL：`https://rrrroe.github.io/tinyvow/privacy.html`
 - 账号删除 URL：`https://rrrroe.github.io/tinyvow/account-delete.html`
 - 订阅取消入口：应用内打开 Google Play 订阅管理页，商品 ID 为 `tinyvow_pro`。
-- 支持/联系邮箱：`rrrr.zhao@gmail.com`
+- 支持/联系邮箱：`rrrr.zhao@qq.com`
+- 微信：`rourourenren222`
 
 ## 数据安全表单草稿
 
