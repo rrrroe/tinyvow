@@ -10,6 +10,8 @@ import com.rrrrz.tinyvow.data.db.SpecialAppConfigEntity
 import com.rrrrz.tinyvow.data.db.SpecialAppPointCreditEntity
 import com.rrrrz.tinyvow.data.db.SpecialAppUsagePreference
 import com.rrrrz.tinyvow.data.db.SpecialAppUsageSnapshotEntity
+import com.rrrrz.tinyvow.data.notification.TinyVowNotifier
+import com.rrrrz.tinyvow.data.reminder.ReminderPolicy
 import com.rrrrz.tinyvow.data.repository.ArchiveDateUtils
 import com.rrrrz.tinyvow.data.repository.PointsRepository
 import com.rrrrz.tinyvow.data.repository.calculateTargetBonusPoints
@@ -110,6 +112,8 @@ class SpecialAppUsageRepository(
     private val activeRewardEffectDao = database.activeRewardEffectDao()
     private val baseUsageRepository = UsageStatsUsageRepository(context)
     private val pointsRepository = PointsRepository(context, database)
+    private val preferences = ManagedAppPreferences(context)
+    private val notifier = TinyVowNotifier(context)
 
     fun observeWeReadConfig(): Flow<SpecialAppConfigEntity?> = configDao.observe(WEREAD_PROVIDER)
 
@@ -758,9 +762,22 @@ class SpecialAppUsageRepository(
                         occurredAt = now,
                     )
                     groupDao.insertGroup(group.copy(lastBonusAt = now, updatedAt = now))
+                    notifyEncourageTargetCompleted(groupId = group.id, groupName = group.name, today = today)
                 }
             }
         }
+    }
+
+    private suspend fun notifyEncourageTargetCompleted(
+        groupId: String,
+        groupName: String,
+        today: LocalDate,
+    ) {
+        if (!preferences.getNotificationRemindersEnabledOnce()) return
+        val reminderKey = ReminderPolicy.encourageCompletedReminderKey(today, groupId)
+        if (reminderKey in preferences.getSentReminderKeysOnce()) return
+        notifier.notifyEncourageCompleted(groupId = groupId, groupName = groupName)
+        preferences.addSentReminderKey(reminderKey)
     }
 
     private suspend fun currentEncouragePointsMultiplier(groupId: String, now: Long): Double {

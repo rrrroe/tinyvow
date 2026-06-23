@@ -865,6 +865,30 @@ object AppDatabaseMigrations {
             }
         }
 
+    val MIGRATION_22_23 =
+        object : Migration(22, 23) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `daily_checkins` (
+                        `id` TEXT NOT NULL,
+                        `checkin_date` TEXT NOT NULL,
+                        `checked_in_at` INTEGER NOT NULL,
+                        `reward_builtin_key` TEXT NOT NULL,
+                        `reward_inventory_id` TEXT NOT NULL,
+                        PRIMARY KEY(`id`)
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS `index_daily_checkins_checkin_date` ON `daily_checkins` (`checkin_date`)"
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_daily_checkins_checked_in_at` ON `daily_checkins` (`checked_in_at`)"
+                )
+            }
+        }
+
     val ALL: Array<Migration> = arrayOf(
         MIGRATION_9_10,
         MIGRATION_10_11,
@@ -879,5 +903,6 @@ object AppDatabaseMigrations {
         MIGRATION_19_20,
         MIGRATION_20_21,
         MIGRATION_21_22,
+        MIGRATION_22_23,
     )
 }

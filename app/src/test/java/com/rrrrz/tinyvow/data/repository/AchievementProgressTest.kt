@@ -7,6 +7,7 @@ import com.rrrrz.tinyvow.data.db.LimitPeriod
 import com.rrrrz.tinyvow.data.db.StreakShieldPendingEntity
 import com.rrrrz.tinyvow.data.db.StreakShieldPendingStatus
 import com.rrrrz.tinyvow.data.db.StreakShieldTarget
+import java.time.LocalDate
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -139,6 +140,30 @@ class AchievementProgressTest {
             )
 
         assertEquals(3, progress.controlStreak)
+    }
+
+    @Test
+    fun calculateStreakBeforeDate_countsShieldedDatesAsContinuation() {
+        val archiveDates =
+            listOf(
+                LocalDate.parse("2026-01-01"),
+                LocalDate.parse("2026-01-02"),
+                LocalDate.parse("2026-01-03"),
+            )
+
+        val streak =
+            calculateStreakBeforeDate(
+                archiveDates = archiveDates,
+                latestDate = LocalDate.parse("2026-01-04"),
+                completedDates =
+                    setOf(
+                        LocalDate.parse("2026-01-01"),
+                        LocalDate.parse("2026-01-03"),
+                    ),
+                shieldedDates = setOf(LocalDate.parse("2026-01-02")),
+            )
+
+        assertEquals(3, streak)
     }
 
     private fun archive(

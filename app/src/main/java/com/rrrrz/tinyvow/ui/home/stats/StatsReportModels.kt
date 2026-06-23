@@ -30,7 +30,22 @@ internal data class DailyTimelineBucket(
     val hour: Int,
     val label: String,
     val deviceMillis: Long,
+    val appSegments: List<DailyTimelineAppSegment> = emptyList(),
 )
+
+internal data class DailyTimelineAppSegment(
+    val packageName: String,
+    val label: String,
+    val millis: Long,
+)
+
+internal data class DailyTimelineAppLegendItem(
+    val packageName: String,
+    val label: String,
+    val millis: Long,
+)
+
+internal const val TIMELINE_OTHER_APPS_PACKAGE_NAME = "__tinyvow_other_apps__"
 
 internal data class DailyReportSummary(
     val title: String,
@@ -119,6 +134,7 @@ internal data class HeroSectionData(
 internal data class TimelineSectionData(
     val buckets: List<DailyTimelineBucket>,
     val periodUsage: List<PeriodUsageStat>,
+    val appLegend: List<DailyTimelineAppLegendItem> = emptyList(),
     val peakHourLabel: String,
     val peakHourMillis: Long,
     val peakTwoHourLabel: String,
@@ -129,6 +145,7 @@ internal data class TimelineSectionData(
 
 internal data class TopAppsSectionData(
     val usageTopApps: List<AppDisplayItem>,
+    val appProfiles: List<AppFocusProfileItem> = emptyList(),
 )
 
 internal data class BehaviorSectionData(
@@ -306,6 +323,20 @@ internal data class AppFocusInsight(
     val title: String,
     val value: String,
     val detail: String,
+)
+
+internal data class AppFocusProfileItem(
+    val packageName: String,
+    val label: String,
+    val usageMillis: Long,
+    val openCount: Int,
+    val sessionCount: Int,
+    val longestSessionMillis: Long,
+    val nightUsageMillis: Long,
+    val peakHour: Int,
+    val peakHourMillis: Long,
+    val share: Float,
+    val intensity: Float,
 )
 
 internal data class WeeklyTopAppsRow(

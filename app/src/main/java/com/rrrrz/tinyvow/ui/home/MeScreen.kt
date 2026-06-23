@@ -4,10 +4,12 @@ import com.rrrrz.tinyvow.i18n.AppText
 
 import android.content.Intent
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
@@ -21,6 +23,9 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyRow
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -56,6 +61,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
@@ -70,16 +76,21 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -87,6 +98,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
@@ -96,6 +108,9 @@ import com.rrrrz.tinyvow.data.billing.ProEntitlementState
 import com.rrrrz.tinyvow.data.billing.ProEntitlementStatus
 import com.rrrrz.tinyvow.data.billing.SubscriptionOffer
 import com.rrrrz.tinyvow.data.pro.ProFeatureGate
+import com.rrrrz.tinyvow.data.repository.DailyCheckInDayState
+import com.rrrrz.tinyvow.data.repository.DailyCheckInMonthState
+import com.rrrrz.tinyvow.data.time.BusinessDay
 import com.rrrrz.tinyvow.data.supermode.SuperModeStatus
 import com.rrrrz.tinyvow.i18n.AppLanguage
 import com.rrrrz.tinyvow.ui.theme.LocalThemeColors
@@ -112,9 +127,13 @@ import java.text.NumberFormat
 import java.util.Date
 import java.time.Instant
 import java.time.LocalDate
+import java.time.YearMonth
 import java.time.ZoneId
 import java.time.temporal.ChronoUnit
+import kotlin.math.cos
+import kotlin.math.min
 import kotlin.math.roundToLong
+import kotlin.math.sin
 
 @Composable
 fun MeScreen(
@@ -137,6 +156,7 @@ fun MeScreen(
     superModeStatus: SuperModeStatus,
     isDebugBuild: Boolean,
     selectedAppLanguage: AppLanguage,
+    dayBoundaryHour: Int,
     notificationRemindersEnabled: Boolean,
     controlRemainingReminderMinutes: Int,
     encourageReminderTimesMinutes: List<Int>,
@@ -168,8 +188,10 @@ fun MeScreen(
     onNavigateToNotificationSettings: () -> Unit,
     onNavigateToLaboratory: () -> Unit,
     onNavigateToHistory: () -> Unit,
+    onNavigateToCheckInOverview: () -> Unit,
     onNavigateToThemeSettings: () -> Unit,
     onNavigateToLanguageSettings: () -> Unit,
+    onNavigateToDayBoundarySettings: () -> Unit,
     onNavigateToHelpFeedback: () -> Unit,
     onNavigateToContactUs: () -> Unit,
     onNavigateToSpecialAppSettings: () -> Unit,
@@ -374,6 +396,7 @@ fun MeScreen(
                         value = formatMetricNumber(appUsageDays),
                         label = AppText.t("me_app_usage_days"),
                         color = themeColors.base,
+                        onClick = onNavigateToCheckInOverview,
                     )
                 }
             }
@@ -395,7 +418,25 @@ fun MeScreen(
                 )
             }
 
-            MeMenuSection(title = AppText.t("me_features_and_access_section")) {
+            MeMenuSection(title = AppText.t("me_feature_settings_section")) {
+                MeMenuItem(
+                    icon = Icons.Default.AccessTime,
+                    title = AppText.t("day_boundary_settings_title"),
+                    trailingText = AppText.t("day_boundary_hour_value", dayBoundaryHour),
+                    onClick = onNavigateToDayBoundarySettings,
+                )
+                SettingsDivider()
+                MeMenuItem(
+                    icon = Icons.Default.Notifications,
+                    title = AppText.t("notification_settings_title"),
+                    trailingText = if (notificationRemindersEnabled) {
+                        AppText.t("notification_settings_enabled")
+                    } else {
+                        AppText.t("notification_settings_disabled")
+                    },
+                    onClick = onNavigateToNotificationSettings,
+                )
+                SettingsDivider()
                 MeMenuItem(
                     icon = Icons.Default.Security,
                     title = AppText.t("me_permission_settings"),
@@ -429,17 +470,6 @@ fun MeScreen(
                     title = AppText.t("selected_language_title"),
                     trailingText = selectedAppLanguage.displayName(),
                     onClick = onNavigateToLanguageSettings,
-                )
-                SettingsDivider()
-                MeMenuItem(
-                    icon = Icons.Default.Notifications,
-                    title = AppText.t("notification_settings_title"),
-                    trailingText = if (notificationRemindersEnabled) {
-                        AppText.t("notification_settings_enabled")
-                    } else {
-                        AppText.t("notification_settings_disabled")
-                    },
-                    onClick = onNavigateToNotificationSettings,
                 )
             }
 
@@ -1044,6 +1074,113 @@ internal fun NotificationReminderSettingsPage(
 }
 
 @Composable
+internal fun DayBoundarySettingsPage(
+    currentHour: Int,
+    isProActive: Boolean,
+    onBack: () -> Unit,
+    onSave: (Int) -> Unit,
+    onShowProUpsell: () -> Unit,
+) {
+    var selectedHour by remember(currentHour) { mutableIntStateOf(currentHour) }
+    val canEditBoundary = isProActive || currentHour == BusinessDay.DEFAULT_START_HOUR
+
+    MeDetailPageScaffold(
+        title = AppText.t("day_boundary_settings_title"),
+        description = AppText.t("day_boundary_settings_description"),
+        onBack = onBack,
+    ) {
+        MeSettingsCard(title = AppText.t("day_boundary_settings_section")) {
+            Text(
+                text = AppText.t("day_boundary_settings_default_hint"),
+                style = MaterialTheme.typography.bodySmall,
+                color = LocalThemeColors.current.inkMuted,
+            )
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                (BusinessDay.MIN_START_HOUR..BusinessDay.MAX_START_HOUR).forEach { hour ->
+                    val enabled = isProActive || (currentHour == BusinessDay.DEFAULT_START_HOUR && hour == BusinessDay.DEFAULT_START_HOUR)
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(16.dp))
+                            .clickable {
+                                if (enabled) {
+                                    selectedHour = hour
+                                } else {
+                                    onShowProUpsell()
+                                }
+                            },
+                        shape = RoundedCornerShape(16.dp),
+                        color =
+                            if (selectedHour == hour) {
+                                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f)
+                            } else {
+                                MaterialTheme.colorScheme.surfaceContainerHigh
+                            },
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 14.dp, vertical = 12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            RadioButton(
+                                selected = selectedHour == hour,
+                                onClick = {
+                                    if (enabled) {
+                                        selectedHour = hour
+                                    } else {
+                                        onShowProUpsell()
+                                    }
+                                },
+                                enabled = enabled,
+                            )
+                            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                Text(
+                                    text = AppText.t("day_boundary_hour_value", hour),
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    color = LocalThemeColors.current.ink,
+                                )
+                                Text(
+                                    text =
+                                        if (hour == BusinessDay.DEFAULT_START_HOUR) {
+                                            AppText.t("day_boundary_settings_default_value_hint")
+                                        } else {
+                                            AppText.t("day_boundary_settings_hour_detail", hour)
+                                        },
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = LocalThemeColors.current.inkMuted,
+                                )
+                            }
+                            if (!enabled) {
+                                Text(
+                                    text = AppText.t("me_pro_badge"),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = LocalThemeColors.current.base,
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+            Button(
+                onClick = {
+                    if (isProActive || (currentHour == BusinessDay.DEFAULT_START_HOUR && selectedHour == BusinessDay.DEFAULT_START_HOUR)) {
+                        onSave(selectedHour)
+                    } else {
+                        onShowProUpsell()
+                    }
+                },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = selectedHour != currentHour && (isProActive || currentHour == BusinessDay.DEFAULT_START_HOUR),
+            ) {
+                Text(AppText.t("day_boundary_settings_save"))
+            }
+        }
+    }
+}
+
+@Composable
 private fun ReminderTimeSelector(
     times: List<Int>,
     enabled: Boolean,
@@ -1288,7 +1425,7 @@ internal fun VersionInfoPage(
 @Composable
 private fun MeDetailPageScaffold(
     title: String,
-    description: String,
+    description: String?,
     onBack: () -> Unit,
     content: @Composable ColumnScope.() -> Unit,
 ) {
@@ -1330,21 +1467,23 @@ private fun MeDetailPageScaffold(
                 ),
             verticalArrangement = Arrangement.spacedBy(TinyVowSpacing.SectionGap),
         ) {
-            TinyVowCard(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(TinyVowRadius.FeaturedCard),
-                color = MaterialTheme.colorScheme.primaryContainer,
-                borderAlpha = 0.18f,
-            ) {
-                Text(
-                    text = description,
-                    modifier = Modifier.padding(
-                        horizontal = TinyVowSpacing.CardHorizontal,
-                        vertical = TinyVowSpacing.CardVertical,
-                    ),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.82f),
-                )
+            if (description != null) {
+                TinyVowCard(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(TinyVowRadius.FeaturedCard),
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    borderAlpha = 0.18f,
+                ) {
+                    Text(
+                        text = description,
+                        modifier = Modifier.padding(
+                            horizontal = TinyVowSpacing.CardHorizontal,
+                            vertical = TinyVowSpacing.CardVertical,
+                        ),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.82f),
+                    )
+                }
             }
             content()
         }
@@ -2107,7 +2246,7 @@ private fun ActivationCodeDialog(
                         TextButton(
                             onClick = { clipboard.setText(AnnotatedString(userId)) },
                         ) {
-                            Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Icon(Icons.Default.ContentCopy, contentDescription = AppText.t("activation_copy_user_id"), modifier = Modifier.size(16.dp))
                             Spacer(Modifier.width(6.dp))
                             Text(AppText.t("activation_copy_user_id"))
                         }
@@ -2139,11 +2278,402 @@ private fun ActivationCodeDialog(
 }
 
 @Composable
-fun MeStatItem(value: String, label: String, color: Color) {
+internal fun CheckInOverviewPage(
+    state: DailyCheckInMonthState,
+    onBack: () -> Unit,
+    onMonthChange: (YearMonth) -> Unit,
+) {
     val themeColors = LocalThemeColors.current
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+    MeDetailPageScaffold(
+        title = AppText.t("checkin_overview_title"),
+        description = null,
+        onBack = onBack,
+    ) {
+        TinyVowCard(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(TinyVowRadius.FeaturedCard),
+            shadowElevation = TinyVowElevation.FeaturedCard,
+        ) {
+            Column(
+                modifier = Modifier
+                    .background(
+                        Brush.linearGradient(
+                            listOf(
+                                themeColors.base.copy(alpha = 0.16f),
+                                MaterialTheme.colorScheme.surface,
+                                themeColors.control.copy(alpha = 0.10f),
+                            ),
+                        ),
+                    )
+                    .padding(
+                        horizontal = TinyVowSpacing.CardHorizontal,
+                        vertical = TinyVowSpacing.CardVertical,
+                    ),
+                verticalArrangement = Arrangement.spacedBy(18.dp),
+            ) {
+                CheckInCalendarHeader(month = state.month)
+                CheckInYearSelector(month = state.month, onMonthChange = onMonthChange)
+                CheckInMonthSelector(month = state.month, onMonthChange = onMonthChange)
+                CheckInLegend()
+                CheckInCalendar(state = state)
+            }
+        }
+    }
+}
+
+@Composable
+private fun CheckInCalendarHeader(
+    month: YearMonth,
+) {
+    val themeColors = LocalThemeColors.current
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(
+            text = AppText.t("checkin_calendar_heading"),
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.SemiBold,
+            color = themeColors.base,
+        )
+        Text(
+            text = AppText.t("checkin_month_title", month.monthValue, month.year),
+            style = MaterialTheme.typography.headlineSmall,
+            fontWeight = FontWeight.Bold,
+            color = themeColors.inkStrong,
+        )
+    }
+}
+
+@Composable
+private fun CheckInYearSelector(
+    month: YearMonth,
+    onMonthChange: (YearMonth) -> Unit,
+) {
+    val years = remember(month.year) { ((month.year - 6)..(month.year + 6)).toList() }
+    val listState = rememberLazyListState(initialFirstVisibleItemIndex = 4)
+
+    LaunchedEffect(month.year) {
+        listState.animateScrollToItem(4)
+    }
+
+    LazyRow(
+        state = listState,
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        items(years) { year ->
+            CheckInSelectorChip(
+                label = AppText.t("checkin_year_label", year),
+                selected = year == month.year,
+                width = 76.dp,
+                onClick = { onMonthChange(YearMonth.of(year, month.monthValue)) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun CheckInMonthSelector(
+    month: YearMonth,
+    onMonthChange: (YearMonth) -> Unit,
+) {
+    val listState = rememberLazyListState(initialFirstVisibleItemIndex = (month.monthValue - 2).coerceAtLeast(0))
+
+    LaunchedEffect(month.monthValue) {
+        listState.animateScrollToItem((month.monthValue - 2).coerceIn(0, 11))
+    }
+
+    LazyRow(
+        state = listState,
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        items((1..12).toList()) { monthNumber ->
+            CheckInSelectorChip(
+                label = AppText.t("checkin_month_chip", monthNumber),
+                selected = month.monthValue == monthNumber,
+                width = 58.dp,
+                onClick = { onMonthChange(YearMonth.of(month.year, monthNumber)) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun CheckInSelectorChip(
+    label: String,
+    selected: Boolean,
+    width: Dp,
+    onClick: () -> Unit,
+) {
+    val themeColors = LocalThemeColors.current
+    Surface(
+        modifier = Modifier
+            .width(width)
+            .height(36.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .clickable(onClick = onClick),
+        shape = RoundedCornerShape(14.dp),
+        color = if (selected) themeColors.base.copy(alpha = 0.18f) else MaterialTheme.colorScheme.surface.copy(alpha = 0.62f),
+        border = BorderStroke(
+            1.dp,
+            if (selected) themeColors.base.copy(alpha = 0.48f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.28f),
+        ),
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                color = if (selected) themeColors.base else themeColors.inkMuted,
+            )
+        }
+    }
+}
+
+@Composable
+private fun CheckInLegend() {
+    val themeColors = LocalThemeColors.current
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        CheckInLegendItem(label = AppText.t("checkin_badge_signed")) {
+            CheckInSignedSwatch()
+        }
+        CheckInLegendItem(label = AppText.t("checkin_badge_encourage")) {
+            CheckInStatusRing(
+                controlCompleted = false,
+                encourageCompleted = true,
+                markSize = 18.dp,
+            )
+        }
+        CheckInLegendItem(label = AppText.t("checkin_badge_control")) {
+            CheckInStatusRing(
+                controlCompleted = true,
+                encourageCompleted = false,
+                markSize = 18.dp,
+            )
+        }
+    }
+}
+
+@Composable
+private fun CheckInLegendItem(
+    label: String,
+    mark: @Composable () -> Unit,
+) {
+    Row(
+        horizontalArrangement = Arrangement.spacedBy(5.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        mark()
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = LocalThemeColors.current.inkMuted,
+        )
+    }
+}
+
+@Composable
+private fun CheckInCalendar(state: DailyCheckInMonthState) {
+    val firstOffset = state.month.atDay(1).dayOfWeek.value - 1
+    val cells: List<DailyCheckInDayState?> = List(firstOffset) { null } + state.days
+    val rows = cells.chunked(7)
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(modifier = Modifier.fillMaxWidth()) {
+            checkInWeekdayLabels().forEach { label ->
+                Text(
+                    text = label,
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = LocalThemeColors.current.inkMuted,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                )
+            }
+        }
+        rows.forEach { row ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                (0 until 7).forEach { index ->
+                    CheckInDayCell(
+                        day = row.getOrNull(index),
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun CheckInDayCell(day: DailyCheckInDayState?, modifier: Modifier = Modifier) {
+    val themeColors = LocalThemeColors.current
+    val checkedIn = day?.checkedIn == true
+    Surface(
+        modifier = modifier.aspectRatio(1f),
+        shape = RoundedCornerShape(18.dp),
+        color =
+            if (checkedIn) {
+                lerp(MaterialTheme.colorScheme.surface, themeColors.base, 0.14f).copy(alpha = 0.96f)
+            } else if (day?.isToday == true) {
+                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.36f)
+            } else {
+                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.24f)
+            },
+        border =
+            if (day?.isToday == true) {
+                BorderStroke(1.dp, themeColors.base.copy(alpha = 0.62f))
+            } else if (checkedIn) {
+                BorderStroke(1.dp, themeColors.base.copy(alpha = 0.18f))
+            } else {
+                BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.16f))
+            },
+    ) {
+        if (day != null) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(5.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                CheckInStatusRing(
+                    controlCompleted = day.allControlKept,
+                    encourageCompleted = day.encourageCompleted,
+                    markSize = 34.dp,
+                )
+                Text(
+                    text = day.date.dayOfMonth.toString(),
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = if (day.isToday) FontWeight.Bold else FontWeight.Medium,
+                    color = if (day.hasArchivedSignals || day.checkedIn || day.isToday) themeColors.inkStrong else themeColors.inkMuted.copy(alpha = 0.54f),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun CheckInSignedSwatch() {
+    val themeColors = LocalThemeColors.current
+    Surface(
+        modifier = Modifier.size(18.dp),
+        shape = RoundedCornerShape(6.dp),
+        color = lerp(MaterialTheme.colorScheme.surface, themeColors.base, 0.18f).copy(alpha = 0.96f),
+        border = BorderStroke(1.dp, themeColors.base.copy(alpha = 0.28f)),
+    ) {}
+}
+
+@Composable
+private fun CheckInStatusRing(
+    controlCompleted: Boolean,
+    encourageCompleted: Boolean,
+    markSize: Dp = 30.dp,
+) {
+    val themeColors = LocalThemeColors.current
+    Canvas(
+        modifier = Modifier.size(markSize),
+    ) {
+        val outerRadius = min(size.width, size.height) / 2f - 1.dp.toPx()
+        if (outerRadius <= 0f) return@Canvas
+
+        val center = Offset(size.width / 2f, size.height / 2f)
+        val strokeWidth = (outerRadius - 2.dp.toPx()).coerceAtLeast(1.dp.toPx()) * 0.5f
+        val arcRadius = outerRadius - strokeWidth / 2f
+        val topLeft = Offset(center.x - arcRadius, center.y - arcRadius)
+        val arcSize = Size(arcRadius * 2f, arcRadius * 2f)
+        val style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
+        val controlColor = themeColors.control
+        val encourageColor = themeColors.encourage
+
+        fun pointAt(angleDegrees: Float): Offset {
+            val radians = Math.toRadians(angleDegrees.toDouble())
+            return Offset(
+                x = center.x + cos(radians).toFloat() * arcRadius,
+                y = center.y + sin(radians).toFloat() * arcRadius,
+            )
+        }
+
+        if (controlCompleted) {
+            drawArc(
+                color = controlColor,
+                startAngle = 45f,
+                sweepAngle = 180f,
+                useCenter = false,
+                topLeft = topLeft,
+                size = arcSize,
+                style = style,
+            )
+        }
+        if (encourageCompleted) {
+            drawArc(
+                color = encourageColor,
+                startAngle = 225f,
+                sweepAngle = 180f,
+                useCenter = false,
+                topLeft = topLeft,
+                size = arcSize,
+                style = style,
+            )
+        }
+        if (controlCompleted && encourageCompleted) {
+            drawCircle(
+                color = controlColor,
+                radius = strokeWidth / 2f,
+                center = pointAt(45f),
+            )
+        }
+    }
+}
+
+private fun checkInWeekdayLabels(): List<String> =
+    listOf(
+        AppText.t("checkin_weekday_mon"),
+        AppText.t("checkin_weekday_tue"),
+        AppText.t("checkin_weekday_wed"),
+        AppText.t("checkin_weekday_thu"),
+        AppText.t("checkin_weekday_fri"),
+        AppText.t("checkin_weekday_sat"),
+        AppText.t("checkin_weekday_sun"),
+    )
+
+@Composable
+fun MeStatItem(
+    value: String,
+    label: String,
+    color: Color,
+    onClick: (() -> Unit)? = null,
+) {
+    val themeColors = LocalThemeColors.current
+    Column(
+        modifier =
+            if (onClick != null) {
+                Modifier
+                    .clip(RoundedCornerShape(14.dp))
+                    .clickable(onClick = onClick)
+                    .padding(horizontal = 8.dp, vertical = 6.dp)
+            } else {
+                Modifier.padding(horizontal = 8.dp, vertical = 6.dp)
+            },
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
         Text(value, style = MaterialTheme.typography.headlineSmall, color = color)
-        Text(label, style = MaterialTheme.typography.labelSmall, color = themeColors.inkMuted)
+        Row(
+            horizontalArrangement = Arrangement.spacedBy(2.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(label, style = MaterialTheme.typography.labelSmall, color = themeColors.inkMuted)
+            if (onClick != null) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    contentDescription = null,
+                    modifier = Modifier.size(14.dp),
+                    tint = themeColors.inkMuted,
+                )
+            }
+        }
     }
 }
 

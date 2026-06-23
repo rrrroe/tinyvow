@@ -27,40 +27,83 @@
     <string name="battery_card_enabled">Current status: battery optimization exemption is granted, so background reminders and statistics should be more stable.</string>
     <string name="battery_card_disabled">Purpose: reduce reminder delays caused by screen-off or battery saving policies.\n\nNote: this is optional. Core features still work without it. After tapping the button, the system decides whether Tiny Vow can be added to the battery allowlist.</string>
     <string name="battery_card_action">View battery allowlist details</string>
-    <string name="reminder_card_title">[Optional] Vow limit notification</string>
-    <string name="reminder_card_enabled">Why enable this: when your vow limit is reached, Tiny Vow can also post a local notification.\n\nCurrent status: enabled. Local notifications can be received.</string>
-    <string name="reminder_card_disabled">Why enable this: besides the full-screen reminder, this permission lets Tiny Vow show your daily vow status in the notification shade.\n\nHow to enable: tap the button below -&gt; grant notification permission.</string>
+    <string name="reminder_card_title">[Optional] Notification reminders</string>
+    <string name="reminder_card_enabled">Besides the full-screen reminder, Tiny Vow can also leave you a local reminder in the notification shade.\n\nCurrent status: on. Notification reminders can arrive normally.</string>
+    <string name="reminder_card_disabled">If you do not want to rely on the full-screen reminder alone, Tiny Vow can also give you a gentler nudge in the notification shade.\n\nHow to enable: tap the button below and allow notification permission in system settings.</string>
     <string name="reminder_card_action">Enable notifications</string>
-    <string name="notification_channel_name">Daily vow reminders</string>
-    <string name="notification_channel_desc">Sends reminders when a target app is near or at today\'s vow limit.</string>
-    <string name="notification_limit_title">%1$s reached today\'s vow limit</string>
-    <string name="notification_limit_body">You are %1$s past the vow. Return to Tiny Vow to review today\'s plan.</string>
-    <string name="notification_control_remaining_title">%1$s is almost at its vow limit</string>
-    <string name="notification_control_remaining_body">%1$s left before the reminder appears. Take a pause while it is still easy.</string>
-    <string name="notification_encourage_incomplete_title">%1$s focus check-in</string>
-    <string name="notification_encourage_incomplete_body">Still waiting for: %1$s.</string>
-    <string name="notification_encourage_incomplete_body_more">Still waiting for: %1$s, and %2$d more.</string>
+    <string name="notification_channel_name">Tiny Vow reminders</string>
+    <string name="notification_channel_desc">Local reminders for approaching limits, going over, and focus progress.</string>
+    <string name="notification_limit_title">%1$s is over today\'s vow</string>
+    <string name="notification_limit_body">You are %1$s over. Pause here, then open Tiny Vow to decide what comes next.</string>
+    <string name="notification_control_remaining_title">%1$s is close to today\'s vow</string>
+    <string name="notification_control_remaining_body">About %1$s left. Stopping now will feel much easier.</string>
+    <string name="notification_encourage_incomplete_title">%1$s gentle reminder</string>
+    <string name="notification_encourage_incomplete_body">You still wanted to leave a little time for %1$s today.</string>
+    <string name="notification_encourage_incomplete_body_more">You still wanted to leave a little time for %1$s today, plus %2$d more.</string>
+    <string name="notification_encourage_completed_title">Today\'s focus landed</string>
+    <string name="notification_encourage_completed_body">%1$s has enough time for today. That time was not wasted.</string>
+    <string-array name="notification_encourage_progress_messages">
+        <item>Give %2$s %1$d more minutes and today will feel about right.</item>
+        <item>%2$s is only %1$d minutes away now.</item>
+        <item>Let the next %1$d minutes belong to %2$s.</item>
+        <item>Another %1$d minutes will settle %2$s for today.</item>
+        <item>If you start now, %2$s can reach the line in %1$d minutes.</item>
+        <item>Add these %1$d minutes to %2$s and today will feel steadier.</item>
+        <item>Stay with %2$s for %1$d more minutes and that may be enough.</item>
+        <item>%2$s only needs a little more time: %1$d minutes.</item>
+        <item>Keep this %1$d minutes for %2$s first.</item>
+        <item>In %1$d minutes, %2$s can have enough for today.</item>
+        <item>%2$s only needs these last %1$d minutes. No rush.</item>
+        <item>A small %1$d minute block is enough to lift %2$s forward.</item>
+        <item>It is not too late to give %2$s %1$d more minutes.</item>
+        <item>Hold onto these %1$d minutes and %2$s will feel settled today.</item>
+        <item>Stay focused for %1$d minutes and you can put %2$s down for today.</item>
+        <item>%1$d minutes is enough to move %2$s a little further.</item>
+        <item>There are still %1$d minutes you wanted to leave for %2$s today.</item>
+        <item>Keep %2$s company for %1$d minutes and the day will feel more complete.</item>
+        <item>%2$s just needs %1$d more minutes to feel about right today.</item>
+        <item>Add %1$d minutes and %2$s will land more gently.</item>
+        <item>Use these %1$d minutes to carry %2$s a little further.</item>
+        <item>%2$s is %1$d minutes away from being easy to set down today.</item>
+        <item>Stay with %2$s for %1$d minutes and it should reach the line today.</item>
+        <item>The next %1$d minutes fit %2$s well.</item>
+        <item>%2$s is in the last short stretch: %1$d minutes to go.</item>
+        <item>Save these %1$d minutes for %2$s and today will feel steadier.</item>
+        <item>%2$s will be in place today after %1$d more minutes.</item>
+        <item>Today, %2$s still needs about %1$d minutes. Just a little more.</item>
+        <item>Give %2$s %1$d more minutes and it should be enough for today.</item>
+        <item>Let %2$s have the next %1$d minutes, then see how it feels.</item>
+    </string-array>
     <string name="notification_settings_title">Notification reminders</string>
-    <string name="notification_settings_description">Manage local reminders for vow limits and unfinished focus items. Delivery may be delayed by system background rules.</string>
+    <string name="day_boundary_settings_title">Day boundary</string>
+    <string name="day_boundary_settings_description">Choose when a new Tiny Vow day starts. Usage, points, reports, and history all follow this boundary.</string>
+    <string name="day_boundary_settings_section">Daily split time</string>
+    <string name="day_boundary_settings_default_hint">The default daily boundary is 00:00. Free users can keep the default. Pro can choose 00:00 to 06:00. If Pro expires, your existing boundary stays in place but cannot be changed.</string>
+    <string name="day_boundary_settings_default_value_hint">Default setting. A new Tiny Vow day starts at midnight.</string>
+    <string name="day_boundary_settings_hour_detail">The day switches at %1$02d:00. Time before that still counts toward the previous day.</string>
+    <string name="day_boundary_settings_save">Save boundary</string>
+    <string name="day_boundary_settings_saved">Day boundary saved.</string>
+    <string name="day_boundary_hour_value">%1$02d:00</string>
+    <string name="notification_settings_description">Set the pace of local reminders here. Delivery can still be delayed by system background rules.</string>
     <string name="notification_settings_general">General</string>
     <string name="notification_settings_enabled">On</string>
     <string name="notification_settings_disabled">Off</string>
-    <string name="notification_settings_enabled_title">Send local reminders</string>
-    <string name="notification_settings_enabled_body">Tiny Vow checks locally and posts reminders only on this device.</string>
+    <string name="notification_settings_enabled_title">Send local notification reminders</string>
+    <string name="notification_settings_enabled_body">Reminders are created and sent only on this device. Your usage data is not uploaded for them.</string>
     <string name="notification_settings_permission_title">Notification permission</string>
-    <string name="notification_settings_permission_needed">Permission is needed before reminders can appear.</string>
-    <string name="notification_settings_schedule">Reminder schedule</string>
-    <string name="notification_settings_control_threshold">Vow remaining reminder minutes</string>
+    <string name="notification_settings_permission_needed">Turn on notification permission before reminders can show up.</string>
+    <string name="notification_settings_schedule">Reminder rhythm</string>
+    <string name="notification_settings_control_threshold">Remind me when this much time is left</string>
     <string name="notification_settings_control_threshold_hint">Enter 1-120 minutes.</string>
     <string name="notification_settings_encourage_times">Focus reminder times</string>
-    <string name="notification_settings_encourage_times_hint">Add or tap a time to choose when unfinished focus items should remind you.</string>
+    <string name="notification_settings_encourage_times_hint">Add or tap a time to choose when unfinished focus items should nudge you.</string>
     <string name="notification_settings_add_encourage_time">Add time</string>
     <string name="notification_settings_delete_time">Delete reminder time</string>
     <string name="notification_settings_time_picker_title">Choose reminder time</string>
     <string name="notification_settings_pro_locked">Custom reminder timing requires Tiny Vow Pro.</string>
-    <string name="notification_settings_save_control_threshold">Save vow reminder</string>
-    <string name="notification_settings_save_encourage_times">Save focus times</string>
-    <string name="notification_settings_saved">Reminder settings saved</string>
+    <string name="notification_settings_save_control_threshold">Save remaining-time reminder</string>
+    <string name="notification_settings_save_encourage_times">Save reminder times</string>
+    <string name="notification_settings_saved">Notification reminders saved</string>
     <string name="list_separator">, </string>
     <string name="accessibility_service_label">Tiny Vow Reminder Service</string>
     <string name="accessibility_service_desc">Detects whether target apps have reached the daily vow limit and shows a reminder page when they enter the foreground.</string>
@@ -301,7 +344,7 @@
     <string name="group_completed">Completed</string>
     <string name="group_configured_target">Configured target</string>
     <string name="group_daily">Daily</string>
-    <string name="group_daily_target">Daily target</string>
+    <string name="group_daily_target">Daily</string>
     <string name="group_delete">Delete</string>
     <string name="group_delete_group">Delete vow</string>
     <string name="group_history">History</string>
@@ -316,7 +359,7 @@
     <string name="group_minutes">minutes</string>
     <string name="group_minutes_2">Minutes</string>
     <string name="group_monthly">Monthly</string>
-    <string name="group_monthly_target">Monthly target</string>
+    <string name="group_monthly_target">Monthly</string>
     <string name="group_move_down">Move down</string>
     <string name="group_move_up">Move up</string>
     <string name="group_no_archived_history_yet">No archived history yet</string>
@@ -459,8 +502,13 @@
     <string name="group_value_times">%1$s times</string>
     <string name="group_value_value_value_min">%1$s %2$s/%3$s min</string>
     <string name="group_value_value_value_min_value_pts_min">%1$s %2$s/%3$s min · %4$s pts/min</string>
+    <string name="group_usage_value_limit_minutes">%1$s/%2$s min</string>
+    <string name="group_usage_value_limit_minutes_with_period">%1$s/%2$s min/%3$s</string>
+    <string name="group_daily_short">day</string>
+    <string name="group_weekly_short">week</string>
+    <string name="group_monthly_short">month</string>
     <string name="group_weekly">Weekly</string>
-    <string name="group_weekly_target">Weekly target</string>
+    <string name="group_weekly_target">Weekly</string>
     <string name="home_accessibility_blocking">Accessibility reminders</string>
     <string name="home_accessibility_service_disclosure">Accessibility service disclosure</string>
     <string name="home_account_and_local_data_deleted">Account and local data deleted</string>
@@ -477,10 +525,11 @@
     <string name="home_battle_control_over_value">%1$d m over</string>
     <string name="home_battle_action_hint_separator"> · </string>
     <string name="home_battle_group_name_separator"> · </string>
+    <string name="home_battle_group_name_more">%1$s +%2$d</string>
     <string name="home_battle_control_subtitle">Tap to check the limit</string>
-    <string name="home_battle_control_groups_half">%1$s past halfway · keep going for a %2$d-day streak</string>
-    <string name="home_battle_control_groups_near_limit">%1$s near the limit · keep going for a %2$d-day streak</string>
-    <string name="home_battle_control_groups_depleted">%1$s used up · keep going for a %2$d-day streak</string>
+    <string name="home_battle_control_groups_half">%1$s past halfway · streak %2$d days</string>
+    <string name="home_battle_control_groups_near_limit">%1$s near the line · streak %2$d days</string>
+    <string name="home_battle_control_groups_depleted">%1$s used up · streak %2$d days</string>
     <string name="home_battle_control_groups_over_limit">%1$s over limit</string>
     <string name="home_battle_control_steady_title">In control</string>
     <string name="home_battle_control_streak_title">Keep going to extend the streak to %1$d days</string>
@@ -492,35 +541,35 @@
     <string name="home_battle_control_title_over">Over limit now</string>
     <string name="home_battle_control_title_steady">Still in hand</string>
     <string name="home_battle_control_title_watch">Worth watching</string>
-    <string name="home_battle_create_subtitle">Start with one tiny promise</string>
+    <string name="home_battle_create_subtitle">Start one vow</string>
     <string name="home_battle_create_title">Set today up</string>
     <string name="home_battle_create_value">Create</string>
     <string name="home_battle_encourage_done_value">Done</string>
     <string name="home_battle_encourage_left_value">%1$d m to go</string>
     <string name="home_battle_encourage_subtitle">Tap to finish the target</string>
     <string name="home_battle_encourage_perfect_title">Perfect!</string>
-    <string name="home_battle_encourage_perfect_subtitle">All focus groups are complete</string>
+    <string name="home_battle_encourage_perfect_subtitle">All focus done</string>
     <string name="home_battle_encourage_title_done">Target finished</string>
     <string name="home_battle_encourage_title_points">About +%1$s pts waiting</string>
     <string name="home_battle_group_usage_format">%1$s · %2$d/%3$d m</string>
-    <string name="home_battle_anomaly_clear_subtitle">No group is close to over limit right now</string>
+    <string name="home_battle_anomaly_clear_subtitle">Nothing near the limit</string>
     <string name="home_battle_anomaly_clear_value">Clear</string>
     <string name="home_battle_anomaly_title">Overlimit risk</string>
     <string name="home_battle_shortcut_done_title">Shortcut cleared</string>
-    <string name="home_battle_shortcut_complete_group_subtitle">Complete %1$s · streak +%2$d</string>
+    <string name="home_battle_shortcut_complete_group_subtitle">Complete %1$s · streak %2$d days</string>
     <string name="home_battle_shortcut_points_title">Press on!</string>
-    <string name="home_battle_shortcut_points_subtitle">Complete %1$s · +%2$s pts</string>
+    <string name="home_battle_shortcut_points_subtitle">%1$s · +%2$s pts · streak %3$d days</string>
     <string name="home_battle_shortcut_streak_title">Keep at it!</string>
     <string name="home_battle_shortcut_streak_subtitle">%1$s · can extend to %2$d days</string>
     <string name="home_battle_shortcut_title">Today shortcut</string>
-    <string name="home_battle_permission_accessibility_body">Enable blocking reliability</string>
+    <string name="home_battle_permission_accessibility_body">Enable accessibility</string>
     <string name="home_battle_permission_accessibility_title">Blocking is off</string>
     <string name="home_battle_permission_fix">Fix</string>
-    <string name="home_battle_permission_usage_body">Allow local usage reading</string>
+    <string name="home_battle_permission_usage_body">Enable usage access</string>
     <string name="home_battle_permission_usage_title">Usage is hidden</string>
     <string name="home_battle_reward_active_effects">%1$d reward effects active</string>
     <string name="home_battle_reward_points_value">%1$s pts</string>
-    <string name="home_battle_reward_subtitle">Tap to redeem or stock up</string>
+    <string name="home_battle_reward_subtitle">Redeem rewards</string>
     <string name="home_battle_reward_today_points">Today earned +%1$s pts</string>
     <string name="home_battle_reward_title">Reward store</string>
     <string name="home_battery_allowlist">Battery allowlist</string>
@@ -771,8 +820,8 @@
     <string name="home_mmm_d_eeee">MMM d, EEEE</string>
     <string name="home_no_mail_app_was_found_email_address_copied">No mail app was found. Email address copied.</string>
     <string name="home_not_enabled">Not enabled</string>
-    <string name="home_notification_permission_disclosure">Notification permission disclosure</string>
-    <string name="home_notifications_enabled">Notifications enabled</string>
+    <string name="home_notification_permission_disclosure">Why notifications are used</string>
+    <string name="home_notifications_enabled">Notification reminders enabled</string>
     <string name="home_notifications_permission">Notifications permission</string>
     <string name="home_report">Report</string>
     <string name="home_review">Review</string>
@@ -790,7 +839,7 @@
     <string name="home_tiny_vow_local_data_export">Tiny Vow local data export</string>
     <string name="home_tiny_vow_reads_local_app_usage_data_including">Tiny Vow reads local app usage data, including package names, app names, foreground usage time, launch counts, sessions, and night usage statistics. This powers daily vows, reports, points, and reminders. By default, the data stays on this device and is not uploaded automatically.</string>
     <string name="home_tiny_vow_s_accessibility_service_only_listens_for">Tiny Vow\'s accessibility service only listens for window changes. It checks whether you entered an app with a configured vow and shows Tiny Vow\'s reminder page when the vow limit is reached. It does not read screen text, click on your behalf, or change system settings.</string>
-    <string name="home_tiny_vow_uses_notification_permission_to_send_local">Tiny Vow uses notification permission to send local vow reminders and vow limit alerts, so you can see today\'s plan in time. Denying notifications does not affect core features such as vows, stats, or vow reminders.</string>
+    <string name="home_tiny_vow_uses_notification_permission_to_send_local">Tiny Vow uses notification permission only for local reminders, like getting close to a vow, going over it, or still having focus time left today. Turning notifications off does not affect core features like vows, stats, or blocking.</string>
     <string name="home_today_usage_time">Today usage time</string>
     <string name="home_usage_access">Usage access</string>
     <string name="home_usage_access_disclosure">Usage access disclosure</string>
@@ -987,7 +1036,7 @@
     <string name="me_edit_theme">Edit theme</string>
     <string name="me_encourage">Focus</string>
     <string name="me_encourage_color">Focus color</string>
-    <string name="me_export_files_are_created_only_in_local_cache">Export files are created first in local cache. Recoverable backups include local settings and the WeRead API key when one is saved, so keep backup files private. You can then save a copy to a local file or send it through the system share sheet. Clearing local data deletes vows, history, points, rewards, inventory, themes, local account and activation state, imported reward icons, share cache, permission prompts, and saved WeRead key material on this device.</string>
+    <string name="me_export_files_are_created_only_in_local_cache">Export files are created first in local cache. Recoverable backups include local settings and app data, but never include the WeRead API key in plain text. After restoring a backup, enter the WeRead key again in Special Apps if you use reading-time sync. You can save a copy locally or send it through the system share sheet. Clearing local data deletes vows, history, points, rewards, inventory, themes, local account and activation state, imported reward icons, share cache, permission prompts, and saved WeRead key material on this device.</string>
     <string name="me_export_recoverable_backup">Export recoverable backup</string>
     <string name="me_export_backup_choose_method">Choose export method</string>
     <string name="me_export_backup_choose_method_body">Save the backup as a file on this device, or share it with another app.</string>
@@ -997,7 +1046,7 @@
     <string name="me_import_local_backup">Import local backup</string>
     <string name="me_import_local_backup_failed">Import local backup failed</string>
     <string name="me_import_local_backup_success_restart">Backup restored. Tiny Vow will restart now.</string>
-    <string name="me_backup_restore_weread_key_note">This backup could not restore the WeRead key. Enter the key again in Special Apps if needed.</string>
+    <string name="me_backup_restore_weread_key_note">This backup does not include the WeRead key. Enter the key again in Special Apps if needed.</string>
     <string name="me_free_version">Free version</string>
     <string name="me_google_sign_in_is_not_configured">Google sign-in is not configured</string>
     <string name="me_google_account_badge">Google account</string>
@@ -1021,6 +1070,7 @@
     <string name="me_payment_pending">Payment pending</string>
     <string name="me_permission_settings">Permission settings</string>
     <string name="me_preferences_section">Preferences</string>
+    <string name="me_feature_settings_section">Feature settings</string>
     <string name="me_features_and_access_section">Features and access</string>
     <string name="me_profile_avatar">Profile avatar</string>
     <string name="me_profile_choose_avatar">Choose avatar</string>
@@ -1047,6 +1097,42 @@
     <string name="me_unlocked">Enabled</string>
     <string name="me_app_version">App version</string>
     <string name="me_app_usage_days">App usage days</string>
+    <string name="checkin_overview_title">Daily check-in</string>
+    <string name="checkin_overview_description">Collect today\'s buffer card and review this month\'s check-ins, focus wins, and kept vows.</string>
+    <string name="checkin_today_title">Today\'s check-in</string>
+    <string name="checkin_today_action">Check in and get a buffer card</string>
+    <string name="checkin_today_checked">Checked in today</string>
+    <string name="checkin_today_available_description">Check in once today to add 1 temporary buffer card to your items.</string>
+    <string name="checkin_today_done_description">Today\'s card is already in your items. Come back tomorrow for another one.</string>
+    <string name="checkin_success_buffer_card">Checked in. You received 1 temporary buffer card.</string>
+    <string name="checkin_already_done">Already checked in today.</string>
+    <string name="checkin_reward_unavailable">Could not prepare the buffer card. Please try again.</string>
+    <string name="checkin_view">View check-in</string>
+    <string name="checkin_report_card_title">Start today with a small buffer</string>
+    <string name="checkin_report_card_description">After reading yesterday\'s report, check in to receive 1 temporary buffer card for an over-limit reminder.</string>
+    <string name="checkin_report_action">Check in today</string>
+    <string name="checkin_month_title">%1$d/%2$d</string>
+    <string name="checkin_calendar_heading">Monthly calendar</string>
+    <string name="checkin_year_label">%1$d</string>
+    <string name="checkin_previous_year">Previous year</string>
+    <string name="checkin_next_year">Next year</string>
+    <string name="checkin_month_chip">M%1$d</string>
+    <string name="checkin_month_signed_count">%1$d checked in</string>
+    <string name="checkin_stat_signed_days">Check-ins</string>
+    <string name="checkin_stat_buffer_cards">Buffer cards</string>
+    <string name="checkin_stat_encourage_done">Focus days</string>
+    <string name="checkin_stat_control_kept">Kept-vow days</string>
+    <string name="checkin_badge_signed">Check-in</string>
+    <string name="checkin_badge_encourage">Focus done</string>
+    <string name="checkin_badge_control">All vows kept</string>
+    <string name="checkin_archived_badges_hint">Focus and vow badges use archived days only. Today shows check-in status first, then gains its behavior badges after tomorrow\'s archive.</string>
+    <string name="checkin_weekday_mon">Mon</string>
+    <string name="checkin_weekday_tue">Tue</string>
+    <string name="checkin_weekday_wed">Wed</string>
+    <string name="checkin_weekday_thu">Thu</string>
+    <string name="checkin_weekday_fri">Fri</string>
+    <string name="checkin_weekday_sat">Sat</string>
+    <string name="checkin_weekday_sun">Sun</string>
     <string name="me_current_version">Current version</string>
     <string name="me_changelog">Changelog</string>
     <string name="me_changelog_empty">No changelog is listed for this build yet.</string>
@@ -1142,6 +1228,8 @@
     <string name="stats_all_day">All day</string>
     <string name="stats_app_duration">App duration</string>
     <string name="stats_app_usage">App usage</string>
+    <string name="stats_archive_date_chip">yyyy/M/d EEEE</string>
+    <string name="stats_archive_date_full">yyyy MMM d</string>
     <string name="stats_archive_trend">Archive trend</string>
     <string name="stats_archived_reports_waiting">Waiting for archived reports</string>
     <string name="stats_archived_daily_reports">Archived daily reports</string>
@@ -1149,7 +1237,7 @@
     <string name="stats_autumn">Autumn</string>
     <string name="stats_average">Average</string>
     <string name="stats_average_session">Average session</string>
-    <string name="stats_behavior_analysis">Overview</string>
+    <string name="stats_behavior_analysis">Key data</string>
     <string name="stats_bonus_points_value">Bonus %1$s</string>
     <string name="stats_bonus_time_value">Bonus +%1$s</string>
     <string name="stats_behavior_structure_description">Shows how total use contains invested and vow time, with saved time outside it.</string>
@@ -1201,6 +1289,7 @@
     <string name="stats_score_metric_today_column">Today data</string>
     <string name="stats_score_metric_yesterday_column">Yesterday data</string>
     <string name="stats_score_metric_empty_value">--</string>
+    <string name="stats_score_metric_pending_value">Archiving...</string>
     <string name="stats_score_metric_completion_groups_label">Completed groups</string>
     <string name="stats_score_metric_remaining_limit_label">Remaining allowance</string>
     <string name="stats_score_metric_encourage_usage_label">Gains-group usage</string>
@@ -1264,9 +1353,10 @@
     <string name="stats_heavy_use">Heavy use</string>
     <string name="stats_hours">Hours</string>
     <string name="stats_next_day">Next day</string>
+    <string name="stats_next">Next</string>
     <string name="stats_refresh_day">Refresh this day</string>
     <string name="stats_previous_day">Previous day</string>
-    <string name="stats_label">Label</string>
+    <string name="stats_label">Best vow</string>
     <string name="stats_label_10">Label</string>
     <string name="stats_label_11">Label</string>
     <string name="stats_label_12">Label</string>
@@ -1347,16 +1437,20 @@
     <string name="stats_share">Share</string>
     <string name="stats_share_preview">Share preview</string>
     <string name="stats_share_report">Share report</string>
+    <string name="stats_share_download_slogan">Return time to yourself</string>
+    <string name="stats_share_download_tagline">Tiny Vow · Return time to yourself</string>
     <string name="stats_share_modules">Share modules</string>
-    <string name="stats_share_module_apps">Apps</string>
-    <string name="stats_share_module_behavior">Behavior</string>
-    <string name="stats_share_module_focus">Vows</string>
-    <string name="stats_share_module_heatmap">Heatmap</string>
+    <string name="stats_share_module_apps">App focus</string>
+    <string name="stats_share_module_behavior">Key data</string>
+    <string name="stats_share_module_behavior_overview">Behavior overview</string>
+    <string name="stats_share_module_daily_insights">Daily insights</string>
+    <string name="stats_share_module_focus">Vows and gains</string>
+    <string name="stats_share_module_heatmap">Heat distribution</string>
     <string name="stats_share_module_insights">Insights</string>
-    <string name="stats_share_module_overview">Overview</string>
-    <string name="stats_share_module_rhythm">Rhythm</string>
-    <string name="stats_share_module_structure">Structure</string>
-    <string name="stats_share_module_trend">Trend</string>
+    <string name="stats_share_module_overview">Key data</string>
+    <string name="stats_share_module_rhythm">Rhythm profile</string>
+    <string name="stats_share_module_structure">Structure breakdown</string>
+    <string name="stats_share_module_trend">Archive trend</string>
     <string name="stats_share_slogan">One archived day, one clearer rhythm.</string>
     <string name="stats_shows_only_the_10_most_used_apps_in">Shows only the 10 most-used apps in the current archive window.</string>
     <string name="stats_show_all_groups">Show all %1$d vows</string>
@@ -1366,10 +1460,10 @@
     <string name="stats_status_not_started">Not started</string>
     <string name="stats_status_tight">Tight</string>
     <string name="stats_summer">Summer</string>
-    <string name="stats_tab_daily">Daily</string>
-    <string name="stats_tab_weekly">Weekly</string>
-    <string name="stats_tab_monthly">Monthly</string>
-    <string name="stats_tab_yearly">Yearly</string>
+    <string name="stats_tab_daily">Daily report</string>
+    <string name="stats_tab_weekly">Weekly report</string>
+    <string name="stats_tab_monthly">Monthly report</string>
+    <string name="stats_tab_yearly">Yearly report</string>
     <string name="stats_sun">Sun</string>
     <string name="stats_target_complete">Target complete</string>
     <string name="stats_target_value">Target %1$s</string>
@@ -1383,8 +1477,17 @@
     <string name="stats_this_window_does_not_have_enough_samples_yet">This window does not have enough samples yet, so comparison is hidden for now.</string>
     <string name="stats_thu">Thu</string>
     <string name="stats_time_heatmap">Time heatmap</string>
-    <string name="stats_time_flow">Time flow</string>
-    <string name="stats_time_flow_description">See how usage spreads across the day, including peaks and night use.</string>
+    <string name="stats_time_flow">Rhythm profile</string>
+    <string name="stats_time_flow_description">A shareable 24-hour signature with peaks, night use, top apps, and vow/gain balance.</string>
+    <string name="stats_rhythm_strip_title">24-hour rhythm strip</string>
+    <string name="stats_rhythm_active_hours">%1$d active hours</string>
+    <string name="stats_rhythm_legend_peak">Peak</string>
+    <string name="stats_rhythm_legend_night">Night</string>
+    <string name="stats_rhythm_top_app">Top app</string>
+    <string name="stats_rhythm_no_top_app">No top app</string>
+    <string name="stats_rhythm_vow_mix">Vows / gains</string>
+    <string name="stats_rhythm_vow_mix_value">Vows %1$s · gains %2$s</string>
+    <string name="stats_other_apps">Other apps</string>
     <string name="stats_time_saved">Time saved</string>
     <string name="stats_today_usage">Usage</string>
     <string name="stats_times">times</string>
@@ -1457,6 +1560,7 @@
     <string name="stats_winter">Winter</string>
     <string name="stats_within_target_value_left">Within target · %1$s left</string>
     <string name="stats_yearly_report">Yearly report</string>
+    <string name="stats_year_value">%1$d</string>
     <string name="stats_yearly_trend">Yearly trend</string>
     <string name="stats_you_completed_an_honest_review_today">Honest review completed</string>
     <string name="stats_you_saved_a_bit_of_momentum_today">A bit of momentum saved</string>
@@ -1473,7 +1577,7 @@
     <string name="support_what_if_subscription_purchase_fails">What if subscription purchase fails?</string>
     <string name="support_what_should_i_include_in_feedback">What should I include in feedback?</string>
     <string name="support_why_do_permissions_need_to_be_enabled_manually">Why do permissions need to be enabled manually?</string>
-    <string name="support_you_can_export_or_clear_local_data_inside">You can export or clear local data inside the app. Recoverable backups include local settings and the WeRead API key when one is saved, and leave the device only when you save or share them. Clearing local data removes vows, usage history, points, rewards, themes, local account and activation state, imported reward icons, share cache, and saved WeRead key material on this device.</string>
+    <string name="support_you_can_export_or_clear_local_data_inside">You can export or clear local data inside the app. Recoverable backups include local settings and app data, but not the WeRead API key in plain text. They leave the device only when you save or share them. Clearing local data removes vows, usage history, points, rewards, themes, local account and activation state, imported reward icons, share cache, and saved WeRead key material on this device.</string>
     <string name="support_you_can_send_email_for_bugs_suggestions_subscription">You can send email for bugs, suggestions, subscription issues, or account requests.</string>
     <string name="theme_brightness_value">Brightness: %1$s%%</string>
     <string name="theme_color_code">Color code</string>
@@ -1498,7 +1602,7 @@
     <string name="group_app_count_label">Apps</string>
     <string name="group_app_count_value">%1$s apps</string>
     <string name="group_completed_days_label">Completed days</string>
-    <string name="group_daily_limit_label">Daily vow</string>
+    <string name="group_daily_limit_label">Daily</string>
     <string name="group_delete_confirmation">This vow configuration will be removed. Continue?</string>
     <string name="group_duration_hours_minutes_compact">%1$s h %2$s min</string>
     <string name="group_duration_less_than_one_minute">&lt;1 min</string>
@@ -1506,13 +1610,13 @@
     <string name="group_history_days_label">History days</string>
     <string name="group_limit_type">Vow type</string>
     <string name="group_loading_app_list">Loading app list...</string>
-    <string name="group_monthly_limit_label">Monthly vow</string>
+    <string name="group_monthly_limit_label">Monthly</string>
     <string name="group_name_placeholder">Vow name (for example: games, video)</string>
     <string name="group_points_value">%1$s pts</string>
     <string name="group_record_days_label">Recorded days</string>
     <string name="group_target_limit_label">Goal / limit</string>
     <string name="group_week_total_label">This week total</string>
-    <string name="group_weekly_limit_label">Weekly vow</string>
+    <string name="group_weekly_limit_label">Weekly</string>
     <string name="home_bronze_achievement_unlocked">🥉 Bronze achievement earned</string>
     <string name="home_diamond_achievement_unlocked">💫 Diamond achievement earned</string>
     <string name="home_enable_usage_access_to_show_groups">Enable usage access to show vows and live stats</string>
@@ -1622,6 +1726,19 @@
     <string name="stats_app_focus">App focus</string>
     <string name="stats_app_focus_days_usage">%1$d days · %2$s</string>
     <string name="stats_app_focus_description">Keep the dominant apps visible without losing the burst and stability signals.</string>
+    <string name="stats_app_focus_daily_profile_description">Turn today\'s top apps into a compact fingerprint: share, launches, peak time, and night use.</string>
+    <string name="stats_app_focus_share_format">%1$d%% · %2$s</string>
+    <string name="stats_app_focus_total_usage">Top-app usage</string>
+    <string name="stats_app_focus_opens_sessions">Opens / sessions</string>
+    <string name="stats_app_focus_opens_sessions_value">%1$d / %2$d</string>
+    <string name="stats_app_focus_night_usage">Night share</string>
+    <string name="stats_app_focus_peak_hour_format">%1$d:00</string>
+    <string name="stats_app_focus_row_detail">%1$s · %2$d opens · peak %3$s</string>
+    <string name="stats_app_focus_row_metrics_compact">%1$s · %2$d · %3$d%% · %4$s</string>
+    <string name="stats_app_focus_metric_minutes">Time</string>
+    <string name="stats_app_focus_metric_opens">Opens</string>
+    <string name="stats_app_focus_metric_night">Night</string>
+    <string name="stats_app_focus_metric_peak">Peak</string>
     <string name="stats_best_day">Best day</string>
     <string name="stats_best_month">Best month</string>
     <string name="stats_burst_app">Burst app</string>
@@ -1642,6 +1759,7 @@
     <string name="stats_weekday_average">Weekday avg</string>
     <string name="stats_weekend_average">Weekend avg</string>
     <string name="stats_week_number">Week %1$d</string>
+    <string name="stats_week_number_compact">%1$d Week%2$d</string>
     <string name="stats_weekly_battle_message">One week of rhythm, pressure, and kept-vow progress at a glance.</string>
     <string name="stats_weekly_battle_title">Weekly battleboard</string>
     <string name="stats_weekly_rhythm_curve">Weekly rhythm curve</string>
@@ -1684,6 +1802,7 @@
     <string name="pro_upsell_group_limit">Free users can create 2 vows and 2 focus items. Pro opens more vows and focus items.</string>
     <string name="pro_upsell_member_theme">This member theme is available with Tiny Vow Pro.</string>
     <string name="pro_upsell_notification_customization">Free users use the default reminder timing. Pro opens custom remaining-time reminders and focus reminder times.</string>
+    <string name="pro_upsell_day_boundary_customization">Free users use the default 00:00 day boundary. Pro can choose any daily split time from 00:00 to 06:00.</string>
     <string name="pro_upsell_subscription_button">I know, view subscription</string>
     <string name="pro_upsell_title">Tiny Vow Pro</string>
     <string name="pro_view_benefits">View Pro benefits</string>

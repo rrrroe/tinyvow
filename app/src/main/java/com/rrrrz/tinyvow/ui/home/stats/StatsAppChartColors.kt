@@ -2,12 +2,14 @@
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.util.LruCache
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.graphics.drawable.toBitmap
 import com.rrrrz.tinyvow.ui.theme.LocalReportColors
@@ -40,11 +42,15 @@ internal fun extractAppChartColor(
     packageName: String,
     fallback: Color,
 ): Color {
-    val drawable = runCatching { context.packageManager.getApplicationIcon(packageName) }.getOrNull()
+    val cacheKey = "$packageName:${fallback.toArgb()}"
+    chartColorCache.get(cacheKey)?.let { return Color(it) }
+    val drawable = AppVisualCache.getIcon(context, packageName)
         ?: return fallback
     val bitmap = drawable.toBitmap(width = 128, height = 128, config = Bitmap.Config.ARGB_8888)
     val rgb = extractDominantBitmapColor(bitmap) ?: return fallback
-    return normalizeChartColor(Color(rgb), fallback)
+    val normalized = normalizeChartColor(Color(rgb), fallback)
+    chartColorCache.put(cacheKey, normalized.toArgb())
+    return normalized
 }
 
 private fun extractDominantBitmapColor(bitmap: Bitmap): Int? {
@@ -106,4 +112,6 @@ internal fun fallbackChartColor(index: Int): Color {
     val colors = LocalReportColors.current.appChartPalette
     return colors[index % colors.size]
 }
+
+private val chartColorCache = LruCache<String, Int>(192)
 

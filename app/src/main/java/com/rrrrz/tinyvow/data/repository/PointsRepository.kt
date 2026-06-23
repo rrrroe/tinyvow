@@ -93,7 +93,11 @@ class PointsRepository(
         if (deltaPoints == 0.0) return
 
         withContext(Dispatchers.IO) {
-            val ledgerDate = ArchiveDateUtils.formatDate(ArchiveDateUtils.localDateAt(occurredAt, zoneId))
+            val dayStartHour = preferences.getDayBoundaryHourOnce()
+            val ledgerDate =
+                ArchiveDateUtils.formatDate(
+                    ArchiveDateUtils.localDateAt(occurredAt, zoneId, dayStartHour),
+                )
             pointLedgerDao.insert(
                 PointLedgerEntity(
                     id = UUID.randomUUID().toString(),

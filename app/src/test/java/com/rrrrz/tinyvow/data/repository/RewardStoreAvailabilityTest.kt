@@ -106,6 +106,26 @@ class RewardStoreAvailabilityTest {
         assertEquals(RewardStoreUnavailableReason.INSUFFICIENT_POINTS, availability.unavailableReason)
     }
 
+    @Test
+    fun isRewardVisibleInStore_hidesEmergencyUnlockBufferCard() {
+        assertFalse(
+            isRewardVisibleInStore(
+                reward(
+                    rewardType = RewardType.EMERGENCY_UNLOCK,
+                    builtinKey = EMERGENCY_UNLOCK_REWARD_KEY,
+                ),
+            ),
+        )
+        assertTrue(
+            isRewardVisibleInStore(
+                reward(
+                    rewardType = RewardType.TIME_ADD,
+                    builtinKey = "reward_time_add_15",
+                ),
+            ),
+        )
+    }
+
     private fun storeItem(
         rewardType: RewardType,
         stock: Int = -1,
@@ -114,19 +134,27 @@ class RewardStoreAvailabilityTest {
         builtinKey: String? = null,
     ): RewardStoreItem =
         RewardStoreItem(
-            reward = RedemptionEntity(
-                id = "reward-${rewardType.name}",
-                title = rewardType.name,
-                description = rewardType.name,
-                builtinKey = builtinKey,
-                pointCost = pointCost,
-                rewardType = rewardType,
-                stock = stock,
-                createdAt = 1L,
-                updatedAt = 1L,
-            ),
+            reward = reward(rewardType = rewardType, stock = stock, pointCost = pointCost, builtinKey = builtinKey),
             ownedQuantity = 0,
             isManualUse = true,
             purchasedTodayCount = purchasedTodayCount,
+        )
+
+    private fun reward(
+        rewardType: RewardType,
+        stock: Int = -1,
+        pointCost: Int = 10,
+        builtinKey: String? = null,
+    ): RedemptionEntity =
+        RedemptionEntity(
+            id = "reward-${rewardType.name}-${builtinKey.orEmpty()}",
+            title = rewardType.name,
+            description = rewardType.name,
+            builtinKey = builtinKey,
+            pointCost = pointCost,
+            rewardType = rewardType,
+            stock = stock,
+            createdAt = 1L,
+            updatedAt = 1L,
         )
 }

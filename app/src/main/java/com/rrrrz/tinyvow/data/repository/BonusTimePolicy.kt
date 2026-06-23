@@ -1,24 +1,21 @@
 package com.rrrrz.tinyvow.data.repository
 
 import com.rrrrz.tinyvow.data.db.LimitPeriod
-import java.util.Calendar
-import java.util.TimeZone
+import com.rrrrz.tinyvow.data.time.BusinessDay
+import java.time.ZoneId
 
 internal fun calculateBonusExpiryTime(
     createdAt: Long,
     period: LimitPeriod,
-    timeZone: TimeZone = TimeZone.getDefault(),
+    zoneId: ZoneId = ZoneId.systemDefault(),
+    dayStartHour: Int = BusinessDay.cachedStartHour(),
 ): Long {
-    return Calendar.getInstance(timeZone).apply {
-        timeInMillis = createdAt
+    val startDate = BusinessDay.dateAt(createdAt, zoneId, dayStartHour)
+    val endDate =
         when (period) {
-            LimitPeriod.DAILY -> Unit
-            LimitPeriod.WEEKLY -> add(Calendar.DAY_OF_YEAR, 6)
-            LimitPeriod.MONTHLY -> set(Calendar.DAY_OF_MONTH, getActualMaximum(Calendar.DAY_OF_MONTH))
+            LimitPeriod.DAILY -> startDate
+            LimitPeriod.WEEKLY -> startDate.plusDays(6)
+            LimitPeriod.MONTHLY -> startDate.withDayOfMonth(startDate.lengthOfMonth())
         }
-        set(Calendar.HOUR_OF_DAY, 23)
-        set(Calendar.MINUTE, 59)
-        set(Calendar.SECOND, 59)
-        set(Calendar.MILLISECOND, 999)
-    }.timeInMillis
+    return BusinessDay.endOfDayMillis(endDate, zoneId, dayStartHour)
 }

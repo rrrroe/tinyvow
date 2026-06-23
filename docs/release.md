@@ -2,6 +2,8 @@
 
 本项目的两个商店渠道默认共用同一套基础版本号。
 
+上架前剩余优化、人工验证和审核材料收口见 `docs/prelaunch-optimization.md`。本文件只记录固定发布流程和产物规则。
+
 ## 版本来源
 
 - 在根目录 `gradle.properties` 修改 `TINYVOW_VERSION_NAME` 和 `TINYVOW_VERSION_CODE`。
@@ -15,43 +17,61 @@
 - 国内版包名：`com.rrrrz.tinyvow.cn`。
 - Google Play 发布包：`:app:bundleGooglePlayRelease`。
 - 日常本地调试包：`:app:assembleDefaultDebug`，当前指向 `chinaDebug`。
-- 建议产物命名：`tinyvow-{channel}-{versionName}-vc{versionCode}-{buildType}.{apk|aab}`。
+- 标准归档目录：根目录 `dist/`。
+- 标准产物命名：`tinyvow-{channel}-{versionName}-vc{versionCode}-release.{apk|aab}`。
+- 当前渠道名固定使用 `cn` 和 `googleplay`。
+- 国内版可直接运行 `.\tools\package-china-release.ps1`。
+- 需要同时整理国内 APK 和 Google Play AAB 时运行 `.\tools\package-release-artifacts.ps1`。
+
+## 签名注意事项
+
+- 国内版 release 签名默认从 `release-signing/tinyvow-cn-release.properties` 读取，字段必须包含 `storeFile`、`storePassword`、`keyAlias`、`keyPassword`。
+- `release-signing/` 下的 keystore、properties 和密码材料只保留在本机，不提交仓库，不放进 `dist/`，也不要贴进文档或更新日志。
+- `.\tools\package-china-release.ps1` 会检查签名配置、keystore 是否存在，并在最终 APK 生成后执行 `apksigner verify`；国内版正式包优先走这个脚本，不要手动跳过校验。
+- 需要同时整理两个渠道时，`.\tools\package-release-artifacts.ps1` 会先调用国内版签名流程，再复制 Google Play AAB 到 `dist/`。
+- 如果某个渠道已经对外分发或上传过，不要随意更换 release keystore；换签名前先确认升级链路和外部平台要求。
+- Google Play AAB 在本地按 release 流程归档，最终上架签名与交付规则仍以 Play Console / Play App Signing 配置为准。
 
 ## 发布检查
 
-1. 确定本次发布版本，并更新 `gradle.properties`。
-2. 在 `CHANGELOG.md` 增加对应版本记录。
-3. 运行国内 debug 单测：
+1. 先按 `docs/prelaunch-optimization.md` 判断本次属于调试包、国内发布、Google Play 提审还是双渠道归档。
+2. 确定本次发布版本，并更新 `gradle.properties`。
+3. 在 `CHANGELOG.md` 增加对应版本记录。
+4. 运行国内 debug 单测：
 
    ```powershell
    .\gradlew.bat testChinaDebugUnitTest
    ```
 
-4. 运行默认 debug 构建：
+5. 运行默认 debug 构建：
 
    ```powershell
    .\gradlew.bat assembleDefaultDebug
    ```
 
-5. 需要本机安装验证时运行：
+6. 需要本机安装验证时运行：
 
    ```powershell
    .\gradlew.bat installDefaultDebug
    ```
 
-6. Google Play 发布前构建 release bundle：
+7. 需要同时归档国内 APK 和 Google Play AAB 时运行：
 
    ```powershell
-   .\gradlew.bat :app:bundleGooglePlayRelease
+   .\tools\package-release-artifacts.ps1
    ```
 
-7. 国内版发布前构建 release APK：
+8. 只发布国内版时构建 release APK：
 
    ```powershell
-   .\gradlew.bat :app:assembleChinaRelease
+   .\tools\package-china-release.ps1
    ```
 
-8. 打开应用“我的”页，确认版本信息行：
+9. 检查 `dist/` 里的最终归档名：
+   - `tinyvow-cn-{versionName}-vc{versionCode}-release.apk`
+   - `tinyvow-googleplay-{versionName}-vc{versionCode}-release.aab`
+
+10. 打开应用“我的”页，确认版本信息行：
    - 国内版：`{TINYVOW_VERSION_NAME}-cn`、构建 `{TINYVOW_VERSION_CODE}`、国内版。
    - Google Play 版：`{TINYVOW_VERSION_NAME}`、构建 `{TINYVOW_VERSION_CODE}`、Google Play。
 

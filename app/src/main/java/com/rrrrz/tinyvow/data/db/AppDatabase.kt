@@ -29,8 +29,9 @@ import com.rrrrz.tinyvow.data.db.migration.AppDatabaseMigrations
         SpecialAppUsageSnapshotEntity::class,
         SpecialAppPointCreditEntity::class,
         ProtectionEventEntity::class,
+        DailyCheckInEntity::class,
     ],
-    version = 22,
+    version = 23,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -55,6 +56,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun specialAppUsageSnapshotDao(): SpecialAppUsageSnapshotDao
     abstract fun specialAppPointCreditDao(): SpecialAppPointCreditDao
     abstract fun protectionEventDao(): ProtectionEventDao
+    abstract fun dailyCheckInDao(): DailyCheckInDao
 
     companion object {
         const val DEFAULT_DATABASE_NAME = "tinyvow_database"
@@ -72,6 +74,7 @@ abstract class AppDatabase : RoomDatabase() {
         val MIGRATION_19_20 = AppDatabaseMigrations.MIGRATION_19_20
         val MIGRATION_20_21 = AppDatabaseMigrations.MIGRATION_20_21
         val MIGRATION_21_22 = AppDatabaseMigrations.MIGRATION_21_22
+        val MIGRATION_22_23 = AppDatabaseMigrations.MIGRATION_22_23
 
         @Volatile
         private var INSTANCE: AppDatabase? = null

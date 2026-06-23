@@ -179,7 +179,7 @@ fun HistoryRoute(
                             }
                         },
                     ) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = AppText.t("group_back"))
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(

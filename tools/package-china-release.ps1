@@ -1,12 +1,41 @@
 param(
     [string]$SigningProperties = "release-signing\tinyvow-cn-release.properties",
-    [string]$OutputApk = "dist\tinyvow-cn-release.apk"
+    [string]$OutputApk = ""
 )
 
 $ErrorActionPreference = "Stop"
 
 $root = Split-Path -Parent $PSScriptRoot
 Set-Location $root
+
+function Get-GradleProperty {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Name
+    )
+
+    $gradleProperties = Join-Path $root "gradle.properties"
+    if (!(Test-Path $gradleProperties)) {
+        throw "gradle.properties not found: $gradleProperties"
+    }
+
+    $line = Get-Content -Encoding UTF8 $gradleProperties |
+        Where-Object { $_ -match "^\s*$([regex]::Escape($Name))=(.*)$" } |
+        Select-Object -First 1
+    if ($null -eq $line) {
+        throw "Missing $Name in gradle.properties"
+    }
+
+    return ($line -replace "^\s*$([regex]::Escape($Name))=", "").Trim()
+}
+
+$versionName = Get-GradleProperty -Name "TINYVOW_VERSION_NAME"
+$versionCode = Get-GradleProperty -Name "TINYVOW_VERSION_CODE"
+$chinaVersionName = "$versionName-cn"
+
+if ([string]::IsNullOrWhiteSpace($OutputApk)) {
+    $OutputApk = "dist\tinyvow-cn-$versionName-vc$versionCode-release.apk"
+}
 
 $sdkDir = $env:ANDROID_HOME
 if ([string]::IsNullOrWhiteSpace($sdkDir)) {
@@ -122,10 +151,10 @@ foreach ($forbidden in @(
 if ($badgingText -notmatch "name='com\.rrrrz\.tinyvow\.cn'") {
     throw "Unexpected package name in APK."
 }
-if ($badgingText -notmatch "versionCode='2'") {
+if ($badgingText -notmatch "versionCode='$([regex]::Escape($versionCode))'") {
     throw "Unexpected versionCode in APK."
 }
-if ($badgingText -notmatch "versionName='1\.0\.1-cn'") {
+if ($badgingText -notmatch "versionName='$([regex]::Escape($chinaVersionName))'") {
     throw "Unexpected versionName in APK."
 }
 

@@ -24,10 +24,10 @@ interface CrossRefDao {
     fun getAllValidCrossRefsSync(): List<GroupAppCrossRef>
 
     /** 同步查询：给定 packageName，返回它所属的所有 groupId */
-    @Query("SELECT group_id FROM group_app_cross_ref WHERE package_name = :packageName AND is_deleted = 0")
+    @Query("SELECT DISTINCT group_id FROM group_app_cross_ref WHERE package_name = :packageName AND is_deleted = 0")
     fun getGroupIdsForPackageSync(packageName: String): List<String>
 
     /** 同步查询：给定 groupId，返回组内所有 packageName */
-    @Query("SELECT package_name FROM group_app_cross_ref WHERE group_id = :groupId AND is_deleted = 0")
+    @Query("SELECT DISTINCT package_name FROM group_app_cross_ref WHERE group_id = :groupId AND is_deleted = 0")
     fun getPackageNamesForGroupSync(groupId: String): List<String>
 }

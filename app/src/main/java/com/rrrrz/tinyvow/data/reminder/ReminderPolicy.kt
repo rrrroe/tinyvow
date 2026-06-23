@@ -12,6 +12,11 @@ data class NotificationReminderSettings(
     val encourageReminderTimesMinutes: List<Int>,
 )
 
+data class EncourageProgressReminder(
+    val groupName: String,
+    val remainingMinutes: Int,
+)
+
 object ReminderPolicy {
     fun effectiveSettings(
         enabled: Boolean,
@@ -59,6 +64,15 @@ object ReminderPolicy {
         sentKeys: Set<String>,
     ): Boolean = incompleteCount > 0 && reminderKey !in sentKeys
 
+    fun encourageRemainingMinutes(
+        usedMillis: Long,
+        targetMinutes: Int,
+    ): Int {
+        val remainingMillis = targetMinutes.coerceAtLeast(0) * MILLIS_PER_MINUTE - usedMillis
+        if (remainingMillis <= 0L) return 0
+        return ((remainingMillis + MILLIS_PER_MINUTE - 1L) / MILLIS_PER_MINUTE).toInt().coerceAtLeast(1)
+    }
+
     fun controlReminderKey(
         date: LocalDate,
         period: LimitPeriod,
@@ -69,6 +83,11 @@ object ReminderPolicy {
         date: LocalDate,
         timeMinutes: Int,
     ): String = "encourage:${date}:${timeMinutes.coerceIn(0, MINUTES_PER_DAY - 1)}"
+
+    fun encourageCompletedReminderKey(
+        date: LocalDate,
+        groupId: String,
+    ): String = "encourage_completed:$date:$groupId"
 
     fun nextEncourageDelayMillis(
         nowMillis: Long,

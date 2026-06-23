@@ -114,6 +114,7 @@ import com.rrrrz.tinyvow.data.repository.DailyArchiveRepository
 import com.rrrrz.tinyvow.data.repository.parseRewardPayload
 import com.rrrrz.tinyvow.data.pro.ProFeatureGate
 import com.rrrrz.tinyvow.data.supermode.GuardedAction
+import com.rrrrz.tinyvow.data.time.BusinessDay
 import com.rrrrz.tinyvow.data.usage.MergedUsageRepository
 import com.rrrrz.tinyvow.ui.theme.LocalThemeColors
 import com.rrrrz.tinyvow.ui.theme.TinyVowButton
@@ -446,9 +447,9 @@ private fun GroupCard(
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val themeColors = LocalThemeColors.current
     val periodLabel = when (groupData.group.limitPeriod) {
-        LimitPeriod.DAILY -> AppText.t("group_daily")
-        LimitPeriod.WEEKLY -> AppText.t("group_weekly")
-        LimitPeriod.MONTHLY -> AppText.t("group_monthly")
+        LimitPeriod.DAILY -> AppText.t("group_daily_short")
+        LimitPeriod.WEEKLY -> AppText.t("group_weekly_short")
+        LimitPeriod.MONTHLY -> AppText.t("group_monthly_short")
     }
     val rewardSummary = remember(activeEffects, groupData.group.type) {
         groupActiveRewardSummary(activeEffects, groupData.group.type)
@@ -460,7 +461,7 @@ private fun GroupCard(
         } else {
             groupData.group.limitMinutes
         }
-    val detailText = AppText.t("group_value_value_value_min", periodLabel, usedMinutes, effectiveLimitMinutes)
+    val detailText = AppText.t("group_usage_value_limit_minutes_with_period", usedMinutes, effectiveLimitMinutes, periodLabel)
     val rawProgress = if (effectiveLimitMinutes > 0) {
         usedMinutes.toFloat() / effectiveLimitMinutes.toFloat()
     } else {
@@ -497,13 +498,13 @@ private fun GroupCard(
             .fillMaxWidth()
             .clip(RoundedCornerShape(TinyVowRadius.Control))
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
-            .padding(vertical = 10.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+            .padding(vertical = 7.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(11.dp),
+            horizontalArrangement = Arrangement.spacedBy(9.dp),
         ) {
             Box(modifier = Modifier.width(iconWidth.dp), contentAlignment = Alignment.CenterStart) {
                 iconPackages.forEachIndexed { index, packageName ->
@@ -512,7 +513,7 @@ private fun GroupCard(
                     LaunchedEffect(packageName, icon) {
                         if (icon != null) return@LaunchedEffect
                         val loadedIcon = withContext(Dispatchers.IO) {
-                            runCatching { context.packageManager.getApplicationIcon(packageName) }.getOrNull()
+                            AppVisualCache.getIcon(context, packageName)
                         }
                         if (loadedIcon != null) {
                             onAppIconLoaded(packageName, loadedIcon)
@@ -548,12 +549,12 @@ private fun GroupCard(
             Column(
                 modifier = Modifier.weight(1f),
                 horizontalAlignment = Alignment.End,
-                verticalArrangement = Arrangement.spacedBy(5.dp),
+                verticalArrangement = Arrangement.spacedBy(3.dp),
             ) {
                 Text(
                     text = groupData.group.name,
                     modifier = Modifier.fillMaxWidth(),
-                    style = MaterialTheme.typography.bodyMedium.copy(fontSize = 13.5.sp),
+                    style = MaterialTheme.typography.bodyMedium.copy(fontSize = 14.5.sp),
                     fontWeight = FontWeight.SemiBold,
                     color = themeColors.ink,
                     textAlign = TextAlign.End,
@@ -563,7 +564,7 @@ private fun GroupCard(
                 Text(
                     text = detailText,
                     modifier = Modifier.fillMaxWidth(),
-                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.8.sp),
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 11.4.sp),
                     color = themeColors.inkMuted,
                     textAlign = TextAlign.End,
                     maxLines = 1,
@@ -774,7 +775,8 @@ private fun GroupDetailDialog(
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val themeColors = LocalThemeColors.current
     val zoneId = remember { ZoneId.systemDefault() }
-    val today = remember { LocalDate.now(zoneId) }
+    val dayStartHour = BusinessDay.cachedStartHour()
+    val today = remember(dayStartHour) { BusinessDay.today(zoneId, dayStartHour) }
     val weekStart = remember(today) { today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)) }
     val historyFrom = remember(today) { today.minusDays(29).toString() }
     val historyTo = remember(today) { today.toString() }
@@ -799,14 +801,14 @@ private fun GroupDetailDialog(
         themeColors.encourage.toArgb()
     }
 
-    LaunchedEffect(groupData.group.id, groupData.packageNames) {
+    LaunchedEffect(groupData.group.id, groupData.packageNames, today, dayStartHour) {
         val usageRepository = MergedUsageRepository(context)
         weekUsageByDay = withContext(Dispatchers.IO) {
             val result = mutableListOf<Pair<LocalDate, Long>>()
             var date = weekStart
             while (!date.isAfter(today)) {
-                val start = date.atStartOfDay(zoneId).toInstant().toEpochMilli()
-                val end = date.plusDays(1).atStartOfDay(zoneId).toInstant().toEpochMilli()
+                val start = BusinessDay.startOfDayMillis(date, zoneId, dayStartHour)
+                val end = BusinessDay.nextDayStartMillis(date, zoneId, dayStartHour)
                 val usage = usageRepository.getUsageStats(start, end, groupData.group.type)
                 result += date to groupData.packageNames.sumOf { usage[it] ?: 0L }
                 date = date.plusDays(1)
@@ -1235,21 +1237,11 @@ private fun GroupEditDialog(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    Surface(
+                    CompactFilterButton(
+                        text = if (showOnlyUsedInSevenDays) AppText.t("group_active_last_7_days") else AppText.t("group_all_apps"),
+                        selected = showOnlyUsedInSevenDays,
                         onClick = { showOnlyUsedInSevenDays = !showOnlyUsedInSevenDays },
-                        modifier = Modifier.height(CompactFieldHeight),
-                        shape = CompactFieldShape,
-                        color = if (showOnlyUsedInSevenDays) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                        border = if (showOnlyUsedInSevenDays) null else BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-                    ) {
-                        Text(
-                            text = if (showOnlyUsedInSevenDays) AppText.t("group_active_last_7_days") else AppText.t("group_all_apps"),
-                            style = MaterialTheme.typography.labelLarge,
-                            fontWeight = FontWeight.SemiBold,
-                            color = if (showOnlyUsedInSevenDays) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
-                        )
-                    }
+                    )
                     SearchField(
                         value = searchQuery,
                         onValueChange = { searchQuery = it },
@@ -1423,21 +1415,88 @@ private fun SearchField(
 @Composable
 private fun FieldContainer(
     modifier: Modifier = Modifier,
+    selected: Boolean = false,
+    onClick: (() -> Unit)? = null,
+    fillWidth: Boolean = true,
     content: @Composable RowScope.() -> Unit
 ) {
-    Surface(
-        modifier = modifier.height(CompactFieldHeight),
-        shape = CompactFieldShape,
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
-    ) {
+    val containerColor =
+        if (selected) {
+            MaterialTheme.colorScheme.primaryContainer
+        } else {
+            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+        }
+    val border =
+        if (selected) {
+            BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.28f))
+        } else {
+            BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+        }
+    val contentColor =
+        if (selected) {
+            MaterialTheme.colorScheme.onPrimaryContainer
+        } else {
+            MaterialTheme.colorScheme.onSurfaceVariant
+        }
+
+    val fieldContent: @Composable () -> Unit = {
         Row(
             modifier = Modifier
-                .fillMaxSize()
+                .fillMaxHeight()
+                .then(if (fillWidth) Modifier.fillMaxWidth() else Modifier)
                 .padding(horizontal = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             content = content
+        )
+    }
+
+    if (onClick != null) {
+        Surface(
+            onClick = onClick,
+            modifier = modifier.height(CompactFieldHeight),
+            shape = CompactFieldShape,
+            color = containerColor,
+            contentColor = contentColor,
+            border = border,
+            content = fieldContent,
+        )
+    } else {
+        Surface(
+            modifier = modifier.height(CompactFieldHeight),
+            shape = CompactFieldShape,
+            color = containerColor,
+            contentColor = contentColor,
+            border = border,
+            content = fieldContent,
+        )
+    }
+}
+
+@Composable
+private fun CompactFilterButton(
+    text: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    FieldContainer(
+        modifier = modifier,
+        selected = selected,
+        onClick = onClick,
+        fillWidth = false,
+    ) {
+        Text(
+            text = text,
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.SemiBold,
+            color = if (selected) {
+                MaterialTheme.colorScheme.onPrimaryContainer
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            },
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
     }
 }
@@ -1455,7 +1514,7 @@ private fun AppSelectionItem(
     LaunchedEffect(app.packageName, icon) {
         if (icon != null) return@LaunchedEffect
         val loadedIcon = withContext(Dispatchers.IO) {
-            runCatching { context.packageManager.getApplicationIcon(app.packageName) }.getOrNull()
+            AppVisualCache.getIcon(context, app.packageName)
         }
         if (loadedIcon != null) {
             onIconLoaded(app.packageName, loadedIcon)
@@ -1528,9 +1587,8 @@ private fun CompactPeriodSelector(
 
     Box(modifier = modifier) {
         FieldContainer(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable { expanded = true }
+            modifier = Modifier.fillMaxWidth(),
+            onClick = { expanded = true },
         ) {
             Text(
                 text = label,

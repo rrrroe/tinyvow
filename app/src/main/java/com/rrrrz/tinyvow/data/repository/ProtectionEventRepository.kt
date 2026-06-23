@@ -3,6 +3,7 @@ package com.rrrrz.tinyvow.data.repository
 import com.rrrrz.tinyvow.data.db.AppDatabase
 import com.rrrrz.tinyvow.data.db.ProtectionEventEntity
 import com.rrrrz.tinyvow.data.db.ProtectionEventType
+import com.rrrrz.tinyvow.data.time.BusinessDay
 import java.time.ZoneId
 import java.util.UUID
 import kotlinx.coroutines.Dispatchers
@@ -13,6 +14,7 @@ import org.json.JSONArray
 class ProtectionEventRepository(
     private val database: AppDatabase,
     private val zoneId: ZoneId = ZoneId.systemDefault(),
+    private val dayStartHourProvider: suspend () -> Int = { BusinessDay.cachedStartHour() },
 ) {
     private val dao = database.protectionEventDao()
 
@@ -33,11 +35,12 @@ class ProtectionEventRepository(
         protectionEnabled: Boolean,
         occurredAt: Long = System.currentTimeMillis(),
     ) = withContext(Dispatchers.IO) {
+        val dayStartHour = dayStartHourProvider()
         dao.insert(
             ProtectionEventEntity(
                 id = UUID.randomUUID().toString(),
                 eventType = eventType,
-                eventDate = ArchiveDateUtils.formatDate(ArchiveDateUtils.localDateAt(occurredAt, zoneId)),
+                eventDate = ArchiveDateUtils.formatDate(ArchiveDateUtils.localDateAt(occurredAt, zoneId, dayStartHour)),
                 occurredAt = occurredAt,
                 titleKey = titleKey,
                 messageKey = messageKey,

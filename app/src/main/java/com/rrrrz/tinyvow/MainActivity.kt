@@ -23,6 +23,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import com.rrrrz.tinyvow.data.settings.ManagedAppPreferences
 import com.rrrrz.tinyvow.data.reminder.ReminderScheduler
+import com.rrrrz.tinyvow.data.time.BusinessDay
 import com.rrrrz.tinyvow.i18n.AppLanguage
 import com.rrrrz.tinyvow.i18n.AppText
 import com.rrrrz.tinyvow.ui.theme.DefaultThemeSeed
@@ -46,7 +47,13 @@ class MainActivity : ComponentActivity() {
             val prefs = remember { ManagedAppPreferences(this@MainActivity) }
             val selectedThemeId by prefs.selectedThemeId.collectAsStateWithLifecycle(initialValue = DefaultThemeSeed.id, lifecycle = lifecycle)
             val customThemes by prefs.customThemes.collectAsStateWithLifecycle(initialValue = emptyList(), lifecycle = lifecycle)
-            var themeDate by remember { mutableStateOf(LocalDate.now()) }
+            val dayBoundaryHour by prefs.dayBoundaryHour.collectAsStateWithLifecycle(
+                initialValue = BusinessDay.DEFAULT_START_HOUR,
+                lifecycle = lifecycle,
+            )
+            var themeDate by remember(dayBoundaryHour) {
+                mutableStateOf(BusinessDay.today(ZoneId.systemDefault(), dayBoundaryHour))
+            }
             val selectedAppLanguageFlow = remember(prefs) {
                 prefs.selectedAppLanguage.map<AppLanguage, AppLanguage?> { it }
             }
@@ -59,15 +66,17 @@ class MainActivity : ComponentActivity() {
                 resolveThemeSeed(selectedThemeId, customThemes, themeDate)
             }
 
-            LaunchedEffect(Unit) {
+            LaunchedEffect(dayBoundaryHour) {
+                BusinessDay.updateCachedStartHour(dayBoundaryHour)
+                themeDate = BusinessDay.today(ZoneId.systemDefault(), dayBoundaryHour)
+            }
+
+            LaunchedEffect(dayBoundaryHour, themeDate) {
                 while (true) {
-                    val nextMidnightMillis = themeDate
-                        .plusDays(1)
-                        .atStartOfDay(ZoneId.systemDefault())
-                        .toInstant()
-                        .toEpochMilli()
+                    val nextMidnightMillis =
+                        BusinessDay.nextDayStartMillis(themeDate, ZoneId.systemDefault(), dayBoundaryHour)
                     delay((nextMidnightMillis - System.currentTimeMillis()).coerceAtLeast(60_000L))
-                    themeDate = LocalDate.now()
+                    themeDate = BusinessDay.today(ZoneId.systemDefault(), dayBoundaryHour)
                 }
             }
 

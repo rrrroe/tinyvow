@@ -5,6 +5,8 @@ import com.rrrrz.tinyvow.data.db.GroupType
 import com.rrrrz.tinyvow.data.db.LimitPeriod
 import com.rrrrz.tinyvow.data.special.SpecialAppUsageRepository
 import com.rrrrz.tinyvow.data.special.WEREAD_PACKAGE_NAME
+import com.rrrrz.tinyvow.data.time.BusinessDay
+import java.time.ZoneId
 
 interface SpecialUsageOverride {
     suspend fun isReplacementEnabled(groupType: GroupType?): Boolean
@@ -59,8 +61,14 @@ class MergedUsageRepository(
         return base
     }
 
-    override suspend fun getYesterdayUsageMillis(packageName: String): Long =
-        baseRepository.getYesterdayUsageMillis(packageName)
+    override suspend fun getYesterdayUsageMillis(packageName: String): Long {
+        val zoneId = ZoneId.systemDefault()
+        val dayStartHour = BusinessDay.cachedStartHour()
+        val yesterday = BusinessDay.today(zoneId, dayStartHour).minusDays(1)
+        val yesterdayStart = BusinessDay.startOfDayMillis(yesterday, zoneId, dayStartHour)
+        val todayStart = BusinessDay.nextDayStartMillis(yesterday, zoneId, dayStartHour)
+        return getUsageStats(yesterdayStart, todayStart, null)[packageName] ?: 0L
+    }
 
     override suspend fun getUsageMillis(packageName: String, startMillis: Long, endMillis: Long): Long =
         getUsageStats(startMillis, endMillis)[packageName] ?: 0L

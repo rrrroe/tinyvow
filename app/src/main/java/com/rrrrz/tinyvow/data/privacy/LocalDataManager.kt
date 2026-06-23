@@ -13,6 +13,8 @@ import com.rrrrz.tinyvow.data.special.WeReadApiKeyStore
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
+import java.io.InputStream
+import java.io.OutputStream
 import java.util.UUID
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
@@ -66,7 +68,7 @@ class LocalDataManager(
         val tempOutput = File(shareDir, "tinyvow-local-backup-$exportedAtMillis.tmp")
 
         val sources = collectBackupSources()
-        val secrets = createSecretBackupJson()
+        val requiresWeReadKeyReentry = WeReadApiKeyStore(context, preferences).hasKey()
         ZipOutputStream(FileOutputStream(tempOutput)).use { zip ->
             zip.putNextEntry(ZipEntry(BACKUP_MANIFEST_ENTRY))
             zip.write(
@@ -77,16 +79,11 @@ class LocalDataManager(
                     .put("appVersionName", BuildConfig.VERSION_NAME)
                     .put("appVersionCode", BuildConfig.VERSION_CODE)
                     .put("exportedAtMillis", exportedAtMillis)
-                    .put("hasWeReadApiKey", secrets != null)
+                    .put("requiresWeReadKeyReentry", requiresWeReadKeyReentry)
                     .toString()
                     .toByteArray(Charsets.UTF_8),
             )
             zip.closeEntry()
-            secrets?.let {
-                zip.putNextEntry(ZipEntry(BACKUP_SECRETS_ENTRY))
-                zip.write(it.toString().toByteArray(Charsets.UTF_8))
-                zip.closeEntry()
-            }
             sources.forEach { source ->
                 zip.putNextEntry(ZipEntry(source.pathInZip))
                 FileInputStream(source.file).use { it.copyTo(zip) }
@@ -104,16 +101,20 @@ class LocalDataManager(
         val unzipRoot = File(tempRoot, "unzipped").apply { mkdirs() }
         try {
             context.contentResolver.openInputStream(sourceUri)?.use { input ->
-                FileOutputStream(zipFile).use { output -> input.copyTo(output) }
+                FileOutputStream(zipFile).use { output ->
+                    copyWithLimit(
+                        input = input,
+                        output = output,
+                        maxBytes = MAX_BACKUP_ZIP_BYTES,
+                    )
+                }
             } ?: error("Unable to open backup file.")
-            unzipBackup(zipFile, unzipRoot)
+            extractBackupZipWithLimits(zipFile, unzipRoot)
             val manifest = validateBackupManifest(File(unzipRoot, BACKUP_MANIFEST_ENTRY))
-            val secrets = readSecretBackupJson(unzipRoot)
             restoreFromUnzippedFiles(unzipRoot)
-            restoreSecrets(secrets)
             LocalBackupRestoreResult(
                 requiresRestart = true,
-                warnings = if (manifest.optBoolean("hasWeReadApiKey") && secrets == null) {
+                warnings = if (manifest.optBoolean("requiresWeReadKeyReentry")) {
                     listOf("weread_key_material_not_restored")
                 } else {
                     emptyList()
@@ -134,28 +135,6 @@ class LocalDataManager(
             WeReadApiKeyStore.deleteStoredKeyMaterial()
             WeReadApiKeyStore.deletePendingRestoredKey(context)
             File(context.cacheDir, "share").deleteRecursively()
-        }
-    }
-
-    private suspend fun createSecretBackupJson(): JSONObject? {
-        val wereadApiKey = WeReadApiKeyStore(context, preferences).get()?.takeIf { it.isNotBlank() }
-        if (wereadApiKey == null) return null
-        return JSONObject()
-            .put("schemaVersion", BACKUP_SCHEMA_VERSION)
-            .put("wereadApiKey", wereadApiKey)
-    }
-
-    private fun readSecretBackupJson(unzipRoot: File): JSONObject? {
-        val file = File(unzipRoot, BACKUP_SECRETS_ENTRY)
-        if (!file.isFile) return null
-        return JSONObject(file.readText(Charsets.UTF_8))
-            .takeIf { it.optInt("schemaVersion") == BACKUP_SCHEMA_VERSION }
-    }
-
-    private suspend fun restoreSecrets(secrets: JSONObject?) {
-        val wereadApiKey = secrets?.optString("wereadApiKey")?.takeIf { it.isNotBlank() }
-        if (wereadApiKey != null) {
-            WeReadApiKeyStore.stageRestoredKey(context, wereadApiKey)
         }
     }
 
@@ -201,8 +180,11 @@ class LocalDataManager(
     private fun validateBackupManifest(file: File): JSONObject {
         require(file.isFile) { "Backup manifest is missing." }
         val json = JSONObject(file.readText(Charsets.UTF_8))
-        require(json.optString("format") == BACKUP_FORMAT) { "Unsupported backup format." }
-        require(json.optInt("schemaVersion") == BACKUP_SCHEMA_VERSION) { "Unsupported backup schema version." }
+        validateBackupManifestFields(
+            manifest = json,
+            expectedPackageName = context.packageName,
+            currentVersionCode = BuildConfig.VERSION_CODE,
+        )
         return json
     }
 
@@ -262,28 +244,6 @@ class LocalDataManager(
         }
     }
 
-    private fun unzipBackup(zipFile: File, destination: File) {
-        ZipInputStream(FileInputStream(zipFile)).use { zip ->
-            var entry = zip.nextEntry
-            while (entry != null) {
-                val target = File(destination, entry.name)
-                val targetPath = target.canonicalPath
-                val rootPath = destination.canonicalPath + File.separator
-                require(targetPath.startsWith(rootPath) || targetPath == destination.canonicalPath) {
-                    "Invalid backup entry path."
-                }
-                if (entry.isDirectory) {
-                    target.mkdirs()
-                } else {
-                    target.parentFile?.mkdirs()
-                    FileOutputStream(target).use { zip.copyTo(it) }
-                }
-                zip.closeEntry()
-                entry = zip.nextEntry
-            }
-        }
-    }
-
     private fun countRows(tableName: String): Int {
         database.query(SimpleSQLiteQuery("SELECT COUNT(*) FROM `$tableName`")).use { cursor ->
             return if (cursor.moveToFirst()) cursor.getInt(0) else 0
@@ -306,11 +266,14 @@ class LocalDataManager(
         val file: File,
     )
 
-    private companion object {
+    companion object {
         const val BACKUP_FORMAT = "tinyvow-local-backup"
         const val BACKUP_SCHEMA_VERSION = 1
         const val BACKUP_MANIFEST_ENTRY = "backup_manifest.json"
-        const val BACKUP_SECRETS_ENTRY = "backup_secrets.json"
+        const val MAX_BACKUP_ZIP_BYTES = 256L * 1024L * 1024L
+        const val MAX_BACKUP_UNZIPPED_BYTES = 256L * 1024L * 1024L
+        const val MAX_BACKUP_ENTRY_BYTES = 64L * 1024L * 1024L
+        const val MAX_BACKUP_ZIP_ENTRIES = 5_000
 
         fun dataStoreFile(context: Context, name: String): File =
             File(File(context.filesDir.parentFile, "datastore"), "$name.preferences_pb")
@@ -329,7 +292,7 @@ class LocalDataManager(
                 else -> file.walkTopDown().filter { it.isFile }.sumOf { it.length() }
             }
 
-        val localDataTables = listOf(
+        private val localDataTables = listOf(
             LocalDataTable("app_groups", "User-created control and encouragement groups."),
             LocalDataTable("group_app_cross_ref", "Package names assigned to user-created groups."),
             LocalDataTable("daily_archives", "Daily aggregate usage, saved time, points, and redemption counts."),
@@ -351,12 +314,13 @@ class LocalDataManager(
             LocalDataTable("special_app_usage_snapshots", "Local cached special app WeRead reading durations and phone foreground durations."),
             LocalDataTable("special_app_point_credits", "Local counters preventing duplicate special app point credits."),
             LocalDataTable("protection_events", "Local Super Mode and guarded-setting change history."),
+            LocalDataTable("daily_checkins", "Local daily check-in records and granted buffer item references."),
         )
 
-        val localDataStores = listOf(
+        private val localDataStores = listOf(
             LocalDataStore(
                 "managed_app_preferences",
-                "DataStore preferences for points, theme, language, permission prompts, profile, debug Pro, Super Mode, and special app key material.",
+                "DataStore preferences for points, theme, language, permission prompts, profile, debug Pro, Super Mode, and encrypted special app key metadata.",
             ) { context -> dataStoreFile(context, "managed_app_preferences") },
             LocalDataStore(
                 "auth_preferences",
@@ -372,4 +336,133 @@ class LocalDataManager(
             ) { context -> File(context.filesDir, "reward_icons") },
         )
     }
+}
+
+internal data class BackupImportLimits(
+    val maxUnzippedBytes: Long = LocalDataManager.MAX_BACKUP_UNZIPPED_BYTES,
+    val maxEntryBytes: Long = LocalDataManager.MAX_BACKUP_ENTRY_BYTES,
+    val maxEntries: Int = LocalDataManager.MAX_BACKUP_ZIP_ENTRIES,
+)
+
+internal fun validateBackupManifestFields(
+    manifest: JSONObject,
+    expectedPackageName: String,
+    currentVersionCode: Int,
+) {
+    validateBackupManifestFields(
+        format = manifest.optString("format"),
+        schemaVersion = manifest.optInt("schemaVersion"),
+        packageName = manifest.optString("packageName"),
+        appVersionCode = manifest.optInt("appVersionCode", Int.MAX_VALUE),
+        expectedPackageName = expectedPackageName,
+        currentVersionCode = currentVersionCode,
+    )
+}
+
+internal fun validateBackupManifestFields(
+    format: String,
+    schemaVersion: Int,
+    packageName: String,
+    appVersionCode: Int,
+    expectedPackageName: String,
+    currentVersionCode: Int,
+) {
+    require(format == LocalDataManager.BACKUP_FORMAT) {
+        "Unsupported backup format."
+    }
+    require(schemaVersion == LocalDataManager.BACKUP_SCHEMA_VERSION) {
+        "Unsupported backup schema version."
+    }
+    require(packageName == expectedPackageName) {
+        "Backup package does not match this app."
+    }
+    require(appVersionCode <= currentVersionCode) {
+        "Backup was created by a newer app version."
+    }
+}
+
+internal fun copyWithLimit(
+    input: InputStream,
+    output: OutputStream,
+    maxBytes: Long,
+): Long {
+    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+    var copied = 0L
+    while (true) {
+        val read = input.read(buffer)
+        if (read < 0) break
+        copied += read.toLong()
+        require(copied <= maxBytes) { "Backup file is too large." }
+        output.write(buffer, 0, read)
+    }
+    return copied
+}
+
+internal fun extractBackupZipWithLimits(
+    zipFile: File,
+    destination: File,
+    limits: BackupImportLimits = BackupImportLimits(),
+) {
+    ZipInputStream(FileInputStream(zipFile)).use { zip ->
+        var entry = zip.nextEntry
+        var entryCount = 0
+        var totalBytes = 0L
+        while (entry != null) {
+            entryCount += 1
+            require(entryCount <= limits.maxEntries) {
+                "Backup contains too many files."
+            }
+            if (entry.size >= 0L) {
+                require(entry.size <= limits.maxEntryBytes) {
+                    "Backup entry is too large."
+                }
+            }
+            val target = File(destination, entry.name)
+            val targetPath = target.canonicalPath
+            val rootPath = destination.canonicalPath + File.separator
+            require(targetPath.startsWith(rootPath) || targetPath == destination.canonicalPath) {
+                "Invalid backup entry path."
+            }
+            if (entry.isDirectory) {
+                target.mkdirs()
+            } else {
+                target.parentFile?.mkdirs()
+                FileOutputStream(target).use {
+                    val copied =
+                        copyZipEntryWithLimit(
+                            input = zip,
+                            output = it,
+                            maxEntryBytes = limits.maxEntryBytes,
+                            currentTotalBytes = totalBytes,
+                            maxTotalBytes = limits.maxUnzippedBytes,
+                        )
+                    totalBytes += copied
+                }
+            }
+            zip.closeEntry()
+            entry = zip.nextEntry
+        }
+    }
+}
+
+private fun copyZipEntryWithLimit(
+    input: InputStream,
+    output: OutputStream,
+    maxEntryBytes: Long,
+    currentTotalBytes: Long,
+    maxTotalBytes: Long,
+): Long {
+    val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+    var entryBytes = 0L
+    while (true) {
+        val read = input.read(buffer)
+        if (read < 0) break
+        entryBytes += read.toLong()
+        require(entryBytes <= maxEntryBytes) { "Backup entry is too large." }
+        require(currentTotalBytes + entryBytes <= maxTotalBytes) {
+            "Backup is too large after extraction."
+        }
+        output.write(buffer, 0, read)
+    }
+    return entryBytes
 }

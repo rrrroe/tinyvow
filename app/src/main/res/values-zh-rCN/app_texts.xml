@@ -27,40 +27,83 @@
     <string name="battery_card_enabled">【当前状态】已获电池优化豁免，后台提醒和统计会更稳定。</string>
     <string name="battery_card_disabled">【用途】降低息屏或系统省电策略导致提醒延迟的概率。\n\n【说明】这是增强可靠性的可选配置，不开启也可以继续使用核心功能。点击下方按钮后，由系统决定是否允许加入电池白名单。</string>
     <string name="battery_card_action">查看电池白名单说明</string>
-    <string name="reminder_card_title">[可选] 约定到点通知</string>
-    <string name="reminder_card_enabled">【为什么要开】在约定限额到点时，同时在下拉通知栏给出一条本地提醒。\n\n【当前状态】已开启，能正常收到本地通知。</string>
-    <string name="reminder_card_disabled">【为什么要开】除了全屏提醒外，开启此权限可以在你的下拉通知栏显示今日约定状态。\n\n【如何操作】点击下方按钮 -&gt; 授予系统通知权限即可。</string>
+    <string name="reminder_card_title">[可选] 通知提醒</string>
+    <string name="reminder_card_enabled">除了全屏提醒外，Tiny Vow 也会在通知栏给你一条本地提醒。\n\n当前状态：已开启，可以正常收到通知提醒。</string>
+    <string name="reminder_card_disabled">如果你不想只靠全屏提醒，也可以让 Tiny Vow 在通知栏轻轻提醒你一下。\n\n开启方式：点下面的按钮，到系统里打开通知权限。</string>
     <string name="reminder_card_action">开启通知权限</string>
-    <string name="notification_channel_name">每日守约提醒</string>
-    <string name="notification_channel_desc">当目标 App 接近或到达今日约定限额时发送提醒。</string>
-    <string name="notification_limit_title">%1$s 的今日约定限额已到</string>
-    <string name="notification_limit_body">已经超出约定 %1$s，回到 Tiny Vow 看看今天的安排。</string>
-    <string name="notification_control_remaining_title">%1$s 快到约定限额了</string>
-    <string name="notification_control_remaining_body">还剩约 %1$s，注意收尾。</string>
-    <string name="notification_encourage_incomplete_title">%1$s 投入约定提醒</string>
-    <string name="notification_encourage_incomplete_body">待完成：%1$s</string>
-    <string name="notification_encourage_incomplete_body_more">待完成：%1$s 等 %2$d 个</string>
+    <string name="notification_channel_name">Tiny Vow 提醒</string>
+    <string name="notification_channel_desc">用于发送接近限额、超额和投入进展的本地提醒。</string>
+    <string name="notification_limit_title">「%1$s」已经超过今天的约定</string>
+    <string name="notification_limit_body">已经超出 %1$s。先停一下，回 Tiny Vow 看看接下来怎么安排。</string>
+    <string name="notification_control_remaining_title">「%1$s」快到今天的约定了</string>
+    <string name="notification_control_remaining_body">还剩大约 %1$s。现在停一下，会轻松很多。</string>
+    <string name="notification_encourage_incomplete_title">%1$s 轻提醒</string>
+    <string name="notification_encourage_incomplete_body">今天还想留给「%1$s」一点时间。</string>
+    <string name="notification_encourage_incomplete_body_more">今天还想留给「%1$s」一点时间，另外还有 %2$d 项。</string>
+    <string name="notification_encourage_completed_title">今天的投入到了</string>
+    <string name="notification_encourage_completed_body">「%1$s」今天已经够了，这一段时间没有白留。</string>
+    <string-array name="notification_encourage_progress_messages">
+        <item>再留 %1$d 分钟给「%2$s」，今天就差不多了。</item>
+        <item>「%2$s」还差 %1$d 分钟，已经很近了。</item>
+        <item>接下来的 %1$d 分钟，留给「%2$s」吧。</item>
+        <item>再给「%2$s」%1$d 分钟，今天这件事就稳了。</item>
+        <item>如果现在开始，%1$d 分钟后「%2$s」就能到线。</item>
+        <item>给「%2$s」补上这 %1$d 分钟，今天会更踏实。</item>
+        <item>再陪「%2$s」走 %1$d 分钟，就差不多了。</item>
+        <item>离「%2$s」的今天目标，还差一点点 %1$d 分钟。</item>
+        <item>把眼前这 %1$d 分钟，先留给「%2$s」。</item>
+        <item>再过 %1$d 分钟，「%2$s」今天就够了。</item>
+        <item>「%2$s」只差这 %1$d 分钟，慢慢来就好。</item>
+        <item>%1$d 分钟的小投入，刚好能补上「%2$s」。</item>
+        <item>现在开始也不晚，再给「%2$s」%1$d 分钟。</item>
+        <item>把这 %1$d 分钟留住，「%2$s」今天就稳了。</item>
+        <item>再专心 %1$d 分钟，「%2$s」今天就可以放下了。</item>
+        <item>%1$d 分钟不长，刚好够「%2$s」往前走一截。</item>
+        <item>离今天想做的「%2$s」，还差 %1$d 分钟。</item>
+        <item>继续陪「%2$s」%1$d 分钟，今天就会更完整。</item>
+        <item>今天的「%2$s」，再有 %1$d 分钟就差不多了。</item>
+        <item>再添 %1$d 分钟，「%2$s」就能稳稳落下来。</item>
+        <item>用这 %1$d 分钟，把「%2$s」再往前推一点。</item>
+        <item>还差 %1$d 分钟，「%2$s」今天就能安心放下。</item>
+        <item>继续 %1$d 分钟，「%2$s」今天就会到线。</item>
+        <item>下一段 %1$d 分钟，正好留给「%2$s」。</item>
+        <item>再稳稳做 %1$d 分钟，「%2$s」就差不多了。</item>
+        <item>「%2$s」差 %1$d 分钟，已经到最后这一小段了。</item>
+        <item>把这 %1$d 分钟攒给「%2$s」，今天就更踏实了。</item>
+        <item>再靠近 %1$d 分钟，「%2$s」今天就能到位。</item>
+        <item>今天的「%2$s」还差 %1$d 分钟，加一点就好。</item>
+        <item>继续投入 %1$d 分钟，「%2$s」今天就够了。</item>
+    </string-array>
     <string name="notification_settings_title">通知提醒</string>
-    <string name="notification_settings_description">管理约定限额和未完成投入的本地提醒。实际送达时间可能受系统后台策略影响。</string>
+    <string name="day_boundary_settings_title">每日分割点</string>
+    <string name="day_boundary_settings_description">设置 Tiny Vow 新一天从几点开始。应用时间、积分、统计和历史都会按这个边界计算。</string>
+    <string name="day_boundary_settings_section">每日切日时间</string>
+    <string name="day_boundary_settings_default_hint">默认每日分割点是 00:00。免费用户可使用默认值，Pro 可选择 00:00 到 06:00。Pro 过期后会保留已有分割点，但不能再修改。</string>
+    <string name="day_boundary_settings_default_value_hint">默认设置。Tiny Vow 的新一天从 00:00 开始。</string>
+    <string name="day_boundary_settings_hour_detail">每天在 %1$02d:00 切换到新一天，此前时间仍计入前一天。</string>
+    <string name="day_boundary_settings_save">保存分割点</string>
+    <string name="day_boundary_settings_saved">每日分割点已保存。</string>
+    <string name="day_boundary_hour_value">%1$02d:00</string>
+    <string name="notification_settings_description">在这里安排本地提醒的节奏。实际送达时间仍可能受系统后台策略影响。</string>
     <string name="notification_settings_general">通用</string>
     <string name="notification_settings_enabled">已开启</string>
     <string name="notification_settings_disabled">已关闭</string>
-    <string name="notification_settings_enabled_title">发送本地提醒</string>
-    <string name="notification_settings_enabled_body">Tiny Vow 只在本机检查并发送通知。</string>
+    <string name="notification_settings_enabled_title">发送本地通知提醒</string>
+    <string name="notification_settings_enabled_body">提醒只在本机生成和发送，不会上传你的使用数据。</string>
     <string name="notification_settings_permission_title">通知权限</string>
-    <string name="notification_settings_permission_needed">需要开启通知权限后才能收到提醒。</string>
-    <string name="notification_settings_schedule">提醒安排</string>
-    <string name="notification_settings_control_threshold">约定剩余提醒分钟数</string>
+    <string name="notification_settings_permission_needed">先打开通知权限，提醒才发得出来。</string>
+    <string name="notification_settings_schedule">提醒节奏</string>
+    <string name="notification_settings_control_threshold">离约定还剩多久时提醒</string>
     <string name="notification_settings_control_threshold_hint">输入 1-120 分钟。</string>
-    <string name="notification_settings_encourage_times">投入提醒时刻</string>
-    <string name="notification_settings_encourage_times_hint">新增或点选时刻，选择未完成投入的提醒时间。</string>
+    <string name="notification_settings_encourage_times">投入提醒时间</string>
+    <string name="notification_settings_encourage_times_hint">新增或点一个时间，决定未完成投入在什么时候提醒你。</string>
     <string name="notification_settings_add_encourage_time">新增时刻</string>
     <string name="notification_settings_delete_time">删除提醒时刻</string>
     <string name="notification_settings_time_picker_title">选择提醒时刻</string>
     <string name="notification_settings_pro_locked">自定义提醒时间需要 Tiny Vow Pro。</string>
-    <string name="notification_settings_save_control_threshold">保存约定提醒</string>
-    <string name="notification_settings_save_encourage_times">保存投入时刻</string>
-    <string name="notification_settings_saved">提醒设置已保存</string>
+    <string name="notification_settings_save_control_threshold">保存剩余提醒</string>
+    <string name="notification_settings_save_encourage_times">保存提醒时间</string>
+    <string name="notification_settings_saved">通知提醒已保存</string>
     <string name="list_separator">、</string>
     <string name="accessibility_service_label">Tiny Vow 守约提醒服务</string>
     <string name="accessibility_service_desc">检测目标 App 是否到达每日约定限额，并在进入前台时显示提醒页。</string>
@@ -301,7 +344,7 @@
     <string name="group_completed">已达成</string>
     <string name="group_configured_target">配置目标</string>
     <string name="group_daily">每日</string>
-    <string name="group_daily_target">每日目标</string>
+    <string name="group_daily_target">每日</string>
     <string name="group_delete">删除</string>
     <string name="group_delete_group">删除约定</string>
     <string name="group_history">历史</string>
@@ -316,7 +359,7 @@
     <string name="group_minutes">分钟</string>
     <string name="group_minutes_2">每分钟</string>
     <string name="group_monthly">每月</string>
-    <string name="group_monthly_target">每月目标</string>
+    <string name="group_monthly_target">每月</string>
     <string name="group_move_down">下移</string>
     <string name="group_move_up">上移</string>
     <string name="group_no_archived_history_yet">暂无历史归档</string>
@@ -459,8 +502,13 @@
     <string name="group_value_times">%1$s 次</string>
     <string name="group_value_value_value_min">%1$s %2$s/%3$s分钟</string>
     <string name="group_value_value_value_min_value_pts_min">%1$s %2$s/%3$s分钟 · %4$s分/分钟</string>
+    <string name="group_usage_value_limit_minutes">%1$s/%2$s分钟</string>
+    <string name="group_usage_value_limit_minutes_with_period">%1$s/%2$s分钟/%3$s</string>
+    <string name="group_daily_short">日</string>
+    <string name="group_weekly_short">周</string>
+    <string name="group_monthly_short">月</string>
     <string name="group_weekly">每周</string>
-    <string name="group_weekly_target">每周目标</string>
+    <string name="group_weekly_target">每周</string>
     <string name="home_accessibility_blocking">无障碍提醒</string>
     <string name="home_accessibility_service_disclosure">无障碍服务说明</string>
     <string name="home_account_and_local_data_deleted">账户与本地数据已删除</string>
@@ -477,10 +525,11 @@
     <string name="home_battle_control_over_value">超 %1$d 分</string>
     <string name="home_battle_action_hint_separator"> · </string>
     <string name="home_battle_group_name_separator"> · </string>
+    <string name="home_battle_group_name_more">%1$s 等%2$d组</string>
     <string name="home_battle_control_subtitle">点开查看限额状态</string>
-    <string name="home_battle_control_groups_half">%1$s 已过半，继续保持可连击 %2$d 天</string>
-    <string name="home_battle_control_groups_near_limit">%1$s 已接近限额，继续保持可连击 %2$d 天</string>
-    <string name="home_battle_control_groups_depleted">%1$s 已耗尽，继续保持可连击 %2$d 天</string>
+    <string name="home_battle_control_groups_half">%1$s 已过半 · 达成连击%2$d天</string>
+    <string name="home_battle_control_groups_near_limit">%1$s 快到线 · 达成连击%2$d天</string>
+    <string name="home_battle_control_groups_depleted">%1$s 已用尽 · 达成连击%2$d天</string>
     <string name="home_battle_control_groups_over_limit">%1$s 已超额</string>
     <string name="home_battle_control_steady_title">尽在掌控</string>
     <string name="home_battle_control_streak_title">继续保持可连击 %1$d 天</string>
@@ -492,35 +541,35 @@
     <string name="home_battle_control_title_over">已经超额</string>
     <string name="home_battle_control_title_steady">今天还稳</string>
     <string name="home_battle_control_title_watch">值得盯一下</string>
-    <string name="home_battle_create_subtitle">先立一个小小约定</string>
+    <string name="home_battle_create_subtitle">先建一个约定</string>
     <string name="home_battle_create_title">布置今天</string>
     <string name="home_battle_create_value">创建</string>
     <string name="home_battle_encourage_done_value">已完成</string>
     <string name="home_battle_encourage_left_value">差 %1$d 分</string>
     <string name="home_battle_encourage_subtitle">点开完成今日目标</string>
     <string name="home_battle_encourage_perfect_title">完美！</string>
-    <string name="home_battle_encourage_perfect_subtitle">投入分组都完成了</string>
+    <string name="home_battle_encourage_perfect_subtitle">投入都完成了</string>
     <string name="home_battle_encourage_title_done">目标已完成</string>
     <string name="home_battle_encourage_title_points">约 +%1$s 分在等你</string>
     <string name="home_battle_group_usage_format">%1$s · %2$d/%3$d 分</string>
-    <string name="home_battle_anomaly_clear_subtitle">当前没有接近超额的分组</string>
+    <string name="home_battle_anomaly_clear_subtitle">当前都还安全</string>
     <string name="home_battle_anomaly_clear_value">平稳</string>
     <string name="home_battle_anomaly_title">超额风险</string>
     <string name="home_battle_shortcut_done_title">捷径已清空</string>
-    <string name="home_battle_shortcut_complete_group_subtitle">完成 %1$s 连击+%2$d</string>
+    <string name="home_battle_shortcut_complete_group_subtitle">完成 %1$s · 达成连击%2$d天</string>
     <string name="home_battle_shortcut_points_title">乘胜追击</string>
-    <string name="home_battle_shortcut_points_subtitle">完成 %1$s +%2$s 分</string>
+    <string name="home_battle_shortcut_points_subtitle">%1$s · +%2$s 分 · 达成连击%3$d天</string>
     <string name="home_battle_shortcut_streak_title">再接再厉</string>
     <string name="home_battle_shortcut_streak_subtitle">%1$s · 可续到 %2$d 天</string>
     <string name="home_battle_shortcut_title">今日捷径</string>
-    <string name="home_battle_permission_accessibility_body">开启后才能稳定阻断</string>
+    <string name="home_battle_permission_accessibility_body">去开无障碍</string>
     <string name="home_battle_permission_accessibility_title">阻断未开启</string>
     <string name="home_battle_permission_fix">去开启</string>
-    <string name="home_battle_permission_usage_body">允许读取本机使用情况</string>
+    <string name="home_battle_permission_usage_body">去开使用情况</string>
     <string name="home_battle_permission_usage_title">用量未开启</string>
     <string name="home_battle_reward_active_effects">%1$d 个奖励效果生效中</string>
     <string name="home_battle_reward_points_value">%1$s 分</string>
-    <string name="home_battle_reward_subtitle">去兑换或囤一个奖励</string>
+    <string name="home_battle_reward_subtitle">去兑换奖励</string>
     <string name="home_battle_reward_today_points">今天已赚 +%1$s 分</string>
     <string name="home_battle_reward_title">奖励商店</string>
     <string name="home_battery_allowlist">电池白名单</string>
@@ -771,8 +820,8 @@
     <string name="home_mmm_d_eeee">M月d日 EEEE</string>
     <string name="home_no_mail_app_was_found_email_address_copied">未找到可用的邮件应用，已复制邮箱</string>
     <string name="home_not_enabled">尚未开启</string>
-    <string name="home_notification_permission_disclosure">通知权限说明</string>
-    <string name="home_notifications_enabled">通知已开启</string>
+    <string name="home_notification_permission_disclosure">通知权限用途</string>
+    <string name="home_notifications_enabled">通知提醒已开启</string>
     <string name="home_notifications_permission">通知权限</string>
     <string name="home_report">战报</string>
     <string name="home_review">处理</string>
@@ -790,7 +839,7 @@
     <string name="home_tiny_vow_local_data_export">Tiny Vow 本地数据导出</string>
     <string name="home_tiny_vow_reads_local_app_usage_data_including">Tiny Vow 会读取本机 App 使用情况数据，包括应用包名、应用名称、前台使用时长、打开次数、会话和夜间使用统计，用于计算每日约定、战报、积分和提醒。数据默认只保存在本机，不会自动上传。</string>
     <string name="home_tiny_vow_s_accessibility_service_only_listens_for">Tiny Vow 的无障碍服务只监听窗口切换事件，用于判断你是否进入已设置约定的 App，并在约定限额到达后显示本应用的提醒页面。服务不会读取屏幕文字，不会代替你点击，也不会更改系统设置。</string>
-    <string name="home_tiny_vow_uses_notification_permission_to_send_local">Tiny Vow 使用通知权限发送本地守约提醒和到点提示，帮助你及时知道当天安排。拒绝通知权限不会影响约定、统计和守约提醒等核心功能。</string>
+    <string name="home_tiny_vow_uses_notification_permission_to_send_local">Tiny Vow 只用通知权限发送本地提醒，比如快到约定、已经超额，或还有投入没做完。不开通知也不影响约定、统计和阻断这些核心功能。</string>
     <string name="home_today_usage_time">今日用时</string>
     <string name="home_usage_access">使用情况访问</string>
     <string name="home_usage_access_disclosure">使用情况访问说明</string>
@@ -987,7 +1036,7 @@
     <string name="me_edit_theme">编辑主题</string>
     <string name="me_encourage">投入</string>
     <string name="me_encourage_color">投入色</string>
-    <string name="me_export_files_are_created_only_in_local_cache">导出文件会先生成到本机缓存。可恢复备份会包含本地设置；如果已保存微信读书 API Key，也会随备份导出，请妥善保管备份文件。你可以选择保存一份到本地文件，也可以通过系统分享面板主动发送。清除本地数据会删除当前设备上的约定、历史、积分、奖励、库存、主题、本地账号和激活状态、导入奖励图标、分享缓存、权限提示状态，以及已保存的微信读书 Key 材料。</string>
+    <string name="me_export_files_are_created_only_in_local_cache">导出文件会先生成到本机缓存。可恢复备份会包含本地设置和应用数据，但不会包含微信读书 API Key 明文。恢复备份后，如果你还需要阅读时长同步，请在特殊应用里重新填写微信读书 Key。你可以选择保存一份到本地文件，也可以通过系统分享面板主动发送。清除本地数据会删除当前设备上的约定、历史、积分、奖励、库存、主题、本地账号和激活状态、导入奖励图标、分享缓存、权限提示状态，以及已保存的微信读书 Key 材料。</string>
     <string name="me_export_recoverable_backup">导出可恢复备份</string>
     <string name="me_export_backup_choose_method">选择导出方式</string>
     <string name="me_export_backup_choose_method_body">将备份保存为这台设备上的文件，或分享给其他应用。</string>
@@ -997,7 +1046,7 @@
     <string name="me_import_local_backup">导入本地备份</string>
     <string name="me_import_local_backup_failed">导入本地备份失败</string>
     <string name="me_import_local_backup_success_restart">备份已恢复，Tiny Vow 将立即重启。</string>
-    <string name="me_backup_restore_weread_key_note">这份备份未能恢复微信读书 Key；如需双源同步，请在特殊应用里重新填写。</string>
+    <string name="me_backup_restore_weread_key_note">这份备份不包含微信读书 Key；如需双源同步，请在特殊应用里重新填写。</string>
     <string name="me_free_version">当前为免费版</string>
     <string name="me_google_sign_in_is_not_configured">Google 登录未配置</string>
     <string name="me_google_account_badge">Google 账号</string>
@@ -1021,6 +1070,7 @@
     <string name="me_payment_pending">付款待完成</string>
     <string name="me_permission_settings">权限设置</string>
     <string name="me_preferences_section">偏好设置</string>
+    <string name="me_feature_settings_section">功能设置</string>
     <string name="me_features_and_access_section">功能与访问</string>
     <string name="me_profile_avatar">头像</string>
     <string name="me_profile_choose_avatar">选择头像</string>
@@ -1047,6 +1097,42 @@
     <string name="me_unlocked">已开启</string>
     <string name="me_app_version">应用版本</string>
     <string name="me_app_usage_days">App 使用天数</string>
+    <string name="checkin_overview_title">每日签到</string>
+    <string name="checkin_overview_description">领取今天的缓冲卡，也看看这个月的签到、投入完成和守约情况。</string>
+    <string name="checkin_today_title">今日签到</string>
+    <string name="checkin_today_action">签到并领取缓冲卡</string>
+    <string name="checkin_today_checked">今日已签到</string>
+    <string name="checkin_today_available_description">今天可签到 1 次，获得 1 张临时缓冲卡，放入我的道具。</string>
+    <string name="checkin_today_done_description">今天的缓冲卡已经放进道具里了，明天再来领一张。</string>
+    <string name="checkin_success_buffer_card">签到成功，已获得 1 张临时缓冲卡。</string>
+    <string name="checkin_already_done">今天已经签到过了。</string>
+    <string name="checkin_reward_unavailable">暂时无法准备缓冲卡，请稍后再试。</string>
+    <string name="checkin_view">查看签到</string>
+    <string name="checkin_report_card_title">给今天留一点缓冲</string>
+    <string name="checkin_report_card_description">看完昨日战报后，可以签到领取 1 张临时缓冲卡，在守约提醒出现时使用。</string>
+    <string name="checkin_report_action">今日签到</string>
+    <string name="checkin_month_title">%1$d 月 · %2$d 年</string>
+    <string name="checkin_calendar_heading">本月日历</string>
+    <string name="checkin_year_label">%1$d 年</string>
+    <string name="checkin_previous_year">上一年</string>
+    <string name="checkin_next_year">下一年</string>
+    <string name="checkin_month_chip">%1$d 月</string>
+    <string name="checkin_month_signed_count">已签到 %1$d 天</string>
+    <string name="checkin_stat_signed_days">签到天数</string>
+    <string name="checkin_stat_buffer_cards">缓冲卡</string>
+    <string name="checkin_stat_encourage_done">投入完成</string>
+    <string name="checkin_stat_control_kept">全部守约</string>
+    <string name="checkin_badge_signed">签到</string>
+    <string name="checkin_badge_encourage">投入</string>
+    <string name="checkin_badge_control">守约</string>
+    <string name="checkin_archived_badges_hint">投入和守约标志只使用已归档日期。今天先显示签到状态，行为标志会在明天归档后点亮。</string>
+    <string name="checkin_weekday_mon">一</string>
+    <string name="checkin_weekday_tue">二</string>
+    <string name="checkin_weekday_wed">三</string>
+    <string name="checkin_weekday_thu">四</string>
+    <string name="checkin_weekday_fri">五</string>
+    <string name="checkin_weekday_sat">六</string>
+    <string name="checkin_weekday_sun">日</string>
     <string name="me_current_version">当前版本</string>
     <string name="me_changelog">更新日志</string>
     <string name="me_changelog_empty">当前版本暂未填写更新日志。</string>
@@ -1142,6 +1228,8 @@
     <string name="stats_all_day">全天</string>
     <string name="stats_app_duration">应用时长</string>
     <string name="stats_app_usage">应用消耗</string>
+    <string name="stats_archive_date_chip">yyyy年M月d日 EEEE</string>
+    <string name="stats_archive_date_full">yyyy年M月d日</string>
     <string name="stats_archive_trend">归档趋势</string>
     <string name="stats_archived_reports_waiting">等待归档战报</string>
     <string name="stats_archived_daily_reports">归档日报</string>
@@ -1149,7 +1237,7 @@
     <string name="stats_autumn">秋</string>
     <string name="stats_average">均值</string>
     <string name="stats_average_session">平均单次时长</string>
-    <string name="stats_behavior_analysis">总览</string>
+    <string name="stats_behavior_analysis">关键数据</string>
     <string name="stats_bonus_points_value">奖励 %1$s</string>
     <string name="stats_bonus_time_value">加时 +%1$s</string>
     <string name="stats_behavior_structure_description">用总用、投入、约定和节约看当天时间的包含关系。</string>
@@ -1201,6 +1289,7 @@
     <string name="stats_score_metric_today_column">今日数据</string>
     <string name="stats_score_metric_yesterday_column">昨日数据</string>
     <string name="stats_score_metric_empty_value">--</string>
+    <string name="stats_score_metric_pending_value">归档中...</string>
     <string name="stats_score_metric_completion_groups_label">完成分组</string>
     <string name="stats_score_metric_remaining_limit_label">剩余额度</string>
     <string name="stats_score_metric_encourage_usage_label">投入组总时长</string>
@@ -1264,9 +1353,10 @@
     <string name="stats_heavy_use">重度使用</string>
     <string name="stats_hours">活跃小时</string>
     <string name="stats_next_day">后一天</string>
+    <string name="stats_next">下一个</string>
     <string name="stats_refresh_day">刷新当天记录</string>
     <string name="stats_previous_day">前一天</string>
-    <string name="stats_label">表现最好</string>
+    <string name="stats_label">最佳守约</string>
     <string name="stats_label_10">对比上一条</string>
     <string name="stats_label_11">最长单次会话</string>
     <string name="stats_label_12">减少</string>
@@ -1347,16 +1437,20 @@
     <string name="stats_share">占比</string>
     <string name="stats_share_preview">分享预览</string>
     <string name="stats_share_report">分享战报</string>
+    <string name="stats_share_download_slogan">把时间还给自己</string>
+    <string name="stats_share_download_tagline">Tiny Vow · 把时间还给自己</string>
     <string name="stats_share_modules">分享模块</string>
-    <string name="stats_share_module_apps">应用</string>
-    <string name="stats_share_module_behavior">行为</string>
-    <string name="stats_share_module_focus">约定</string>
-    <string name="stats_share_module_heatmap">热力</string>
+    <string name="stats_share_module_apps">应用聚焦</string>
+    <string name="stats_share_module_behavior">关键数据</string>
+    <string name="stats_share_module_behavior_overview">行为总览</string>
+    <string name="stats_share_module_daily_insights">今日洞察</string>
+    <string name="stats_share_module_focus">守约收获</string>
+    <string name="stats_share_module_heatmap">热力分布</string>
     <string name="stats_share_module_insights">洞察</string>
-    <string name="stats_share_module_overview">总览</string>
-    <string name="stats_share_module_rhythm">节律</string>
-    <string name="stats_share_module_structure">结构</string>
-    <string name="stats_share_module_trend">趋势</string>
+    <string name="stats_share_module_overview">关键数据</string>
+    <string name="stats_share_module_rhythm">节奏画像</string>
+    <string name="stats_share_module_structure">结构拆解</string>
+    <string name="stats_share_module_trend">归档趋势</string>
     <string name="stats_share_slogan">过好这一天，节奏就会更清晰。</string>
     <string name="stats_shows_only_the_10_most_used_apps_in">只看当前归档窗口内使用时长最高的 10 个应用。</string>
     <string name="stats_show_all_groups">展开全部 %1$d 组</string>
@@ -1366,10 +1460,10 @@
     <string name="stats_status_not_started">未开始</string>
     <string name="stats_status_tight">临界</string>
     <string name="stats_summer">夏</string>
-    <string name="stats_tab_daily">每日</string>
-    <string name="stats_tab_weekly">每周</string>
-    <string name="stats_tab_monthly">每月</string>
-    <string name="stats_tab_yearly">每年</string>
+    <string name="stats_tab_daily">日报</string>
+    <string name="stats_tab_weekly">周报</string>
+    <string name="stats_tab_monthly">月报</string>
+    <string name="stats_tab_yearly">年报</string>
     <string name="stats_sun">日</string>
     <string name="stats_target_complete">目标完成</string>
     <string name="stats_target_value">目标 %1$s</string>
@@ -1383,8 +1477,17 @@
     <string name="stats_this_window_does_not_have_enough_samples_yet">当前窗口样本还不够，暂时不展示对比。</string>
     <string name="stats_thu">四</string>
     <string name="stats_time_heatmap">时段热力</string>
-    <string name="stats_time_flow">时间流向</string>
-    <string name="stats_time_flow_description">看使用量如何分布到一天里，包括峰值时段和夜间使用。</string>
+    <string name="stats_time_flow">节奏画像</string>
+    <string name="stats_time_flow_description">把 24 小时节奏、峰值、夜间、头部应用和守约投入压到一张可分享的图里。</string>
+    <string name="stats_rhythm_strip_title">24 小时节奏带</string>
+    <string name="stats_rhythm_active_hours">%1$d 个活跃小时</string>
+    <string name="stats_rhythm_legend_peak">峰值</string>
+    <string name="stats_rhythm_legend_night">夜间</string>
+    <string name="stats_rhythm_top_app">头部应用</string>
+    <string name="stats_rhythm_no_top_app">暂无头部应用</string>
+    <string name="stats_rhythm_vow_mix">守约 / 鼓励</string>
+    <string name="stats_rhythm_vow_mix_value">守约 %1$s · 鼓励 %2$s</string>
+    <string name="stats_other_apps">其他应用</string>
     <string name="stats_time_saved">节省时长</string>
     <string name="stats_today_usage">用时</string>
     <string name="stats_times">次</string>
@@ -1395,7 +1498,7 @@
     <string name="stats_top_10_total_usage">前 10 个应用总时长</string>
     <string name="stats_top_app_in_window">窗口主导应用</string>
     <string name="stats_top_app_of_the_day">主导应用</string>
-    <string name="stats_top_apps">Top 应用</string>
+    <string name="stats_top_apps">应用排行</string>
     <string name="stats_tue">二</string>
     <string name="stats_up">增</string>
     <string name="stats_usage_on_this_day_was_noticeably_higher_than">这一天的使用明显高于上一条归档。</string>
@@ -1457,6 +1560,7 @@
     <string name="stats_winter">冬</string>
     <string name="stats_within_target_value_left">目标内 · 剩余 %1$s</string>
     <string name="stats_yearly_report">年报</string>
+    <string name="stats_year_value">%1$d年</string>
     <string name="stats_yearly_trend">年度趋势</string>
     <string name="stats_you_completed_an_honest_review_today">完成了一次诚实复盘</string>
     <string name="stats_you_saved_a_bit_of_momentum_today">攒下了一点行动力</string>
@@ -1473,13 +1577,13 @@
     <string name="support_what_if_subscription_purchase_fails">订阅失败或无法购买怎么办？</string>
     <string name="support_what_should_i_include_in_feedback">反馈时请附带什么信息？</string>
     <string name="support_why_do_permissions_need_to_be_enabled_manually">权限为什么需要手动开启？</string>
-    <string name="support_you_can_export_or_clear_local_data_inside">应用内可以导出本地数据，也可以清除本地数据。可恢复备份会包含本地设置；如果已保存微信读书 API Key，也会随备份导出，并且只会在你主动保存或分享时离开应用。清除本地数据会删除当前设备上的约定、使用记录、积分、奖励、主题、本地账号和激活状态、导入奖励图标、分享缓存，以及已保存的微信读书 Key 材料。</string>
+    <string name="support_you_can_export_or_clear_local_data_inside">应用内可以导出本地数据，也可以清除本地数据。可恢复备份会包含本地设置和应用数据，但不会包含微信读书 API Key 明文，并且只会在你主动保存或分享时离开应用。清除本地数据会删除当前设备上的约定、使用记录、积分、奖励、主题、本地账号和激活状态、导入奖励图标、分享缓存，以及已保存的微信读书 Key 材料。</string>
     <string name="support_you_can_send_email_for_bugs_suggestions_subscription">你可以通过邮件反馈问题、建议、订阅异常或账号相关需求。</string>
-    <string name="theme_brightness_value">明暗 Brightness：%1$s%%</string>
+    <string name="theme_brightness_value">明暗：%1$s%%</string>
     <string name="theme_color_code">颜色代码</string>
     <string name="theme_custom">自定义</string>
     <string name="theme_encourage_groups_points_rewards_and_completion_states">投入、收获、奖励和达成状态</string>
-    <string name="theme_hue_value">色相 Hue：%1$s°</string>
+    <string name="theme_hue_value">色相：%1$s°</string>
     <string name="theme_limit_groups_blocking_over_limit_and_risk_states">约定、到点提醒、超出约定和关注状态</string>
     <string name="theme_limit_value_encourage_value_base_value">约定 %1$s · 投入 %2$s · 基础 %3$s</string>
     <string name="theme_manage_preset_and_custom_three_color_themes">选择 Tiny Vow 的完整视觉风格</string>
@@ -1491,14 +1595,14 @@
     <string name="theme_live_preview_subtitle">下面会同步显示首页卡片，以及第一条约定和投入的效果，方便你边调边看。</string>
     <string name="theme_preview_score_title">今日平衡</string>
     <string name="theme_presets">预设</string>
-    <string name="theme_saturation_value">饱和度 Saturation：%1$s%%</string>
+    <string name="theme_saturation_value">饱和度：%1$s%%</string>
     <string name="theme_visual_direction_title">高级感来自系统，不是配色器</string>
     <string name="theme_visual_direction_body">主题现在同时定义背景、卡片、文字、导航和图表，而不是只调三种颜色。</string>
     <string name="group_active_last_7_days">近7天活跃</string>
     <string name="group_app_count_label">应用数量</string>
     <string name="group_app_count_value">%1$s 个</string>
     <string name="group_completed_days_label">完成天数</string>
-    <string name="group_daily_limit_label">每日约定</string>
+    <string name="group_daily_limit_label">每日</string>
     <string name="group_delete_confirmation">删除后这条约定配置会被移除，是否继续？</string>
     <string name="group_duration_hours_minutes_compact">%1$s小时%2$s分钟</string>
     <string name="group_duration_less_than_one_minute">&lt;1分钟</string>
@@ -1506,13 +1610,13 @@
     <string name="group_history_days_label">历史天数</string>
     <string name="group_limit_type">约定类</string>
     <string name="group_loading_app_list">正在加载应用列表…</string>
-    <string name="group_monthly_limit_label">每月约定</string>
+    <string name="group_monthly_limit_label">每月</string>
     <string name="group_name_placeholder">约定名称（如：游戏、视频）</string>
     <string name="group_points_value">%1$s分</string>
     <string name="group_record_days_label">记录天数</string>
     <string name="group_target_limit_label">目标/限额</string>
     <string name="group_week_total_label">本周累计</string>
-    <string name="group_weekly_limit_label">每周约定</string>
+    <string name="group_weekly_limit_label">每周</string>
     <string name="home_bronze_achievement_unlocked">🥉 铜阶成就达成</string>
     <string name="home_diamond_achievement_unlocked">💫 钻石成就达成</string>
     <string name="home_enable_usage_access_to_show_groups">开启使用情况访问后显示约定和实时统计</string>
@@ -1569,7 +1673,7 @@
     <string name="stats_last_7_days_daily_average">近7天日均</string>
     <string name="stats_dashboard_summary_description">把约定、奖励、积分和重点应用收拢到一个窗口里看。</string>
     <string name="stats_duration_ranking">时长排名</string>
-    <string name="stats_enable_usage_records_for_daily_report">开启使用记录权限后，日报才能统计手机上的全天使用痕迹、Top 应用和行为趋势。</string>
+    <string name="stats_enable_usage_records_for_daily_report">开启使用记录权限后，日报才能统计手机上的全天使用痕迹、应用排行和行为趋势。</string>
     <string name="stats_encourage_progress">收获进度</string>
     <string name="stats_hour_range_format">%1$s-%2$s时</string>
     <string name="stats_last_7_archived_day_average">近 7 个归档日日均 %1$s</string>
@@ -1596,7 +1700,7 @@
     <string name="stats_share_review_sentence">↩  复盘一句话</string>
     <string name="stats_today_kept_rhythm">今天守住了自己的节奏</string>
     <string name="stats_today_over_limit_tighten_groups">今天有些约定多用了一点，可以明天把重点约定调得更清楚。</string>
-    <string name="stats_top_app_is_value">Top 应用是 %1$s</string>
+    <string name="stats_top_app_is_value">使用最多的是 %1$s</string>
     <string name="stats_total_device_duration">全机总时长</string>
     <string name="stats_unarchived_dates_not_selectable">没有归档数据的日期不可选。</string>
     <string name="stats_under_1h">峰值 1h</string>
@@ -1632,6 +1736,7 @@
     <string name="pro_upsell_group_limit">免费用户可创建 2 条约定和 2 条投入。Pro 可开启更多约定和投入。</string>
     <string name="pro_upsell_member_theme">这套会员主题需要 Tiny Vow Pro。</string>
     <string name="pro_upsell_notification_customization">免费用户使用默认提醒时间。Pro 可自定义剩余时间提醒和投入提醒时刻。</string>
+    <string name="pro_upsell_day_boundary_customization">免费用户使用默认的 00:00 每日分割点。Pro 可自定义 00:00 到 06:00 的每日分割时间。</string>
     <string name="pro_upsell_subscription_button">知道了，查看订阅</string>
     <string name="pro_upsell_title">Tiny Vow Pro</string>
     <string name="pro_view_benefits">查看 Pro 权益</string>
@@ -1718,6 +1823,19 @@
     <string name="stats_app_focus">应用聚焦</string>
     <string name="stats_app_focus_days_usage">%1$d 天 · %2$s</string>
     <string name="stats_app_focus_description">既保留头部应用，也把爆发和稳定信号一起呈现出来。</string>
+    <string name="stats_app_focus_daily_profile_description">把今天的头部应用压成一张指纹图：占比、打开、峰值时段和夜间使用都在一起。</string>
+    <string name="stats_app_focus_share_format">%1$d%% · %2$s</string>
+    <string name="stats_app_focus_total_usage">头部应用时长</string>
+    <string name="stats_app_focus_opens_sessions">打开 / 会话</string>
+    <string name="stats_app_focus_opens_sessions_value">%1$d / %2$d</string>
+    <string name="stats_app_focus_night_usage">夜间占比</string>
+    <string name="stats_app_focus_peak_hour_format">%1$d:00</string>
+    <string name="stats_app_focus_row_detail">%1$s · 打开 %2$d 次 · 峰值 %3$s</string>
+    <string name="stats_app_focus_row_metrics_compact">%1$s · %2$d · %3$d%% · %4$s</string>
+    <string name="stats_app_focus_metric_minutes">时长</string>
+    <string name="stats_app_focus_metric_opens">打开</string>
+    <string name="stats_app_focus_metric_night">夜间</string>
+    <string name="stats_app_focus_metric_peak">峰值</string>
     <string name="stats_best_day">最好的一天</string>
     <string name="stats_best_month">最好的月份</string>
     <string name="stats_burst_app">爆发应用</string>
@@ -1727,6 +1845,7 @@
     <string name="stats_weekday_average">工作日日均</string>
     <string name="stats_weekend_average">周末日均</string>
     <string name="stats_week_number">第 %1$d 周</string>
+    <string name="stats_week_number_compact">%1$d年第%2$d周</string>
     <string name="stats_weekly_battle_message">一周的节奏、压力和守约效果，一眼看清。</string>
     <string name="stats_weekly_battle_title">周报战板</string>
     <string name="stats_weekly_rhythm_curve">周节奏曲线</string>

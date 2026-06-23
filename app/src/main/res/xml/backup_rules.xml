@@ -9,4 +9,10 @@
     <exclude
         domain="file"
         path="share/" />
+    <exclude
+        domain="file"
+        path="reward_icons/" />
+    <exclude
+        domain="file"
+        path="weread_api_key_pending_restore" />
 </full-backup-content>

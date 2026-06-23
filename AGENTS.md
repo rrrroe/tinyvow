@@ -21,7 +21,7 @@
 - 使用情况访问权限：读取应用用量和使用周期统计。
 - 无障碍服务：监听前台窗口变化，显示全屏阻断 overlay，并承担一部分积分结算。
 - 奖励/库存/使用/成就：Room 持久化，积分通过 ledger 记录来源。
-- 统计页：基于每日归档和当前 UsageStats 展示日报、趋势、热力图、分享图等。
+- 统计页：基于每日归档和当前 UsageStats 前台 session 口径展示日报、趋势、热力图、分享图等。
 - 外观主题：预设主题 + 自定义三色主题，DataStore 保存。
 - 多语言：支持系统语言、简体中文、英文。
 - 订阅/权益：Google Play 版走 Play Billing；国内版走本地激活码。Google Play 配置不完整时要有可理解的错误文案。
@@ -59,6 +59,16 @@
 
 服务内有分组配置缓存和使用量缓存，用于降低前台切换热路径里的 DAO 与 UsageStats 读取成本。
 
+### UsageStats 用量口径
+
+- Tiny Vow 的“应用使用时长”主口径是 `UsageStatsManager.queryEvents(...)` 中的前台 Activity session：用 `ACTIVITY_RESUMED` 与 `ACTIVITY_PAUSED` / `ACTIVITY_STOPPED` 合成 session，再按统计窗口裁剪后聚合。
+- 不要把 `queryAndAggregateUsageStats(...).totalTimeInForeground` 作为首页、限额、积分、归档的主使用时长来源。该累计 bucket 在不同厂商系统上可能和系统界面不一致；已在 MIUI / Android 16 上出现同一窗口系统界面 33 分钟、`totalTimeInForeground` 返回 93 分钟的偏差。
+- `queryAndAggregateUsageStats` 看似官方，但受厂商 bucket、后台播放、跨日裁剪、多 Activity、悬浮窗/画中画策略影响，不适合作为 Tiny Vow 的统一前台用量口径。
+- 前台 session 口径更符合 Tiny Vow 的业务语义：用户实际看到 App 在前台多久、能按自定义日分割点精确裁剪、首页/阻断/归档/统计内部一致。
+- 事件 session 仍有厂商边界：部分系统可能延迟 `PAUSED` / `STOPPED`，画中画、悬浮窗、后台播放是否计入也可能和系统设置页不同。当前约定是只统计前台 Activity session，不统计纯后台播放。
+- `openCount`、`sessionCount`、`longestSessionMillis`、`nightUsageMillis`、小时热力图本来就依赖事件流；修改时要保持它们和主使用时长的 session 裁剪逻辑一致。
+- 如果将来为了兼容某厂商新增 fallback 或双口径诊断，必须先用真机对比系统设置页、`totalTimeInForeground`、session 聚合三组数据，不要凭直觉切换主口径。
+
 ### 积分、奖励与加时包
 
 - DataStore 中的 `userPoints` 是当前余额，`todayPoints` 是今日展示值。
@@ -89,7 +99,7 @@
 ### 统计、归档与历史快照
 
 - `DailyArchiveRepository.ensureArchivesUpToYesterday()` 从归档起始日补齐到昨天；`archiveDate(date)` 只归档已完成日期，不归档今天。
-- 每日归档读取当天 UsageStats、打开次数、session，并构建 `DailyArchiveEntity`、`DailyGroupArchiveEntity`、`DailyAppArchiveEntity`。
+- 每日归档读取当天 UsageStats 前台 session 用量、打开次数、session，并构建 `DailyArchiveEntity`、`DailyGroupArchiveEntity`、`DailyAppArchiveEntity`。
 - 归档保存的是历史事实。分组名、周期、限额、加时、成员 App、App 标签等都作为当时快照展示。
 - 刷新旧日期归档时，如果当天已有分组和 App 快照，应优先复用旧快照，避免后续分组编辑覆盖历史状态。
 - 未分组但当天使用超过最小阈值的 App 会作为 ungrouped 快照归档，用于完整设备使用回顾。
@@ -144,13 +154,14 @@
 - `ui/rewards`：成就和兑换。
 - `ui/theme`：Compose theme、主题模型、分享图主题。
 - `i18n`：`AppLanguage` 与 `AppText`。
-- `docs`：隐私、账号删除、Google Play 发布检查。
+- `docs`：上架前优化、发布流程、市场文案、隐私、账号删除、Google Play 发布检查。
 - `design`：图标、报告视觉参考。
 
 ## 开发原则
 
 - 小步改动。优先修明确问题或补完整闭环，不要为了“架构更好看”大范围重构。
 - 面向项目维护者的文档默认使用中文，包括 `AGENTS.md`、`CHANGELOG.md` 和 `docs/*.md`。只有外部平台要求、API 原文、代码标识符或用户明确要求时才使用英文。
+- 用户要求“准备上架”“发布前优化”“提审检查”“整理发布文档”时，先读 `docs/prelaunch-optimization.md`、`docs/release.md`、`docs/google-play-release-checklist.md` 和 `docs/market-listing-copy.md`，再按必须完成/建议优化/可延后分类处理。
 - 不随意拆分或重写 `AppLimitAccessibilityService`、`GroupLimitEnforcer`、阻断 overlay 时序；这些是核心链路。
 - UI 改动跟随现有 Compose + Material 3 风格，避免引入新的设计体系。
 - 业务逻辑优先写在 repository/domain 层；Compose 里避免堆积复杂计算和数据库细节。
@@ -238,13 +249,13 @@
   - Room 数据库主文件和 `-wal` / `-shm`。
   - DataStore 文件：`managed_app_preferences`、`auth_preferences`、`activation_preferences`。
   - `files/reward_icons` 下的导入奖励图标文件。
-- `managed_app_preferences` 备份里会带上加密后的微信读书 Key 字段，但导入恢复不会恢复 Android Keystore 里的 `tinyvow_weread_api_key` 密钥材料；恢复后要提示用户去特殊应用里重新填写 WeRead Key。
-- 导入备份会校验 `backup_manifest.json` 中的 `format` 和 `schemaVersion`，恢复数据库 / DataStore / 奖励图标后立即重启应用；涉及这条链路的改动要手动验证“导入成功提示 + 重启 + 重启后状态恢复”。
+- 可恢复备份不导出微信读书 Key 明文；`managed_app_preferences` 里可能带上旧的加密 Key 字段，但导入恢复不会恢复 Android Keystore 里的 `tinyvow_weread_api_key` 密钥材料。`backup_manifest.json` 会用 `requiresWeReadKeyReentry` 标记恢复后是否需要提示用户去特殊应用里重新填写 WeRead Key。
+- 导入备份会校验 `backup_manifest.json` 中的 `format`、`schemaVersion`、`packageName` 和 `appVersionCode`，恢复数据库 / DataStore / 奖励图标后立即重启应用；涉及这条链路的改动要手动验证“导入成功提示 + 重启 + 重启后状态恢复”。
 - 隐私导出表清单要覆盖当前 Room 本地数据，包括奖励库存、主动效果、连胜保护待处理、奖励使用历史和保护事件；新增本地表时同步 `LocalDataManager.localDataTables`。
 - 国内版账号是 `LocalAuthRepository.ensureLocalSession()` 生成的本地用户 ID；`LocalActivationSubscriptionRepository` 将激活码绑定到该 ID，并用 `activation_preferences` 记录激活状态、已用 codeId 和最后一次墙钟时间。
 - 账号删除、隐私说明相关改动要同步检查 `docs/account-delete.html`、`docs/privacy.html` 和应用内支持页文案。
 - 导出/清理本地数据时必须覆盖 Room 数据、`managed_app_preferences`、国内 `auth_preferences` / `activation_preferences`、奖励导入图标、分享缓存和 WeRead Key 的 Keystore 材料等用户能感知的本地状态；不要误删应用安装外部数据。
-- 不要把 Android Auto Backup / device transfer 当成本地备份恢复方案：Manifest 当前虽然开启了 `allowBackup`，但 `backup_rules.xml` / `data_extraction_rules.xml` 已排除数据库、DataStore 和 `share` 缓存，核心恢复仍应以 `LocalDataManager` 的手动备份导入导出为准。
+- 不要把 Android Auto Backup / device transfer 当成本地备份恢复方案：Manifest 当前虽然开启了 `allowBackup`，但 `backup_rules.xml` / `data_extraction_rules.xml` 已排除数据库、DataStore、`share` 缓存、导入奖励图标和待恢复微信读书 Key 文件，核心恢复仍应以 `LocalDataManager` 的手动备份导入导出为准。
 
 ## 测试和检查
 
@@ -298,6 +309,8 @@
 .\gradlew.bat testChinaDebugUnitTest
 .\gradlew.bat assembleDefaultDebug
 .\gradlew.bat connectedDebugAndroidTest
+.\tools\package-china-release.ps1
+.\tools\package-release-artifacts.ps1
 ```
 
 如果终端读取中文文档时出现乱码，可显式按 UTF-8 读取：
@@ -317,7 +330,20 @@ Get-Content -Raw -Encoding UTF8 AGENTS.md
 - Google Play 和国内版默认共享同一个基础 `versionName` 和 `versionCode`。除非用户明确要求渠道独立发版，不要拆成两套版本号。
 - 每次对外发布 APK/AAB 前必须手动递增 `TINYVOW_VERSION_CODE`。仅本机调试构建可以不递增。
 - 每次调整对外版本时同步更新 `CHANGELOG.md`，记录用户可见变化；版本发布流程和 tag 规则同步维护 `docs/release.md`。
+- 上架前优化和人工验证清单维护在 `docs/prelaunch-optimization.md`；发现新的发布风险、审核材料要求或人工验证步骤时，优先补到该文档，而不是散落在对话记录里。
 - 应用内版本展示应继续从 `BuildConfig.VERSION_NAME` / `BuildConfig.VERSION_CODE` 读取，不要把版本号写入 DataStore、Room 或普通字符串资源。
+- 当用户要求“打包 release 包”“生成发布包”或“给我可归档产物”时，不要只停留在 `app/build/outputs`：
+  - 需要把最终发布产物复制到根目录 `dist/`。
+  - 文件名统一为 `tinyvow-{channel}-{versionName}-vc{versionCode}-release.{apk|aab}`。
+  - 当前渠道名固定使用 `cn` 和 `googleplay`。
+  - 国内版 APK 默认使用 `tools/package-china-release.ps1`；同时整理两个渠道时使用 `tools/package-release-artifacts.ps1`。
+- 如果本次只是直接执行了 Gradle 任务，也要在结束前把产物补复制到 `dist/` 并按上述规则改名，方便归档，不要只给 `app/build/outputs/...` 原始路径。
+- release 签名相关注意事项：
+  - 国内版签名配置默认读取 `release-signing/tinyvow-cn-release.properties`，字段必须包含 `storeFile`、`storePassword`、`keyAlias`、`keyPassword`。
+  - `release-signing/` 下的 keystore、properties 和其他密码材料只保留在本机，不提交到仓库，不复制到 `dist/`，也不要写进文档示例。
+  - `tools/package-china-release.ps1` 会校验签名配置、keystore 存在性，并在出包后执行 `apksigner verify`；改动发布流程时不要绕过这些检查。
+  - 如果某个渠道已经对外发布过，不要随意更换 release keystore；需要换签名时先确认已有安装包升级链路和外部平台要求。
+  - Google Play AAB 归档也按 release 流程产出，但上传到 Play 后仍以 Play Console / Play App Signing 的最终要求为准。
 - 涉及版本、Gradle、渠道或发布文档变更时，至少运行：
 
 ```powershell
@@ -355,6 +381,7 @@ Get-Content -Raw -Encoding UTF8 AGENTS.md
 - 渠道版本规则见“版本管理和发布维护”；不要在渠道逻辑里另起一套版本号。
 - Google Play 版使用 `com.rrrrz.tinyvow`，只上传 `:app:bundleGooglePlayRelease` 到 Play Console。
 - 国内版使用 `com.rrrrz.tinyvow.cn`，用于国内测试和后续激活码能力，可与 Google Play 版同时安装，但本地数据不互通。
+- release 归档产物默认放到根目录 `dist/`，不要散落在别的目录；产物名必须保留渠道、`versionName` 和 `versionCode` 方便后续归档。
 - 国内版启动时会确保存在本地账号，并在“我的 > Tiny Vow Pro”显示用户 ID 复制与激活码输入入口。
 - 日常 debug 默认使用国内版：优先运行 `:app:assembleChinaDebug` 或 `:app:installChinaDebug`。
 - 为方便记忆，也可以运行 `:app:assembleDefaultDebug` 或 `:app:installDefaultDebug`，这两个 alias 当前指向国内版。

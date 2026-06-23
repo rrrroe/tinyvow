@@ -104,7 +104,7 @@ fun HelpFeedbackScreen(
                 onClick = onReplayTutorial,
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Icon(Icons.Default.Refresh, contentDescription = null)
+                Icon(Icons.Default.Refresh, contentDescription = AppText.t("support_replay_tutorial"))
                 Text(AppText.t("support_replay_tutorial"))
             }
             TinyVowButton(
@@ -112,7 +112,7 @@ fun HelpFeedbackScreen(
                 tone = TinyVowButtonTone.Primary,
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Icon(Icons.Default.Email, contentDescription = null)
+                Icon(Icons.Default.Email, contentDescription = AppText.t("support_send_feedback"))
                 Text(AppText.t("support_send_feedback"))
             }
         }
@@ -202,14 +202,14 @@ fun ContactUsScreen(
                     tone = TinyVowButtonTone.Primary,
                     modifier = Modifier.weight(1f),
                 ) {
-                    Icon(Icons.Default.Email, contentDescription = null)
+                    Icon(Icons.Default.Email, contentDescription = AppText.t("support_send_email"))
                     Text(AppText.t("support_send_email"))
                 }
                 TinyVowButton(
                     onClick = onCopyEmail,
                     modifier = Modifier.weight(1f),
                 ) {
-                    Icon(Icons.Default.ContentCopy, contentDescription = null)
+                    Icon(Icons.Default.ContentCopy, contentDescription = AppText.t("support_copy_email"))
                     Text(AppText.t("support_copy_email"))
                 }
             }

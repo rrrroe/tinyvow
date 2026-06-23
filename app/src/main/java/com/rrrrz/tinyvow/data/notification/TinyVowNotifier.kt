@@ -13,7 +13,10 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import com.rrrrz.tinyvow.MainActivity
 import com.rrrrz.tinyvow.R
+import com.rrrrz.tinyvow.data.reminder.EncourageProgressReminder
 import com.rrrrz.tinyvow.i18n.AppText
+import java.util.Locale
+import java.util.concurrent.ThreadLocalRandom
 
 class TinyVowNotifier(
     private val context: Context,
@@ -105,6 +108,7 @@ class TinyVowNotifier(
     fun notifyEncourageIncomplete(
         timeText: String,
         groupNames: List<String>,
+        progressReminder: EncourageProgressReminder?,
     ) {
         ensureChannel()
         val textContext = AppText.localizedContext(context)
@@ -116,7 +120,7 @@ class TinyVowNotifier(
         )
         val groupText = groupNames.take(3).joinToString(textContext.getString(R.string.list_separator))
         val remainingCount = (groupNames.size - 3).coerceAtLeast(0)
-        val body =
+        val statusText =
             if (remainingCount > 0) {
                 textContext.getString(
                     R.string.notification_encourage_incomplete_body_more,
@@ -126,6 +130,14 @@ class TinyVowNotifier(
             } else {
                 textContext.getString(R.string.notification_encourage_incomplete_body, groupText)
             }
+        val progressText = progressReminder?.let {
+            randomEncourageProgressText(
+                textContext = textContext,
+                remainingMinutes = it.remainingMinutes,
+                groupName = it.groupName,
+            )
+        }
+        val body = listOfNotNull(progressText, statusText).joinToString("\n")
         val notification = NotificationCompat.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.mipmap.ic_launcher)
             .setContentTitle(textContext.getString(R.string.notification_encourage_incomplete_title, timeText))
@@ -138,6 +150,51 @@ class TinyVowNotifier(
         NotificationManagerCompat.from(context).notify(ENCOURAGE_INCOMPLETE_NOTIFICATION_ID, notification)
     }
 
+    fun notifyEncourageCompleted(
+        groupId: String,
+        groupName: String,
+    ) {
+        ensureChannel()
+        val textContext = AppText.localizedContext(context)
+        val pendingIntent = PendingIntent.getActivity(
+            context,
+            groupId.hashCode(),
+            Intent(context, MainActivity::class.java),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        val body = textContext.getString(R.string.notification_encourage_completed_body, groupName)
+        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+            .setSmallIcon(R.mipmap.ic_launcher)
+            .setContentTitle(textContext.getString(R.string.notification_encourage_completed_title))
+            .setContentText(body)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+            .setContentIntent(pendingIntent)
+            .setAutoCancel(true)
+            .build()
+        if (!canPostNotifications()) return
+        NotificationManagerCompat.from(context).notify(ENCOURAGE_COMPLETED_NOTIFICATION_BASE_ID + groupId.hashCode(), notification)
+    }
+
+    private fun randomEncourageProgressText(
+        textContext: Context,
+        remainingMinutes: Int,
+        groupName: String,
+    ): String {
+        val messages = textContext.resources.getStringArray(R.array.notification_encourage_progress_messages)
+        val template = messages.randomOrNullByThread() ?: return ""
+        return String.format(
+            textContext.resources.configuration.locales[0] ?: Locale.getDefault(),
+            template,
+            remainingMinutes,
+            groupName,
+        )
+    }
+
+    private fun Array<String>.randomOrNullByThread(): String? {
+        if (isEmpty()) return null
+        return this[ThreadLocalRandom.current().nextInt(size)]
+    }
+
     private fun canPostNotifications(): Boolean =
         Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) ==
@@ -146,5 +203,6 @@ class TinyVowNotifier(
     companion object {
         const val CHANNEL_ID = "daily_limit_alerts"
         private const val ENCOURAGE_INCOMPLETE_NOTIFICATION_ID = 20_240_501
+        private const val ENCOURAGE_COMPLETED_NOTIFICATION_BASE_ID = 20_240_600
     }
 }

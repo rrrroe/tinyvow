@@ -44,6 +44,7 @@ class DailyArchiveRepository(
     private companion object {
         private const val MIN_UNGROUPED_APP_ARCHIVE_USAGE_MILLIS = 60_000L
         private const val UNGROUPED_SCOPE_KEY = "__ungrouped__"
+        private const val SYSTEM_USAGE_ARCHIVE_VERSION = 2
     }
 
     private val zoneId = ZoneId.systemDefault()
@@ -64,6 +65,8 @@ class DailyArchiveRepository(
     private val specialAppUsageRepository = SpecialAppUsageRepository(context, database)
 
     fun getRecentArchives(limit: Int = 90): Flow<List<DailyArchiveEntity>> = dailyArchiveDao.getRecent(limit)
+
+    fun observeArchiveState(): Flow<DailyArchiveStateEntity?> = stateDao.observe()
 
     fun getArchiveByDate(date: String): Flow<DailyArchiveEntity?> = dailyArchiveDao.getByDate(date)
 
@@ -110,7 +113,8 @@ class DailyArchiveRepository(
     suspend fun refreshArchiveForDate(date: String) {
         withContext(Dispatchers.IO) {
             val targetDate = LocalDate.parse(date)
-            val today = LocalDate.now(zoneId)
+            val dayStartHour = preferences.getDayBoundaryHourOnce()
+            val today = ArchiveDateUtils.localDateAt(System.currentTimeMillis(), zoneId, dayStartHour)
             require(targetDate.isBefore(today)) {
                 "Only completed days can be refreshed."
             }
@@ -123,7 +127,8 @@ class DailyArchiveRepository(
     suspend fun ensureArchivesUpToYesterday() {
         withContext(Dispatchers.IO) {
             val now = System.currentTimeMillis()
-            val today = LocalDate.now(zoneId)
+            val dayStartHour = preferences.getDayBoundaryHourOnce()
+            val today = ArchiveDateUtils.localDateAt(now, zoneId, dayStartHour)
             var state = stateDao.get()
             if (state == null) {
                 val todayString = ArchiveDateUtils.formatDate(today)
@@ -200,6 +205,7 @@ class DailyArchiveRepository(
     }
 
     private suspend fun repairArchivesMissingAppSnapshots() {
+        val dayStartHour = preferences.getDayBoundaryHourOnce()
         val groupedPackageNames =
             crossRefDao
                 .getAllValidCrossRefsSync()
@@ -208,8 +214,8 @@ class DailyArchiveRepository(
         val launchablePackageNames = loadLaunchablePackageNames()
         dailyArchiveDao.getAllArchiveDatesAsc().forEach { dateString ->
             val date = LocalDate.parse(dateString)
-            val dayStart = ArchiveDateUtils.startOfDayMillis(date, zoneId)
-            val nextDayStart = ArchiveDateUtils.nextDayStartMillis(date, zoneId)
+            val dayStart = ArchiveDateUtils.startOfDayMillis(date, zoneId, dayStartHour)
+            val nextDayStart = ArchiveDateUtils.nextDayStartMillis(date, zoneId, dayStartHour)
             val activePackageNames =
                 usageRepository
                     .getUsageStats(dayStart, nextDayStart)
@@ -233,10 +239,11 @@ class DailyArchiveRepository(
     }
 
     private suspend fun archiveDate(date: LocalDate) {
+        val dayStartHour = preferences.getDayBoundaryHourOnce()
         val archiveDate = ArchiveDateUtils.formatDate(date)
-        val dayStart = ArchiveDateUtils.startOfDayMillis(date, zoneId)
-        val dayEnd = ArchiveDateUtils.endOfDayMillis(date, zoneId)
-        val nextDayStart = ArchiveDateUtils.nextDayStartMillis(date, zoneId)
+        val dayStart = ArchiveDateUtils.startOfDayMillis(date, zoneId, dayStartHour)
+        val dayEnd = ArchiveDateUtils.endOfDayMillis(date, zoneId, dayStartHour)
+        val nextDayStart = ArchiveDateUtils.nextDayStartMillis(date, zoneId, dayStartHour)
         val groups = groupDao.getAllGroupsSync()
         val crossRefs = crossRefDao.getAllValidCrossRefsSync()
         val existingGroupSnapshots = dailyGroupArchiveDao.getByDateSync(archiveDate)
@@ -292,7 +299,7 @@ class DailyArchiveRepository(
                 .distinct()
                 .associateWith { (periodStart, groupType) ->
                     usageRepository.getUsageStats(
-                        ArchiveDateUtils.startOfDayMillis(periodStart, zoneId),
+                        ArchiveDateUtils.startOfDayMillis(periodStart, zoneId, dayStartHour),
                         nextDayStart,
                         groupType,
                     )
@@ -302,7 +309,7 @@ class DailyArchiveRepository(
                 .map { ArchiveDateUtils.periodStart(date, it.limitPeriod) to it.type }
                 .distinct()
                 .associateWith { (periodStart, groupType) ->
-                    val periodStartMillis = ArchiveDateUtils.startOfDayMillis(periodStart, zoneId)
+                    val periodStartMillis = ArchiveDateUtils.startOfDayMillis(periodStart, zoneId, dayStartHour)
                     if (periodStartMillis >= dayStart) {
                         emptyMap()
                     } else {
@@ -464,6 +471,7 @@ class DailyArchiveRepository(
                 pointsSpent = pointsSpent,
                 pointsNet = pointsEarned - pointsSpent,
                 redemptionCount = redemptionHistoryDao.countInRange(dayStart, nextDayStart),
+                archiveVersion = SYSTEM_USAGE_ARCHIVE_VERSION,
                 createdAt = archiveTime,
                 updatedAt = archiveTime,
             )

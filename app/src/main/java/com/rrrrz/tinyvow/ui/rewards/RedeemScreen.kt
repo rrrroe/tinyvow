@@ -66,7 +66,6 @@ import com.rrrrz.tinyvow.data.repository.PendingStreakShieldItem
 import com.rrrrz.tinyvow.data.repository.RewardIconCatalog
 import com.rrrrz.tinyvow.data.repository.RewardIconSpec
 import com.rrrrz.tinyvow.data.repository.RewardSaveValidationError
-import com.rrrrz.tinyvow.data.repository.RewardStoreUnavailableReason
 import com.rrrrz.tinyvow.data.repository.RewardStoreItem
 import com.rrrrz.tinyvow.data.repository.evaluateRewardStoreAvailability
 import com.rrrrz.tinyvow.data.repository.parseRewardPayload
@@ -187,8 +186,6 @@ fun RedeemScreen(
                         controlGroupCount = controlGroups,
                         encourageGroupCount = encourageGroups,
                         onPurchase = { purchaseWithGuard(item.reward) },
-                        onEdit = null,
-                        onArchive = null,
                     )
                 }
             }
@@ -202,8 +199,6 @@ fun RedeemScreen(
                         controlGroupCount = controlGroups,
                         encourageGroupCount = encourageGroups,
                         onPurchase = { purchaseWithGuard(item.reward) },
-                        onEdit = null,
-                        onArchive = null,
                     )
                 }
             }
@@ -217,8 +212,6 @@ fun RedeemScreen(
                         controlGroupCount = controlGroups,
                         encourageGroupCount = encourageGroups,
                         onPurchase = { purchaseWithGuard(item.reward) },
-                        onEdit = null,
-                        onArchive = null,
                     )
                 }
             }
@@ -234,8 +227,6 @@ fun RedeemScreen(
                         controlGroupCount = controlGroups,
                         encourageGroupCount = encourageGroups,
                         onPurchase = { purchaseWithGuard(item.reward) },
-                        onEdit = null,
-                        onArchive = null,
                     )
                 }
             }
@@ -773,8 +764,6 @@ private fun StoreRewardItemCard(
     controlGroupCount: Int,
     encourageGroupCount: Int,
     onPurchase: () -> Unit,
-    onEdit: (() -> Unit)?,
-    onArchive: (() -> Unit)?,
 ) {
     val themeColors = LocalThemeColors.current
     val reward = item.reward
@@ -786,18 +775,13 @@ private fun StoreRewardItemCard(
             encourageGroupCount = encourageGroupCount,
         )
     val canPurchase = availability.canPurchase
-    val canPurchaseFromCard = canPurchase && onEdit == null && onArchive == null
-    val availabilityText =
-        storeAvailabilityText(
-            item = item,
-            unavailableReason = availability.unavailableReason,
-        )
+    val storeStockText = storeStockText(item)
 
     TinyVowCard(
         modifier = Modifier
             .fillMaxWidth()
             .clickable(
-                enabled = canPurchaseFromCard,
+                enabled = canPurchase,
                 onClickLabel = AppText.t("redeem_store_purchase_action"),
                 role = Role.Button,
                 onClick = onPurchase,
@@ -823,92 +807,53 @@ private fun StoreRewardItemCard(
                     text = reward.localizedTitle(),
                     style = MaterialTheme.typography.titleSmall,
                     color = themeColors.ink,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
                 Text(
                     text = reward.localizedDescription(),
                     style = MaterialTheme.typography.bodySmall,
                     color = themeColors.inkMuted,
-                    maxLines = 2,
-                )
-                Text(
-                    text = storeRuleSummary(reward),
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.primary,
                     maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
                 Text(
-                    text = availabilityText,
+                    text = storeStockText,
                     style = MaterialTheme.typography.labelSmall,
                     color = if (canPurchase) themeColors.inkMuted else MaterialTheme.colorScheme.error,
-                    maxLines = 2,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
-            if (onEdit != null || onArchive != null) {
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(2.dp),
-                ) {
-                    onEdit?.let {
-                        IconButton(onClick = it) {
-                            Icon(
-                                Icons.Default.Edit,
-                                contentDescription =
-                                    if (reward.builtinKey != null) AppText.t("redeem_edit_builtin_reward_cost")
-                                    else AppText.t("redeem_edit_reward"),
-                            )
-                        }
-                    }
-                    onArchive?.let {
-                        IconButton(onClick = it) {
-                            Icon(
-                                Icons.Default.DeleteOutline,
-                                contentDescription = AppText.t("redeem_archive_custom_reward"),
-                            )
-                        }
-                    }
-                }
-            } else {
-                Button(
-                    onClick = onPurchase,
-                    enabled = canPurchase,
-                    shape = RoundedCornerShape(14.dp),
-                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
-                ) {
-                    Text(
-                        text = "${reward.pointCost} PT",
-                        maxLines = 1,
-                        textAlign = TextAlign.Center,
-                    )
-                }
+            Button(
+                onClick = onPurchase,
+                enabled = canPurchase,
+                shape = RoundedCornerShape(14.dp),
+                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+            ) {
+                Text(
+                    text = "${reward.pointCost} PT",
+                    maxLines = 1,
+                    textAlign = TextAlign.Center,
+                )
             }
         }
 
     }
 }
 
-private fun storeAvailabilityText(
-    item: RewardStoreItem,
-    unavailableReason: RewardStoreUnavailableReason?,
-): String {
+private fun storeStockText(item: RewardStoreItem): String {
     val reward = item.reward
-    return when (unavailableReason) {
-        RewardStoreUnavailableReason.OUT_OF_STOCK -> AppText.t("redeem_error_out_of_stock")
-        RewardStoreUnavailableReason.DAILY_LIMIT_REACHED -> AppText.t("redeem_store_daily_limit_reached")
-        RewardStoreUnavailableReason.NEEDS_CONTROL_GROUP -> AppText.t("redeem_no_control_group_for_time_pack")
-        RewardStoreUnavailableReason.NEEDS_ENCOURAGE_GROUP -> AppText.t("redeem_no_encourage_group_for_double_points")
-        RewardStoreUnavailableReason.INSUFFICIENT_POINTS -> AppText.t("redeem_error_insufficient_points")
-        null -> {
-            val stockText =
-                if (reward.stock == -1) {
-                    AppText.t("redeem_store_stock_owned_unlimited", item.ownedQuantity)
-                } else {
-                    AppText.t("redeem_store_stock_owned_value", reward.stock, item.ownedQuantity)
-                }
-            if (reward.builtinKey != null) {
-                AppText.t("redeem_store_stock_owned_daily_limit", stockText, item.purchasedTodayCount)
-            } else {
-                stockText
-            }
+    val stockText =
+        if (reward.stock == -1) {
+            AppText.t("redeem_store_stock_owned_unlimited", item.ownedQuantity)
+        } else {
+            AppText.t("redeem_store_stock_owned_value", reward.stock, item.ownedQuantity)
         }
+    return if (reward.builtinKey != null) {
+        AppText.t("redeem_store_stock_owned_daily_limit", stockText, item.purchasedTodayCount)
+    } else {
+        stockText
     }
 }
 
@@ -1128,16 +1073,6 @@ private fun TargetGroupRow(
         }
     }
 }
-
-private fun storeRuleSummary(reward: RedemptionEntity): String =
-    when (reward.rewardType) {
-        RewardType.TIME_ADD -> AppText.t("redeem_rule_bind_control_group")
-        RewardType.PERIOD_PASS -> AppText.t("redeem_rule_current_period_manual_use")
-        RewardType.EMERGENCY_UNLOCK -> AppText.t("redeem_rule_overlay_use_only")
-        RewardType.STREAK_SHIELD -> AppText.t("redeem_rule_review_then_confirm")
-        RewardType.DOUBLE_POINTS_DAY -> AppText.t("redeem_rule_double_points_day")
-        RewardType.CUSTOM -> AppText.t("redeem_rule_keep_in_inventory")
-    }
 
 private fun useRuleSummary(
     reward: RedemptionEntity,

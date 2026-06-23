@@ -12,6 +12,7 @@ import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.rrrrz.tinyvow.data.supermode.SuperModeStoredState
+import com.rrrrz.tinyvow.data.time.BusinessDay
 import com.rrrrz.tinyvow.ui.theme.DefaultThemeSeed
 import com.rrrrz.tinyvow.i18n.AppLanguage
 import com.rrrrz.tinyvow.ui.theme.ThemeSeed
@@ -46,6 +47,7 @@ class ManagedAppPreferences(
         val welcomeIntroCompleted = booleanPreferencesKey("welcome_intro_completed")
         val firstRunCoachmarkCompleted = booleanPreferencesKey("first_run_coachmark_completed")
         val selectedAppLanguage = stringPreferencesKey("selected_app_language")
+        val dayBoundaryHour = intPreferencesKey("day_boundary_hour")
         val profileDisplayName = stringPreferencesKey("profile_display_name")
         val profileAvatarUri = stringPreferencesKey("profile_avatar_uri")
         val debugProExpiresAtMillis = longPreferencesKey("debug_pro_expires_at_millis")
@@ -114,7 +116,14 @@ class ManagedAppPreferences(
 
     val todayPoints: Flow<Double> = context.managedAppDataStore.data.map { preferences ->
         val lastReset = preferences[Keys.lastPointsResetDate]
-        val today = java.time.LocalDate.now().toString()
+        val today =
+            com.rrrrz.tinyvow.data.repository.ArchiveDateUtils.formatDate(
+                com.rrrrz.tinyvow.data.repository.ArchiveDateUtils.localDateAt(
+                    System.currentTimeMillis(),
+                    java.time.ZoneId.systemDefault(),
+                    BusinessDay.normalizeStartHour(preferences[Keys.dayBoundaryHour]),
+                ),
+            )
         if (lastReset == today) {
             preferences[Keys.todayPoints] ?: 0.0
         } else {
@@ -148,6 +157,10 @@ class ManagedAppPreferences(
 
     val selectedAppLanguage: Flow<AppLanguage> = context.managedAppDataStore.data.map { preferences ->
         AppLanguage.fromStorageValue(preferences[Keys.selectedAppLanguage])
+    }
+
+    val dayBoundaryHour: Flow<Int> = context.managedAppDataStore.data.map { preferences ->
+        BusinessDay.normalizeStartHour(preferences[Keys.dayBoundaryHour])
     }
 
     val profileDisplayName: Flow<String?> = context.managedAppDataStore.data.map { preferences ->
@@ -194,12 +207,24 @@ class ManagedAppPreferences(
         parseReminderTimes(preferences[Keys.encourageReminderTimesMinutes])
     }
 
+    fun sharePosterModuleIds(tabKey: String): Flow<List<String>> =
+        context.managedAppDataStore.data.map { preferences ->
+            parseSharePosterModuleIds(preferences[sharePosterModuleKey(tabKey)])
+        }
+
     suspend fun addUserPoints(points: Double) {
         context.managedAppDataStore.edit { preferences ->
             val currentTotal = preferences[Keys.userPoints] ?: 0.0
             preferences[Keys.userPoints] = currentTotal + points
-            
-            val today = java.time.LocalDate.now().toString()
+
+            val today =
+                com.rrrrz.tinyvow.data.repository.ArchiveDateUtils.formatDate(
+                    com.rrrrz.tinyvow.data.repository.ArchiveDateUtils.localDateAt(
+                        System.currentTimeMillis(),
+                        java.time.ZoneId.systemDefault(),
+                        BusinessDay.normalizeStartHour(preferences[Keys.dayBoundaryHour]),
+                    ),
+                )
             val lastReset = preferences[Keys.lastPointsResetDate]
             if (lastReset == today) {
                 val currentToday = preferences[Keys.todayPoints] ?: 0.0
@@ -332,6 +357,14 @@ class ManagedAppPreferences(
         context.managedAppDataStore.edit { preferences ->
             preferences[Keys.selectedAppLanguage] = language.storageValue
         }
+    }
+
+    suspend fun setDayBoundaryHour(hour: Int) {
+        val normalized = BusinessDay.normalizeStartHour(hour)
+        context.managedAppDataStore.edit { preferences ->
+            preferences[Keys.dayBoundaryHour] = normalized
+        }
+        BusinessDay.updateCachedStartHour(normalized)
     }
 
     suspend fun setProfileDisplayName(displayName: String?) {
@@ -488,6 +521,15 @@ class ManagedAppPreferences(
         }
     }
 
+    suspend fun setSharePosterModuleIds(
+        tabKey: String,
+        moduleIds: List<String>,
+    ) {
+        context.managedAppDataStore.edit { preferences ->
+            preferences[sharePosterModuleKey(tabKey)] = encodeSharePosterModuleIds(moduleIds)
+        }
+    }
+
     suspend fun setDailyLimitMinutes(packageName: String, minutes: Int) {
         context.managedAppDataStore.edit { preferences ->
             preferences[intPreferencesKey("daily_limit_minutes_$packageName")] = minutes
@@ -506,6 +548,10 @@ class ManagedAppPreferences(
 
     suspend fun getSelectedAppLanguageOnce(): AppLanguage {
         return selectedAppLanguage.first()
+    }
+
+    suspend fun getDayBoundaryHourOnce(): Int {
+        return dayBoundaryHour.first()
     }
 
     suspend fun getSuperModeStateOnce(): SuperModeStoredState {
@@ -530,6 +576,10 @@ class ManagedAppPreferences(
 
     suspend fun getEncourageReminderTimesMinutesOnce(): List<Int> {
         return encourageReminderTimesMinutes.first()
+    }
+
+    suspend fun getSharePosterModuleIdsOnce(tabKey: String): List<String> {
+        return sharePosterModuleIds(tabKey).first()
     }
 
     suspend fun getSentReminderKeysOnce(): Set<String> {
@@ -639,6 +689,24 @@ class ManagedAppPreferences(
             .filter { it in 0 until MINUTES_PER_DAY }
             .distinct()
             .sorted()
+            .joinToString(",")
+
+    private fun sharePosterModuleKey(tabKey: String) =
+        stringPreferencesKey("share_poster_modules_$tabKey")
+
+    private fun parseSharePosterModuleIds(value: String?): List<String> =
+        value
+            ?.split(",")
+            ?.map { it.trim() }
+            ?.filter { it.isNotBlank() }
+            ?.distinct()
+            .orEmpty()
+
+    private fun encodeSharePosterModuleIds(moduleIds: List<String>): String =
+        moduleIds
+            .map { it.trim() }
+            .filter { it.isNotBlank() }
+            .distinct()
             .joinToString(",")
 
     companion object {

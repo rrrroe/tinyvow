@@ -18,8 +18,11 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.ColumnScope
@@ -74,6 +77,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -96,16 +101,25 @@ import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
 import androidx.compose.ui.zIndex
 import coil.compose.AsyncImage
+import com.rrrrz.tinyvow.R
 import com.rrrrz.tinyvow.data.apps.InstalledAppRepository
 import com.rrrrz.tinyvow.data.apps.ManagedApp
 import com.rrrrz.tinyvow.data.db.DailyAppArchiveEntity
@@ -115,6 +129,7 @@ import com.rrrrz.tinyvow.data.db.GroupType
 import com.rrrrz.tinyvow.data.repository.AppGroupWithApps
 import com.rrrrz.tinyvow.data.repository.ArchiveDateUtils
 import com.rrrrz.tinyvow.data.repository.DailyArchiveRepository
+import com.rrrrz.tinyvow.data.settings.ManagedAppPreferences
 import com.rrrrz.tinyvow.data.usage.AppSession
 import com.rrrrz.tinyvow.data.usage.UsageAccessStatus
 import com.rrrrz.tinyvow.data.usage.UsageRepository
@@ -146,6 +161,8 @@ import kotlin.math.roundToInt
 import kotlin.math.roundToLong
 
 private const val STAT_CHART_ANIMATIONS_ENABLED = false
+private val ReportTopControlHeight = 50.dp
+private val ReportNavigatorArrowSize = 34.dp
 
 private enum class SharePosterModule {
     BEHAVIOR,
@@ -543,6 +560,16 @@ private fun DailyReportScreen(
     onShowProUpsell: (ProUpsellSource) -> Unit,
 ) {
     val listState = rememberLazyListState()
+    val canShare = isReportShareReady(state = state, isProActive = isProActive)
+    var showSharePreview by remember(
+        state.selectedTab,
+        state.selectedArchiveDate,
+        state.selectedWeekStart,
+        state.selectedMonth,
+        state.selectedYear,
+    ) {
+        mutableStateOf(false)
+    }
     LaunchedEffect(
         state.selectedTab,
         state.selectedWeekStart,
@@ -558,26 +585,42 @@ private fun DailyReportScreen(
                 .background(MaterialTheme.colorScheme.background)
                 .padding(
                     horizontal = TinyVowSpacing.PageHorizontal,
-                    vertical = TinyVowSpacing.CardVertical,
+                    vertical = 6.dp,
                 ),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            ReportTabRow(selectedTab = state.selectedTab, onTabSelected = onTabSelected)
-            ReportNavigator(
-                state = state,
-                onPreviousArchiveDate = onPreviousArchiveDate,
-                onNextArchiveDate = onNextArchiveDate,
-                onSelectArchiveDate = onSelectArchiveDate,
-                onPreviousWeek = onPreviousWeek,
-                onNextWeek = onNextWeek,
-                onSelectWeekStart = onSelectWeekStart,
-                onPreviousMonth = onPreviousMonth,
-                onNextMonth = onNextMonth,
-                onSelectMonth = onSelectMonth,
-                onPreviousYear = onPreviousYear,
-                onNextYear = onNextYear,
-                onSelectYear = onSelectYear,
-            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                ReportTabDropdown(
+                    selectedTab = state.selectedTab,
+                    onTabSelected = onTabSelected,
+                    modifier = Modifier.size(ReportTopControlHeight),
+                )
+                ReportNavigator(
+                    state = state,
+                    onPreviousArchiveDate = onPreviousArchiveDate,
+                    onNextArchiveDate = onNextArchiveDate,
+                    onSelectArchiveDate = onSelectArchiveDate,
+                    onPreviousWeek = onPreviousWeek,
+                    onNextWeek = onNextWeek,
+                    onSelectWeekStart = onSelectWeekStart,
+                    onPreviousMonth = onPreviousMonth,
+                    onNextMonth = onNextMonth,
+                    onSelectMonth = onSelectMonth,
+                    onPreviousYear = onPreviousYear,
+                    onNextYear = onNextYear,
+                    onSelectYear = onSelectYear,
+                    modifier = Modifier.weight(1f),
+                )
+                ReportShareIconCard(
+                    enabled = canShare,
+                    onClick = { showSharePreview = true },
+                    modifier = Modifier.size(ReportTopControlHeight),
+                )
+            }
         }
         LazyColumn(
             state = listState,
@@ -598,14 +641,18 @@ private fun DailyReportScreen(
                         isProActive = isProActive,
                         onShowProUpsell = onShowProUpsell,
                     )
-                    ReportShareActionCard(
-                        state = state,
-                        isProActive = isProActive,
-                    )
                     Spacer(modifier = Modifier.height(24.dp))
                 }
             }
         }
+    }
+
+    if (showSharePreview) {
+        ReportPageSharePreviewDialog(
+            state = state,
+            isProActive = isProActive,
+            onDismiss = { showSharePreview = false },
+        )
     }
 }
 
@@ -615,10 +662,17 @@ private fun ReportPageContent(
     isProActive: Boolean,
     onShowProUpsell: (ProUpsellSource) -> Unit,
     modifier: Modifier = Modifier,
-    shareModules: Set<SharePosterModule>? = null,
+    shareModules: List<SharePosterModule>? = null,
 ) {
     val isDayReport = state.selectedTab == ReportTab.DAY
-    fun isShareModuleEnabled(module: SharePosterModule): Boolean = shareModules == null || module in shareModules
+    val defaultDayModules =
+        buildList {
+            add(SharePosterModule.BEHAVIOR)
+            add(SharePosterModule.FOCUS)
+            add(SharePosterModule.APPS)
+            add(SharePosterModule.RHYTHM)
+            if (isProActive) add(SharePosterModule.INSIGHTS)
+        }
 
     Column(
         modifier = modifier.fillMaxWidth(),
@@ -627,36 +681,37 @@ private fun ReportPageContent(
         if (!isProActive && !isDayReport) {
             LockedAdvancedReportCard(onClick = { onShowProUpsell(ProUpsellSource.ADVANCED_REPORT) })
         } else if (isDayReport) {
-            if (isProActive && isShareModuleEnabled(SharePosterModule.BEHAVIOR)) {
-                DailyBehaviorProfileCard(
-                    heroState = state.heroState,
-                    focusState = state.dailyFocusState,
-                    behaviorState = state.behaviorState,
-                )
-            } else if (!isProActive && shareModules == null) {
-                CompactLockedAnalysisPanel(
-                    onClick = { onShowProUpsell(ProUpsellSource.ADVANCED_REPORT) },
-                )
-            }
-            if (isShareModuleEnabled(SharePosterModule.FOCUS)) {
-                DailyFocusCard(
-                    focusState = state.dailyFocusState,
-                    compactLayout = false,
-                    animateValues = state.animateValues,
-                )
-            }
-            if (isShareModuleEnabled(SharePosterModule.APPS)) {
-                DailyAppFocusCard(
-                    topAppsState = state.topAppsState,
-                )
-            }
-            if (isShareModuleEnabled(SharePosterModule.RHYTHM)) {
-                DailyRhythmCard(timelineState = state.timelineState)
-            }
-            if (isProActive && isShareModuleEnabled(SharePosterModule.INSIGHTS)) {
-                DailyInsightCard(
-                    comparisonState = state.comparisonState,
-                )
+            (shareModules ?: defaultDayModules).forEach { module ->
+                when (module) {
+                    SharePosterModule.BEHAVIOR -> {
+                        DailyBehaviorProfileCard(
+                            heroState = state.heroState,
+                            focusState = state.dailyFocusState,
+                            behaviorState = state.behaviorState,
+                        )
+                    }
+                    SharePosterModule.FOCUS -> {
+                        DailyFocusCard(
+                            focusState = state.dailyFocusState,
+                            compactLayout = false,
+                            animateValues = state.animateValues,
+                        )
+                    }
+                    SharePosterModule.APPS -> DailyAppFocusCard(topAppsState = state.topAppsState)
+                    SharePosterModule.RHYTHM -> DailyRhythmCard(
+                        timelineState = state.timelineState,
+                        focusState = state.dailyFocusState,
+                    )
+                    SharePosterModule.INSIGHTS -> {
+                        if (isProActive) {
+                            DailyInsightCard(comparisonState = state.comparisonState)
+                        }
+                    }
+                    SharePosterModule.OVERVIEW,
+                    SharePosterModule.TREND,
+                    SharePosterModule.HEATMAP,
+                    SharePosterModule.STRUCTURE -> Unit
+                }
             }
         } else {
             if (shareModules == null) {
@@ -678,7 +733,7 @@ private fun ReportPageContent(
 @Composable
 private fun PeriodShareReportContent(
     state: DailyReportUiState,
-    shareModules: Set<SharePosterModule>,
+    shareModules: List<SharePosterModule>,
     animateValues: Boolean,
 ) {
     when (val periodState = state.periodReportState) {
@@ -694,36 +749,34 @@ private fun PeriodShareReportContent(
         }
         is SectionState.Ready -> {
             val data = periodState.data
-            if (SharePosterModule.OVERVIEW in shareModules) {
-                PeriodHeroCard(
-                    hero = data.hero,
-                    animateValues = animateValues,
-                )
-            }
-            if (SharePosterModule.FOCUS in shareModules) {
-                PeriodFocusCard(
-                    data = data.windowFocus,
-                    animateValues = animateValues,
-                )
-            }
-            if (SharePosterModule.TREND in shareModules) {
-                PeriodTrendCard(data.trend)
-            }
-            if (SharePosterModule.HEATMAP in shareModules) {
-                data.heatmap?.let { PeriodHeatmapCard(it) }
-            }
-            if (SharePosterModule.STRUCTURE in shareModules) {
-                when (data.tab) {
-                    ReportTab.MONTH -> data.monthStructure?.let { PeriodMonthStructureCard(it) }
-                    ReportTab.YEAR -> data.quarterSection?.let { PeriodQuarterBreakdownCard(it) }
-                    ReportTab.DAY, ReportTab.WEEK -> Unit
+            shareModules.forEach { module ->
+                when (module) {
+                    SharePosterModule.OVERVIEW -> {
+                        PeriodHeroCard(
+                            hero = data.hero,
+                            animateValues = animateValues,
+                        )
+                    }
+                    SharePosterModule.FOCUS -> {
+                        PeriodFocusCard(
+                            data = data.windowFocus,
+                            animateValues = animateValues,
+                        )
+                    }
+                    SharePosterModule.TREND -> PeriodTrendCard(data.trend)
+                    SharePosterModule.HEATMAP -> data.heatmap?.let { PeriodHeatmapCard(it) }
+                    SharePosterModule.STRUCTURE -> {
+                        when (data.tab) {
+                            ReportTab.MONTH -> data.monthStructure?.let { PeriodMonthStructureCard(it) }
+                            ReportTab.YEAR -> data.quarterSection?.let { PeriodQuarterBreakdownCard(it) }
+                            ReportTab.DAY, ReportTab.WEEK -> Unit
+                        }
+                    }
+                    SharePosterModule.APPS -> PeriodAppFocusCard(data.appFocus)
+                    SharePosterModule.INSIGHTS -> PeriodInsightSection(data = data)
+                    SharePosterModule.BEHAVIOR,
+                    SharePosterModule.RHYTHM -> Unit
                 }
-            }
-            if (SharePosterModule.APPS in shareModules) {
-                PeriodAppFocusCard(data.appFocus)
-            }
-            if (SharePosterModule.INSIGHTS in shareModules) {
-                PeriodInsightSection(data = data)
             }
         }
     }
@@ -744,6 +797,7 @@ private fun ReportNavigator(
     onPreviousYear: () -> Unit,
     onNextYear: () -> Unit,
     onSelectYear: (Int) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     val waitingForDayDate = state.selectedTab == ReportTab.DAY && state.selectedArchiveDate == null
     val waitingForPeriod =
@@ -752,9 +806,9 @@ private fun ReportNavigator(
             ReportTab.MONTH -> state.selectedMonth == null
             ReportTab.YEAR -> state.selectedYear == null
             ReportTab.DAY -> false
-        }
+    }
     if (state.isRefreshing && (waitingForDayDate || waitingForPeriod)) {
-        ReportNavigatorSkeleton(selectedTab = state.selectedTab)
+        ReportNavigatorSkeleton(selectedTab = state.selectedTab, modifier = modifier)
         return
     }
     if (state.selectedTab == ReportTab.DAY) {
@@ -767,8 +821,9 @@ private fun ReportNavigator(
                 onPreviousArchiveDate = onPreviousArchiveDate,
                 onNextArchiveDate = onNextArchiveDate,
                 onSelectArchiveDate = onSelectArchiveDate,
+                modifier = modifier,
             )
-        } ?: ReportNavigatorSkeleton(selectedTab = state.selectedTab)
+        } ?: ReportNavigatorSkeleton(selectedTab = state.selectedTab, modifier = modifier)
     } else {
         PeriodNavigator(
             selectedTab = state.selectedTab,
@@ -793,61 +848,56 @@ private fun ReportNavigator(
             onPreviousYear = onPreviousYear,
             onNextYear = onNextYear,
             onSelectYear = onSelectYear,
+            modifier = modifier,
         )
     }
 }
 
 @Composable
-private fun ReportNavigatorSkeleton(selectedTab: ReportTab) {
+private fun ReportNavigatorSkeleton(
+    selectedTab: ReportTab,
+    modifier: Modifier = Modifier,
+) {
     val title =
         when (selectedTab) {
             ReportTab.DAY -> AppText.t("stats_choose_archive_date")
             else -> AppText.t("stats_choose_period")
         }
-    val subtitle =
-        when (selectedTab) {
-            ReportTab.DAY -> AppText.t("stats_only_archived_dates_selectable")
-            ReportTab.WEEK -> AppText.t("stats_natural_week")
-            ReportTab.MONTH -> AppText.t("stats_natural_month")
-            ReportTab.YEAR -> AppText.t("stats_natural_year")
-        }
     Surface(
+        modifier = modifier.height(ReportTopControlHeight),
         shape = RoundedCornerShape(18.dp),
         color = MaterialTheme.colorScheme.surface,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.32f)),
+        shadowElevation = TinyVowElevation.Card,
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 4.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             SkeletonCircle(size = 40.dp)
             Surface(
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.weight(1f).fillMaxHeight(),
                 shape = RoundedCornerShape(14.dp),
                 color = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.86f),
             ) {
                 Row(
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    SkeletonCircle(size = 18.dp)
-                    Column(
+                    Text(
+                        text = title,
                         modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(6.dp),
-                    ) {
-                        Text(
-                            text = title,
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                        Text(
-                            text = subtitle,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                 }
             }
             SkeletonCircle(size = 40.dp)
@@ -878,20 +928,15 @@ private fun PeriodNavigator(
     onPreviousYear: () -> Unit,
     onNextYear: () -> Unit,
     onSelectYear: (Int) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     var showDialog by remember(selectedTab) { mutableStateOf(false) }
+    val topControlColor = LocalThemeColors.current.base
     val title =
         when (selectedTab) {
-            ReportTab.WEEK -> selectedWeekStart?.let(::periodWeekLabel) ?: AppText.t("stats_choose_period")
+            ReportTab.WEEK -> selectedWeekStart?.let(::periodWeekCompactLabel) ?: AppText.t("stats_choose_period")
             ReportTab.MONTH -> selectedMonth?.format(DateTimeFormatter.ofPattern(AppText.t("stats_mmmm_yyyy"), Locale.getDefault())) ?: AppText.t("stats_choose_period")
-            ReportTab.YEAR -> selectedYear?.toString() ?: AppText.t("stats_choose_period")
-            ReportTab.DAY -> ""
-        }
-    val subtitle =
-        when (selectedTab) {
-            ReportTab.WEEK -> AppText.t("stats_natural_week")
-            ReportTab.MONTH -> AppText.t("stats_natural_month")
-            ReportTab.YEAR -> AppText.t("stats_natural_year")
+            ReportTab.YEAR -> selectedYear?.let { AppText.t("stats_year_value", it) } ?: AppText.t("stats_choose_period")
             ReportTab.DAY -> ""
         }
     val canGoPrevious =
@@ -909,16 +954,21 @@ private fun PeriodNavigator(
             ReportTab.DAY -> false
         }
     Surface(
+        modifier = modifier.height(ReportTopControlHeight),
         shape = RoundedCornerShape(18.dp),
         color = MaterialTheme.colorScheme.surface,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.32f)),
+        shadowElevation = TinyVowElevation.Card,
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 4.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             IconButton(
+                modifier = Modifier.size(ReportNavigatorArrowSize),
                 onClick = {
                     when (selectedTab) {
                         ReportTab.WEEK -> onPreviousWeek()
@@ -929,39 +979,37 @@ private fun PeriodNavigator(
                 },
                 enabled = canGoPrevious,
             ) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = null)
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = AppText.t("stats_previous"))
             }
             Surface(
-                modifier = Modifier.weight(1f).clickable { showDialog = true },
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .clickable { showDialog = true },
                 shape = RoundedCornerShape(14.dp),
                 color = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.86f),
             ) {
                 Row(
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.CalendarMonth,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(18.dp),
+                    Text(
+                        text = title,
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = topControlColor,
+                        textAlign = TextAlign.Center,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
                     )
-                    Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                        Text(
-                            text = title,
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                        Text(
-                            text = subtitle,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
                 }
             }
             IconButton(
+                modifier = Modifier.size(ReportNavigatorArrowSize),
                 onClick = {
                     when (selectedTab) {
                         ReportTab.WEEK -> onNextWeek()
@@ -972,7 +1020,7 @@ private fun PeriodNavigator(
                 },
                 enabled = canGoNext,
             ) {
-                Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = null)
+                Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = AppText.t("stats_next"))
             }
         }
     }
@@ -1154,7 +1202,7 @@ private fun PeriodYearPickerDialog(
                         ),
                     ) {
                         Text(
-                            text = year.toString(),
+                            text = AppText.t("stats_year_value", year),
                             modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
                             style = MaterialTheme.typography.titleSmall,
                             fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
@@ -1176,20 +1224,27 @@ private fun ArchiveDateNavigator(
     onPreviousArchiveDate: () -> Unit,
     onNextArchiveDate: () -> Unit,
     onSelectArchiveDate: (String) -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     var showCalendar by remember(selectedArchiveDate) { mutableStateOf(false) }
     val availableDates = remember(availableArchiveDates) { availableArchiveDates.map(LocalDate::parse).toSet() }
+    val topControlColor = LocalThemeColors.current.base
     Surface(
+        modifier = modifier.height(ReportTopControlHeight),
         shape = RoundedCornerShape(18.dp),
         color = MaterialTheme.colorScheme.surface,
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.32f)),
+        shadowElevation = TinyVowElevation.Card,
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 8.dp, vertical = 8.dp),
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 4.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             IconButton(
+                modifier = Modifier.size(ReportNavigatorArrowSize),
                 onClick = onPreviousArchiveDate,
                 enabled = previousArchiveDate != null,
             ) {
@@ -1202,39 +1257,32 @@ private fun ArchiveDateNavigator(
                 modifier =
                     Modifier
                         .weight(1f)
+                        .fillMaxHeight()
                         .clickable { showCalendar = true },
                 shape = RoundedCornerShape(14.dp),
                 color = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.86f),
             ) {
                 Row(
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(horizontal = 10.dp, vertical = 6.dp),
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.CalendarMonth,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(18.dp),
-                    )
-                    Column(
+                    Text(
+                        text = formatArchiveDate(selectedArchiveDate, AppText.t("stats_archive_date_full")),
                         modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(2.dp),
-                    ) {
-                        Text(
-                            text = formatArchiveDate(selectedArchiveDate, AppText.t("home_mmm_d_eeee")),
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                        Text(
-                            text = AppText.t("stats_only_archived_dates_selectable"),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    }
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = topControlColor,
+                        textAlign = TextAlign.Center,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                 }
             }
             IconButton(
+                modifier = Modifier.size(ReportNavigatorArrowSize),
                 onClick = onNextArchiveDate,
                 enabled = nextArchiveDate != null,
             ) {
@@ -1510,6 +1558,111 @@ private fun ReportTabRow(
                 contentPadding = PaddingValues(vertical = 12.dp),
             )
         }
+    }
+}
+
+@Composable
+private fun ReportTabDropdown(
+    selectedTab: ReportTab,
+    onTabSelected: (ReportTab) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var expanded by remember { mutableStateOf(false) }
+    val density = LocalDensity.current
+    val popupOffsetY = with(density) { (ReportTopControlHeight + 6.dp).roundToPx() }
+    val themeColors = LocalThemeColors.current
+    val contentColor = themeColors.base
+    Box(modifier = modifier) {
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            onClick = { expanded = true },
+            shape = RoundedCornerShape(18.dp),
+            color = themeColors.baseContainer,
+            border = BorderStroke(1.dp, themeColors.base.copy(alpha = 0.18f)),
+            shadowElevation = TinyVowElevation.Card,
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center,
+            ) {
+                Text(
+                    text = selectedTab.label(),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = contentColor,
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+        if (expanded) {
+            Popup(
+                alignment = Alignment.TopStart,
+                offset = IntOffset(0, popupOffsetY),
+                onDismissRequest = { expanded = false },
+                properties = PopupProperties(focusable = true),
+            ) {
+                Surface(
+                    modifier = Modifier.width(64.dp),
+                    shape = RoundedCornerShape(18.dp),
+                    color = MaterialTheme.colorScheme.surface.copy(alpha = 0.98f),
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.32f)),
+                    tonalElevation = 2.dp,
+                    shadowElevation = 6.dp,
+                ) {
+                    Column(modifier = Modifier.padding(4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                        ReportTab.entries.forEach { tab ->
+                            ReportTabMenuItem(
+                                tab = tab,
+                                selected = tab == selectedTab,
+                                onClick = {
+                                    expanded = false
+                                    onTabSelected(tab)
+                                },
+                            )
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ReportTabMenuItem(
+    tab: ReportTab,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    val shape = RoundedCornerShape(14.dp)
+    val themeColors = LocalThemeColors.current
+    Surface(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .clip(shape)
+                .clickable(onClick = onClick),
+        shape = shape,
+        color =
+            if (selected) {
+                themeColors.base.copy(alpha = 0.12f)
+            } else {
+                Color.Transparent
+            },
+    ) {
+        Text(
+            text = tab.label(),
+            modifier = Modifier.padding(horizontal = 8.dp, vertical = 9.dp),
+            style = MaterialTheme.typography.titleSmall,
+            fontWeight = FontWeight.SemiBold,
+            color = if (selected) themeColors.base else themeColors.base.copy(alpha = 0.72f),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
@@ -2207,6 +2360,48 @@ private fun HeatmapGrid(data: HeatmapSectionData) {
 }
 
 @Composable
+private fun ReportShareIconCard(
+    enabled: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val shape = RoundedCornerShape(18.dp)
+    val themeColors = LocalThemeColors.current
+    val iconColor =
+        if (enabled) {
+            themeColors.base
+        } else {
+            MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.42f)
+        }
+    Surface(
+        modifier = modifier,
+        onClick = onClick,
+        enabled = enabled,
+        shape = shape,
+        color =
+            if (enabled) {
+                themeColors.baseContainer
+            } else {
+                MaterialTheme.colorScheme.surface
+            },
+        border = BorderStroke(
+            1.dp,
+            if (enabled) themeColors.base.copy(alpha = 0.18f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.32f),
+        ),
+        shadowElevation = TinyVowElevation.Card,
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Icon(
+                imageVector = Icons.Default.Share,
+                contentDescription = AppText.t("group_share"),
+                tint = iconColor,
+                modifier = Modifier.size(22.dp),
+            )
+        }
+    }
+}
+
+@Composable
 private fun ReportShareActionCard(
     state: DailyReportUiState,
     isProActive: Boolean,
@@ -2291,35 +2486,79 @@ private fun availableSharePosterModules(
 ): List<SharePosterModule> {
     return if (state.selectedTab == ReportTab.DAY) {
         buildList {
-            if (isProActive) add(SharePosterModule.BEHAVIOR)
-            add(SharePosterModule.FOCUS)
-            add(SharePosterModule.APPS)
-            add(SharePosterModule.RHYTHM)
-            if (isProActive) add(SharePosterModule.INSIGHTS)
+            val behaviorStructure = (state.behaviorState as? SectionState.Ready)?.data?.structure
+            if (behaviorStructure != null && behaviorStructure.scoreMetrics.isNotEmpty()) {
+                add(SharePosterModule.BEHAVIOR)
+            }
+            if (state.dailyFocusState is SectionState.Ready) {
+                add(SharePosterModule.FOCUS)
+            }
+            val topApps = (state.topAppsState as? SectionState.Ready)?.data?.usageTopApps.orEmpty()
+            if (topApps.isNotEmpty()) {
+                add(SharePosterModule.APPS)
+            }
+            val timeline = (state.timelineState as? SectionState.Ready)?.data
+            if (timeline != null && (timeline.buckets.isNotEmpty() || timeline.periodUsage.any { it.deviceMillis > 0L })) {
+                add(SharePosterModule.RHYTHM)
+            }
+            val comparisons = (state.comparisonState as? SectionState.Ready)?.data?.comparisons.orEmpty()
+            if (isProActive && comparisons.isNotEmpty()) {
+                add(SharePosterModule.INSIGHTS)
+            }
         }
     } else {
         val periodData = (state.periodReportState as? SectionState.Ready)?.data
         buildList {
-            add(SharePosterModule.OVERVIEW)
-            add(SharePosterModule.FOCUS)
-            add(SharePosterModule.TREND)
-            if (periodData?.heatmap != null) add(SharePosterModule.HEATMAP)
-            if (periodData?.monthStructure != null || periodData?.quarterSection != null) {
-                add(SharePosterModule.STRUCTURE)
+            if (periodData != null) {
+                add(SharePosterModule.OVERVIEW)
+                add(SharePosterModule.FOCUS)
+                if (periodData.trend.points.isNotEmpty()) {
+                    add(SharePosterModule.TREND)
+                }
+                if (periodData.heatmap?.cells?.isNotEmpty() == true) {
+                    add(SharePosterModule.HEATMAP)
+                }
+                if (
+                    periodData.monthStructure?.weeks?.isNotEmpty() == true ||
+                    periodData.quarterSection?.quarters?.isNotEmpty() == true
+                ) {
+                    add(SharePosterModule.STRUCTURE)
+                }
+                if (periodData.appFocus.topApps.isNotEmpty()) {
+                    add(SharePosterModule.APPS)
+                }
+                if (periodData.behavior?.structure != null) {
+                    add(SharePosterModule.INSIGHTS)
+                }
             }
-            add(SharePosterModule.APPS)
-            add(SharePosterModule.INSIGHTS)
         }
     }
 }
 
-private fun SharePosterModule.labelKey(): String =
+private fun ReportTab.sharePosterStorageKey(): String = name.lowercase(Locale.US)
+
+private fun restoredSharePosterModules(
+    moduleIds: List<String>,
+    availableModules: List<SharePosterModule>,
+): List<SharePosterModule> {
+    return moduleIds
+        .mapNotNull { id -> availableModules.firstOrNull { it.name == id } }
+        .distinct()
+        .ifEmpty { availableModules.take(2) }
+}
+
+private fun SharePosterModule.labelKey(selectedTab: ReportTab): String =
     when (this) {
         SharePosterModule.BEHAVIOR -> "stats_share_module_behavior"
         SharePosterModule.FOCUS -> "stats_share_module_focus"
         SharePosterModule.APPS -> "stats_share_module_apps"
         SharePosterModule.RHYTHM -> "stats_share_module_rhythm"
-        SharePosterModule.INSIGHTS -> "stats_share_module_insights"
+        SharePosterModule.INSIGHTS ->
+            if (selectedTab == ReportTab.DAY) {
+                "stats_share_module_daily_insights"
+            } else {
+                "stats_share_module_behavior_overview"
+            }
         SharePosterModule.OVERVIEW -> "stats_share_module_overview"
         SharePosterModule.TREND -> "stats_share_module_trend"
         SharePosterModule.HEATMAP -> "stats_share_module_heatmap"
@@ -2334,17 +2573,39 @@ private fun ReportPageSharePreviewDialog(
     onDismiss: () -> Unit,
 ) {
     val context = LocalContext.current
+    val preferences = remember(context) { ManagedAppPreferences(context.applicationContext) }
     val scrollState = rememberScrollState()
     val graphicsLayer = rememberGraphicsLayer()
     val scope = rememberCoroutineScope()
     val posterWidth = 390.dp
+    val storageKey = remember(state.selectedTab) { state.selectedTab.sharePosterStorageKey() }
     val availableModules = remember(state, isProActive) {
         availableSharePosterModules(state = state, isProActive = isProActive)
     }
+    val restoredModuleIds by produceState<List<String>?>(initialValue = null, preferences, storageKey) {
+        value = withContext(Dispatchers.IO) {
+            preferences.getSharePosterModuleIdsOnce(storageKey)
+        }
+    }
     var selectedModules by remember(state.selectedTab, state.selectedArchiveDate, state.selectedWeekStart, state.selectedMonth, state.selectedYear, isProActive) {
-        mutableStateOf(availableModules.toSet())
+        mutableStateOf(availableModules.take(2))
+    }
+    LaunchedEffect(availableModules, restoredModuleIds) {
+        restoredModuleIds?.let { moduleIds ->
+            selectedModules = restoredSharePosterModules(moduleIds, availableModules)
+        }
     }
     var isSharing by remember { mutableStateOf(false) }
+
+    fun updateSelectedModules(modules: List<SharePosterModule>) {
+        selectedModules = modules
+        scope.launch(Dispatchers.IO) {
+            preferences.setSharePosterModuleIds(
+                tabKey = storageKey,
+                moduleIds = modules.map { it.name },
+            )
+        }
+    }
 
     fun shareCurrentPreview() {
         if (isSharing) return
@@ -2393,15 +2654,31 @@ private fun ReportPageSharePreviewDialog(
                     TextButton(onClick = onDismiss) { Text(AppText.t("group_close")) }
                 }
                 SharePosterModuleSelector(
+                    selectedTab = state.selectedTab,
                     availableModules = availableModules,
                     selectedModules = selectedModules,
                     onToggleModule = { module ->
-                        selectedModules =
+                        updateSelectedModules(
                             if (module in selectedModules) {
-                                selectedModules - module
+                                selectedModules.filterNot { it == module }
                             } else {
                                 selectedModules + module
+                            },
+                        )
+                    },
+                    onMoveModule = { module, direction ->
+                        val fromIndex = selectedModules.indexOf(module)
+                        if (fromIndex >= 0) {
+                            val toIndex = (fromIndex + direction).coerceIn(0, selectedModules.lastIndex)
+                            if (fromIndex != toIndex) {
+                                updateSelectedModules(
+                                    selectedModules.toMutableList().apply {
+                                        removeAt(fromIndex)
+                                        add(toIndex, module)
+                                    },
+                                )
                             }
+                        }
                     },
                 )
                 Surface(
@@ -2421,10 +2698,18 @@ private fun ReportPageSharePreviewDialog(
                         Box(
                             modifier = Modifier
                                 .requiredWidth(posterWidth)
-                                .graphicsLayer {
-                                    scaleX = previewScale
-                                    scaleY = previewScale
-                                    transformOrigin = TransformOrigin(0.5f, 0f)
+                                .layout { measurable, constraints ->
+                                    val placeable = measurable.measure(constraints)
+                                    layout(
+                                        width = (placeable.width * previewScale).roundToInt(),
+                                        height = (placeable.height * previewScale).roundToInt(),
+                                    ) {
+                                        placeable.placeRelativeWithLayer(0, 0) {
+                                            scaleX = previewScale
+                                            scaleY = previewScale
+                                            transformOrigin = TransformOrigin(0f, 0f)
+                                        }
+                                    }
                                 },
                             contentAlignment = Alignment.TopCenter,
                         ) {
@@ -2451,14 +2736,7 @@ private fun ReportPageSharePreviewDialog(
                                     onShowProUpsell = {},
                                     shareModules = selectedModules,
                                 )
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Text(
-                                    text = AppText.t("stats_share_footer"),
-                                    modifier = Modifier.fillMaxWidth(),
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                    textAlign = TextAlign.Center,
-                                )
+                                SharePosterDownloadFooter()
                             }
                         }
                     }
@@ -2494,34 +2772,194 @@ private fun ReportPageSharePreviewDialog(
     }
 }
 
+@Composable
+private fun SharePosterDownloadFooter() {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.28f)),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Box(
+                modifier = Modifier.width(64.dp),
+                contentAlignment = Alignment.CenterStart,
+            ) {
+                Image(
+                    painter = painterResource(id = R.drawable.tinyvow_share_app_icon),
+                    contentDescription = null,
+                    modifier = Modifier
+                        .size(54.dp)
+                        .clip(RoundedCornerShape(16.dp)),
+                )
+            }
+            Text(
+                text = AppText.t("stats_share_download_tagline"),
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.titleSmall.copy(fontFamily = FontFamily.Serif),
+                fontWeight = FontWeight.Normal,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.76f),
+                textAlign = TextAlign.Center,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Box(
+                modifier = Modifier.width(64.dp),
+                contentAlignment = Alignment.CenterEnd,
+            ) {
+                Image(
+                    painter = painterResource(id = R.drawable.pgyer_download_qr),
+                    contentDescription = null,
+                    modifier = Modifier.size(54.dp),
+                )
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun SharePosterModuleSelector(
+    selectedTab: ReportTab,
     availableModules: List<SharePosterModule>,
-    selectedModules: Set<SharePosterModule>,
+    selectedModules: List<SharePosterModule>,
     onToggleModule: (SharePosterModule) -> Unit,
+    onMoveModule: (SharePosterModule, Int) -> Unit,
 ) {
+    val unselectedModules = availableModules.filterNot { it in selectedModules }
+    val displayedModules = selectedModules + unselectedModules
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(
             text = AppText.t("stats_share_modules"),
             style = MaterialTheme.typography.labelLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        FlowRow(
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            availableModules.forEach { module ->
-                val selected = module in selectedModules
-                TinyVowButton(
-                    text = AppText.t(module.labelKey()),
-                    onClick = { onToggleModule(module) },
-                    enabled = selectedModules.size > 1 || !selected,
-                    selected = selected,
-                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
-                )
+            displayedModules.forEach { module ->
+                key(module) {
+                    if (module in selectedModules) {
+                        DraggableShareModuleButton(
+                            selectedTab = selectedTab,
+                            module = module,
+                            canRemove = selectedModules.size > 1,
+                            onToggleModule = onToggleModule,
+                            onMoveModule = onMoveModule,
+                        )
+                    } else {
+                        ShareModuleTag(
+                            selectedTab = selectedTab,
+                            module = module,
+                            selected = false,
+                            canToggle = true,
+                            onClick = { onToggleModule(module) },
+                        )
+                    }
+                }
             }
         }
+    }
+}
+
+@Composable
+private fun DraggableShareModuleButton(
+    selectedTab: ReportTab,
+    module: SharePosterModule,
+    canRemove: Boolean,
+    onToggleModule: (SharePosterModule) -> Unit,
+    onMoveModule: (SharePosterModule, Int) -> Unit,
+) {
+    val density = LocalDensity.current
+    val thresholdPx = with(density) { 44.dp.toPx() }
+    var dragOffset by remember(module) { mutableFloatStateOf(0f) }
+    ShareModuleTag(
+        selectedTab = selectedTab,
+        module = module,
+        selected = true,
+        canToggle = canRemove,
+        onClick = { if (canRemove) onToggleModule(module) },
+        modifier =
+            Modifier
+                .graphicsLayer { translationX = dragOffset }
+                .zIndex(if (dragOffset != 0f) 1f else 0f)
+                .pointerInput(module) {
+                    detectDragGesturesAfterLongPress(
+                        onDragEnd = { dragOffset = 0f },
+                        onDragCancel = { dragOffset = 0f },
+                    ) { change, dragAmount ->
+                        change.consume()
+                        dragOffset += dragAmount.x
+                        while (dragOffset >= thresholdPx) {
+                            onMoveModule(module, 1)
+                            dragOffset -= thresholdPx
+                        }
+                        while (dragOffset <= -thresholdPx) {
+                            onMoveModule(module, -1)
+                            dragOffset += thresholdPx
+                        }
+                    }
+                },
+    )
+}
+
+@Composable
+private fun ShareModuleTag(
+    selectedTab: ReportTab,
+    module: SharePosterModule,
+    selected: Boolean,
+    canToggle: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val shape = RoundedCornerShape(999.dp)
+    val color =
+        if (selected) {
+            MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+        } else {
+            MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.82f)
+        }
+    val contentColor =
+        if (selected) {
+            MaterialTheme.colorScheme.primary
+        } else {
+            MaterialTheme.colorScheme.onSurfaceVariant
+        }
+    val borderColor =
+        if (selected) {
+            MaterialTheme.colorScheme.primary.copy(alpha = 0.28f)
+        } else {
+            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.36f)
+        }
+    Surface(
+        modifier =
+            modifier
+                .clip(shape)
+                .clickable(enabled = canToggle, onClick = onClick),
+        shape = shape,
+        color = color,
+        border = BorderStroke(1.dp, borderColor),
+    ) {
+        Text(
+            text = AppText.t(module.labelKey(selectedTab)),
+            modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+            color = contentColor,
+            textAlign = TextAlign.Center,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
     }
 }
 
@@ -3136,6 +3574,7 @@ private fun TimelineCard(
                 is SectionState.Ready -> DailyTimelineChart(
                     buckets = timelineState.data.buckets,
                     targetMillisPerBucket = timelineState.data.targetMillisPerBucket,
+                    appLegend = timelineState.data.appLegend,
                 )
             }
             TimelineFooter(
@@ -3203,95 +3642,217 @@ private fun TimelineCard(
 internal fun DailyTimelineChart(
     buckets: List<DailyTimelineBucket>,
     targetMillisPerBucket: Long? = null,
+    appLegend: List<DailyTimelineAppLegendItem> = emptyList(),
 ) {
     val deviceColor = MaterialTheme.colorScheme.primary
     val guideLineColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.14f)
     val axisTextColor = MaterialTheme.colorScheme.onSurfaceVariant
+    val visibleLegend = appLegend.filter { it.millis > 0L }
+    val extractedAppColors =
+        rememberAppChartColors(
+            visibleLegend
+                .filter { it.packageName != TIMELINE_OTHER_APPS_PACKAGE_NAME }
+                .map { it.packageName },
+        )
+    val fallbackColors = LocalReportColors.current.appChartPalette
+    val otherAppsColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.58f)
+    val legendColors =
+        visibleLegend.mapIndexed { index, item ->
+            item.packageName to
+                when (item.packageName) {
+                    TIMELINE_OTHER_APPS_PACKAGE_NAME -> otherAppsColor
+                    else -> extractedAppColors[item.packageName] ?: fallbackColors[index % fallbackColors.size]
+                }
+        }.toMap()
     val revealProgress = if (buckets.any { it.deviceMillis > 0L }) 1f else 0f
     BoxWithConstraints {
         val chartHeight = if (maxWidth < 360.dp) 138.dp else 156.dp
         val axisWidth = if (maxWidth < 360.dp) 32.dp else 40.dp
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.Bottom,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Column(
-                modifier = Modifier
-                    .width(axisWidth)
-                    .height(chartHeight),
-                verticalArrangement = Arrangement.SpaceBetween,
-                horizontalAlignment = Alignment.End,
+        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.Bottom,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                val maxUsage = maxOf(
-                    buckets.maxOfOrNull { it.deviceMillis }?.coerceAtLeast(1L) ?: 1L,
-                    targetMillisPerBucket ?: 0L,
-                )
-                listOf(maxUsage, maxUsage * 2 / 3, maxUsage / 3, 0L).forEach { tick ->
-                    Text(
-                        text = if (tick == 0L) "0" else formatAxisDuration(tick),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = axisTextColor,
-                        maxLines = 1,
+                Column(
+                    modifier = Modifier
+                        .width(axisWidth)
+                        .height(chartHeight),
+                    verticalArrangement = Arrangement.SpaceBetween,
+                    horizontalAlignment = Alignment.End,
+                ) {
+                    val maxUsage = maxOf(
+                        buckets.maxOfOrNull { it.deviceMillis }?.coerceAtLeast(1L) ?: 1L,
+                        targetMillisPerBucket ?: 0L,
                     )
+                    listOf(maxUsage, maxUsage * 2 / 3, maxUsage / 3, 0L).forEach { tick ->
+                        Text(
+                            text = if (tick == 0L) "0" else formatAxisDuration(tick),
+                            style = MaterialTheme.typography.labelSmall,
+                            color = axisTextColor,
+                            maxLines = 1,
+                        )
+                    }
+                }
+                val targetLineColor = LocalReportColors.current.warning.copy(alpha = 0.78f)
+                Canvas(modifier = Modifier.weight(1f).height(chartHeight)) {
+                    if (buckets.isEmpty()) return@Canvas
+                    val deviceMax = buckets.maxOfOrNull { it.deviceMillis }?.coerceAtLeast(1L) ?: 1L
+                    val chartMax = maxOf(deviceMax, targetMillisPerBucket ?: 0L, 1L)
+                    val slotWidth = size.width / buckets.size
+                    val barWidth = slotWidth * 0.48f
+                    val baseY = size.height
+
+                    repeat(4) { index ->
+                        val y = baseY - (index * (size.height / 3f))
+                        drawLine(
+                            color = guideLineColor,
+                            start = Offset(0f, y),
+                            end = Offset(size.width, y),
+                            strokeWidth = 1f,
+                        )
+                    }
+
+                    buckets.forEachIndexed { index, bucket ->
+                        val x = slotWidth * index + (slotWidth - barWidth) / 2f
+                        val rawHeight = size.height * (bucket.deviceMillis.toFloat() / chartMax.toFloat()).coerceIn(0f, 1f)
+                        val deviceHeight = if (bucket.deviceMillis > 0L) {
+                            maxOf(6f * revealProgress, rawHeight * revealProgress)
+                        } else {
+                            0f
+                        }
+                        val top = size.height - deviceHeight
+                        val stackedSegments = stackedTimelineSegments(bucket, visibleLegend)
+                        if (stackedSegments.isEmpty()) {
+                            drawRoundRect(
+                                brush = Brush.verticalGradient(
+                                    colors = listOf(
+                                        deviceColor.copy(alpha = 0.62f),
+                                        deviceColor.copy(alpha = if (bucket.deviceMillis > 0L) 0.92f else 0.14f),
+                                    ),
+                                    startY = top,
+                                    endY = baseY,
+                                ),
+                                topLeft = Offset(x, top),
+                                size = Size(barWidth, deviceHeight),
+                                cornerRadius = CornerRadius(barWidth / 2f, barWidth / 2f),
+                            )
+                        } else {
+                            var bottom = baseY
+                            stackedSegments.forEach { segment ->
+                                val segmentHeight =
+                                    deviceHeight * (segment.millis.toFloat() / bucket.deviceMillis.toFloat()).coerceIn(0f, 1f)
+                                if (segmentHeight > 0f) {
+                                    val segmentTop = bottom - segmentHeight
+                                    drawRoundRect(
+                                        color = legendColors[segment.packageName] ?: deviceColor,
+                                        topLeft = Offset(x, segmentTop),
+                                        size = Size(barWidth, segmentHeight),
+                                        cornerRadius = CornerRadius(barWidth / 2.8f, barWidth / 2.8f),
+                                    )
+                                    bottom = segmentTop
+                                }
+                            }
+                        }
+                    }
+                    targetMillisPerBucket?.takeIf { it > 0L }?.let { target ->
+                        val targetY = size.height - size.height * (target.toFloat() / chartMax.toFloat()).coerceIn(0f, 1f)
+                        val dashWidth = slotWidth * 0.42f
+                        var startX = 0f
+                        while (startX < size.width) {
+                            drawLine(
+                                color = targetLineColor,
+                                start = Offset(startX, targetY),
+                                end = Offset(minOf(startX + dashWidth, size.width), targetY),
+                                strokeWidth = 2f,
+                            )
+                            startX += dashWidth * 1.8f
+                        }
+                    }
                 }
             }
-            val targetLineColor = LocalReportColors.current.warning.copy(alpha = 0.78f)
-            Canvas(modifier = Modifier.weight(1f).height(chartHeight)) {
-                if (buckets.isEmpty()) return@Canvas
-                val deviceMax = buckets.maxOfOrNull { it.deviceMillis }?.coerceAtLeast(1L) ?: 1L
-                val chartMax = maxOf(deviceMax, targetMillisPerBucket ?: 0L, 1L)
-                val slotWidth = size.width / buckets.size
-                val barWidth = slotWidth * 0.48f
-                val baseY = size.height
+            if (visibleLegend.isNotEmpty()) {
+                TimelineAppLegend(
+                    items = visibleLegend,
+                    colors = legendColors,
+                )
+            }
+        }
+    }
+}
 
-                repeat(4) { index ->
-                    val y = baseY - (index * (size.height / 3f))
-                    drawLine(
-                        color = guideLineColor,
-                        start = Offset(0f, y),
-                        end = Offset(size.width, y),
-                        strokeWidth = 1f,
-                    )
-                }
+private fun stackedTimelineSegments(
+    bucket: DailyTimelineBucket,
+    legend: List<DailyTimelineAppLegendItem>,
+): List<DailyTimelineAppSegment> {
+    if (bucket.deviceMillis <= 0L || bucket.appSegments.isEmpty() || legend.isEmpty()) {
+        return emptyList()
+    }
+    val visiblePackages =
+        legend
+            .map { it.packageName }
+            .filter { it != TIMELINE_OTHER_APPS_PACKAGE_NAME }
+            .toSet()
+    val segmentByPackage = bucket.appSegments.associateBy { it.packageName }
+    val visibleSegments =
+        legend
+            .asSequence()
+            .filter { it.packageName != TIMELINE_OTHER_APPS_PACKAGE_NAME }
+            .mapNotNull { segmentByPackage[it.packageName] }
+            .filter { it.millis > 0L }
+            .toList()
+    val otherMillis =
+        bucket.appSegments
+            .filterNot { it.packageName in visiblePackages }
+            .sumOf { it.millis }
+    return if (legend.any { it.packageName == TIMELINE_OTHER_APPS_PACKAGE_NAME } && otherMillis > 0L) {
+        visibleSegments +
+            DailyTimelineAppSegment(
+                packageName = TIMELINE_OTHER_APPS_PACKAGE_NAME,
+                label = AppText.t("stats_other_apps"),
+                millis = otherMillis,
+            )
+    } else {
+        visibleSegments
+    }
+}
 
-                buckets.forEachIndexed { index, bucket ->
-                    val x = slotWidth * index + (slotWidth - barWidth) / 2f
-                    val rawHeight = size.height * (bucket.deviceMillis.toFloat() / chartMax.toFloat()).coerceIn(0f, 1f)
-                    val deviceHeight = if (bucket.deviceMillis > 0L) {
-                        maxOf(6f * revealProgress, rawHeight * revealProgress)
-                    } else {
-                        0f
-                    }
-                    val top = size.height - deviceHeight
-                    drawRoundRect(
-                        brush = Brush.verticalGradient(
-                            colors = listOf(
-                                deviceColor.copy(alpha = 0.62f),
-                                deviceColor.copy(alpha = if (bucket.deviceMillis > 0L) 0.92f else 0.14f),
-                            ),
-                            startY = top,
-                            endY = baseY,
-                        ),
-                        topLeft = Offset(x, top),
-                        size = Size(barWidth, deviceHeight),
-                        cornerRadius = CornerRadius(barWidth / 2f, barWidth / 2f),
-                    )
-                }
-                targetMillisPerBucket?.takeIf { it > 0L }?.let { target ->
-                    val targetY = size.height - size.height * (target.toFloat() / chartMax.toFloat()).coerceIn(0f, 1f)
-                    val dashWidth = slotWidth * 0.42f
-                    var startX = 0f
-                    while (startX < size.width) {
-                        drawLine(
-                            color = targetLineColor,
-                            start = Offset(startX, targetY),
-                            end = Offset(minOf(startX + dashWidth, size.width), targetY),
-                            strokeWidth = 2f,
-                        )
-                        startX += dashWidth * 1.8f
-                    }
-                }
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun TimelineAppLegend(
+    items: List<DailyTimelineAppLegendItem>,
+    colors: Map<String, Color>,
+) {
+    FlowRow(
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        items.forEach { item ->
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(8.dp)
+                        .clip(CircleShape)
+                        .background(colors[item.packageName] ?: MaterialTheme.colorScheme.primary),
+                )
+                Text(
+                    text = item.label,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.width(72.dp),
+                )
+                Text(
+                    text = formatDuration(item.millis),
+                    style = MaterialTheme.typography.labelSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = colors[item.packageName] ?: MaterialTheme.colorScheme.primary,
+                    maxLines = 1,
+                )
             }
         }
     }
@@ -4450,10 +5011,15 @@ internal fun SectionHeader(
     icon: ImageVector,
     title: String,
     subtitle: String? = null,
+    trailing: String? = null,
 ) {
     val themeColors = LocalThemeColors.current
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
             Icon(
                 imageVector = icon,
                 contentDescription = null,
@@ -4466,6 +5032,22 @@ internal fun SectionHeader(
                 fontWeight = FontWeight.SemiBold,
                 color = themeColors.inkStrong,
             )
+            if (trailing != null) {
+                Spacer(modifier = Modifier.weight(1f))
+                Surface(
+                    shape = RoundedCornerShape(999.dp),
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
+                ) {
+                    Text(
+                        text = trailing,
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
         }
         if (subtitle != null) {
             Text(
@@ -4508,11 +5090,7 @@ fun AppIconCircle(
 ) {
     val context = LocalContext.current
     val icon = remember(pkg) {
-        try {
-            context.packageManager.getApplicationIcon(pkg)
-        } catch (_: Exception) {
-            null
-        }
+        AppVisualCache.getIcon(context, pkg)
     }
     Surface(
         modifier = modifier.size(size),

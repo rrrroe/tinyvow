@@ -79,6 +79,30 @@ class ReminderPolicyTest {
     }
 
     @Test
+    fun encourageRemainingMinutesRoundsUpAndStopsAtZero() {
+        assertEquals(10, ReminderPolicy.encourageRemainingMinutes(usedMillis = 20 * 60_000L, targetMinutes = 30))
+        assertEquals(1, ReminderPolicy.encourageRemainingMinutes(usedMillis = 29 * 60_000L + 1L, targetMinutes = 30))
+        assertEquals(0, ReminderPolicy.encourageRemainingMinutes(usedMillis = 30 * 60_000L, targetMinutes = 30))
+        assertEquals(0, ReminderPolicy.encourageRemainingMinutes(usedMillis = 40 * 60_000L, targetMinutes = 30))
+    }
+
+    @Test
+    fun encourageCompletedReminderKeyChangesAcrossDatesAndGroups() {
+        assertEquals(
+            "encourage_completed:2026-05-25:group-a",
+            ReminderPolicy.encourageCompletedReminderKey(LocalDate.of(2026, 5, 25), "group-a"),
+        )
+        assertFalse(
+            ReminderPolicy.encourageCompletedReminderKey(LocalDate.of(2026, 5, 25), "group-a") ==
+                ReminderPolicy.encourageCompletedReminderKey(LocalDate.of(2026, 5, 26), "group-a")
+        )
+        assertFalse(
+            ReminderPolicy.encourageCompletedReminderKey(LocalDate.of(2026, 5, 25), "group-a") ==
+                ReminderPolicy.encourageCompletedReminderKey(LocalDate.of(2026, 5, 25), "group-b")
+        )
+    }
+
+    @Test
     fun defaultReminderTimesAndFreeEffectiveSettingsUseDefaultTiming() {
         val settings = ReminderPolicy.effectiveSettings(
             enabled = true,

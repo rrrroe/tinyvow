@@ -637,11 +637,7 @@ internal fun WeeklyTopAppsMatrix(rows: List<WeeklyTopAppsRow>) {
 internal fun MatrixAppIcon(pkg: String) {
     val context = LocalContext.current
     val icon = remember(pkg) {
-        try {
-            context.packageManager.getApplicationIcon(pkg)
-        } catch (_: Exception) {
-            null
-        }
+        AppVisualCache.getIcon(context, pkg)
     }
     Box(
         modifier = Modifier.size(40.dp),

@@ -18,6 +18,8 @@ import com.rrrrz.tinyvow.data.db.AppGroupEntity
 import com.rrrrz.tinyvow.data.db.BlockEventEntity
 import com.rrrrz.tinyvow.data.db.GroupType
 import com.rrrrz.tinyvow.data.db.RewardType
+import com.rrrrz.tinyvow.data.notification.TinyVowNotifier
+import com.rrrrz.tinyvow.data.reminder.ReminderPolicy
 import com.rrrrz.tinyvow.data.repository.AppLimitRepository
 import com.rrrrz.tinyvow.data.repository.ArchiveDateUtils
 import com.rrrrz.tinyvow.data.repository.PointsRepository
@@ -26,6 +28,7 @@ import com.rrrrz.tinyvow.data.repository.calculateTargetBonusPoints
 import com.rrrrz.tinyvow.data.repository.calculateUsageEarnedPoints
 import com.rrrrz.tinyvow.data.repository.parseRewardPayload
 import com.rrrrz.tinyvow.data.settings.ManagedAppPreferences
+import com.rrrrz.tinyvow.data.time.BusinessDay
 import com.rrrrz.tinyvow.data.usage.UsageAccessStateChecker
 import com.rrrrz.tinyvow.data.usage.UsageAccessStatus
 import com.rrrrz.tinyvow.data.special.SpecialAppUsageRepository
@@ -37,6 +40,7 @@ import com.rrrrz.tinyvow.ui.theme.DefaultThemeSeed
 import com.rrrrz.tinyvow.ui.theme.resolveThemeSeed
 import com.rrrrz.tinyvow.ui.theme.themeTokensFromSeed
 import androidx.compose.ui.graphics.toArgb
+import java.time.Instant
 import java.time.ZoneId
 import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
@@ -58,6 +62,7 @@ class AppLimitAccessibilityService : AccessibilityService() {
     private val usageRepository by lazy { MergedUsageRepository(applicationContext) }
     private val specialAppUsageRepository by lazy { SpecialAppUsageRepository(applicationContext) }
     private val preferences by lazy { ManagedAppPreferences(applicationContext) }
+    private val notifier by lazy { TinyVowNotifier(applicationContext) }
     @Volatile private var overlayPalette: OverlayPalette = overlayPaletteForSeed(DefaultThemeSeed)
     @Volatile private var accessibilityDisclosureAccepted: Boolean = false
 
@@ -102,6 +107,7 @@ class AppLimitAccessibilityService : AccessibilityService() {
 
     override fun onServiceConnected() {
         super.onServiceConnected()
+        AppText.attach(this)
         enforcer = GroupLimitEnforcer(applicationContext)
         pointsRepository = PointsRepository(applicationContext, database)
         appLimitRepository = AppLimitRepository(applicationContext, database)
@@ -136,7 +142,9 @@ class AppLimitAccessibilityService : AccessibilityService() {
                 runCatching {
                     preferences.touchAccessibilityServiceHeartbeat()
                 }.onFailure {
-                    Log.w(TAG, "Failed to update accessibility heartbeat", it)
+                    if (BuildConfig.DEBUG) {
+                        Log.w(TAG, "Failed to update accessibility heartbeat", it)
+                    }
                 }
                 kotlinx.coroutines.delay(SERVICE_HEARTBEAT_INTERVAL_MS)
             }
@@ -178,7 +186,9 @@ class AppLimitAccessibilityService : AccessibilityService() {
                     try {
                         handlePointsAccumulation(currentPackage, SystemClock.elapsedRealtime())
                     } catch (e: Exception) {
-                        Log.e(TAG, "Error in periodic points ticker", e)
+                        if (BuildConfig.DEBUG) {
+                            Log.e(TAG, "Error in periodic points ticker", e)
+                        }
                     }
                 }
             }
@@ -198,7 +208,9 @@ class AppLimitAccessibilityService : AccessibilityService() {
                 try {
                     evaluateAndBlock(payload.packageName, payload.eventType)
                 } catch (e: Exception) {
-                    Log.e(TAG, "Error evaluating package limit: ${payload.packageName}", e)
+                    if (BuildConfig.DEBUG) {
+                        Log.e(TAG, "Error evaluating package limit: ${payload.packageName}", e)
+                    }
                 }
             }
         }
@@ -253,7 +265,9 @@ class AppLimitAccessibilityService : AccessibilityService() {
             }
             encourageAppsCache = encourageGroupsInfo
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to list ENCOURAGE apps", e)
+            if (BuildConfig.DEBUG) {
+                Log.e(TAG, "Failed to list ENCOURAGE apps", e)
+            }
         }
         val hasEmergencyUnlock =
             database.rewardInventoryDao().sumQuantityByRewardType(RewardType.EMERGENCY_UNLOCK) > 0 &&
@@ -280,10 +294,11 @@ class AppLimitAccessibilityService : AccessibilityService() {
     ) {
         val nowMillis = System.currentTimeMillis()
         val zoneId = ZoneId.systemDefault()
+        val dayStartHour = preferences.getDayBoundaryHourOnce()
         database.blockEventDao().insert(
             BlockEventEntity(
                 id = UUID.randomUUID().toString(),
-                eventDate = ArchiveDateUtils.formatDate(ArchiveDateUtils.localDateAt(nowMillis, zoneId)),
+                eventDate = ArchiveDateUtils.formatDate(ArchiveDateUtils.localDateAt(nowMillis, zoneId, dayStartHour)),
                 occurredAt = nowMillis,
                 packageName = packageName,
                 groupId = result.groupId,
@@ -443,9 +458,21 @@ class AppLimitAccessibilityService : AccessibilityService() {
             
             // 更新数据库标记
             database.appGroupDao().insertGroup(group.copy(lastBonusAt = nowMillis))
+            notifyEncourageTargetCompleted(group, nowMillis)
             
-            Log.i(TAG, "Group ${group.name} reached daily target! Bonus $bonusPoints pts granted.")
+            if (BuildConfig.DEBUG) {
+                Log.i(TAG, "Group ${group.name} reached daily target! Bonus $bonusPoints pts granted.")
+            }
         }
+    }
+
+    private suspend fun notifyEncourageTargetCompleted(group: AppGroupEntity, nowMillis: Long) {
+        if (!preferences.getNotificationRemindersEnabledOnce()) return
+        val today = ArchiveDateUtils.localDateAt(nowMillis, ZoneId.systemDefault(), preferences.getDayBoundaryHourOnce())
+        val reminderKey = ReminderPolicy.encourageCompletedReminderKey(today, group.id)
+        if (reminderKey in preferences.getSentReminderKeysOnce()) return
+        notifier.notifyEncourageCompleted(groupId = group.id, groupName = group.name)
+        preferences.addSentReminderKey(reminderKey)
     }
 
     private suspend fun currentEncouragePointsMultiplier(groupId: String, nowMillis: Long): Double {
@@ -459,13 +486,10 @@ class AppLimitAccessibilityService : AccessibilityService() {
     }
 
     private fun getStartOfDay(millis: Long): Long {
-        val calendar = java.util.Calendar.getInstance()
-        calendar.timeInMillis = millis
-        calendar.set(java.util.Calendar.HOUR_OF_DAY, 0)
-        calendar.set(java.util.Calendar.MINUTE, 0)
-        calendar.set(java.util.Calendar.SECOND, 0)
-        calendar.set(java.util.Calendar.MILLISECOND, 0)
-        return calendar.timeInMillis
+        val zoneId = ZoneId.systemDefault()
+        val dayStartHour = BusinessDay.cachedStartHour()
+        val businessDate = ArchiveDateUtils.localDateAt(millis, zoneId, dayStartHour)
+        return ArchiveDateUtils.startOfDayMillis(businessDate, zoneId, dayStartHour)
     }
 
     // ──────── Overlay ────────
@@ -783,9 +807,13 @@ class AppLimitAccessibilityService : AccessibilityService() {
         try {
             windowManager.addView(layout, params)
             blockView = layout
-            Log.i(TAG, "Overlay added successfully!")
+            if (BuildConfig.DEBUG) {
+                Log.i(TAG, "Overlay added successfully!")
+            }
         } catch (e: Exception) {
-            Log.e(TAG, "Failed to add overlay", e)
+            if (BuildConfig.DEBUG) {
+                Log.e(TAG, "Failed to add overlay", e)
+            }
         }
     }
 
@@ -930,7 +958,9 @@ class AppLimitAccessibilityService : AccessibilityService() {
                             try {
                                 startActivity(intent)
                             } catch (e: Exception) {
-                                Log.e(TAG, "Failed to launch encourage app: $pkg", e)
+                                if (BuildConfig.DEBUG) {
+                                    Log.e(TAG, "Failed to launch encourage app: $pkg", e)
+                                }
                             }
                         }
                     }

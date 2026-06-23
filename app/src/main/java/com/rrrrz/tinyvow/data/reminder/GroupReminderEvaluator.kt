@@ -8,9 +8,9 @@ import com.rrrrz.tinyvow.data.db.RewardType
 import com.rrrrz.tinyvow.data.notification.TinyVowNotifier
 import com.rrrrz.tinyvow.data.repository.parseRewardPayload
 import com.rrrrz.tinyvow.data.settings.ManagedAppPreferences
+import com.rrrrz.tinyvow.data.time.BusinessDay
 import com.rrrrz.tinyvow.data.usage.MergedUsageRepository
 import com.rrrrz.tinyvow.i18n.AppText
-import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
 import kotlinx.coroutines.Dispatchers
@@ -35,7 +35,9 @@ class GroupReminderEvaluator(
         if (!settings.enabled) return
         withContext(Dispatchers.IO) {
             val nowMillis = nowMillisProvider()
-            val today = Instant.ofEpochMilli(nowMillis).atZone(zoneId).toLocalDate()
+            val dayStartHour = preferences.getDayBoundaryHourOnce()
+            BusinessDay.updateCachedStartHour(dayStartHour)
+            val today = BusinessDay.today(zoneId, dayStartHour, nowMillis)
             var sentKeys = preferences.getSentReminderKeysOnce()
             groupDao
                 .getAllGroupsSync()
@@ -82,25 +84,39 @@ class GroupReminderEvaluator(
         if (!settings.enabled) return
         withContext(Dispatchers.IO) {
             val nowMillis = nowMillisProvider()
-            val today = Instant.ofEpochMilli(nowMillis).atZone(zoneId).toLocalDate()
+            val dayStartHour = preferences.getDayBoundaryHourOnce()
+            BusinessDay.updateCachedStartHour(dayStartHour)
+            val today = BusinessDay.today(zoneId, dayStartHour, nowMillis)
             val key = ReminderPolicy.encourageReminderKey(today, scheduledTimeMinutes)
             val sentKeys = preferences.getSentReminderKeysOnce()
             val incompleteGroups =
                 groupDao
                     .getAllGroupsSync()
                     .filter { it.type == GroupType.ENCOURAGE }
-                    .filter { group ->
+                    .mapNotNull { group ->
                         val packages = crossRefDao.getPackageNamesForGroupSync(group.id)
                         if (packages.isEmpty()) {
-                            false
+                            null
                         } else {
                             val usedMillis =
                                 packages.sumOf { packageName ->
                                     usageRepository.getUsageInPeriod(packageName, group.limitPeriod, GroupType.ENCOURAGE)
                                 }
-                            usedMillis < group.limitMinutes * 60_000L
+                            val remainingMinutes = ReminderPolicy.encourageRemainingMinutes(
+                                usedMillis = usedMillis,
+                                targetMinutes = group.limitMinutes,
+                            )
+                            if (remainingMinutes > 0) {
+                                EncourageProgressReminder(
+                                    groupName = group.name,
+                                    remainingMinutes = remainingMinutes,
+                                )
+                            } else {
+                                null
+                            }
                         }
                     }
+                    .sortedBy { it.remainingMinutes }
 
             if (
                 ReminderPolicy.shouldSendEncourageIncomplete(
@@ -111,7 +127,8 @@ class GroupReminderEvaluator(
             ) {
                 notifier.notifyEncourageIncomplete(
                     timeText = formatClockMinutes(scheduledTimeMinutes),
-                    groupNames = incompleteGroups.map { it.name },
+                    groupNames = incompleteGroups.map { it.groupName },
+                    progressReminder = incompleteGroups.firstOrNull(),
                 )
                 preferences.addSentReminderKey(key)
             }

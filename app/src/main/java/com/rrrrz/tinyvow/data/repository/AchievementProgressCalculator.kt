@@ -121,6 +121,25 @@ internal fun completionDatesForGroupType(
         }
         .toSet()
 
+internal fun calculateStreakBeforeDate(
+    archiveDates: List<LocalDate>,
+    latestDate: LocalDate,
+    completedDates: Set<LocalDate>,
+    shieldedDates: Set<LocalDate> = emptySet(),
+): Int {
+    val continuationDates = completedDates + shieldedDates
+    var streak = 0
+    var expectedDate = latestDate.minusDays(1)
+    for (archiveDate in archiveDates.asReversed()) {
+        if (archiveDate >= latestDate) continue
+        if (archiveDate != expectedDate) break
+        if (archiveDate !in continuationDates) break
+        streak += 1
+        expectedDate = archiveDate.minusDays(1)
+    }
+    return streak
+}
+
 private fun calculateCompletedArchiveStreak(
     sortedArchives: List<DailyArchiveEntity>,
     signal: CompletionSignal,

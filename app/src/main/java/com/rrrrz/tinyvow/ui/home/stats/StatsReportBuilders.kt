@@ -9,6 +9,7 @@ import com.rrrrz.tinyvow.data.db.GroupType
 import com.rrrrz.tinyvow.data.repository.AppGroupWithApps
 import com.rrrrz.tinyvow.data.repository.ArchiveDateUtils
 import com.rrrrz.tinyvow.data.repository.DailyArchiveRepository
+import com.rrrrz.tinyvow.data.time.BusinessDay
 import com.rrrrz.tinyvow.data.usage.AppSession
 import com.rrrrz.tinyvow.data.usage.UsageRepository
 import com.rrrrz.tinyvow.data.usage.UsageStatsUsageRepository
@@ -26,6 +27,7 @@ import java.time.temporal.TemporalAdjusters
 import java.util.Locale
 import kotlin.math.ceil
 import kotlin.math.max
+import kotlin.math.min
 import kotlin.math.roundToInt
 internal fun createRefreshingUiState(
     selectedTab: ReportTab,
@@ -304,7 +306,7 @@ internal fun resolvePeriodBounds(
     selectedMonth: YearMonth?,
     selectedYear: Int?,
 ): PeriodBounds? {
-    val yesterday = LocalDate.now(zoneId).minusDays(1)
+    val yesterday = BusinessDay.today(zoneId, BusinessDay.cachedStartHour()).minusDays(1)
     return when (selectedTab) {
         ReportTab.WEEK -> {
             val start = selectedWeekStart ?: return null
@@ -730,6 +732,13 @@ internal fun isoWeekLabel(weekStart: LocalDate): String {
 internal fun periodWeekLabel(weekStart: LocalDate): String =
     "${isoWeekLabel(weekStart)} · ${periodRangeLabel(weekStart, weekStart.plusDays(6))}"
 
+internal fun periodWeekCompactLabel(weekStart: LocalDate): String =
+    AppText.t(
+        "stats_week_number_compact",
+        weekStart.get(IsoFields.WEEK_BASED_YEAR),
+        weekStart.get(IsoFields.WEEK_OF_WEEK_BASED_YEAR),
+    )
+
 internal fun buildMonthHeatmapCells(
     startDate: LocalDate,
     endDate: LocalDate,
@@ -906,6 +915,43 @@ internal fun buildAppFocusSectionData(
                 ),
             ),
     )
+}
+
+internal fun buildAppFocusProfiles(
+    snapshots: List<ArchivedAppSnapshot>,
+    topApps: List<AppDisplayItem>,
+): List<AppFocusProfileItem> {
+    if (snapshots.isEmpty() || topApps.isEmpty()) return emptyList()
+    val snapshotsByPackage = snapshots.associateBy { it.packageName }
+    val totalUsage = topApps.sumOf { it.value }.coerceAtLeast(1L)
+    val maxOpenCount = snapshots.maxOfOrNull { it.openCount }?.coerceAtLeast(1) ?: 1
+    val maxSessionCount = snapshots.maxOfOrNull { it.sessionCount }?.coerceAtLeast(1) ?: 1
+    val maxLongestSession = snapshots.maxOfOrNull { it.longestSessionMillis }?.coerceAtLeast(1L) ?: 1L
+    return topApps.mapNotNull { app ->
+        val snapshot = snapshotsByPackage[app.packageName] ?: return@mapNotNull null
+        val peakHourIndex =
+            snapshot.hourlyBuckets
+                .withIndex()
+                .maxByOrNull { it.value }
+                ?.index
+                ?: 0
+        val openRatio = snapshot.openCount.toFloat() / maxOpenCount.toFloat()
+        val sessionRatio = snapshot.sessionCount.toFloat() / maxSessionCount.toFloat()
+        val longestRatio = snapshot.longestSessionMillis.toFloat() / maxLongestSession.toFloat()
+        AppFocusProfileItem(
+            packageName = app.packageName,
+            label = app.label,
+            usageMillis = app.value,
+            openCount = snapshot.openCount,
+            sessionCount = snapshot.sessionCount,
+            longestSessionMillis = snapshot.longestSessionMillis,
+            nightUsageMillis = snapshot.nightUsageMillis,
+            peakHour = peakHourIndex,
+            peakHourMillis = snapshot.hourlyBuckets.getOrNull(peakHourIndex) ?: 0L,
+            share = (app.value.toFloat() / totalUsage.toFloat()).coerceIn(0f, 1f),
+            intensity = (openRatio * 0.42f + sessionRatio * 0.28f + longestRatio * 0.3f).coerceIn(0f, 1f),
+        )
+    }.take(min(topApps.size, 9))
 }
 
 internal fun buildWeeklyTopAppRows(
@@ -1790,7 +1836,12 @@ internal suspend fun buildArchivedDayReportUiState(
                 if (topApps.isEmpty()) {
                     SectionState.Empty
                 } else {
-                    SectionState.Ready(TopAppsSectionData(usageTopApps = topApps))
+                    SectionState.Ready(
+                        TopAppsSectionData(
+                            usageTopApps = topApps,
+                            appProfiles = buildAppFocusProfiles(currentSnapshots, topApps),
+                        ),
+                    )
                 },
             behaviorState =
                 if (behaviorStructure == null) {
@@ -1835,6 +1886,7 @@ internal fun buildArchiveTimelineSectionData(
     return TimelineSectionData(
         buckets = timelineBuckets,
         periodUsage = periodUsage,
+        appLegend = buildTimelineAppLegend(timelineBuckets),
         peakHourLabel = peakBucket?.label ?: "--",
         peakHourMillis = peakBucket?.deviceMillis ?: 0L,
         peakTwoHourLabel =
@@ -1936,10 +1988,24 @@ internal fun buildArchivedComparisonMetrics(
 
 internal fun buildArchivedDayTimelineBuckets(items: List<ArchivedAppSnapshot>): List<DailyTimelineBucket> {
     return (0 until 24).map { hour ->
+        val segments =
+            items
+                .mapNotNull { snapshot ->
+                    val millis = snapshot.hourlyBuckets.getOrElse(hour) { 0L }
+                    millis.takeIf { it > 0L }?.let {
+                        DailyTimelineAppSegment(
+                            packageName = snapshot.packageName,
+                            label = snapshot.label,
+                            millis = it,
+                        )
+                    }
+                }
+                .sortedByDescending { it.millis }
         DailyTimelineBucket(
             hour = hour,
             label = dayHourLabel(hour),
-            deviceMillis = items.sumOf { snapshot -> snapshot.hourlyBuckets.getOrElse(hour) { 0L } },
+            deviceMillis = segments.sumOf { it.millis },
+            appSegments = segments,
         )
     }
 }
@@ -1962,7 +2028,9 @@ internal fun buildArchivedDaySummary(
     return DailyReportSummary(
         title = AppText.t("stats_total_phone_usage"),
         subtitle = "",
-        capturedAt = "",
+        capturedAt = LocalDate
+            .parse(archive.archiveDate)
+            .format(DateTimeFormatter.ofPattern(AppText.t("stats_archive_date_chip"), Locale.CHINA)),
         message = AppText.t("stats_value_was_mainly_concentrated_in_value", message, dominantPeriod),
         primaryValue = formatDuration(overview.totalUsageMillis),
         secondaryValue = formatDuration(kotlin.math.abs(overview.totalUsageMillis - previousMetrics.deviceUsageMillis)),
@@ -2554,8 +2622,9 @@ internal suspend fun buildDailyReportUiState(
     installedApps: List<ManagedApp>,
     updateState: ((DailyReportUiState) -> DailyReportUiState) -> Unit,
 ) {
-    val today = LocalDate.now(zoneId)
-    val todayStart = today.atStartOfDay(zoneId).toInstant().toEpochMilli()
+    val dayStartHour = BusinessDay.cachedStartHour()
+    val today = BusinessDay.today(zoneId, dayStartHour)
+    val todayStart = BusinessDay.startOfDayMillis(today, zoneId, dayStartHour)
     val nowMillis = System.currentTimeMillis()
     val installedAppMap = installedApps.associateBy { it.packageName }
     val managedPackages = groupsWithApps.flatMap { it.packageNames }.toSet()
@@ -2575,7 +2644,13 @@ internal suspend fun buildDailyReportUiState(
     val deviceOpenCounts = todayOpenCounts.filterKeys { it in devicePackageSet }
     val deviceSessions = todaySessions.filter { it.packageName in devicePackageSet }
 
-    val timelineBuckets = buildTimelineBuckets(todayStart, nowMillis, deviceSessions)
+    val timelineBuckets =
+        buildTimelineBuckets(
+            startMillis = todayStart,
+            endMillis = nowMillis,
+            deviceSessions = deviceSessions,
+            appLabels = devicePackages.mapValues { it.value.label },
+        )
     val periodUsage = buildPeriodUsageStats(timelineBuckets)
     val timelineInsight = buildTimelineSectionData(timelineBuckets)
 
@@ -2745,8 +2820,9 @@ internal suspend fun buildWindowMetrics(
     installedAppMap: Map<String, ManagedApp>,
     managedPackages: Set<String>,
 ): WindowMetrics {
-    val startMillis = date.atStartOfDay(zoneId).toInstant().toEpochMilli()
-    val endMillis = date.plusDays(1).atStartOfDay(zoneId).toInstant().toEpochMilli()
+    val dayStartHour = BusinessDay.cachedStartHour()
+    val startMillis = BusinessDay.startOfDayMillis(date, zoneId, dayStartHour)
+    val endMillis = BusinessDay.nextDayStartMillis(date, zoneId, dayStartHour)
     val usageStats = usageRepository.getUsageStats(startMillis, endMillis)
     val openCounts = usageRepository.getAppOpenCount(startMillis, endMillis)
     val sessions = usageRepository.getUsageSessions(startMillis, endMillis).filter { it.endTime > it.startTime }
@@ -2944,14 +3020,30 @@ internal fun buildTimelineBuckets(
     startMillis: Long,
     endMillis: Long,
     deviceSessions: List<AppSession>,
+    appLabels: Map<String, String> = emptyMap(),
 ): List<DailyTimelineBucket> {
     return (0 until 24).map { hour ->
         val bucketStart = startMillis + hour * 60L * 60_000L
         val bucketEnd = minOf(bucketStart + 60L * 60_000L, endMillis)
+        val segments =
+            deviceSessions
+                .groupBy { it.packageName }
+                .mapNotNull { (packageName, sessions) ->
+                    val millis = bucketDuration(sessions, bucketStart, bucketEnd)
+                    millis.takeIf { it > 0L }?.let {
+                        DailyTimelineAppSegment(
+                            packageName = packageName,
+                            label = appLabels[packageName] ?: packageName,
+                            millis = it,
+                        )
+                    }
+                }
+                .sortedByDescending { it.millis }
         DailyTimelineBucket(
             hour = hour,
             label = dayHourLabel(hour),
-            deviceMillis = bucketDuration(deviceSessions, bucketStart, bucketEnd),
+            deviceMillis = segments.sumOf { it.millis },
+            appSegments = segments,
         )
     }
 }
@@ -2984,12 +3076,44 @@ internal fun buildTimelineSectionData(
     return TimelineSectionData(
         buckets = timelineBuckets,
         periodUsage = buildPeriodUsageStats(timelineBuckets),
+        appLegend = buildTimelineAppLegend(timelineBuckets),
         peakHourLabel = peakHour?.label ?: "--",
         peakHourMillis = peakHour?.deviceMillis ?: 0L,
         peakTwoHourLabel = peakTwoHour?.first?.let { AppText.t("stats_hour_range_format", it.first().label, it.last().hour + 1) } ?: "--",
         peakTwoHourMillis = peakTwoHour?.second ?: 0L,
         nightUsageMillis = timelineBuckets.filter { it.hour < 6 || it.hour >= 22 }.sumOf { it.deviceMillis },
     )
+}
+
+internal fun buildTimelineAppLegend(
+    timelineBuckets: List<DailyTimelineBucket>,
+    maxItems: Int = 5,
+): List<DailyTimelineAppLegendItem> {
+    val usageByPackage =
+        timelineBuckets
+            .flatMap { it.appSegments }
+            .groupBy { it.packageName }
+            .map { (packageName, segments) ->
+                val label = segments.maxByOrNull { it.millis }?.label ?: packageName
+                DailyTimelineAppLegendItem(
+                    packageName = packageName,
+                    label = label,
+                    millis = segments.sumOf { it.millis },
+                )
+            }
+            .filter { it.millis > 0L }
+            .sortedByDescending { it.millis }
+    if (usageByPackage.size <= maxItems) {
+        return usageByPackage
+    }
+    val visibleItems = usageByPackage.take(maxItems)
+    val otherMillis = usageByPackage.drop(maxItems).sumOf { it.millis }
+    return visibleItems +
+        DailyTimelineAppLegendItem(
+            packageName = TIMELINE_OTHER_APPS_PACKAGE_NAME,
+            label = AppText.t("stats_other_apps"),
+            millis = otherMillis,
+        )
 }
 
 internal fun bucketDuration(

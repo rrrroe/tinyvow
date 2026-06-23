@@ -3,6 +3,8 @@ package com.rrrrz.tinyvow.data.repository
 import com.rrrrz.tinyvow.data.db.RewardType
 import com.rrrrz.tinyvow.data.db.StreakShieldTarget
 
+const val EMERGENCY_UNLOCK_REWARD_KEY = "reward_emergency_unlock_10"
+
 internal val BUILTIN_REWARD_DEFINITIONS =
     listOf(
         BuiltinRewardDefinition(
@@ -41,7 +43,7 @@ internal val BUILTIN_REWARD_DEFINITIONS =
             stock = -1,
         ),
         BuiltinRewardDefinition(
-            builtinKey = "reward_emergency_unlock_10",
+            builtinKey = EMERGENCY_UNLOCK_REWARD_KEY,
             title = "Emergency unlock 10 min",
             description = "Buy from the store first. Use only from the blocking overlay.",
             rewardType = RewardType.EMERGENCY_UNLOCK,

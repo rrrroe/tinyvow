@@ -10,7 +10,6 @@ import android.graphics.Paint
 import android.graphics.RectF
 import android.provider.Settings
 import android.widget.Toast
-import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
@@ -88,6 +87,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -96,6 +96,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -137,9 +138,12 @@ import kotlin.math.atan
 import kotlin.math.ceil
 import kotlin.math.PI
 import kotlin.math.cos
+import kotlin.math.max
+import kotlin.math.min
 import kotlin.math.roundToInt
 import kotlin.math.roundToLong
 import kotlin.math.sin
+import kotlin.math.sqrt
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -454,6 +458,7 @@ internal fun BattleMetricTile(
 @Composable
 internal fun DailyRhythmCard(
     timelineState: SectionState<TimelineSectionData>,
+    focusState: SectionState<DailyFocusSectionData> = SectionState.Empty,
 ) {
     ReportCard {
         Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -493,47 +498,258 @@ internal fun DailyRhythmCard(
                     )
                 }
                 is SectionState.Ready -> {
-                    DailyTimelineChart(
-                        buckets = timelineState.data.buckets,
-                        targetMillisPerBucket = timelineState.data.targetMillisPerBucket,
+                    val focusData = (focusState as? SectionState.Ready)?.data
+                    DailyRhythmProfileStrip(
+                        data = timelineState.data,
                     )
                     TimelineFooter(labels = buildTimelineFooterLabels(ReportTab.DAY, timelineState.data.buckets))
-                    AdaptiveRowGrid(
-                        itemCount = 3,
-                        compactColumns = 1,
-                        expandedColumns = 3,
-                        horizontalSpacing = 10.dp,
-                        verticalSpacing = 10.dp,
-                    ) { modifier, index ->
-                        when (index) {
-                            0 -> MiniInsightCard(
-                                icon = Icons.Default.Bolt,
-                                label = AppText.t("stats_peak_time"),
-                                value = "${timelineState.data.peakHourLabel} · ${formatDuration(timelineState.data.peakHourMillis)}",
-                                visualRatio = (timelineState.data.peakHourMillis.toFloat() / (2 * 60 * 60_000L).toFloat()).coerceIn(0f, 1f),
-                                compact = true,
-                                modifier = modifier,
-                            )
-                            1 -> MiniInsightCard(
-                                icon = Icons.AutoMirrored.Filled.CallSplit,
-                                label = AppText.t("stats_over_2h"),
-                                value = "${timelineState.data.peakTwoHourLabel} · ${formatDuration(timelineState.data.peakTwoHourMillis)}",
-                                visualRatio = (timelineState.data.peakTwoHourMillis.toFloat() / (4 * 60 * 60_000L).toFloat()).coerceIn(0f, 1f),
-                                compact = true,
-                                modifier = modifier,
-                            )
-                            else -> MiniInsightCard(
-                                icon = Icons.Default.NightsStay,
-                                label = AppText.t("stats_night_use"),
-                                value = formatDuration(timelineState.data.nightUsageMillis),
-                                visualRatio = (timelineState.data.nightUsageMillis.toFloat() / (3 * 60 * 60_000L).toFloat()).coerceIn(0f, 1f),
-                                compact = true,
-                                modifier = modifier,
+                    DailyRhythmSignalGrid(
+                        data = timelineState.data,
+                        focusData = focusData,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun DailyRhythmProfileStrip(
+    data: TimelineSectionData,
+) {
+    val themeColors = LocalThemeColors.current
+    val visibleLegend = data.appLegend.filter { it.millis > 0L }
+    val appPackages =
+        visibleLegend
+            .filter { it.packageName != TIMELINE_OTHER_APPS_PACKAGE_NAME }
+            .map { it.packageName }
+    val appColors = rememberAppChartColors(appPackages)
+    val palette = LocalReportColors.current.appChartPalette
+    val otherAppsColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.50f)
+    val legendColors =
+        visibleLegend.mapIndexed { index, item ->
+            item.packageName to
+                when (item.packageName) {
+                    TIMELINE_OTHER_APPS_PACKAGE_NAME -> otherAppsColor
+                    else -> appColors[item.packageName] ?: palette[index % palette.size]
+                }
+        }.toMap()
+    val maxUsage = data.buckets.maxOfOrNull { it.deviceMillis }?.coerceAtLeast(1L) ?: 1L
+    val peakHour = data.buckets.maxByOrNull { it.deviceMillis }?.hour
+
+    Surface(
+        shape = RoundedCornerShape(22.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.72f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.24f)),
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(
+                        text = AppText.t("stats_rhythm_strip_title"),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = themeColors.inkStrong,
+                    )
+                    Text(
+                        text = AppText.t(
+                            "stats_rhythm_active_hours",
+                            data.buckets.count { it.deviceMillis > 0L },
+                        ),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = themeColors.inkMuted,
+                    )
+                }
+                RhythmLegendPill(
+                    color = MaterialTheme.colorScheme.primary,
+                    label = AppText.t("stats_rhythm_legend_peak"),
+                )
+            }
+            Row(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .height(88.dp),
+                horizontalArrangement = Arrangement.spacedBy(3.dp),
+                verticalAlignment = Alignment.Bottom,
+            ) {
+                data.buckets.forEach { bucket ->
+                    val dominantSegment = bucket.appSegments.maxByOrNull { it.millis }
+                    val accent =
+                        dominantSegment?.let { legendColors[it.packageName] }
+                            ?: MaterialTheme.colorScheme.primary
+                    val usageRatio =
+                        if (bucket.deviceMillis > 0L) {
+                            (bucket.deviceMillis.toFloat() / maxUsage.toFloat()).coerceIn(0.16f, 1f)
+                        } else {
+                            0.06f
+                        }
+                    val isNight = bucket.hour < 6 || bucket.hour >= 22
+                    val isPeak = bucket.hour == peakHour && bucket.deviceMillis > 0L
+                    Box(
+                        modifier =
+                            Modifier
+                                .weight(1f)
+                                .fillMaxHeight(),
+                        contentAlignment = Alignment.BottomCenter,
+                    ) {
+                        Box(
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .fillMaxHeight()
+                                    .clip(RoundedCornerShape(999.dp))
+                                    .background(
+                                        if (isNight) {
+                                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.28f)
+                                        } else {
+                                            MaterialTheme.colorScheme.surface.copy(alpha = 0.38f)
+                                        },
+                                    ),
+                        )
+                        Box(
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .fillMaxHeight(usageRatio)
+                                    .clip(RoundedCornerShape(999.dp))
+                                    .background(
+                                        Brush.verticalGradient(
+                                            listOf(
+                                                accent.copy(alpha = if (bucket.deviceMillis > 0L) 0.95f else 0.18f),
+                                                accent.copy(alpha = if (bucket.deviceMillis > 0L) 0.40f else 0.08f),
+                                            ),
+                                        ),
+                                    ),
+                        )
+                        if (isPeak) {
+                            Box(
+                                modifier =
+                                    Modifier
+                                        .align(Alignment.TopCenter)
+                                        .size(6.dp)
+                                        .clip(CircleShape)
+                                        .background(MaterialTheme.colorScheme.primary),
                             )
                         }
                     }
                 }
             }
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                visibleLegend.take(3).forEach { item ->
+                    RhythmLegendPill(
+                        color = legendColors[item.packageName] ?: MaterialTheme.colorScheme.primary,
+                        label = "${item.label} · ${formatDuration(item.millis)}",
+                    )
+                }
+                RhythmLegendPill(
+                    color = MaterialTheme.colorScheme.surfaceVariant,
+                    label = AppText.t("stats_rhythm_legend_night"),
+                    muted = true,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun RhythmLegendPill(
+    color: Color,
+    label: String,
+    muted: Boolean = false,
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Box(
+            modifier =
+                Modifier
+                    .size(8.dp)
+                    .clip(CircleShape)
+                    .background(color.copy(alpha = if (muted) 0.48f else 1f)),
+        )
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+@Composable
+private fun DailyRhythmSignalGrid(
+    data: TimelineSectionData,
+    focusData: DailyFocusSectionData?,
+) {
+    val topApp = data.appLegend.firstOrNull { it.millis > 0L }
+    AdaptiveRowGrid(
+        itemCount = 4,
+        compactColumns = 1,
+        expandedColumns = 2,
+        horizontalSpacing = 10.dp,
+        verticalSpacing = 10.dp,
+    ) { modifier, index ->
+        when (index) {
+            0 -> MiniInsightCard(
+                icon = Icons.AutoMirrored.Filled.CallSplit,
+                label = AppText.t("stats_over_2h"),
+                value = "${data.peakTwoHourLabel} · ${formatDuration(data.peakTwoHourMillis)}",
+                visualRatio = (data.peakTwoHourMillis.toFloat() / (4 * 60 * 60_000L).toFloat()).coerceIn(0f, 1f),
+                compact = true,
+                modifier = modifier,
+            )
+            1 -> MiniInsightCard(
+                icon = Icons.Default.NightsStay,
+                label = AppText.t("stats_night_use"),
+                value = formatDuration(data.nightUsageMillis),
+                visualRatio = (data.nightUsageMillis.toFloat() / (3 * 60 * 60_000L).toFloat()).coerceIn(0f, 1f),
+                compact = true,
+                modifier = modifier,
+            )
+            2 -> MiniInsightCard(
+                icon = Icons.Default.PhoneAndroid,
+                label = AppText.t("stats_rhythm_top_app"),
+                value = topApp?.let { "${it.label} · ${formatDuration(it.millis)}" }
+                    ?: AppText.t("stats_rhythm_no_top_app"),
+                visualRatio = topApp?.let { app ->
+                    val total = data.buckets.sumOf { it.deviceMillis }.coerceAtLeast(1L)
+                    (app.millis.toFloat() / total.toFloat()).coerceIn(0f, 1f)
+                },
+                compact = true,
+                modifier = modifier,
+            )
+            else -> MiniInsightCard(
+                icon = Icons.Default.Bolt,
+                label = AppText.t("stats_rhythm_vow_mix"),
+                value =
+                    focusData?.let {
+                        AppText.t(
+                            "stats_rhythm_vow_mix_value",
+                            formatDuration(it.controlUsageMillis),
+                            formatDuration(it.encourageUsageMillis),
+                        )
+                    } ?: AppText.t("stats_none"),
+                visualRatio = focusData?.let {
+                    val total = data.buckets.sumOf { bucket -> bucket.deviceMillis }.coerceAtLeast(1L)
+                    ((it.controlUsageMillis + it.encourageUsageMillis).toFloat() / total.toFloat()).coerceIn(0f, 1f)
+                },
+                compact = true,
+                modifier = modifier,
+            )
         }
     }
 }
@@ -542,18 +758,24 @@ internal fun DailyRhythmCard(
 internal fun DailyAppFocusCard(
     topAppsState: SectionState<TopAppsSectionData>,
 ) {
-    val usageTopApps = (topAppsState as? SectionState.Ready)?.data?.usageTopApps.orEmpty()
+    val topAppsData = (topAppsState as? SectionState.Ready)?.data
+    val usageTopApps = topAppsData?.usageTopApps.orEmpty()
+    val appProfiles = topAppsData?.appProfiles.orEmpty()
     val appColors = rememberAppChartColors(usageTopApps.map { it.packageName })
     ReportCard {
         Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
             SectionHeader(
                 icon = Icons.Default.BarChart,
                 title = AppText.t("stats_app_focus"),
-                subtitle = AppText.t("stats_current_day_top_10_apps_only"),
+                subtitle = AppText.t("stats_app_focus_daily_profile_description"),
             )
             when (topAppsState) {
                 SectionState.Loading -> {
-                    SkeletonUsageSharePanel()
+                    SkeletonBlock(
+                        modifier = Modifier.fillMaxWidth(),
+                        height = 280.dp,
+                        shape = RoundedCornerShape(22.dp),
+                    )
                 }
                 SectionState.Empty -> {
                     Text(
@@ -563,11 +785,308 @@ internal fun DailyAppFocusCard(
                     )
                 }
                 is SectionState.Ready -> {
-                    AppUsageShareCard(
-                        items = usageTopApps,
-                        appColors = appColors,
+                    if (appProfiles.isEmpty()) {
+                        AppUsageShareCard(
+                            items = usageTopApps,
+                            appColors = appColors,
+                        )
+                    } else {
+                        DailyAppSolarSystemPanel(
+                            profiles = appProfiles,
+                            appColors = appColors,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun DailyAppSolarSystemPanel(
+    profiles: List<AppFocusProfileItem>,
+    appColors: Map<String, Color>,
+    modifier: Modifier = Modifier,
+) {
+    val visibleProfiles = profiles.take(9)
+    val maxUsage = visibleProfiles.maxOfOrNull { it.usageMillis }?.coerceAtLeast(1L) ?: 1L
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(22.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.74f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.24f)),
+    ) {
+        BoxWithConstraints {
+            val compact = maxWidth < 360.dp
+            Column(
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                AppSolarSystemChart(
+                    profiles = visibleProfiles,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(if (compact) 300.dp else 344.dp),
+                )
+                AdaptiveRowGrid(
+                    itemCount = visibleProfiles.size,
+                    compactColumns = 1,
+                    expandedColumns = 2,
+                    horizontalSpacing = 10.dp,
+                    verticalSpacing = 10.dp,
+                ) { itemModifier, index ->
+                    visibleProfiles.getOrNull(index)?.let { item ->
+                        val color = appColors[item.packageName] ?: fallbackChartColor(index)
+                        DailyAppDataCard(
+                            rank = index + 1,
+                            item = item,
+                            maxUsage = maxUsage,
+                            color = color,
+                            modifier = itemModifier,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun AppSolarSystemChart(
+    profiles: List<AppFocusProfileItem>,
+    modifier: Modifier = Modifier,
+) {
+    val planets = profiles.take(9)
+    val outline = MaterialTheme.colorScheme.outlineVariant
+    val totalUsageMillis = planets.sumOf { it.usageMillis }.coerceAtLeast(1L)
+    Box(modifier = modifier, contentAlignment = Alignment.Center) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val center = Offset(size.width * 0.5f, size.height * 0.5f)
+            planets.forEachIndexed { index, _ ->
+                val orbitRadius = min(size.width, size.height) * solarOrbitProgress(index, planets.size)
+                drawCircle(
+                    color = outline.copy(alpha = 0.44f),
+                    radius = orbitRadius,
+                    center = center,
+                    style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.15f),
+                )
+            }
+        }
+        planets.forEachIndexed { index, item ->
+            val planetRotation by rememberInfiniteTransition(label = "app_planet_orbit_$index").animateFloat(
+                initialValue = 0f,
+                targetValue = 360f,
+                animationSpec =
+                    infiniteRepeatable(
+                        animation = tween(durationMillis = planetOrbitDurationMillis(index), easing = LinearEasing),
+                        repeatMode = RepeatMode.Restart,
+                    ),
+                label = "app_planet_orbit_rotation_$index",
+            )
+            val angle = -82f + index * 137.5f + item.peakHour * 6f + planetRotation
+            val orbitProgress = solarOrbitProgress(index, planets.size)
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        val radius = min(size.width, size.height) * orbitProgress
+                        val radians = angle * (PI.toFloat() / 180f)
+                        translationX = cos(radians) * radius
+                        translationY = sin(radians) * radius
+                    },
+                contentAlignment = Alignment.Center,
+            ) {
+                val areaRatio = (item.usageMillis.toFloat() / totalUsageMillis.toFloat()).coerceIn(0f, 1f)
+                val iconSize = (60f * sqrt(areaRatio)).coerceAtLeast(14f).dp
+                SolarSystemAppIcon(
+                    pkg = item.packageName,
+                    size = iconSize,
+                )
+            }
+        }
+        SolarSystemTotalUsageSun(totalUsageMillis = totalUsageMillis)
+    }
+}
+
+private fun solarOrbitProgress(
+    index: Int,
+    count: Int,
+): Float {
+    if (count <= 1) return 0.32f
+    val t = index.toFloat() / (count - 1).toFloat()
+    val eased = t * 0.58f + (1f - (1f - t) * (1f - t)) * 0.42f
+    return 0.18f + (0.43f - 0.18f) * eased
+}
+
+private fun planetOrbitDurationMillis(index: Int): Int =
+    180_000 + index * 36_000
+
+@Composable
+private fun SolarSystemAppIcon(
+    pkg: String,
+    size: Dp,
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+    val icon = remember(pkg) {
+        AppVisualCache.getIcon(context, pkg)
+    }
+    Surface(
+        modifier = modifier.size(size),
+        shape = CircleShape,
+        color = MaterialTheme.colorScheme.surface,
+    ) {
+        if (icon != null) {
+            val bitmap = remember(icon, size) {
+                icon.toBitmap(width = 96, height = 96, config = Bitmap.Config.ARGB_8888).asImageBitmap()
+            }
+            Image(
+                bitmap = bitmap,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier
+                    .fillMaxSize()
+                    .clip(CircleShape)
+                    .graphicsLayer {
+                        scaleX = 1.1f
+                        scaleY = 1.1f
+                    },
+            )
+        }
+    }
+}
+
+@Composable
+private fun SolarSystemTotalUsageSun(
+    totalUsageMillis: Long,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier.size(60.dp),
+        shape = CircleShape,
+        color = MaterialTheme.colorScheme.primaryContainer,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.34f)),
+    ) {
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .background(
+                        Brush.radialGradient(
+                            colors =
+                                listOf(
+                                    MaterialTheme.colorScheme.surface.copy(alpha = 0.52f),
+                                    MaterialTheme.colorScheme.primaryContainer,
+                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.22f),
+                                ),
+                        ),
+                    )
+                    .padding(horizontal = 5.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = formatDuration(totalUsageMillis).replace(" ", "\n"),
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.ExtraBold,
+                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                textAlign = TextAlign.Center,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
+@OptIn(ExperimentalLayoutApi::class)
+private fun DailyAppDataCard(
+    rank: Int,
+    item: AppFocusProfileItem,
+    maxUsage: Long,
+    color: Color,
+    modifier: Modifier = Modifier,
+) {
+    val peakLabel = AppText.t("stats_app_focus_peak_hour_format", item.peakHour)
+    val nightShare =
+        if (item.usageMillis > 0L) {
+            ((item.nightUsageMillis.toFloat() / item.usageMillis.toFloat()).coerceIn(0f, 1f) * 100).roundToInt()
+        } else {
+            0
+        }
+    val usageProgress =
+        if (maxUsage > 0L) {
+            (item.usageMillis.toFloat() / maxUsage.toFloat()).coerceIn(0f, 1f)
+        } else {
+            0f
+        }
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        color = color.copy(alpha = if (rank == 1) 0.1f else 0.06f),
+        border = BorderStroke(1.dp, color.copy(alpha = if (rank == 1) 0.28f else 0.16f)),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(9.dp),
+        ) {
+            Text(
+                text = rank.toString(),
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Bold,
+                color = color,
+                modifier = Modifier.width(18.dp),
+                textAlign = TextAlign.Center,
+            )
+            AppIconCircle(pkg = item.packageName, size = 36.dp)
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    Text(
+                        text = item.label,
+                        style = MaterialTheme.typography.bodyMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
+                    )
+                    Text(
+                        text = "${(item.share * 100).roundToInt()}%",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = color,
+                        fontWeight = FontWeight.SemiBold,
                     )
                 }
+                Box(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .height(6.dp)
+                            .clip(CircleShape)
+                            .background(color.copy(alpha = 0.14f)),
+                ) {
+                    Box(
+                        modifier =
+                            Modifier
+                                .fillMaxHeight()
+                                .fillMaxWidth(usageProgress)
+                                .clip(CircleShape)
+                                .background(color),
+                    )
+                }
+                Text(
+                    text =
+                        AppText.t(
+                            "stats_app_focus_row_metrics_compact",
+                            formatDuration(item.usageMillis),
+                            item.openCount,
+                            nightShare,
+                            peakLabel,
+                        ),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
         }
     }
@@ -591,6 +1110,7 @@ internal fun DailyBehaviorProfileCard(
                 icon = Icons.Default.Insights,
                 title = AppText.t("stats_behavior_analysis"),
                 subtitle = AppText.t("stats_behavior_structure_description"),
+                trailing = heroData?.summary?.capturedAt?.takeIf { it.isNotBlank() },
             )
             when {
                 behaviorState == SectionState.Loading -> {
@@ -891,6 +1411,12 @@ internal fun BehaviorRadarPanel(
                                 )
                             }
                         }
+                        totalMetric?.let { metric ->
+                            BehaviorCenteredTotalMetric(
+                                metric = metric,
+                                modifier = Modifier.align(Alignment.Center),
+                            )
+                        }
                         displayMetrics.getOrNull(0)?.let { metric ->
                             BehaviorScoreVertexLabel(
                                 metric = metric,
@@ -967,15 +1493,6 @@ internal fun BehaviorRadarPanel(
                                                 else -> 0.dp
                                             },
                                     ),
-                        )
-                    }
-                    totalMetric?.let {
-                        BehaviorTotalMetricBlock(
-                            metric = it,
-                            modifier =
-                                Modifier
-                                    .align(Alignment.BottomCenter)
-                                    .offset(x = 0.dp, y = (-38).dp),
                         )
                     }
                 }
@@ -1196,31 +1713,19 @@ private fun BehaviorCornerMetricBlock(
 }
 
 @Composable
-private fun BehaviorTotalMetricBlock(
+private fun BehaviorCenteredTotalMetric(
     metric: BehaviorTotalMetric,
     modifier: Modifier = Modifier,
 ) {
-    Column(
-        modifier = modifier.size(width = 88.dp, height = 76.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Bottom,
+    Box(
+        modifier = modifier.size(width = 108.dp, height = 96.dp),
+        contentAlignment = Alignment.Center,
     ) {
         Text(
             text = metric.value,
-            style = MaterialTheme.typography.headlineMedium,
+            style = MaterialTheme.typography.displayMedium,
             fontWeight = FontWeight.ExtraBold,
-            color = metric.accent,
-            textAlign = TextAlign.Center,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
-        Spacer(modifier = Modifier.height(1.dp))
-        Text(
-            text = metric.label,
-            modifier = Modifier.offset(y = (-6).dp),
-            style = MaterialTheme.typography.labelMedium,
-            fontWeight = FontWeight.Medium,
-            color = metric.accent,
+            color = metric.accent.copy(alpha = 0.5f),
             textAlign = TextAlign.Center,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,

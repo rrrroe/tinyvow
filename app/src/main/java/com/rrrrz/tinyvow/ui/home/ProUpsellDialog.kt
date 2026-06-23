@@ -20,6 +20,7 @@ enum class ProUpsellSource {
     MEMBER_THEME,
     ADVANCED_REPORT,
     NOTIFICATION_CUSTOMIZATION,
+    DAY_BOUNDARY_CUSTOMIZATION,
 }
 
 @Composable
@@ -78,5 +79,6 @@ private fun proUpsellMessage(source: ProUpsellSource): String =
             ProUpsellSource.MEMBER_THEME -> "pro_upsell_member_theme"
             ProUpsellSource.ADVANCED_REPORT -> "pro_upsell_advanced_report"
             ProUpsellSource.NOTIFICATION_CUSTOMIZATION -> "pro_upsell_notification_customization"
+            ProUpsellSource.DAY_BOUNDARY_CUSTOMIZATION -> "pro_upsell_day_boundary_customization"
         },
     )
