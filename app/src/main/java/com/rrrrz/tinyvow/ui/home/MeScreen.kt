@@ -1556,6 +1556,7 @@ private fun SubscriptionStatusPanel(
 ) {
     val isActive = entitlement.status == ProEntitlementStatus.ACTIVE
     val isPending = entitlement.status == ProEntitlementStatus.PENDING
+    val clipboard = LocalClipboardManager.current
     var showActivationDialog by remember { mutableStateOf(false) }
 
     Column(
@@ -1602,12 +1603,28 @@ private fun SubscriptionStatusPanel(
         }
 
         if (isLocalActivationEnabled) {
-            OutlinedButton(
-                onClick = { showActivationDialog = true },
-                enabled = !localUserId.isNullOrBlank(),
+            Row(
                 modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
-                Text(AppText.t("activation_enter_code"))
+                OutlinedButton(
+                    onClick = {
+                        localUserId?.let {
+                            clipboard.setText(AnnotatedString(it))
+                        }
+                    },
+                    enabled = !localUserId.isNullOrBlank(),
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text(AppText.t("activation_copy_user_id"))
+                }
+                OutlinedButton(
+                    onClick = { showActivationDialog = true },
+                    enabled = !localUserId.isNullOrBlank(),
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text(AppText.t("activation_enter_code"))
+                }
             }
             if (showActivationDialog) {
                 ActivationCodeDialog(

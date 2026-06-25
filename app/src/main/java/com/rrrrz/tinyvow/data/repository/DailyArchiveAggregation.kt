@@ -5,6 +5,8 @@ import kotlin.math.max
 import kotlin.math.min
 
 private const val HOUR_IN_MILLIS = 60L * 60L * 1000L
+private const val FIVE_MINUTES_IN_MILLIS = 5L * 60L * 1000L
+private const val DAILY_TIME_SLICE_COUNT = 24 * 12
 private const val NIGHT_END_HOUR = 6
 private const val NIGHT_START_HOUR = 22
 
@@ -89,3 +91,32 @@ private fun overlapDuration(
     rangeStart: Long,
     rangeEnd: Long,
 ): Long = max(0L, min(end, rangeEnd) - max(start, rangeStart))
+
+internal fun summarizeAppTimeSlices(
+    sessions: List<AppSession>,
+    dayStart: Long,
+    nextDayStart: Long,
+): Map<Int, Long> {
+    val buckets = LongArray(DAILY_TIME_SLICE_COUNT)
+    sessions.forEach { session ->
+        val sessionStart = max(session.startTime, dayStart)
+        val sessionEnd = min(session.endTime, nextDayStart)
+        if (sessionEnd <= sessionStart) {
+            return@forEach
+        }
+        val firstSlice = ((sessionStart - dayStart) / FIVE_MINUTES_IN_MILLIS).toInt().coerceIn(0, DAILY_TIME_SLICE_COUNT - 1)
+        val lastSlice = ((sessionEnd - 1L - dayStart) / FIVE_MINUTES_IN_MILLIS).toInt().coerceIn(0, DAILY_TIME_SLICE_COUNT - 1)
+        for (slice in firstSlice..lastSlice) {
+            val sliceStart = dayStart + slice * FIVE_MINUTES_IN_MILLIS
+            val sliceEnd = min(sliceStart + FIVE_MINUTES_IN_MILLIS, nextDayStart)
+            buckets[slice] += overlapDuration(sessionStart, sessionEnd, sliceStart, sliceEnd)
+        }
+    }
+    return buildMap {
+        buckets.forEachIndexed { index, millis ->
+            if (millis > 0L) {
+                put(index, millis)
+            }
+        }
+    }
+}

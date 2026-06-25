@@ -202,5 +202,7 @@ dependencies {
     implementation(libs.androidx.credentials.play.services.auth)
     implementation(libs.googleid)
     implementation(libs.google.play.billing.ktx)
+    implementation(libs.androidx.palette)
+    implementation(libs.material.color.utilities)
     ksp(libs.androidx.room.compiler)
 }

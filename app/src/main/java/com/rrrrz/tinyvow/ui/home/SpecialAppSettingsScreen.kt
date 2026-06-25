@@ -84,6 +84,7 @@ private const val WEREAD_SKILLS_URL = "https://weread.qq.com/r/weread-skills"
 fun SpecialAppsScreen(
     onBack: () -> Unit,
     onOpenWeRead: () -> Unit,
+    onOpenAppColors: () -> Unit,
 ) {
     val themeColors = LocalThemeColors.current
     val context = LocalContext.current
@@ -162,6 +163,15 @@ fun SpecialAppsScreen(
                 },
                 active = state?.hasApiKey == true,
                 onClick = onOpenWeRead,
+            )
+
+            SpecialAppListItem(
+                icon = Icons.Default.Settings,
+                title = AppText.t("app_color_settings_title"),
+                subtitle = AppText.t("app_color_settings_description"),
+                status = AppText.t("app_color_settings_status_debug"),
+                active = true,
+                onClick = onOpenAppColors,
             )
 
             Text(

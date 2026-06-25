@@ -47,6 +47,12 @@ internal data class DailyTimelineAppLegendItem(
 
 internal const val TIMELINE_OTHER_APPS_PACKAGE_NAME = "__tinyvow_other_apps__"
 
+internal data class DailyTimelineSliceCell(
+    val sliceIndex: Int,
+    val packageName: String?,
+    val millis: Long,
+)
+
 internal data class DailyReportSummary(
     val title: String,
     val subtitle: String,
@@ -141,6 +147,7 @@ internal data class TimelineSectionData(
     val peakTwoHourMillis: Long,
     val nightUsageMillis: Long,
     val targetMillisPerBucket: Long? = null,
+    val sliceCells: List<DailyTimelineSliceCell> = emptyList(),
 )
 
 internal data class TopAppsSectionData(

@@ -889,6 +889,32 @@ object AppDatabaseMigrations {
             }
         }
 
+    val MIGRATION_23_24 =
+        object : Migration(23, 24) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `daily_app_time_slice_archives` (
+                        `archive_date` TEXT NOT NULL,
+                        `slice_index` INTEGER NOT NULL,
+                        `package_name` TEXT NOT NULL,
+                        `usage_millis` INTEGER NOT NULL,
+                        PRIMARY KEY(`archive_date`, `slice_index`, `package_name`)
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_daily_app_time_slice_archives_archive_date` ON `daily_app_time_slice_archives` (`archive_date`)"
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_daily_app_time_slice_archives_archive_date_slice_index` ON `daily_app_time_slice_archives` (`archive_date`, `slice_index`)"
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_daily_app_time_slice_archives_archive_date_package_name` ON `daily_app_time_slice_archives` (`archive_date`, `package_name`)"
+                )
+            }
+        }
+
     val ALL: Array<Migration> = arrayOf(
         MIGRATION_9_10,
         MIGRATION_10_11,
@@ -904,5 +930,6 @@ object AppDatabaseMigrations {
         MIGRATION_20_21,
         MIGRATION_21_22,
         MIGRATION_22_23,
+        MIGRATION_23_24,
     )
 }

@@ -35,6 +35,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -58,6 +59,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.rrrrz.tinyvow.BuildConfig
 import com.rrrrz.tinyvow.data.db.DailyAppArchiveEntity
 import com.rrrrz.tinyvow.data.db.DailyArchiveEntity
 import com.rrrrz.tinyvow.data.db.DailyGroupArchiveEntity
@@ -227,6 +229,7 @@ fun HistoryRoute(
                 },
                 isRefreshing = refreshingDate == selectedDate,
                 refreshError = refreshError,
+                showDebugRebuild = BuildConfig.DEBUG,
                 preferredGroupFilter = groupFilter,
                 modifier = Modifier.padding(innerPadding),
             )
@@ -501,6 +504,7 @@ private fun HistoryDetailScreen(
     onRefreshDate: (String) -> Unit,
     isRefreshing: Boolean,
     refreshError: String?,
+    showDebugRebuild: Boolean,
     preferredGroupFilter: HistoryGroupFilter,
     modifier: Modifier = Modifier,
 ) {
@@ -552,6 +556,7 @@ private fun HistoryDetailScreen(
             onRefreshDate = onRefreshDate,
             isRefreshing = isRefreshing,
             refreshError = refreshError,
+            showDebugRebuild = showDebugRebuild,
         )
 
         TinyVowCard {
@@ -663,71 +668,87 @@ private fun DetailDateNavigator(
     onRefreshDate: (String) -> Unit,
     isRefreshing: Boolean,
     refreshError: String?,
+    showDebugRebuild: Boolean,
 ) {
     Surface(
         shape = RoundedCornerShape(18.dp),
         color = MaterialTheme.colorScheme.surface.copy(alpha = 0.88f),
     ) {
-        Row(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 8.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        Column(
+            modifier = Modifier.fillMaxWidth(),
         ) {
-            IconButton(
-                onClick = { previousDate?.let(onSelectDate) },
-                enabled = previousDate != null,
+            Row(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 8.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = AppText.t("stats_previous_day"))
+                IconButton(
+                    onClick = { previousDate?.let(onSelectDate) },
+                    enabled = previousDate != null,
+                ) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = AppText.t("stats_previous_day"))
+                }
+                Column(
+                    modifier = Modifier.weight(1f),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    Text(
+                        text = currentDate,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        text = AppText.t("history_only_jump_between_archived_dates"),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                IconButton(
+                    onClick = { nextDate?.let(onSelectDate) },
+                    enabled = nextDate != null,
+                ) {
+                    Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = AppText.t("stats_next_day"))
+                }
+                IconButton(
+                    onClick = { onRefreshDate(currentDate) },
+                    enabled = !isRefreshing,
+                ) {
+                    Icon(Icons.Default.Refresh, contentDescription = AppText.t("stats_refresh_day"))
+                }
             }
-            Column(
-                modifier = Modifier.weight(1f),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(2.dp),
-            ) {
+            if (showDebugRebuild) {
+                OutlinedButton(
+                    onClick = { onRefreshDate(currentDate) },
+                    enabled = !isRefreshing,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(start = 16.dp, end = 16.dp, bottom = 10.dp),
+                ) {
+                    Text(AppText.t("history_debug_rebuild_archive"))
+                }
+            }
+            if (isRefreshing || refreshError != null) {
                 Text(
-                    text = currentDate,
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                Text(
-                    text = AppText.t("history_only_jump_between_archived_dates"),
+                    text =
+                        if (isRefreshing) {
+                            AppText.t("history_refreshing_archive")
+                        } else {
+                            AppText.t("history_refresh_failed", refreshError.orEmpty())
+                        },
+                    modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 10.dp),
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    color =
+                        if (isRefreshing) {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        } else {
+                            MaterialTheme.colorScheme.error
+                        },
                 )
             }
-            IconButton(
-                onClick = { nextDate?.let(onSelectDate) },
-                enabled = nextDate != null,
-            ) {
-                Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = AppText.t("stats_next_day"))
-            }
-            IconButton(
-                onClick = { onRefreshDate(currentDate) },
-                enabled = !isRefreshing,
-            ) {
-                Icon(Icons.Default.Refresh, contentDescription = AppText.t("stats_refresh_day"))
-            }
-        }
-        if (isRefreshing || refreshError != null) {
-            Text(
-                text =
-                    if (isRefreshing) {
-                        AppText.t("history_refreshing_archive")
-                    } else {
-                        AppText.t("history_refresh_failed", refreshError.orEmpty())
-                    },
-                modifier = Modifier.padding(start = 16.dp, end = 16.dp, bottom = 10.dp),
-                style = MaterialTheme.typography.bodySmall,
-                color =
-                    if (isRefreshing) {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    } else {
-                        MaterialTheme.colorScheme.error
-                    },
-            )
         }
     }
 }

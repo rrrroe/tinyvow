@@ -3,6 +3,7 @@
 import android.content.Context
 import com.rrrrz.tinyvow.data.apps.ManagedApp
 import com.rrrrz.tinyvow.data.db.DailyAppArchiveEntity
+import com.rrrrz.tinyvow.data.db.DailyAppTimeSliceArchiveEntity
 import com.rrrrz.tinyvow.data.db.DailyArchiveEntity
 import com.rrrrz.tinyvow.data.db.DailyGroupArchiveEntity
 import com.rrrrz.tinyvow.data.db.GroupType
@@ -1648,6 +1649,7 @@ internal suspend fun buildArchivedDayReportUiState(
     val previousArchive = archivesDesc.getOrNull(selectedIndex + 1)
     val nextArchive = archivesDesc.getOrNull(selectedIndex - 1)
     val currentAppArchives = archiveRepository.getAppArchivesByDate(selectedArchive.archiveDate).first()
+    val currentTimeSliceArchives = archiveRepository.getAppTimeSliceArchivesByDate(selectedArchive.archiveDate).first()
     val currentSnapshots = mergeArchivedAppSnapshots(currentAppArchives)
     val currentGroupArchives = archiveRepository.getGroupArchivesByDate(selectedArchive.archiveDate).first()
     val previousGroupArchives =
@@ -1782,6 +1784,7 @@ internal suspend fun buildArchivedDayReportUiState(
             nightUsageMillis = currentMetrics.nightUsageMillis,
             periodUsage = periodUsage,
             targetMillisPerBucket = dailyGoalMillis.takeIf { it > 0L }?.let { it / 24L },
+            sliceCells = buildTimelineSliceCells(currentTimeSliceArchives),
         )
     val dailyFocusData =
         buildDailyFocusSectionData(
@@ -1876,6 +1879,7 @@ internal fun buildArchiveTimelineSectionData(
     nightUsageMillis: Long,
     periodUsage: List<PeriodUsageStat>,
     targetMillisPerBucket: Long? = null,
+    sliceCells: List<DailyTimelineSliceCell> = emptyList(),
 ): TimelineSectionData {
     val peakBucket = timelineBuckets.maxByOrNull { it.deviceMillis }
     val peakPair =
@@ -1897,8 +1901,26 @@ internal fun buildArchiveTimelineSectionData(
         peakTwoHourMillis = peakPair?.second ?: 0L,
         nightUsageMillis = nightUsageMillis,
         targetMillisPerBucket = targetMillisPerBucket,
+        sliceCells = sliceCells,
     )
 }
+
+internal fun buildTimelineSliceCells(items: List<DailyAppTimeSliceArchiveEntity>): List<DailyTimelineSliceCell> =
+    items
+        .groupBy { it.sliceIndex }
+        .mapNotNull { (sliceIndex, sliceItems) ->
+            sliceItems
+                .maxWithOrNull(compareBy<DailyAppTimeSliceArchiveEntity> { it.usageMillis }.thenBy { it.packageName })
+                ?.takeIf { it.usageMillis > 0L }
+                ?.let { dominant ->
+                    DailyTimelineSliceCell(
+                        sliceIndex = sliceIndex,
+                        packageName = dominant.packageName,
+                        millis = dominant.usageMillis,
+                    )
+                }
+        }
+        .sortedBy { it.sliceIndex }
 
 internal fun buildArchivedReportSummary(
     selectedTab: ReportTab,
@@ -3087,7 +3109,7 @@ internal fun buildTimelineSectionData(
 
 internal fun buildTimelineAppLegend(
     timelineBuckets: List<DailyTimelineBucket>,
-    maxItems: Int = 5,
+    maxItems: Int = Int.MAX_VALUE,
 ): List<DailyTimelineAppLegendItem> {
     val usageByPackage =
         timelineBuckets

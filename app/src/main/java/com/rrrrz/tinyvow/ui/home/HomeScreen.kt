@@ -225,7 +225,7 @@ import com.rrrrz.tinyvow.ui.theme.TinyVowRadius
 import com.rrrrz.tinyvow.ui.theme.TinyVowSpacing
 import com.rrrrz.tinyvow.ui.theme.TinyVowSnackbarHost
 
-enum class Screen { HOME, REWARDS, STATS, ME, CHECK_IN_OVERVIEW, ME_PRO, ME_PERMISSIONS, ME_NOTIFICATIONS, ME_DAY_BOUNDARY, ME_DATA_PRIVACY, ME_VERSION, SUPER_MODE, LABORATORY, HISTORY, THEME, LANGUAGE, HELP_FEEDBACK, CONTACT_US, SPECIAL_APPS, WEREAD_SPECIAL_APP, PERMISSION_DIAGNOSTICS }
+enum class Screen { HOME, REWARDS, STATS, ME, CHECK_IN_OVERVIEW, ME_PRO, ME_PERMISSIONS, ME_NOTIFICATIONS, ME_DAY_BOUNDARY, ME_DATA_PRIVACY, ME_VERSION, SUPER_MODE, LABORATORY, HISTORY, THEME, LANGUAGE, HELP_FEEDBACK, CONTACT_US, SPECIAL_APPS, WEREAD_SPECIAL_APP, APP_COLOR_DEBUG, PERMISSION_DIAGNOSTICS }
 enum class RewardsSection { STORE, INVENTORY, ACHIEVEMENTS }
 
 private const val CONTACT_EMAIL = "rrrr.zhao@qq.com"
@@ -1286,7 +1286,7 @@ fun HomeRoute(
                     rewardsSection = RewardsSection.STORE
                 }
                 currentScreen = when (currentScreen) {
-                    Screen.WEREAD_SPECIAL_APP -> Screen.SPECIAL_APPS
+                    Screen.WEREAD_SPECIAL_APP, Screen.APP_COLOR_DEBUG -> Screen.SPECIAL_APPS
                     Screen.PERMISSION_DIAGNOSTICS -> Screen.HOME
                     Screen.CHECK_IN_OVERVIEW, Screen.ME_PRO, Screen.ME_PERMISSIONS, Screen.ME_NOTIFICATIONS, Screen.ME_DAY_BOUNDARY, Screen.ME_DATA_PRIVACY, Screen.ME_VERSION, Screen.SUPER_MODE, Screen.LABORATORY, Screen.HISTORY, Screen.THEME, Screen.LANGUAGE, Screen.HELP_FEEDBACK, Screen.CONTACT_US, Screen.SPECIAL_APPS -> Screen.ME
                     else -> Screen.HOME
@@ -2205,10 +2205,16 @@ fun HomeRoute(
                     SpecialAppsScreen(
                         onBack = { currentScreen = Screen.ME },
                         onOpenWeRead = { currentScreen = Screen.WEREAD_SPECIAL_APP },
+                        onOpenAppColors = { currentScreen = Screen.APP_COLOR_DEBUG },
                     )
                 }
                 Screen.WEREAD_SPECIAL_APP -> {
                     SpecialAppSettingsScreen(
+                        onBack = { currentScreen = Screen.SPECIAL_APPS },
+                    )
+                }
+                Screen.APP_COLOR_DEBUG -> {
+                    AppColorDebugScreen(
                         onBack = { currentScreen = Screen.SPECIAL_APPS },
                     )
                 }

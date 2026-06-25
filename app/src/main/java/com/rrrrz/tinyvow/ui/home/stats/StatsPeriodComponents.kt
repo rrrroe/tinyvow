@@ -508,7 +508,7 @@ internal fun PeriodAppFocusCard(data: AppFocusSectionData) {
             }
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 data.topApps.take(6).forEachIndexed { index, app ->
-                    val accent = appColors[app.packageName] ?: palette.getOrElse(index) { MaterialTheme.colorScheme.primary }
+                    val accent = appColors[app.packageName] ?: stableAppFallbackColor(app.packageName, palette)
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(18.dp),

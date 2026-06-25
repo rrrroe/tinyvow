@@ -22,6 +22,7 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -72,10 +73,13 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -84,6 +88,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asImageBitmap
@@ -92,6 +97,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -112,6 +118,7 @@ import com.rrrrz.tinyvow.data.db.GroupType
 import com.rrrrz.tinyvow.data.repository.AppGroupWithApps
 import com.rrrrz.tinyvow.data.repository.ArchiveDateUtils
 import com.rrrrz.tinyvow.data.repository.DailyArchiveRepository
+import com.rrrrz.tinyvow.data.settings.ManagedAppPreferences
 import com.rrrrz.tinyvow.data.usage.AppSession
 import com.rrrrz.tinyvow.data.usage.UsageAccessStatus
 import com.rrrrz.tinyvow.data.usage.UsageRepository
@@ -124,6 +131,7 @@ import com.rrrrz.tinyvow.ui.theme.TinyVowButtonTone
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import java.time.YearMonth
@@ -132,6 +140,7 @@ import java.time.temporal.IsoFields
 import java.time.temporal.TemporalAdjusters
 import java.time.format.DateTimeFormatter
 import java.time.format.TextStyle
+import java.util.Locale
 import java.io.File
 import java.io.FileOutputStream
 import kotlin.math.atan
@@ -460,13 +469,28 @@ internal fun DailyRhythmCard(
     timelineState: SectionState<TimelineSectionData>,
     focusState: SectionState<DailyFocusSectionData> = SectionState.Empty,
 ) {
+    val context = LocalContext.current
+    val preferences = remember(context) { ManagedAppPreferences(context.applicationContext) }
+    val showCellIcons by preferences.dailyRhythmCellIconsEnabled.collectAsState(initial = false)
+    val scope = rememberCoroutineScope()
     ReportCard {
         Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            SectionHeader(
-                icon = Icons.Default.Timeline,
-                title = AppText.t("stats_time_flow"),
-                subtitle = AppText.t("stats_time_flow_description"),
-            )
+            if (timelineState is SectionState.Ready) {
+                DailyRhythmHeader(
+                    showCellIcons = showCellIcons,
+                    onShowCellIconsChange = { enabled ->
+                        scope.launch(Dispatchers.IO) {
+                            preferences.setDailyRhythmCellIconsEnabled(enabled)
+                        }
+                    },
+                )
+            } else {
+                SectionHeader(
+                    icon = Icons.Default.Timeline,
+                    title = AppText.t("stats_time_flow"),
+                    subtitle = AppText.t("stats_time_flow_description"),
+                )
+            }
             when (timelineState) {
                 SectionState.Loading -> {
                     SkeletonTimelineChart()
@@ -480,8 +504,8 @@ internal fun DailyRhythmCard(
                     ) { modifier, index ->
                         MiniInsightSkeletonCard(
                             label = when (index) {
-                                0 -> AppText.t("stats_peak_time")
-                                1 -> AppText.t("stats_over_2h")
+                                0 -> AppText.t("stats_today_usage")
+                                1 -> AppText.t("stats_hours")
                                 else -> AppText.t("stats_night_use")
                             },
                             compact = true,
@@ -498,18 +522,56 @@ internal fun DailyRhythmCard(
                     )
                 }
                 is SectionState.Ready -> {
-                    val focusData = (focusState as? SectionState.Ready)?.data
                     DailyRhythmProfileStrip(
                         data = timelineState.data,
+                        showCellIcons = showCellIcons,
                     )
-                    TimelineFooter(labels = buildTimelineFooterLabels(ReportTab.DAY, timelineState.data.buckets))
-                    DailyRhythmSignalGrid(
+                    DailyRhythmInsightStrip(
                         data = timelineState.data,
-                        focusData = focusData,
                     )
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun DailyRhythmHeader(
+    showCellIcons: Boolean,
+    onShowCellIconsChange: (Boolean) -> Unit,
+) {
+    val themeColors = LocalThemeColors.current
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Icon(
+                imageVector = Icons.Default.Timeline,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(18.dp),
+            )
+            Text(
+                text = AppText.t("stats_time_flow"),
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.SemiBold,
+                color = themeColors.inkStrong,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            FlatRhythmIconToggle(
+                checked = showCellIcons,
+                onCheckedChange = onShowCellIconsChange,
+            )
+        }
+        Text(
+            text = AppText.t("stats_time_flow_description"),
+            style = MaterialTheme.typography.bodySmall,
+            color = themeColors.inkMuted,
+        )
     }
 }
 
@@ -517,146 +579,146 @@ internal fun DailyRhythmCard(
 @Composable
 private fun DailyRhythmProfileStrip(
     data: TimelineSectionData,
+    showCellIcons: Boolean,
 ) {
-    val themeColors = LocalThemeColors.current
-    val visibleLegend = data.appLegend.filter { it.millis > 0L }
+    val visibleLegend = data.appLegend.filter { it.millis >= 60_000L }
     val appPackages =
-        visibleLegend
-            .filter { it.packageName != TIMELINE_OTHER_APPS_PACKAGE_NAME }
-            .map { it.packageName }
+        (
+            visibleLegend.map { it.packageName } +
+                data.sliceCells.mapNotNull { it.packageName } +
+                data.buckets.flatMap { bucket -> bucket.appSegments.map { it.packageName } }
+            )
+            .filter { it != TIMELINE_OTHER_APPS_PACKAGE_NAME }
+            .distinct()
     val appColors = rememberAppChartColors(appPackages)
     val palette = LocalReportColors.current.appChartPalette
-    val otherAppsColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.50f)
+    val otherAppsColor = MaterialTheme.colorScheme.primary
     val legendColors =
-        visibleLegend.mapIndexed { index, item ->
-            item.packageName to
-                when (item.packageName) {
-                    TIMELINE_OTHER_APPS_PACKAGE_NAME -> otherAppsColor
-                    else -> appColors[item.packageName] ?: palette[index % palette.size]
-                }
-        }.toMap()
-    val maxUsage = data.buckets.maxOfOrNull { it.deviceMillis }?.coerceAtLeast(1L) ?: 1L
-    val peakHour = data.buckets.maxByOrNull { it.deviceMillis }?.hour
-
-    Surface(
-        shape = RoundedCornerShape(22.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.72f),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.24f)),
-    ) {
-        Column(
-            modifier = Modifier.padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween,
-            ) {
-                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(
-                        text = AppText.t("stats_rhythm_strip_title"),
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold,
-                        color = themeColors.inkStrong,
-                    )
-                    Text(
-                        text = AppText.t(
-                            "stats_rhythm_active_hours",
-                            data.buckets.count { it.deviceMillis > 0L },
-                        ),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = themeColors.inkMuted,
-                    )
-                }
-                RhythmLegendPill(
-                    color = MaterialTheme.colorScheme.primary,
-                    label = AppText.t("stats_rhythm_legend_peak"),
+        buildMap {
+            put(TIMELINE_OTHER_APPS_PACKAGE_NAME, otherAppsColor)
+            appPackages.forEachIndexed { index, packageName ->
+                put(
+                    packageName,
+                    appColors[packageName] ?: stableAppFallbackColor(packageName, palette),
                 )
             }
-            Row(
+        }
+    val heatCells =
+        if (data.sliceCells.isNotEmpty()) {
+            buildRhythmHeatCellsFromSlices(
+                sliceCells = data.sliceCells,
+                colors = legendColors,
+                fallbackColor = otherAppsColor,
+            )
+        } else {
+            buildMockRhythmHeatCells(
+                buckets = data.buckets,
+                legend = visibleLegend,
+                colors = legendColors,
+            )
+        }
+
+    RhythmHeatMapPanel(
+        cells = heatCells,
+        visibleLegend = visibleLegend,
+        legendColors = legendColors,
+        showCellIcons = showCellIcons,
+    )
+}
+
+@Composable
+private fun FlatRhythmIconToggle(
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    val trackColor =
+        if (checked) {
+            MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
+        } else {
+            MaterialTheme.colorScheme.surfaceContainerHighest
+        }
+    val thumbColor =
+        if (checked) {
+            MaterialTheme.colorScheme.primary
+        } else {
+            MaterialTheme.colorScheme.outline.copy(alpha = 0.72f)
+        }
+    Row(
+        modifier =
+            Modifier
+                .clip(RoundedCornerShape(12.dp))
+                .clickable { onCheckedChange(!checked) }
+                .padding(horizontal = 2.dp, vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Text(
+            text = AppText.t("stats_rhythm_cell_icons"),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 2,
+            lineHeight = MaterialTheme.typography.labelSmall.fontSize,
+        )
+        Box(
+            modifier =
+                Modifier
+                    .size(width = 30.dp, height = 16.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(trackColor)
+                    .padding(2.dp),
+            contentAlignment = if (checked) Alignment.CenterEnd else Alignment.CenterStart,
+        ) {
+            Box(
                 modifier =
                     Modifier
-                        .fillMaxWidth()
-                        .height(88.dp),
-                horizontalArrangement = Arrangement.spacedBy(3.dp),
-                verticalAlignment = Alignment.Bottom,
-            ) {
-                data.buckets.forEach { bucket ->
-                    val dominantSegment = bucket.appSegments.maxByOrNull { it.millis }
-                    val accent =
-                        dominantSegment?.let { legendColors[it.packageName] }
-                            ?: MaterialTheme.colorScheme.primary
-                    val usageRatio =
-                        if (bucket.deviceMillis > 0L) {
-                            (bucket.deviceMillis.toFloat() / maxUsage.toFloat()).coerceIn(0.16f, 1f)
-                        } else {
-                            0.06f
-                        }
-                    val isNight = bucket.hour < 6 || bucket.hour >= 22
-                    val isPeak = bucket.hour == peakHour && bucket.deviceMillis > 0L
-                    Box(
-                        modifier =
-                            Modifier
-                                .weight(1f)
-                                .fillMaxHeight(),
-                        contentAlignment = Alignment.BottomCenter,
-                    ) {
-                        Box(
-                            modifier =
-                                Modifier
-                                    .fillMaxWidth()
-                                    .fillMaxHeight()
-                                    .clip(RoundedCornerShape(999.dp))
-                                    .background(
-                                        if (isNight) {
-                                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.28f)
-                                        } else {
-                                            MaterialTheme.colorScheme.surface.copy(alpha = 0.38f)
-                                        },
-                                    ),
-                        )
-                        Box(
-                            modifier =
-                                Modifier
-                                    .fillMaxWidth()
-                                    .fillMaxHeight(usageRatio)
-                                    .clip(RoundedCornerShape(999.dp))
-                                    .background(
-                                        Brush.verticalGradient(
-                                            listOf(
-                                                accent.copy(alpha = if (bucket.deviceMillis > 0L) 0.95f else 0.18f),
-                                                accent.copy(alpha = if (bucket.deviceMillis > 0L) 0.40f else 0.08f),
-                                            ),
-                                        ),
-                                    ),
-                        )
-                        if (isPeak) {
-                            Box(
-                                modifier =
-                                    Modifier
-                                        .align(Alignment.TopCenter)
-                                        .size(6.dp)
-                                        .clip(CircleShape)
-                                        .background(MaterialTheme.colorScheme.primary),
-                            )
-                        }
-                    }
-                }
+                        .size(12.dp)
+                        .clip(CircleShape)
+                        .background(thumbColor),
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun RhythmHeatMapPanel(
+    cells: List<MockRhythmHeatCell>,
+    visibleLegend: List<DailyTimelineAppLegendItem>,
+    legendColors: Map<String, Color>,
+    showCellIcons: Boolean,
+) {
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.72f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.18f)),
+    ) {
+        Column(
+            modifier = Modifier.padding(10.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                RhythmHeatGrid(
+                    cells = cells,
+                    showCellIcons = showCellIcons,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                RhythmHeatHourScale(modifier = Modifier.fillMaxWidth())
             }
             FlowRow(
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                visibleLegend.take(3).forEach { item ->
+                visibleLegend.forEach { item ->
                     RhythmLegendPill(
                         color = legendColors[item.packageName] ?: MaterialTheme.colorScheme.primary,
                         label = "${item.label} · ${formatDuration(item.millis)}",
+                        packageName = item.packageName.takeIf { it != TIMELINE_OTHER_APPS_PACKAGE_NAME },
                     )
                 }
                 RhythmLegendPill(
-                    color = MaterialTheme.colorScheme.surfaceVariant,
-                    label = AppText.t("stats_rhythm_legend_night"),
-                    muted = true,
+                    color = Color.White,
+                    label = AppText.t("stats_rhythm_legend_idle"),
+                    borderColor = MaterialTheme.colorScheme.outlineVariant,
                 )
             }
         }
@@ -664,10 +726,173 @@ private fun DailyRhythmProfileStrip(
 }
 
 @Composable
+private fun RhythmHeatHourScale(
+    modifier: Modifier = Modifier,
+) {
+    val ticks =
+        listOf(
+            0 to "0",
+            6 to "6",
+            12 to "12",
+            18 to "18",
+            23 to "24",
+        )
+    Layout(
+        modifier = modifier,
+        content = {
+            ticks.forEach { (_, label) ->
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+            )
+        }
+        },
+    ) { measurables, constraints ->
+        val gapPx = RhythmHeatCellGap.roundToPx()
+        val availableWidth = constraints.maxWidth.coerceAtLeast(0)
+        val cellSize = ((availableWidth - gapPx * 23) / 24).coerceAtLeast(1)
+        val width = cellSize * 24 + gapPx * 23
+        val placeables =
+            measurables.map { measurable ->
+                measurable.measure(
+                    androidx.compose.ui.unit.Constraints(
+                        maxWidth = constraints.maxWidth,
+                        maxHeight = constraints.maxHeight,
+                    ),
+                )
+            }
+        val height = placeables.maxOfOrNull { it.height } ?: 0
+        layout(width, height) {
+            placeables.forEachIndexed { index, placeable ->
+                val column = ticks[index].first
+                val centerX = column * (cellSize + gapPx) + cellSize / 2
+                val x = (centerX - placeable.width / 2).coerceIn(0, width - placeable.width)
+                placeable.placeRelative(x = x, y = 0)
+            }
+        }
+    }
+}
+
+@Composable
+private fun RhythmHeatGrid(
+    cells: List<MockRhythmHeatCell>,
+    showCellIcons: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val iconBitmaps = rememberRhythmHeatCellIcons(cells)
+    Layout(
+        modifier = modifier,
+        content = {
+            cells.forEach { cell ->
+                RhythmHeatCellBox(
+                    cell = cell,
+                    iconBitmap = cell.packageName?.let { iconBitmaps[it] },
+                    showIcon = showCellIcons,
+                )
+            }
+        },
+    ) { measurables, constraints ->
+        val gapPx = RhythmHeatCellGap.roundToPx()
+        val availableWidth = constraints.maxWidth.coerceAtLeast(0)
+        val cellSize = ((availableWidth - gapPx * 23) / 24).coerceAtLeast(1)
+        val width = cellSize * 24 + gapPx * 23
+        val height = cellSize * 12 + gapPx * 11
+        val placeables =
+            measurables.map { measurable ->
+                measurable.measure(
+                    androidx.compose.ui.unit.Constraints.fixed(cellSize, cellSize),
+                )
+            }
+        layout(width, height) {
+            placeables.forEachIndexed { index, placeable ->
+                val cell = cells.getOrNull(index)
+                val hour = cell?.hour ?: (index / 12)
+                val slot = cell?.slot ?: (index % 12)
+                placeable.placeRelative(
+                    x = hour * (cellSize + gapPx),
+                    y = slot * (cellSize + gapPx),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun RhythmHeatCellBox(
+    cell: MockRhythmHeatCell,
+    iconBitmap: ImageBitmap?,
+    showIcon: Boolean,
+) {
+    val fillColor =
+        if (cell.usageMillis <= 0L) {
+            Color.White
+        } else {
+            cell.color?.copy(alpha = rhythmCellOpacity(cell.usageMillis)) ?: Color.White
+        }
+    Box(
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .clip(RoundedCornerShape(3.dp))
+                .background(fillColor),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (showIcon && iconBitmap != null) {
+            val iconOpacity = rhythmCellOpacity(cell.usageMillis)
+            Box(
+                modifier =
+                    Modifier
+                        .fillMaxSize(RhythmHeatCellIconScale)
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(Color.White),
+                contentAlignment = Alignment.Center,
+            ) {
+                Image(
+                    bitmap = iconBitmap,
+                    contentDescription = null,
+                    contentScale = ContentScale.Fit,
+                    modifier =
+                        Modifier
+                            .fillMaxSize()
+                            .graphicsLayer { alpha = iconOpacity },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun rememberRhythmHeatCellIcons(
+    cells: List<MockRhythmHeatCell>,
+): Map<String, ImageBitmap> {
+    val context = LocalContext.current
+    val packageNames =
+        remember(cells) {
+            cells
+                .mapNotNull { it.packageName }
+                .filter { it != TIMELINE_OTHER_APPS_PACKAGE_NAME }
+                .distinct()
+        }
+    return remember(context, packageNames) {
+        packageNames.mapNotNull { packageName ->
+            val icon = AppVisualCache.getIcon(context, packageName) ?: return@mapNotNull null
+            val bitmap =
+                icon.toBitmap(width = 48, height = 48, config = Bitmap.Config.ARGB_8888)
+                    .asImageBitmap()
+            packageName to bitmap
+        }.toMap()
+    }
+}
+
+@Composable
 private fun RhythmLegendPill(
     color: Color,
     label: String,
+    packageName: String? = null,
     muted: Boolean = false,
+    borderColor: Color? = null,
 ) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
@@ -676,10 +901,18 @@ private fun RhythmLegendPill(
         Box(
             modifier =
                 Modifier
-                    .size(8.dp)
-                    .clip(CircleShape)
-                    .background(color.copy(alpha = if (muted) 0.48f else 1f)),
-        )
+                    .size(RhythmLegendSwatchSize)
+                    .clip(RoundedCornerShape(4.dp))
+                    .background(color.copy(alpha = if (muted) 0.48f else 1f))
+                    .then(
+                        borderColor?.let { Modifier.border(0.5.dp, it, RoundedCornerShape(4.dp)) } ?: Modifier,
+                    ),
+            contentAlignment = Alignment.Center,
+        ) {
+            packageName?.let {
+                RhythmLegendAppIcon(packageName = it)
+            }
+        }
         Text(
             text = label,
             style = MaterialTheme.typography.labelSmall,
@@ -691,67 +924,375 @@ private fun RhythmLegendPill(
 }
 
 @Composable
-private fun DailyRhythmSignalGrid(
-    data: TimelineSectionData,
-    focusData: DailyFocusSectionData?,
+private fun RhythmLegendAppIcon(
+    packageName: String,
 ) {
-    val topApp = data.appLegend.firstOrNull { it.millis > 0L }
-    AdaptiveRowGrid(
-        itemCount = 4,
-        compactColumns = 1,
-        expandedColumns = 2,
-        horizontalSpacing = 10.dp,
-        verticalSpacing = 10.dp,
-    ) { modifier, index ->
-        when (index) {
-            0 -> MiniInsightCard(
-                icon = Icons.AutoMirrored.Filled.CallSplit,
-                label = AppText.t("stats_over_2h"),
-                value = "${data.peakTwoHourLabel} · ${formatDuration(data.peakTwoHourMillis)}",
-                visualRatio = (data.peakTwoHourMillis.toFloat() / (4 * 60 * 60_000L).toFloat()).coerceIn(0f, 1f),
-                compact = true,
-                modifier = modifier,
-            )
-            1 -> MiniInsightCard(
-                icon = Icons.Default.NightsStay,
-                label = AppText.t("stats_night_use"),
-                value = formatDuration(data.nightUsageMillis),
-                visualRatio = (data.nightUsageMillis.toFloat() / (3 * 60 * 60_000L).toFloat()).coerceIn(0f, 1f),
-                compact = true,
-                modifier = modifier,
-            )
-            2 -> MiniInsightCard(
-                icon = Icons.Default.PhoneAndroid,
-                label = AppText.t("stats_rhythm_top_app"),
-                value = topApp?.let { "${it.label} · ${formatDuration(it.millis)}" }
-                    ?: AppText.t("stats_rhythm_no_top_app"),
-                visualRatio = topApp?.let { app ->
-                    val total = data.buckets.sumOf { it.deviceMillis }.coerceAtLeast(1L)
-                    (app.millis.toFloat() / total.toFloat()).coerceIn(0f, 1f)
-                },
-                compact = true,
-                modifier = modifier,
-            )
-            else -> MiniInsightCard(
-                icon = Icons.Default.Bolt,
-                label = AppText.t("stats_rhythm_vow_mix"),
-                value =
-                    focusData?.let {
-                        AppText.t(
-                            "stats_rhythm_vow_mix_value",
-                            formatDuration(it.controlUsageMillis),
-                            formatDuration(it.encourageUsageMillis),
-                        )
-                    } ?: AppText.t("stats_none"),
-                visualRatio = focusData?.let {
-                    val total = data.buckets.sumOf { bucket -> bucket.deviceMillis }.coerceAtLeast(1L)
-                    ((it.controlUsageMillis + it.encourageUsageMillis).toFloat() / total.toFloat()).coerceIn(0f, 1f)
-                },
-                compact = true,
-                modifier = modifier,
+    val context = LocalContext.current
+    val icon = remember(context, packageName) {
+        AppVisualCache.getIcon(context, packageName)
+    }
+    if (icon != null) {
+        val bitmap = remember(icon) {
+            icon.toBitmap(width = 48, height = 48, config = Bitmap.Config.ARGB_8888).asImageBitmap()
+        }
+        Image(
+            bitmap = bitmap,
+            contentDescription = null,
+            contentScale = ContentScale.Fit,
+            modifier =
+                Modifier
+                    .size(RhythmLegendSwatchSize * RhythmLegendIconScale)
+                    .clip(RoundedCornerShape(3.dp)),
+        )
+    }
+}
+
+private val RhythmLegendSwatchSize = 16.dp
+private val RhythmHeatCellGap = 3.dp
+private const val RhythmHeatCellIconScale = 0.52f
+private const val RhythmLegendIconScale = 0.60f
+
+private data class MockRhythmHeatCell(
+    val hour: Int,
+    val slot: Int,
+    val packageName: String?,
+    val color: Color?,
+    val intensity: Float,
+    val usageMillis: Long,
+)
+
+private fun buildMockRhythmHeatCells(
+    buckets: List<DailyTimelineBucket>,
+    legend: List<DailyTimelineAppLegendItem>,
+    colors: Map<String, Color>,
+): List<MockRhythmHeatCell> {
+    val visiblePackages = legend.map { it.packageName }.toSet()
+    return buckets.flatMap { bucket ->
+        val hourFillRatio = (bucket.deviceMillis.toFloat() / (60L * 60_000L).toFloat()).coerceIn(0f, 1f)
+        val activeSlots =
+            when {
+                bucket.deviceMillis <= 0L -> 0
+                else -> ceil(hourFillRatio * 12f).toInt().coerceIn(1, 12)
+            }
+        val segments =
+            bucket.appSegments
+                .filter { it.millis > 0L && it.packageName in visiblePackages }
+                .sortedByDescending { it.millis }
+                .ifEmpty { bucket.appSegments.filter { it.millis > 0L }.sortedByDescending { it.millis } }
+        val packageForSlot = buildSlotPackageSequence(segments, activeSlots)
+        val activeSlotIndexes = buildMockActiveSlotIndexes(bucket, activeSlots)
+        (0 until 12).map { slot ->
+            val activeIndex = activeSlotIndexes.indexOf(slot)
+            val packageName = activeIndex.takeIf { it >= 0 }?.let { packageForSlot.getOrNull(it) }
+            val slotFill =
+                activeIndex.takeIf { it >= 0 }?.let {
+                    val remainingMillis = bucket.deviceMillis - it * 5L * 60_000L
+                    (remainingMillis.toFloat() / (5L * 60_000L).toFloat()).coerceIn(0.18f, 1f)
+                } ?: 0f
+            MockRhythmHeatCell(
+                hour = bucket.hour,
+                slot = slot,
+                packageName = packageName,
+                color = packageName?.let { colors[it] ?: colors[TIMELINE_OTHER_APPS_PACKAGE_NAME] },
+                intensity = slotFill,
+                usageMillis = (slotFill * 5L * 60_000L).toLong(),
             )
         }
     }
+}
+
+private fun buildRhythmHeatCellsFromSlices(
+    sliceCells: List<DailyTimelineSliceCell>,
+    colors: Map<String, Color>,
+    fallbackColor: Color,
+): List<MockRhythmHeatCell> {
+    val cellByIndex = sliceCells.associateBy { it.sliceIndex }
+    return (0 until 288).map { sliceIndex ->
+        val cell = cellByIndex[sliceIndex]
+        MockRhythmHeatCell(
+            hour = sliceIndex / 12,
+            slot = sliceIndex % 12,
+            packageName = cell?.packageName,
+            color = cell?.packageName?.let { colors[it] ?: colors[TIMELINE_OTHER_APPS_PACKAGE_NAME] ?: fallbackColor },
+            intensity = cell?.millis?.let { (it.toFloat() / (5L * 60_000L).toFloat()).coerceIn(0.12f, 1f) } ?: 0f,
+            usageMillis = cell?.millis ?: 0L,
+        )
+    }
+}
+
+private fun buildMockActiveSlotIndexes(
+    bucket: DailyTimelineBucket,
+    activeSlots: Int,
+): List<Int> {
+    if (activeSlots <= 0) return emptyList()
+    if (activeSlots >= 12) return (0 until 12).toList()
+    val seed =
+        bucket.hour * 37 +
+            bucket.deviceMillis.toInt() / 60_000 +
+            bucket.appSegments.sumOf { it.packageName.hashCode() xor it.millis.toInt() }
+    val preferredStart = ((seed % 12) + 12) % 12
+    val step = when {
+        activeSlots >= 8 -> 1
+        activeSlots >= 5 -> 2
+        else -> 3
+    }
+    val candidates =
+        buildList {
+            var cursor = preferredStart
+            repeat(12) {
+                add(cursor)
+                cursor = (cursor + step) % 12
+            }
+            addAll(0 until 12)
+        }
+    return candidates
+        .distinct()
+        .take(activeSlots)
+        .sorted()
+}
+
+private fun buildSlotPackageSequence(
+    segments: List<DailyTimelineAppSegment>,
+    activeSlots: Int,
+): List<String?> {
+    if (activeSlots <= 0 || segments.isEmpty()) {
+        return emptyList()
+    }
+    val total = segments.sumOf { it.millis }.coerceAtLeast(1L)
+    return (0 until activeSlots).map { slot ->
+        val cursor = ((slot + 0.5f) / activeSlots.toFloat()) * total.toFloat()
+        var running = 0L
+        segments.firstOrNull { segment ->
+            running += segment.millis
+            cursor <= running
+        }?.packageName ?: segments.first().packageName
+    }
+}
+
+private fun rhythmAppColor(
+    packageName: String,
+    index: Int,
+    appColors: Map<String, Color>,
+    fallbackPalette: List<Color>,
+    reservedColor: Color,
+): Color {
+    val fallback = fallbackPalette[index % fallbackPalette.size]
+    val rawColor = appColors[packageName] ?: fallback
+    if (!isColorTooClose(rawColor, reservedColor)) {
+        return rawColor
+    }
+    return fallbackPalette
+        .drop(index)
+        .plus(fallbackPalette.take(index))
+        .firstOrNull { !isColorTooClose(it, reservedColor) }
+        ?: rawColor
+}
+
+private fun isColorTooClose(
+    first: Color,
+    second: Color,
+): Boolean {
+    val distance =
+        sqrt(
+            (first.red - second.red) * (first.red - second.red) +
+                (first.green - second.green) * (first.green - second.green) +
+                (first.blue - second.blue) * (first.blue - second.blue),
+        )
+    return distance < 0.34f
+}
+
+private fun rhythmCellOpacity(usageMillis: Long): Float {
+    val minutes = usageMillis.toFloat() / 60_000f
+    return when {
+        minutes <= 0f -> 0f
+        minutes < 1f -> 0.2f
+        minutes < 2f -> 0.4f
+        minutes < 3f -> 0.6f
+        minutes < 4f -> 0.8f
+        else -> 1f
+    }
+}
+
+private fun formatFiveMinuteSliceTime(sliceIndex: Int): String {
+    val minutes = sliceIndex.coerceIn(0, 288) * 5
+    return formatClockMinute(minutes)
+}
+
+private fun formatHourTime(hour: Int): String =
+    formatClockMinute(hour.coerceIn(0, 24) * 60)
+
+private fun formatClockMinute(totalMinutes: Int): String {
+    val boundedMinutes = totalMinutes.coerceIn(0, 24 * 60)
+    return String.format(
+        Locale.getDefault(),
+        "%02d:%02d",
+        boundedMinutes / 60,
+        boundedMinutes % 60,
+    )
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun DailyRhythmInsightStrip(
+    data: TimelineSectionData,
+) {
+    val insights = remember(data) { buildRhythmInsights(data) }
+    FlowRow(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        insights.forEach { insight ->
+            RhythmInsightChip(insight)
+        }
+    }
+}
+
+@Composable
+private fun RhythmInsightChip(
+    insight: RhythmInsight,
+) {
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.72f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.20f)),
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(3.dp),
+        ) {
+            Text(
+                text = insight.label,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = insight.value,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+private data class RhythmInsight(
+    val label: String,
+    val value: String,
+)
+
+private fun buildRhythmInsights(data: TimelineSectionData): List<RhythmInsight> {
+    val appCount =
+        data.appLegend.count {
+            it.millis > 0L && it.packageName != TIMELINE_OTHER_APPS_PACKAGE_NAME
+        }
+    return listOf(
+        RhythmInsight(
+            label = AppText.t("stats_rhythm_longest_idle"),
+            value = longestIdleLabel(data),
+        ),
+        RhythmInsight(
+            label = AppText.t("stats_rhythm_active_hours_label"),
+            value = AppText.t("stats_rhythm_active_hours_value", rhythmActiveHours(data)),
+        ),
+        RhythmInsight(
+            label = AppText.t("stats_rhythm_app_count"),
+            value = AppText.t("stats_rhythm_app_count_value", appCount),
+        ),
+    )
+}
+
+private fun rhythmActiveHours(data: TimelineSectionData): Int {
+    if (data.sliceCells.isNotEmpty()) {
+        return data.sliceCells
+            .map { it.sliceIndex / 12 }
+            .distinct()
+            .count()
+    }
+    return data.buckets.count { it.deviceMillis > 0L }
+}
+
+private fun rhythmSwitchCount(data: TimelineSectionData): Int {
+    val packages =
+        if (data.sliceCells.isNotEmpty()) {
+            val byIndex = data.sliceCells.associateBy { it.sliceIndex }
+            (0 until 288).map { byIndex[it]?.packageName }
+        } else {
+            data.buckets.map { bucket ->
+                bucket.appSegments.maxByOrNull { it.millis }?.packageName
+            }
+        }
+    var previous: String? = null
+    var switches = 0
+    packages.forEach { packageName ->
+        if (packageName != null && previous != null && previous != packageName) {
+            switches += 1
+        }
+        if (packageName != null) {
+            previous = packageName
+        }
+    }
+    return switches
+}
+
+private fun longestIdleLabel(data: TimelineSectionData): String {
+    if (data.sliceCells.isNotEmpty()) {
+        val activeIndexes = data.sliceCells.map { it.sliceIndex }.toSet()
+        val (start, length) = longestInactiveRun(288) { index -> index in activeIndexes }
+        return if (length > 0) {
+            AppText.t(
+                "stats_rhythm_idle_range_value",
+                formatFiveMinuteSliceTime(start),
+                formatFiveMinuteSliceTime((start + length).coerceAtMost(288)),
+                formatDuration(length * 5L * 60_000L),
+            )
+        } else {
+            AppText.t("stats_none")
+        }
+    }
+    val activeHours = data.buckets.filter { it.deviceMillis > 0L }.map { it.hour }.toSet()
+    val (start, length) = longestInactiveRun(24) { hour -> hour in activeHours }
+    return if (length > 0) {
+        AppText.t(
+            "stats_rhythm_idle_range_value",
+            formatHourTime(start),
+            formatHourTime((start + length).coerceAtMost(24)),
+            formatDuration(length * 60L * 60_000L),
+        )
+    } else {
+        AppText.t("stats_none")
+    }
+}
+
+private fun longestInactiveRun(
+    count: Int,
+    isActive: (Int) -> Boolean,
+): Pair<Int, Int> {
+    var bestStart = 0
+    var bestLength = 0
+    var currentStart = 0
+    var currentLength = 0
+    for (index in 0 until count) {
+        if (isActive(index)) {
+            if (currentLength > bestLength) {
+                bestStart = currentStart
+                bestLength = currentLength
+            }
+            currentStart = index + 1
+            currentLength = 0
+        } else {
+            currentLength += 1
+        }
+    }
+    if (currentLength > bestLength) {
+        bestStart = currentStart
+        bestLength = currentLength
+    }
+    return bestStart to bestLength
 }
 
 @Composable

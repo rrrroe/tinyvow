@@ -46,13 +46,13 @@ class InstalledAppRepository(
             .sortedBy { it.appName.lowercase() }
     }
 
-    suspend fun getAllInstalledApps(): List<ManagedApp> = withContext(Dispatchers.Default) {
+    suspend fun getAllInstalledApps(usageLookbackDays: Int = DEFAULT_USAGE_LOOKBACK_DAYS): List<ManagedApp> = withContext(Dispatchers.Default) {
         val packageManager = context.packageManager
         
-        // Step 1: 获取过去 7 天的应用使用时长，用于排序
+        // Step 1: 获取指定窗口内的应用使用时长，用于排序
         val usageStatsManager = context.getSystemService(Context.USAGE_STATS_SERVICE) as? UsageStatsManager
         val calendar = Calendar.getInstance()
-        calendar.add(Calendar.DAY_OF_YEAR, -7)
+        calendar.add(Calendar.DAY_OF_YEAR, -usageLookbackDays.coerceAtLeast(1))
         val startTime = calendar.timeInMillis
         val endTime = System.currentTimeMillis()
         
@@ -119,5 +119,10 @@ class InstalledAppRepository(
             }
             appInfo.loadLabel(packageManager).toString().takeIf { it.isNotBlank() }
         }.getOrNull()
+    }
+
+    companion object {
+        const val DEFAULT_USAGE_LOOKBACK_DAYS = 7
+        const val APP_COLOR_USAGE_LOOKBACK_DAYS = 30
     }
 }

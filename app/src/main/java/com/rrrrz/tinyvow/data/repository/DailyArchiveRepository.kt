@@ -8,6 +8,7 @@ import androidx.room.withTransaction
 import com.rrrrz.tinyvow.data.db.ActiveRewardEffectStatus
 import com.rrrrz.tinyvow.data.db.AppDatabase
 import com.rrrrz.tinyvow.data.db.DailyAppArchiveEntity
+import com.rrrrz.tinyvow.data.db.DailyAppTimeSliceArchiveEntity
 import com.rrrrz.tinyvow.data.db.AppGroupEntity
 import com.rrrrz.tinyvow.data.db.DailyArchiveEntity
 import com.rrrrz.tinyvow.data.db.DailyArchiveStateEntity
@@ -58,6 +59,7 @@ class DailyArchiveRepository(
     private val dailyArchiveDao = database.dailyArchiveDao()
     private val dailyGroupArchiveDao = database.dailyGroupArchiveDao()
     private val dailyAppArchiveDao = database.dailyAppArchiveDao()
+    private val dailyAppTimeSliceArchiveDao = database.dailyAppTimeSliceArchiveDao()
     private val pointLedgerDao = database.pointLedgerDao()
     private val stateDao = database.dailyArchiveStateDao()
     private val blockEventDao = database.blockEventDao()
@@ -79,6 +81,9 @@ class DailyArchiveRepository(
         dailyGroupArchiveDao.getByDateRange(from, to)
 
     fun getAppArchivesByDate(date: String): Flow<List<DailyAppArchiveEntity>> = dailyAppArchiveDao.getByDate(date)
+
+    fun getAppTimeSliceArchivesByDate(date: String): Flow<List<DailyAppTimeSliceArchiveEntity>> =
+        dailyAppTimeSliceArchiveDao.getByDate(date)
 
     fun getRewardEffectBenefitsByDate(date: String): Flow<List<RewardEffectBenefitEntity>> =
         rewardEffectBenefitDao.observeByDate(date)
@@ -402,6 +407,14 @@ class DailyArchiveRepository(
                 )
             }
         val appArchives = groupedAppArchives + ungroupedAppArchives
+        val timeSliceArchives =
+            buildDailyAppTimeSliceArchives(
+                archiveDate = archiveDate,
+                packageNames = packagesToArchive,
+                sessionsByPackage = sessionsByPackage,
+                dayStart = dayStart,
+                nextDayStart = nextDayStart,
+            )
         val archiveEarnEntries =
             groupSnapshots
                 .filter { it.groupType == GroupType.ENCOURAGE && it.earnedPoints > 0.0 }
@@ -484,6 +497,7 @@ class DailyArchiveRepository(
                 }
             }
             dailyAppArchiveDao.replaceForDate(archiveDate, appArchives)
+            dailyAppTimeSliceArchiveDao.replaceForDate(archiveDate, timeSliceArchives)
             dailyGroupArchiveDao.deleteByDate(archiveDate)
             dailyGroupArchiveDao.insertAll(groupSnapshots)
             rewardEffectBenefitDao.deleteByDate(archiveDate)
@@ -862,6 +876,29 @@ class DailyArchiveRepository(
             updatedAt = archiveTime,
         )
     }
+
+    private fun buildDailyAppTimeSliceArchives(
+        archiveDate: String,
+        packageNames: Set<String>,
+        sessionsByPackage: Map<String, List<com.rrrrz.tinyvow.data.usage.AppSession>>,
+        dayStart: Long,
+        nextDayStart: Long,
+    ): List<DailyAppTimeSliceArchiveEntity> =
+        packageNames
+            .flatMap { packageName ->
+                summarizeAppTimeSlices(
+                    sessions = sessionsByPackage[packageName].orEmpty(),
+                    dayStart = dayStart,
+                    nextDayStart = nextDayStart,
+                ).map { (sliceIndex, usageMillis) ->
+                    DailyAppTimeSliceArchiveEntity(
+                        archiveDate = archiveDate,
+                        sliceIndex = sliceIndex,
+                        packageName = packageName,
+                        usageMillis = usageMillis,
+                    )
+                }
+            }
 
     private fun resolveAppLabel(packageName: String): String =
         runCatching {

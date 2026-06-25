@@ -298,6 +298,7 @@ class LocalDataManager(
             LocalDataTable("daily_archives", "Daily aggregate usage, saved time, points, and redemption counts."),
             LocalDataTable("daily_group_archives", "Per-group daily usage summaries."),
             LocalDataTable("daily_app_archives", "Per-app package labels, usage duration, sessions, opens, and night usage."),
+            LocalDataTable("daily_app_time_slice_archives", "Per-app five-minute foreground usage slices used by daily attention maps."),
             LocalDataTable("point_ledger", "Local points earned or spent."),
             LocalDataTable("redemptions", "Local reward catalog."),
             LocalDataTable("redemption_history", "Local reward redemption history."),
@@ -320,7 +321,7 @@ class LocalDataManager(
         private val localDataStores = listOf(
             LocalDataStore(
                 "managed_app_preferences",
-                "DataStore preferences for points, theme, language, permission prompts, profile, debug Pro, Super Mode, and encrypted special app key metadata.",
+                "DataStore preferences for points, theme, language, permission prompts, profile, app color choices, debug Pro, Super Mode, and encrypted special app key metadata.",
             ) { context -> dataStoreFile(context, "managed_app_preferences") },
             LocalDataStore(
                 "auth_preferences",

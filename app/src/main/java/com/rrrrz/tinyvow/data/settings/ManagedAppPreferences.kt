@@ -26,6 +26,17 @@ import org.json.JSONObject
 
 private val Context.managedAppDataStore by preferencesDataStore(name = "managed_app_preferences")
 
+data class StoredAppColorPreferences(
+    val defaultAlgorithm: String = ManagedAppPreferences.DEFAULT_APP_COLOR_ALGORITHM,
+    val selections: Map<String, StoredAppColorSelection> = emptyMap(),
+    val manualColors: Map<String, Int> = emptyMap(),
+)
+
+data class StoredAppColorSelection(
+    val source: String,
+    val argb: Int,
+)
+
 class ManagedAppPreferences(
     private val context: Context,
 ) {
@@ -67,6 +78,9 @@ class ManagedAppPreferences(
         val controlRemainingReminderMinutes = intPreferencesKey("control_remaining_reminder_minutes")
         val encourageReminderTimesMinutes = stringPreferencesKey("encourage_reminder_times_minutes")
         val sentReminderKeys = stringSetPreferencesKey("sent_reminder_keys")
+        val appColorDefaultAlgorithm = stringPreferencesKey("app_color_default_algorithm")
+        val appColorChoicesJson = stringPreferencesKey("app_color_choices_json")
+        val dailyRhythmCellIconsEnabled = booleanPreferencesKey("daily_rhythm_cell_icons_enabled")
     }
 
     val selectedPackageName: Flow<String?> = context.managedAppDataStore.data.map { preferences ->
@@ -205,6 +219,17 @@ class ManagedAppPreferences(
 
     val encourageReminderTimesMinutes: Flow<List<Int>> = context.managedAppDataStore.data.map { preferences ->
         parseReminderTimes(preferences[Keys.encourageReminderTimesMinutes])
+    }
+
+    val appColorPreferences: Flow<StoredAppColorPreferences> = context.managedAppDataStore.data.map { preferences ->
+        parseAppColorPreferences(
+            defaultAlgorithm = preferences[Keys.appColorDefaultAlgorithm],
+            choicesJson = preferences[Keys.appColorChoicesJson],
+        )
+    }
+
+    val dailyRhythmCellIconsEnabled: Flow<Boolean> = context.managedAppDataStore.data.map { preferences ->
+        preferences[Keys.dailyRhythmCellIconsEnabled] ?: false
     }
 
     fun sharePosterModuleIds(tabKey: String): Flow<List<String>> =
@@ -521,12 +546,70 @@ class ManagedAppPreferences(
         }
     }
 
+    suspend fun setAppColorDefaultAlgorithm(algorithm: String) {
+        context.managedAppDataStore.edit { preferences ->
+            preferences[Keys.appColorDefaultAlgorithm] = algorithm
+        }
+    }
+
+    suspend fun setAppColorSelection(
+        packageName: String,
+        source: String,
+        argb: Int,
+    ) {
+        context.managedAppDataStore.edit { preferences ->
+            val current = parseAppColorPreferences(
+                defaultAlgorithm = preferences[Keys.appColorDefaultAlgorithm],
+                choicesJson = preferences[Keys.appColorChoicesJson],
+            )
+            preferences[Keys.appColorChoicesJson] = encodeAppColorChoices(
+                selections = current.selections + (packageName to StoredAppColorSelection(source, argb)),
+                manualColors = current.manualColors,
+            )
+        }
+    }
+
+    suspend fun clearAppColorSelection(packageName: String) {
+        context.managedAppDataStore.edit { preferences ->
+            val current = parseAppColorPreferences(
+                defaultAlgorithm = preferences[Keys.appColorDefaultAlgorithm],
+                choicesJson = preferences[Keys.appColorChoicesJson],
+            )
+            preferences[Keys.appColorChoicesJson] = encodeAppColorChoices(
+                selections = current.selections - packageName,
+                manualColors = current.manualColors,
+            )
+        }
+    }
+
+    suspend fun setManualAppColor(
+        packageName: String,
+        argb: Int,
+    ) {
+        context.managedAppDataStore.edit { preferences ->
+            val current = parseAppColorPreferences(
+                defaultAlgorithm = preferences[Keys.appColorDefaultAlgorithm],
+                choicesJson = preferences[Keys.appColorChoicesJson],
+            )
+            preferences[Keys.appColorChoicesJson] = encodeAppColorChoices(
+                selections = current.selections + (packageName to StoredAppColorSelection(APP_COLOR_SOURCE_MANUAL, argb)),
+                manualColors = current.manualColors + (packageName to argb),
+            )
+        }
+    }
+
     suspend fun setSharePosterModuleIds(
         tabKey: String,
         moduleIds: List<String>,
     ) {
         context.managedAppDataStore.edit { preferences ->
             preferences[sharePosterModuleKey(tabKey)] = encodeSharePosterModuleIds(moduleIds)
+        }
+    }
+
+    suspend fun setDailyRhythmCellIconsEnabled(enabled: Boolean) {
+        context.managedAppDataStore.edit { preferences ->
+            preferences[Keys.dailyRhythmCellIconsEnabled] = enabled
         }
     }
 
@@ -576,6 +659,10 @@ class ManagedAppPreferences(
 
     suspend fun getEncourageReminderTimesMinutesOnce(): List<Int> {
         return encourageReminderTimesMinutes.first()
+    }
+
+    suspend fun getAppColorPreferencesOnce(): StoredAppColorPreferences {
+        return appColorPreferences.first()
     }
 
     suspend fun getSharePosterModuleIdsOnce(tabKey: String): List<String> {
@@ -709,7 +796,78 @@ class ManagedAppPreferences(
             .distinct()
             .joinToString(",")
 
+    private fun parseAppColorPreferences(
+        defaultAlgorithm: String?,
+        choicesJson: String?,
+    ): StoredAppColorPreferences {
+        val defaultSource = defaultAlgorithm?.takeIf { it.isNotBlank() } ?: DEFAULT_APP_COLOR_ALGORITHM
+        if (choicesJson.isNullOrBlank()) {
+            return StoredAppColorPreferences(defaultAlgorithm = defaultSource)
+        }
+        return runCatching {
+            val root = JSONObject(choicesJson)
+            val selectionsJson = root.optJSONObject("selections")
+            val selections = buildMap {
+                if (selectionsJson != null) {
+                    val keys = selectionsJson.keys()
+                    while (keys.hasNext()) {
+                        val packageName = keys.next()
+                        val item = selectionsJson.optJSONObject(packageName) ?: continue
+                        val source = item.optString("source").takeIf { it.isNotBlank() } ?: continue
+                        put(
+                            packageName,
+                            StoredAppColorSelection(
+                                source = source,
+                                argb = item.optLong("argb").toInt(),
+                            ),
+                        )
+                    }
+                }
+            }
+            val manualColorsJson = root.optJSONObject("manualColors")
+            val manualColors = buildMap {
+                if (manualColorsJson != null) {
+                    val keys = manualColorsJson.keys()
+                    while (keys.hasNext()) {
+                        val packageName = keys.next()
+                        put(packageName, manualColorsJson.optLong(packageName).toInt())
+                    }
+                }
+            }
+            StoredAppColorPreferences(
+                defaultAlgorithm = defaultSource,
+                selections = selections,
+                manualColors = manualColors,
+            )
+        }.getOrDefault(StoredAppColorPreferences(defaultAlgorithm = defaultSource))
+    }
+
+    private fun encodeAppColorChoices(
+        selections: Map<String, StoredAppColorSelection>,
+        manualColors: Map<String, Int>,
+    ): String {
+        val selectionsJson = JSONObject()
+        selections.forEach { (packageName, selection) ->
+            selectionsJson.put(
+                packageName,
+                JSONObject()
+                    .put("source", selection.source)
+                    .put("argb", selection.argb.toLong()),
+            )
+        }
+        val manualColorsJson = JSONObject()
+        manualColors.forEach { (packageName, argb) ->
+            manualColorsJson.put(packageName, argb.toLong())
+        }
+        return JSONObject()
+            .put("selections", selectionsJson)
+            .put("manualColors", manualColorsJson)
+            .toString()
+    }
+
     companion object {
+        const val DEFAULT_APP_COLOR_ALGORITHM = "current"
+        const val APP_COLOR_SOURCE_MANUAL = "manual"
         const val DEFAULT_CONTROL_REMAINING_REMINDER_MINUTES = 10
         const val MIN_CONTROL_REMAINING_REMINDER_MINUTES = 1
         const val MAX_CONTROL_REMAINING_REMINDER_MINUTES = 120

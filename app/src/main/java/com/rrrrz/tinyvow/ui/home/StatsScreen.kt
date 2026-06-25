@@ -3661,7 +3661,7 @@ internal fun DailyTimelineChart(
             item.packageName to
                 when (item.packageName) {
                     TIMELINE_OTHER_APPS_PACKAGE_NAME -> otherAppsColor
-                    else -> extractedAppColors[item.packageName] ?: fallbackColors[index % fallbackColors.size]
+                    else -> extractedAppColors[item.packageName] ?: stableAppFallbackColor(item.packageName, fallbackColors)
                 }
         }.toMap()
     val revealProgress = if (buckets.any { it.deviceMillis > 0L }) 1f else 0f

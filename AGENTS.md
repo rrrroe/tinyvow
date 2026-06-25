@@ -292,6 +292,12 @@
 .\gradlew.bat installDefaultDebug
 ```
 
+安装成功后默认立即启动应用，方便人工检查成果；日常国内 debug 包可运行：
+
+```powershell
+adb shell monkey -p com.rrrrz.tinyvow.cn 1
+```
+
 修改后进行编译测试，并安装应用，不需要自动实机测试，修改较大或风险较高时提醒人工真机验证，尤其是：
 
 - 首次权限引导。
