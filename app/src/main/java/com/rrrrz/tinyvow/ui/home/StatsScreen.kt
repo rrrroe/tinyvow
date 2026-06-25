@@ -245,6 +245,7 @@ fun StatsRoute(
     todayPoints: Double,
     archiveRepository: DailyArchiveRepository,
     reportMemoryCache: StatsReportMemoryCache,
+    screenEnterReplayToken: Int,
     isProActive: Boolean,
     onShowProUpsell: (ProUpsellSource) -> Unit,
     onRequestUsageAccess: () -> Unit,
@@ -480,6 +481,7 @@ fun StatsRoute(
         isProActive = isProActive,
         onShowProUpsell = onShowProUpsell,
         onRequestUsageAccess = onRequestUsageAccess,
+        screenEnterReplayToken = screenEnterReplayToken,
         modifier = modifier,
     )
 }
@@ -503,6 +505,7 @@ private fun StatsScreenLayout(
     isProActive: Boolean,
     onShowProUpsell: (ProUpsellSource) -> Unit,
     onRequestUsageAccess: () -> Unit,
+    screenEnterReplayToken: Int,
     modifier: Modifier = Modifier,
 ) {
     Box(
@@ -535,6 +538,7 @@ private fun StatsScreenLayout(
                 onSelectYear = onSelectYear,
                 isProActive = isProActive,
                 onShowProUpsell = onShowProUpsell,
+                screenEnterReplayToken = screenEnterReplayToken,
             )
         }
     }
@@ -558,6 +562,7 @@ private fun DailyReportScreen(
     onSelectYear: (Int) -> Unit,
     isProActive: Boolean,
     onShowProUpsell: (ProUpsellSource) -> Unit,
+    screenEnterReplayToken: Int,
 ) {
     val listState = rememberLazyListState()
     val canShare = isReportShareReady(state = state, isProActive = isProActive)
@@ -640,6 +645,7 @@ private fun DailyReportScreen(
                         state = state,
                         isProActive = isProActive,
                         onShowProUpsell = onShowProUpsell,
+                        screenEnterReplayToken = screenEnterReplayToken,
                     )
                     Spacer(modifier = Modifier.height(24.dp))
                 }
@@ -661,6 +667,7 @@ private fun ReportPageContent(
     state: DailyReportUiState,
     isProActive: Boolean,
     onShowProUpsell: (ProUpsellSource) -> Unit,
+    screenEnterReplayToken: Int,
     modifier: Modifier = Modifier,
     shareModules: List<SharePosterModule>? = null,
 ) {
@@ -695,6 +702,7 @@ private fun ReportPageContent(
                             focusState = state.dailyFocusState,
                             compactLayout = false,
                             animateValues = state.animateValues,
+                            screenEnterReplayToken = screenEnterReplayToken,
                         )
                     }
                     SharePosterModule.APPS -> DailyAppFocusCard(topAppsState = state.topAppsState)
@@ -2121,6 +2129,7 @@ private fun DailyFocusCard(
     focusState: SectionState<DailyFocusSectionData>,
     compactLayout: Boolean = false,
     animateValues: Boolean = false,
+    screenEnterReplayToken: Int = 0,
 ) {
     when (focusState) {
         SectionState.Empty -> Unit
@@ -2141,6 +2150,7 @@ private fun DailyFocusCard(
                         icon = Icons.Default.Bolt,
                         compact = compactLayout,
                         animateValues = animateValues,
+                        replayToken = screenEnterReplayToken,
                         modifier = modifier,
                     )
                 } else {
@@ -2149,6 +2159,7 @@ private fun DailyFocusCard(
                         icon = Icons.Default.RocketLaunch,
                         compact = compactLayout,
                         animateValues = animateValues,
+                        replayToken = screenEnterReplayToken,
                         modifier = modifier,
                     )
                 }
@@ -2734,6 +2745,7 @@ private fun ReportPageSharePreviewDialog(
                                     state = state,
                                     isProActive = isProActive,
                                     onShowProUpsell = {},
+                                    screenEnterReplayToken = 0,
                                     shareModules = selectedModules,
                                 )
                                 SharePosterDownloadFooter()
@@ -2969,6 +2981,7 @@ internal fun DailyModeSummaryCard(
     icon: ImageVector,
     compact: Boolean = false,
     animateValues: Boolean = false,
+    replayToken: Int = 0,
     modifier: Modifier = Modifier,
 ) {
     val reportColors = LocalReportColors.current
@@ -3072,6 +3085,7 @@ internal fun DailyModeSummaryCard(
                             color = accent,
                             label = "${(summary.progress * 100f).roundToInt()}%",
                             animateValue = animateValues,
+                            replayToken = replayToken,
                             modifier = Modifier.size(metricSize),
                         )
                         summary.metrics.getOrNull(0)?.let { metric ->
@@ -3342,17 +3356,19 @@ private fun FocusProgressRing(
     color: Color,
     label: String,
     animateValue: Boolean = false,
+    replayToken: Int = 0,
     modifier: Modifier = Modifier,
 ) {
+    val targetProgress = progress.coerceIn(0f, 1f)
     val displayProgress =
-        if (animateValue && STAT_CHART_ANIMATIONS_ENABLED) {
-            animateFractionValue(
-                targetValue = progress.coerceIn(0f, 1f),
-                label = "focus_progress_ring_$label",
-                delayMillis = 160,
+        if (STAT_CHART_ANIMATIONS_ENABLED && (animateValue || replayToken > 0)) {
+            animateReplayFractionValue(
+                targetValue = targetProgress,
+                replayKey = replayToken,
+                delayMillis = if (animateValue) 160 else 0,
             )
         } else {
-            progress.coerceIn(0f, 1f)
+            targetProgress
         }
     val displayLabel =
         if (animateValue && STAT_CHART_ANIMATIONS_ENABLED) {

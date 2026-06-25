@@ -860,6 +860,8 @@ fun HomeRoute(
     }
 
     var currentScreen by remember { mutableStateOf(Screen.HOME) }
+    var homeOverviewAnimationReplayToken by remember { mutableIntStateOf(0) }
+    var statsAnimationReplayToken by remember { mutableIntStateOf(0) }
     var rewardsSection by remember { mutableStateOf(RewardsSection.STORE) }
     var hasPlayedHomeOverviewDataReveal by rememberSaveable { mutableStateOf(false) }
     var homeOverviewRuntimeState by remember { mutableStateOf(HomeOverviewRuntimeState()) }
@@ -1314,6 +1316,14 @@ fun HomeRoute(
         }
     }
 
+    LaunchedEffect(currentScreen) {
+        when (currentScreen) {
+            Screen.HOME -> homeOverviewAnimationReplayToken += 1
+            Screen.STATS -> statsAnimationReplayToken += 1
+            else -> Unit
+        }
+    }
+
     LaunchedEffect(proEntitlement.isProActive, selectedThemeId, customThemes) {
         if (!proEntitlement.isProActive) {
             val customIndex = customThemes.indexOfFirst { it.id == selectedThemeId }
@@ -1367,6 +1377,7 @@ fun HomeRoute(
                         overviewInputsReady = homeOverviewInputsReady,
                         overviewRuntimeState = homeOverviewRuntimeState,
                         onOverviewRuntimeStateChange = { homeOverviewRuntimeState = it },
+                        overviewAnimationReplayToken = homeOverviewAnimationReplayToken,
                         shouldPlayOverviewDataReveal = !hasPlayedHomeOverviewDataReveal,
                         onOverviewDataRevealStarted = {
                             hasPlayedHomeOverviewDataReveal = true
@@ -1584,6 +1595,7 @@ fun HomeRoute(
                             todayPoints = todayPoints,
                             archiveRepository = dailyArchiveRepository,
                             reportMemoryCache = statsReportMemoryCache,
+                            screenEnterReplayToken = statsAnimationReplayToken,
                             isProActive = proEntitlement.isProActive,
                             onShowProUpsell = { proUpsellSource = it },
                             onRequestUsageAccess = { requestUsageAccessSettings() },
@@ -2969,6 +2981,7 @@ fun HomeScreen(
     overviewInputsReady: Boolean = true,
     overviewRuntimeState: HomeOverviewRuntimeState = HomeOverviewRuntimeState(),
     onOverviewRuntimeStateChange: (HomeOverviewRuntimeState) -> Unit = {},
+    overviewAnimationReplayToken: Int = 0,
     shouldPlayOverviewDataReveal: Boolean = false,
     onOverviewDataRevealStarted: () -> Unit = {},
     isLoadingApps: Boolean,
@@ -3252,6 +3265,7 @@ fun HomeScreen(
                     HomeOverviewPaperCard(
                         state = overviewState,
                         isDataReady = isOverviewReady,
+                        overviewAnimationReplayToken = overviewAnimationReplayToken,
                         shouldPlayDataReveal = shouldPlayOverviewDataReveal,
                         onDataRevealStarted = onOverviewDataRevealStarted,
                         onOpenBehaviorRadar = { showHomeBehaviorRadarDialog = true },
@@ -4406,6 +4420,7 @@ private fun FirstRunCoachmarkOverlay(
 private fun HomeOverviewPaperCard(
     state: HomeOverviewUiState,
     isDataReady: Boolean,
+    overviewAnimationReplayToken: Int,
     shouldPlayDataReveal: Boolean,
     onDataRevealStarted: () -> Unit,
     onOpenBehaviorRadar: () -> Unit,
@@ -4547,6 +4562,7 @@ private fun HomeOverviewPaperCard(
                         metrics = scoreMetrics,
                         ringTrackColor = ringTrackColor,
                         scoreColor = themeColors.inkStrong,
+                        replayToken = overviewAnimationReplayToken,
                         revealProgress = boundedDataRevealProgress,
                         onClick = onOpenBehaviorRadar,
                         modifier = Modifier.size(centerSize),
@@ -4750,12 +4766,19 @@ private fun HomeOverviewScoreDial(
     metrics: List<DailyBehaviorScoreMetric>,
     ringTrackColor: Color,
     scoreColor: Color,
+    replayToken: Int,
     revealProgress: Float,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val displaySegments = metrics.take(5)
-    val boundedRevealProgress = revealProgress.coerceIn(0f, 1f)
+    val replayProgress =
+        animateReplayFractionValue(
+            targetValue = 1f,
+            replayKey = replayToken,
+            durationMillis = 860,
+        )
+    val boundedRevealProgress = (revealProgress.coerceIn(0f, 1f) * replayProgress).coerceIn(0f, 1f)
 
     Box(
         modifier =

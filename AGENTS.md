@@ -332,6 +332,7 @@ Get-Content -Raw -Encoding UTF8 AGENTS.md
 - 应用版本统一由根目录 `gradle.properties` 维护：
   - `TINYVOW_VERSION_NAME`：基础版本名，必须是 SemVer 三段式，例如 `1.0.0`。
   - `TINYVOW_VERSION_CODE`：Android 构建号，必须是正整数。
+- 正式版本以`#1.0.0`类似的格式保存在标签里，打包正式版本前，汇总上个版本截止现在的修改内容，填写在changlog里。
 - 不要在 `TINYVOW_VERSION_NAME` 里写渠道后缀。`china` flavor 通过 `versionNameSuffix = "-cn"` 自动显示为 `1.0.0-cn`；`googlePlay` flavor 使用基础版本名，例如 `1.0.0`。
 - Google Play 和国内版默认共享同一个基础 `versionName` 和 `versionCode`。除非用户明确要求渠道独立发版，不要拆成两套版本号。
 - 每次对外发布 APK/AAB 前必须手动递增 `TINYVOW_VERSION_CODE`。仅本机调试构建可以不递增。

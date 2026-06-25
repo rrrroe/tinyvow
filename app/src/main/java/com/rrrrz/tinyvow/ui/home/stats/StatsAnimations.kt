@@ -1,13 +1,16 @@
 package com.rrrrz.tinyvow.ui.home
 
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.produceState
+import androidx.compose.runtime.remember
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
@@ -85,6 +88,38 @@ internal fun animateFractionValue(
         label = label,
     )
     return animatedValue.coerceIn(0f, 1f)
+}
+
+@Composable
+internal fun animateReplayFractionValue(
+    targetValue: Float,
+    replayKey: Any?,
+    durationMillis: Int = 760,
+    delayMillis: Int = 0,
+): Float {
+    val sanitizedTarget = targetValue.coerceIn(0f, 1f)
+    if (!STAT_ANIMATIONS_ENABLED) return sanitizedTarget
+
+    val animatable = remember { Animatable(0f) }
+    LaunchedEffect(replayKey) {
+        animatable.snapTo(0f)
+        if (delayMillis > 0) {
+            delay(delayMillis.toLong())
+        }
+        animatable.animateTo(
+            targetValue = sanitizedTarget,
+            animationSpec = tween(durationMillis = slowedMetricDuration(durationMillis)),
+        )
+    }
+    LaunchedEffect(sanitizedTarget) {
+        if (animatable.value != 0f) {
+            animatable.animateTo(
+                targetValue = sanitizedTarget,
+                animationSpec = tween(durationMillis = slowedMetricDuration(durationMillis)),
+            )
+        }
+    }
+    return animatable.value.coerceIn(0f, 1f)
 }
 
 @Composable
