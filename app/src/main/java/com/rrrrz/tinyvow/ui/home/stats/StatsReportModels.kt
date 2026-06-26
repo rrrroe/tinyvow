@@ -153,6 +153,7 @@ internal data class TimelineSectionData(
 internal data class TopAppsSectionData(
     val usageTopApps: List<AppDisplayItem>,
     val appProfiles: List<AppFocusProfileItem> = emptyList(),
+    val sliceCells: List<DailyTimelineSliceCell> = emptyList(),
 )
 
 internal data class BehaviorSectionData(
@@ -182,6 +183,60 @@ internal data class DailyBehaviorScoreMetric(
 
 internal data class ComparisonSectionData(
     val comparisons: List<ComparisonMetric>,
+)
+
+internal enum class BehaviorMapRole {
+    CONTROL,
+    ENCOURAGE,
+    UNGROUPED,
+}
+
+internal enum class BehaviorMapStatus {
+    NORMAL,
+    CONTROL_EXCEEDED,
+    ENCOURAGE_MET,
+}
+
+internal data class BehaviorMapPoint(
+    val packageName: String,
+    val label: String,
+    val usageMillis: Long,
+    val openCount: Int,
+    val sessionCount: Int,
+    val longestSessionMillis: Long,
+    val nightUsageMillis: Long,
+    val attentionWeight: Float,
+    val role: BehaviorMapRole,
+    val status: BehaviorMapStatus,
+    val quadrantLabel: String,
+    val isHighlighted: Boolean = false,
+)
+
+internal enum class BehaviorMapInsightTone {
+    WARNING,
+    POSITIVE,
+    NEUTRAL,
+}
+
+internal data class BehaviorMapInsight(
+    val message: String,
+    val tone: BehaviorMapInsightTone,
+)
+
+internal data class BehaviorMapHighlight(
+    val title: String,
+    val point: BehaviorMapPoint,
+    val tone: BehaviorMapInsightTone,
+)
+
+internal data class BehaviorMapSectionData(
+    val durationThresholdMillis: Long,
+    val openThreshold: Int,
+    val maxDurationMillis: Long,
+    val maxOpenCount: Int,
+    val points: List<BehaviorMapPoint>,
+    val insights: List<BehaviorMapInsight>,
+    val highlights: List<BehaviorMapHighlight>,
 )
 
 internal data class DailyFocusSectionData(
@@ -496,6 +551,7 @@ internal data class DailyReportUiState(
     val topAppsState: SectionState<TopAppsSectionData> = SectionState.Loading,
     val behaviorState: SectionState<BehaviorSectionData> = SectionState.Loading,
     val comparisonState: SectionState<ComparisonSectionData> = SectionState.Loading,
+    val behaviorMapState: SectionState<BehaviorMapSectionData> = SectionState.Loading,
     val periodReportState: SectionState<PeriodReportData> = SectionState.Empty,
     val selectedArchiveDate: String? = null,
     val previousArchiveDate: String? = null,

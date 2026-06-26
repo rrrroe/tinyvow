@@ -40,10 +40,12 @@ import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.animation.core.*
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.ui.unit.sp
 import androidx.compose.animation.*
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -102,6 +104,8 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
@@ -153,6 +157,7 @@ import com.rrrrz.tinyvow.data.repository.RewardSaveValidationError
 import com.rrrrz.tinyvow.data.repository.UseRewardResult
 import com.rrrrz.tinyvow.data.settings.ManagedAppPreferences
 import com.rrrrz.tinyvow.data.special.SpecialAppUsageRepository
+import com.rrrrz.tinyvow.data.steps.StepTrackingRepository
 import com.rrrrz.tinyvow.data.time.BusinessDay
 import com.rrrrz.tinyvow.data.supermode.GuardedAction
 import com.rrrrz.tinyvow.data.supermode.SuperModeController
@@ -376,6 +381,7 @@ private enum class SensitivePermissionDisclosure {
     USAGE_ACCESS,
     ACCESSIBILITY,
     NOTIFICATION,
+    ACTIVITY_RECOGNITION,
     BATTERY_OPTIMIZATION,
     BACKGROUND_START,
 }
@@ -709,6 +715,7 @@ fun HomeRoute(
     val pointsRepository = remember(database, context) { PointsRepository(context, database) }
     val dailyArchiveRepository = remember(database, context) { DailyArchiveRepository(context, database) }
     val dailyCheckInRepository = remember(database, context) { DailyCheckInRepository(context, database) }
+    val stepTrackingRepository = remember(database, context) { StepTrackingRepository(context, database) }
     val statsReportMemoryCache = remember { StatsReportMemoryCache() }
     val protectionEventRepository = remember(database, preferences) {
         ProtectionEventRepository(database) { preferences.getDayBoundaryHourOnce() }
@@ -727,10 +734,24 @@ fun HomeRoute(
     val businessToday = remember(currentTimeMillis) {
         BusinessDay.today(ZoneId.systemDefault(), BusinessDay.cachedStartHour(), currentTimeMillis)
     }
+    val todayStepState by stepTrackingRepository.observeToday(businessToday.toString()).collectAsStateWithLifecycle(
+        initialValue =
+            com.rrrrz.tinyvow.data.steps.TodayStepState(
+                date = businessToday.toString(),
+                steps = 0,
+                available = stepTrackingRepository.hasStepCounter(),
+                permissionGranted = stepTrackingRepository.hasActivityRecognitionPermission(),
+            ),
+        lifecycle = lifecycle,
+    )
     
     val groupsWithApps by appLimitRepository.getAllGroupsWithApps().collectAsStateWithLifecycle(initialValue = emptyList(), lifecycle = lifecycle)
     val userPoints by preferences.userPoints.collectAsStateWithLifecycle(initialValue = 0.0, lifecycle = lifecycle)
     val todayPoints by preferences.todayPoints.collectAsStateWithLifecycle(initialValue = 0.0, lifecycle = lifecycle)
+    val stepPointsPerStep by preferences.stepPointsPerStep.collectAsStateWithLifecycle(
+        initialValue = StepTrackingRepository.DEFAULT_POINTS_PER_STEP,
+        lifecycle = lifecycle,
+    )
     val selectedThemeId by preferences.selectedThemeId.collectAsStateWithLifecycle(initialValue = DefaultThemeSeed.id, lifecycle = lifecycle)
     val customThemes by preferences.customThemes.collectAsStateWithLifecycle(initialValue = emptyList(), lifecycle = lifecycle)
     val selectedAppLanguage by preferences.selectedAppLanguage.collectAsStateWithLifecycle(initialValue = com.rrrrz.tinyvow.i18n.AppLanguage.SYSTEM, lifecycle = lifecycle)
@@ -889,6 +910,9 @@ fun HomeRoute(
     }
     var notificationPermissionGranted by remember {
         mutableStateOf(notificationPermissionChecker.isGranted())
+    }
+    var activityRecognitionPermissionGranted by remember {
+        mutableStateOf(stepTrackingRepository.hasActivityRecognitionPermission())
     }
     
     var installedApps by remember { mutableStateOf<List<ManagedApp>>(emptyList()) }
@@ -1060,6 +1084,11 @@ fun HomeRoute(
     ) {
         notificationPermissionGranted = notificationPermissionChecker.isGranted()
     }
+    val activityRecognitionPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission(),
+    ) {
+        activityRecognitionPermissionGranted = stepTrackingRepository.hasActivityRecognitionPermission()
+    }
     val backupImportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument(),
     ) { uri ->
@@ -1124,6 +1153,7 @@ fun HomeRoute(
                 accessibilityServiceEnabled =
                     accessibilityServiceStateChecker.isEnabled(AppLimitAccessibilityService::class.java)
                 notificationPermissionGranted = notificationPermissionChecker.isGranted()
+                activityRecognitionPermissionGranted = stepTrackingRepository.hasActivityRecognitionPermission()
                 isIgnoringBattery = powerManager.isIgnoringBatteryOptimizations(context.packageName)
                 coroutineScope.launch {
                     subscriptionRepository.refresh()
@@ -1137,6 +1167,23 @@ fun HomeRoute(
         }
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+
+    DisposableEffect(activityRecognitionPermissionGranted, todayStepState.available) {
+        if (activityRecognitionPermissionGranted && todayStepState.available) {
+            stepTrackingRepository.start()
+        }
+        onDispose { stepTrackingRepository.stop() }
+    }
+
+    LaunchedEffect(proEntitlement.isProActive, todayStepState.date, todayStepState.steps, stepPointsPerStep) {
+        if (proEntitlement.isProActive) {
+            stepTrackingRepository.creditTodayStepsIfEligible(
+                steps = todayStepState.steps,
+                date = todayStepState.date,
+                pointsPerStep = stepPointsPerStep,
+            )
+        }
     }
 
     LaunchedEffect(Unit) {
@@ -1157,6 +1204,7 @@ fun HomeRoute(
 
     LaunchedEffect(Unit) {
         appLimitRepository.clearExpiredBonusTime(System.currentTimeMillis())
+        appLimitRepository.deleteDeprecatedStepGroups()
         appLimitRepository.confirmExpiredPendingRewardEffects()
         dailyArchiveRepository.ensureArchivesUpToYesterday()
         
@@ -1374,6 +1422,11 @@ fun HomeRoute(
                         },
                         userPoints = userPoints,
                         todayPoints = todayPoints,
+                        todayStepCount = todayStepState.steps,
+                        todayStepPoints = todayStepState.steps * stepPointsPerStep,
+                        stepPointsPerStep = stepPointsPerStep,
+                        isStepCounterAvailable = todayStepState.available,
+                        isActivityRecognitionPermissionGranted = todayStepState.permissionGranted,
                         overviewInputsReady = homeOverviewInputsReady,
                         overviewRuntimeState = homeOverviewRuntimeState,
                         onOverviewRuntimeStateChange = { homeOverviewRuntimeState = it },
@@ -1422,12 +1475,51 @@ fun HomeRoute(
                                 }
                             }
                         },
+                        onRequestActivityRecognitionPermission = {
+                            pendingSensitiveDisclosure = SensitivePermissionDisclosure.ACTIVITY_RECOGNITION
+                        },
+                        onOpenStepProComparison = {
+                            currentScreen = Screen.ME_PRO
+                        },
+                        onRefreshStepData = {
+                            when {
+                                !stepTrackingRepository.hasStepCounter() -> {
+                                    coroutineScope.launch {
+                                        snackbarHostState.showSnackbar(AppText.t("home_step_counter_unavailable"))
+                                    }
+                                }
+                                !stepTrackingRepository.hasActivityRecognitionPermission() -> {
+                                    pendingSensitiveDisclosure = SensitivePermissionDisclosure.ACTIVITY_RECOGNITION
+                                }
+                                else -> {
+                                    stepTrackingRepository.restart()
+                                    activityRecognitionPermissionGranted = stepTrackingRepository.hasActivityRecognitionPermission()
+                                    coroutineScope.launch {
+                                        snackbarHostState.showSnackbar(AppText.t("home_step_refresh_requested"))
+                                    }
+                                }
+                            }
+                        },
+                        onSaveStepPointsPerStep = { pointsPerStep ->
+                            coroutineScope.launch {
+                                preferences.setStepPointsPerStep(pointsPerStep)
+                            }
+                        },
                         onSaveGroup = { id, name, limit, type, period, pts, pkgs ->
                             coroutineScope.launch {
-                                val previousGroup = id?.let { groupId ->
+                                val existingGroup = id?.let { groupId ->
                                     groupsWithApps.firstOrNull { it.group.id == groupId }
                                 }
-                                val groupId = appLimitRepository.createOrUpdateGroup(id, name, limit, type, period, pts)
+                                val previousGroup = existingGroup
+                                val groupId =
+                                    appLimitRepository.createOrUpdateGroup(
+                                        id = id,
+                                        name = name,
+                                        limitMinutes = limit,
+                                        type = type,
+                                        limitPeriod = period,
+                                        pointsPerMinute = pts,
+                                    )
                                 appLimitRepository.updateGroupApps(groupId, pkgs)
                                 if (id != null) {
                                     recordProtectionEvent(
@@ -2006,20 +2098,24 @@ fun HomeRoute(
                     )
                 }
                 Screen.ME_DAY_BOUNDARY -> {
-                    DayBoundarySettingsPage(
-                        currentHour = dayBoundaryHour,
-                        isProActive = proEntitlement.isProActive,
-                        onBack = { currentScreen = Screen.ME },
-                        onSave = { hour ->
-                            coroutineScope.launch {
-                                preferences.setDayBoundaryHour(hour)
-                                snackbarHostState.showSnackbar(AppText.t("day_boundary_settings_saved"))
-                            }
-                        },
-                        onShowProUpsell = {
-                            proUpsellSource = ProUpsellSource.DAY_BOUNDARY_CUSTOMIZATION
-                        },
-                    )
+                    if (BuildConfig.DEBUG) {
+                        DayBoundarySettingsPage(
+                            currentHour = dayBoundaryHour,
+                            isProActive = proEntitlement.isProActive,
+                            onBack = { currentScreen = Screen.ME },
+                            onSave = { hour ->
+                                coroutineScope.launch {
+                                    preferences.setDayBoundaryHour(hour)
+                                    snackbarHostState.showSnackbar(AppText.t("day_boundary_settings_saved"))
+                                }
+                            },
+                            onShowProUpsell = {
+                                proUpsellSource = ProUpsellSource.DAY_BOUNDARY_CUSTOMIZATION
+                            },
+                        )
+                    } else {
+                        LaunchedEffect(Unit) { currentScreen = Screen.ME }
+                    }
                 }
                 Screen.ME_DATA_PRIVACY -> {
                     DataPrivacyPage(
@@ -2682,6 +2778,14 @@ fun HomeRoute(
                                 notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                             }
                         }
+                        SensitivePermissionDisclosure.ACTIVITY_RECOGNITION -> {
+                            pendingSensitiveDisclosure = null
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                                activityRecognitionPermissionLauncher.launch(Manifest.permission.ACTIVITY_RECOGNITION)
+                            } else {
+                                activityRecognitionPermissionGranted = true
+                            }
+                        }
                         SensitivePermissionDisclosure.BATTERY_OPTIMIZATION -> {
                             pendingSensitiveDisclosure = null
                             runCatching {
@@ -2936,6 +3040,10 @@ private fun SensitivePermissionDisclosureDialog(
             AppText.t("home_notification_permission_disclosure") to
                 AppText.t("home_tiny_vow_uses_notification_permission_to_send_local")
         }
+        SensitivePermissionDisclosure.ACTIVITY_RECOGNITION -> {
+            AppText.t("home_activity_recognition_disclosure") to
+                AppText.t("home_tiny_vow_uses_activity_recognition_for_local_steps")
+        }
         SensitivePermissionDisclosure.BATTERY_OPTIMIZATION -> {
             AppText.t("home_battery_allowlist_disclosure") to
                 AppText.t("home_the_battery_allowlist_is_an_optional_reliability_setting")
@@ -2978,6 +3086,11 @@ fun HomeScreen(
     onAppIconLoaded: (String, Drawable) -> Unit = { _, _ -> },
     userPoints: Double,
     todayPoints: Double,
+    todayStepCount: Int = 0,
+    todayStepPoints: Double = 0.0,
+    stepPointsPerStep: Double = StepTrackingRepository.DEFAULT_POINTS_PER_STEP,
+    isStepCounterAvailable: Boolean = false,
+    isActivityRecognitionPermissionGranted: Boolean = false,
     overviewInputsReady: Boolean = true,
     overviewRuntimeState: HomeOverviewRuntimeState = HomeOverviewRuntimeState(),
     onOverviewRuntimeStateChange: (HomeOverviewRuntimeState) -> Unit = {},
@@ -2999,7 +3112,19 @@ fun HomeScreen(
     dismissedPermissionPrompts: Set<String>,
     onSetAutoStartDismissed: () -> Unit,
     onDismissPermissionPrompts: (List<String>) -> Unit,
-    onSaveGroup: (id: String?, name: String, limit: Int, type: GroupType, period: LimitPeriod, pts: Double, pkgs: List<String>) -> Unit,
+    onRequestActivityRecognitionPermission: () -> Unit = {},
+    onOpenStepProComparison: () -> Unit = {},
+    onRefreshStepData: () -> Unit = {},
+    onSaveStepPointsPerStep: (Double) -> Unit = {},
+    onSaveGroup: (
+        id: String?,
+        name: String,
+        limit: Int,
+        type: GroupType,
+        period: LimitPeriod,
+        pts: Double,
+        pkgs: List<String>,
+    ) -> Unit,
     onDeleteGroup: (id: String) -> Unit,
     onGuardAction: (GuardedAction, () -> Unit) -> Unit,
     achievementProgress: AchievementProgress = AchievementProgress(),
@@ -3026,6 +3151,7 @@ fun HomeScreen(
     val homeScrollState = rememberScrollState()
     val usageMap = overviewRuntimeState.usageMap
     val periodUsageMap = overviewRuntimeState.periodUsageMap
+    var showStepPointsDialog by remember { mutableStateOf(false) }
     val todayAppUsageMap = overviewRuntimeState.todayAppUsageMap
     val todayAppOpenCountMap = overviewRuntimeState.todayAppOpenCountMap
     val todaySessions = overviewRuntimeState.todaySessions
@@ -3259,6 +3385,23 @@ fun HomeScreen(
                 if (usageAccessGranted) {
                     HomeOverviewHeader(
                         dateLabel = overviewState.dateLabel,
+                        todayStepCount = todayStepCount,
+                        todayStepPoints = todayStepPoints,
+                        isProActive = isProActive,
+                        onStepSummaryClick = {
+                            if (isProActive) {
+                                onRefreshStepData()
+                            } else {
+                                onOpenStepProComparison()
+                            }
+                        },
+                        onStepSummaryLongClick = {
+                            if (isProActive) {
+                                showStepPointsDialog = true
+                            } else {
+                                onOpenStepProComparison()
+                            }
+                        },
                         superModeStatus = superModeStatus,
                         onOpenSuperModeInfo = onOpenSuperModeEntry,
                     )
@@ -3321,6 +3464,21 @@ fun HomeScreen(
                 HomeBehaviorRadarDialog(
                     state = overviewState,
                     onDismiss = { showHomeBehaviorRadarDialog = false },
+                )
+            }
+
+            if (showStepPointsDialog) {
+                StepPointsSettingsDialog(
+                    todaySteps = todayStepCount,
+                    currentPointsPerStep = stepPointsPerStep,
+                    isStepCounterAvailable = isStepCounterAvailable,
+                    isActivityRecognitionPermissionGranted = isActivityRecognitionPermissionGranted,
+                    onRequestActivityRecognitionPermission = onRequestActivityRecognitionPermission,
+                    onSave = { pointsPerStep ->
+                        onSaveStepPointsPerStep(pointsPerStep)
+                        showStepPointsDialog = false
+                    },
+                    onDismiss = { showStepPointsDialog = false },
                 )
             }
 
@@ -4569,7 +4727,154 @@ private fun HomeOverviewPaperCard(
                     )
                 }
             }
+
         }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
+private fun HomeStepCornerSummary(
+    steps: Int,
+    earnedPoints: Double,
+    isProActive: Boolean,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val themeColors = LocalThemeColors.current
+    val textStyle = MaterialTheme.typography.labelMedium
+    val earnedPointsFloor = kotlin.math.floor(earnedPoints.coerceAtLeast(0.0)).toLong()
+    Column(
+        modifier =
+            modifier
+                .widthIn(max = 150.dp)
+                .combinedClickable(
+                    onClick = onClick,
+                    onLongClick = onLongClick,
+                )
+                .padding(start = 8.dp, top = 2.dp, bottom = 2.dp),
+        horizontalAlignment = Alignment.End,
+        verticalArrangement = Arrangement.spacedBy(1.dp),
+    ) {
+        Text(
+            text = AppText.t("home_today_steps_value", formatStepCount(steps)),
+            style = textStyle,
+            fontWeight = FontWeight.SemiBold,
+            color = themeColors.encourage,
+            textAlign = androidx.compose.ui.text.style.TextAlign.End,
+            maxLines = 1,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+        )
+        if (isProActive) {
+            Text(
+                text = AppText.t("home_step_points_plus_value", earnedPointsFloor),
+                style = textStyle,
+                fontWeight = FontWeight.SemiBold,
+                color = themeColors.encourage,
+                textAlign = androidx.compose.ui.text.style.TextAlign.End,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
+private fun StepPointsSettingsDialog(
+    todaySteps: Int,
+    currentPointsPerStep: Double,
+    isStepCounterAvailable: Boolean,
+    isActivityRecognitionPermissionGranted: Boolean,
+    onRequestActivityRecognitionPermission: () -> Unit,
+    onSave: (Double) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    var rateText by remember(currentPointsPerStep) {
+        mutableStateOf(formatStepRate(currentPointsPerStep))
+    }
+    val parsedRate = rateText.toDoubleOrNull()?.coerceAtLeast(0.0)
+    val estimatedPoints = todaySteps * (parsedRate ?: 0.0)
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(AppText.t("home_step_points_settings_title")) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                HomeStepSettingsMetricRow(
+                    label = AppText.t("home_today_steps"),
+                    value = AppText.t("home_steps_plain_value", formatStepCount(todaySteps)),
+                )
+                HomeStepSettingsMetricRow(
+                    label = AppText.t("home_step_points_estimate"),
+                    value = AppText.t("group_points_value", formatHomePointValue(estimatedPoints)),
+                )
+                OutlinedTextField(
+                    value = rateText,
+                    onValueChange = { rateText = sanitizeHomeDecimalInput(it) },
+                    label = { Text(AppText.t("home_step_points_rate_label")) },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                if (!isStepCounterAvailable) {
+                    Text(
+                        text = AppText.t("home_step_counter_unavailable"),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                } else if (!isActivityRecognitionPermissionGranted) {
+                    Text(
+                        text = AppText.t("home_step_permission_required"),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    TinyVowButton(
+                        text = AppText.t("home_step_permission_action"),
+                        onClick = onRequestActivityRecognitionPermission,
+                        modifier = Modifier.fillMaxWidth(),
+                        tone = TinyVowButtonTone.Primary,
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TinyVowButton(
+                text = AppText.t("group_save"),
+                onClick = { parsedRate?.let(onSave) },
+                enabled = parsedRate != null,
+                tone = TinyVowButtonTone.Primary,
+            )
+        },
+        dismissButton = {
+            TinyVowButton(
+                text = AppText.t("group_cancel"),
+                onClick = onDismiss,
+            )
+        },
+    )
+}
+
+@Composable
+private fun HomeStepSettingsMetricRow(
+    label: String,
+    value: String,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurface,
+        )
     }
 }
 
@@ -5966,6 +6271,11 @@ private fun HomeOverviewPill(
 @Composable
 private fun HomeOverviewHeader(
     dateLabel: String,
+    todayStepCount: Int,
+    todayStepPoints: Double,
+    isProActive: Boolean,
+    onStepSummaryClick: () -> Unit,
+    onStepSummaryLongClick: () -> Unit,
     superModeStatus: SuperModeStatus,
     onOpenSuperModeInfo: () -> Unit,
 ) {
@@ -5983,6 +6293,13 @@ private fun HomeOverviewHeader(
             maxLines = 1,
             softWrap = false,
             overflow = androidx.compose.ui.text.style.TextOverflow.Clip,
+        )
+        HomeStepCornerSummary(
+            steps = todayStepCount,
+            earnedPoints = todayStepPoints,
+            isProActive = isProActive,
+            onClick = onStepSummaryClick,
+            onLongClick = onStepSummaryLongClick,
         )
         if (superModeStatus.isConfigured && superModeStatus.isEnabled) {
             Surface(
@@ -6483,6 +6800,27 @@ private fun formatHomePointValue(points: Double): String =
 
 private fun formatHomePointWholeValue(points: Double): String =
     points.roundToLong().coerceAtLeast(0L).toString()
+
+private fun formatStepCount(steps: Int): String =
+    java.lang.String.format(java.util.Locale.getDefault(), "%,d", steps.coerceAtLeast(0))
+
+private fun formatStepRate(value: Double): String =
+    java.math.BigDecimal.valueOf(value.coerceAtLeast(0.0)).stripTrailingZeros().toPlainString()
+
+private fun sanitizeHomeDecimalInput(value: String): String {
+    val builder = StringBuilder()
+    var seenDot = false
+    value.forEach { char ->
+        when {
+            char.isDigit() -> builder.append(char)
+            char == '.' && !seenDot -> {
+                builder.append(char)
+                seenDot = true
+            }
+        }
+    }
+    return builder.toString().take(10)
+}
 
 private fun homeStreakLabel(
     archivedStreak: Int,

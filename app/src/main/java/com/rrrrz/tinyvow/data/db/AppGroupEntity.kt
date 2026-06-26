@@ -15,6 +15,11 @@ enum class LimitPeriod {
     MONTHLY
 }
 
+enum class EncourageMetric {
+    APP_USAGE,
+    STEPS,
+}
+
 @Entity(tableName = "app_groups")
 data class AppGroupEntity(
     @PrimaryKey
@@ -33,6 +38,15 @@ data class AppGroupEntity(
     
     @ColumnInfo(name = "points_per_minute")
     val pointsPerMinute: Double = 0.0,
+
+    @ColumnInfo(name = "encourage_metric")
+    val encourageMetric: EncourageMetric = EncourageMetric.APP_USAGE,
+
+    @ColumnInfo(name = "step_target")
+    val stepTarget: Int = 8000,
+
+    @ColumnInfo(name = "points_per_step")
+    val pointsPerStep: Double = 0.01,
     
     @ColumnInfo(name = "created_at")
     val createdAt: Long,

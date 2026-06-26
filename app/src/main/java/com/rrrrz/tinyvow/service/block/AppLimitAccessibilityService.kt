@@ -16,6 +16,7 @@ import com.rrrrz.tinyvow.BuildConfig
 import com.rrrrz.tinyvow.data.db.AppDatabase
 import com.rrrrz.tinyvow.data.db.AppGroupEntity
 import com.rrrrz.tinyvow.data.db.BlockEventEntity
+import com.rrrrz.tinyvow.data.db.EncourageMetric
 import com.rrrrz.tinyvow.data.db.GroupType
 import com.rrrrz.tinyvow.data.db.RewardType
 import com.rrrrz.tinyvow.data.notification.TinyVowNotifier
@@ -413,7 +414,10 @@ class AppLimitAccessibilityService : AccessibilityService() {
             }
             for (gid in groupIds) {
                 val group = database.appGroupDao().getGroupByIdSync(gid) ?: continue
-                if (group.type == GroupType.ENCOURAGE && group.pointsPerMinute > 0) {
+                if (group.type == GroupType.ENCOURAGE &&
+                    group.encourageMetric == EncourageMetric.APP_USAGE &&
+                    group.pointsPerMinute > 0
+                ) {
                     val pointsMultiplier = currentEncouragePointsMultiplier(group.id, nowMillis)
                     // 基础每分钟积分
                     val pointsEarned = calculateUsageEarnedPoints(durationMs, group.pointsPerMinute) * pointsMultiplier

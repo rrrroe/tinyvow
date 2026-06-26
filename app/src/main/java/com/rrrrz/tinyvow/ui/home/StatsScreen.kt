@@ -676,7 +676,6 @@ private fun ReportPageContent(
         buildList {
             add(SharePosterModule.BEHAVIOR)
             add(SharePosterModule.FOCUS)
-            add(SharePosterModule.APPS)
             add(SharePosterModule.RHYTHM)
             if (isProActive) add(SharePosterModule.INSIGHTS)
         }
@@ -705,14 +704,14 @@ private fun ReportPageContent(
                             screenEnterReplayToken = screenEnterReplayToken,
                         )
                     }
-                    SharePosterModule.APPS -> DailyAppFocusCard(topAppsState = state.topAppsState)
+                    SharePosterModule.APPS -> Unit
                     SharePosterModule.RHYTHM -> DailyRhythmCard(
                         timelineState = state.timelineState,
                         focusState = state.dailyFocusState,
                     )
                     SharePosterModule.INSIGHTS -> {
                         if (isProActive) {
-                            DailyInsightCard(comparisonState = state.comparisonState)
+                            DailyInsightCard(behaviorMapState = state.behaviorMapState)
                         }
                     }
                     SharePosterModule.OVERVIEW,
@@ -2504,16 +2503,12 @@ private fun availableSharePosterModules(
             if (state.dailyFocusState is SectionState.Ready) {
                 add(SharePosterModule.FOCUS)
             }
-            val topApps = (state.topAppsState as? SectionState.Ready)?.data?.usageTopApps.orEmpty()
-            if (topApps.isNotEmpty()) {
-                add(SharePosterModule.APPS)
-            }
             val timeline = (state.timelineState as? SectionState.Ready)?.data
             if (timeline != null && (timeline.buckets.isNotEmpty() || timeline.periodUsage.any { it.deviceMillis > 0L })) {
                 add(SharePosterModule.RHYTHM)
             }
-            val comparisons = (state.comparisonState as? SectionState.Ready)?.data?.comparisons.orEmpty()
-            if (isProActive && comparisons.isNotEmpty()) {
+            val behaviorMap = (state.behaviorMapState as? SectionState.Ready)?.data
+            if (isProActive && behaviorMap != null && behaviorMap.points.isNotEmpty()) {
                 add(SharePosterModule.INSIGHTS)
             }
         }
@@ -5103,6 +5098,7 @@ fun AppIconCircle(
     modifier: Modifier = Modifier,
     size: Dp = 34.dp,
     iconPadding: Dp = 0.dp,
+    showBorder: Boolean = true,
 ) {
     val context = LocalContext.current
     val icon = remember(pkg) {
@@ -5110,9 +5106,9 @@ fun AppIconCircle(
     }
     Surface(
         modifier = modifier.size(size),
-        shape = RoundedCornerShape((size.value * 0.32f).dp),
+        shape = CircleShape,
         color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.95f)),
+        border = if (showBorder) BorderStroke(1.dp, Color.White.copy(alpha = 0.95f)) else null,
     ) {
         if (icon != null) {
             AsyncImage(
@@ -5122,7 +5118,7 @@ fun AppIconCircle(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(iconPadding)
-                    .clip(RoundedCornerShape((size.value * 0.32f).dp))
+                    .clip(CircleShape)
                     .graphicsLayer {
                         scaleX = 1.08f
                         scaleY = 1.08f

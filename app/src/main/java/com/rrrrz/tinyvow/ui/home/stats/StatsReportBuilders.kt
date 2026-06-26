@@ -73,6 +73,7 @@ internal fun createRefreshingUiState(
         topAppsState = if (selectedTab == ReportTab.DAY) SectionState.Loading else SectionState.Empty,
         behaviorState = if (selectedTab == ReportTab.DAY) SectionState.Loading else SectionState.Empty,
         comparisonState = if (selectedTab == ReportTab.DAY) SectionState.Loading else SectionState.Empty,
+        behaviorMapState = if (selectedTab == ReportTab.DAY) SectionState.Loading else SectionState.Empty,
         periodReportState =
             if (selectedTab == ReportTab.DAY) {
                 SectionState.Empty
@@ -134,6 +135,7 @@ internal suspend fun buildArchivedWindowReportUiState(
                 topAppsState = SectionState.Empty,
                 behaviorState = SectionState.Empty,
                 comparisonState = SectionState.Empty,
+                behaviorMapState = SectionState.Empty,
                 periodReportState = SectionState.Empty,
                 selectedArchiveDate = null,
                 previousArchiveDate = null,
@@ -259,6 +261,7 @@ internal suspend fun buildArchivedWindowReportUiState(
             topAppsState = SectionState.Empty,
             behaviorState = SectionState.Empty,
             comparisonState = SectionState.Empty,
+            behaviorMapState = SectionState.Empty,
             periodReportState = SectionState.Ready(reportData),
             selectedArchiveDate = null,
             previousArchiveDate = null,
@@ -1632,6 +1635,7 @@ internal suspend fun buildArchivedDayReportUiState(
                 topAppsState = SectionState.Empty,
                 behaviorState = SectionState.Empty,
                 comparisonState = SectionState.Empty,
+                behaviorMapState = SectionState.Empty,
                 selectedArchiveDate = null,
                 previousArchiveDate = null,
                 nextArchiveDate = null,
@@ -1768,6 +1772,12 @@ internal suspend fun buildArchivedDayReportUiState(
         )?.copy(
             comparisonScoreMetrics = previousBehaviorStructure?.scoreMetrics.orEmpty(),
         )
+    val behaviorMapData =
+        buildArchivedBehaviorMapSectionData(
+            snapshots = currentSnapshots,
+            appArchives = currentAppArchives,
+            groupArchives = currentGroupArchives,
+        )
     val comparisons =
         buildArchivedDayComparisonMetrics(
             currentArchive = selectedArchive,
@@ -1843,6 +1853,7 @@ internal suspend fun buildArchivedDayReportUiState(
                         TopAppsSectionData(
                             usageTopApps = topApps,
                             appProfiles = buildAppFocusProfiles(currentSnapshots, topApps),
+                            sliceCells = timelineStateData.sliceCells,
                         ),
                     )
                 },
@@ -1863,6 +1874,8 @@ internal suspend fun buildArchivedDayReportUiState(
                 } else {
                     SectionState.Ready(ComparisonSectionData(comparisons = comparisons))
                 },
+            behaviorMapState =
+                behaviorMapData?.let { SectionState.Ready(it) } ?: SectionState.Empty,
             selectedArchiveDate = selectedArchive.archiveDate,
             previousArchiveDate = previousArchive?.archiveDate,
             nextArchiveDate = nextArchive?.archiveDate,
@@ -2127,6 +2140,366 @@ internal fun buildArchivedDayBehaviorInsight(
         ),
     )
 }
+
+private data class BehaviorMapSource(
+    val packageName: String,
+    val label: String,
+    val usageMillis: Long,
+    val openCount: Int,
+    val sessionCount: Int,
+    val longestSessionMillis: Long,
+    val nightUsageMillis: Long,
+    val role: BehaviorMapRole,
+    val status: BehaviorMapStatus,
+)
+
+internal fun buildArchivedBehaviorMapSectionData(
+    snapshots: List<ArchivedAppSnapshot>,
+    appArchives: List<DailyAppArchiveEntity>,
+    groupArchives: List<DailyGroupArchiveEntity>,
+): BehaviorMapSectionData? {
+    val appArchivesByPackage = appArchives.groupBy { it.packageName }
+    val groupArchivesById = groupArchives.associateBy { it.groupId }
+    val sources =
+        snapshots.map { snapshot ->
+            val archivedRows = appArchivesByPackage[snapshot.packageName].orEmpty()
+            val isControl = archivedRows.any { it.groupType == GroupType.CONTROL }
+            val isEncourage = archivedRows.any { it.groupType == GroupType.ENCOURAGE }
+            val role =
+                when {
+                    isControl -> BehaviorMapRole.CONTROL
+                    isEncourage -> BehaviorMapRole.ENCOURAGE
+                    else -> BehaviorMapRole.UNGROUPED
+                }
+            val status =
+                when {
+                    role == BehaviorMapRole.CONTROL &&
+                        archivedRows.any { row ->
+                            row.groupType == GroupType.CONTROL &&
+                                row.groupId?.let { groupId ->
+                                    val group = groupArchivesById[groupId]
+                                    group != null && (!group.completed || group.exceededMillisAtClose > 0L)
+                                } == true
+                        } -> BehaviorMapStatus.CONTROL_EXCEEDED
+                    role == BehaviorMapRole.ENCOURAGE &&
+                        archivedRows.any { row ->
+                            row.groupType == GroupType.ENCOURAGE &&
+                                row.groupId?.let { groupId -> groupArchivesById[groupId]?.completed } == true
+                        } -> BehaviorMapStatus.ENCOURAGE_MET
+                    else -> BehaviorMapStatus.NORMAL
+                }
+            BehaviorMapSource(
+                packageName = snapshot.packageName,
+                label = snapshot.label,
+                usageMillis = snapshot.usageMillis,
+                openCount = snapshot.openCount,
+                sessionCount = snapshot.sessionCount,
+                longestSessionMillis = snapshot.longestSessionMillis,
+                nightUsageMillis = snapshot.nightUsageMillis,
+                role = role,
+                status = status,
+            )
+        }
+    return buildBehaviorMapSectionData(sources)
+}
+
+internal fun buildLiveBehaviorMapSectionData(
+    usageStats: Map<String, Long>,
+    openCounts: Map<String, Int>,
+    sessions: List<AppSession>,
+    appLabels: Map<String, String>,
+    controlPackageNames: Set<String>,
+    encouragePackageNames: Set<String>,
+    dayStartMillis: Long,
+): BehaviorMapSectionData? {
+    val sessionsByPackage = sessions.groupBy { it.packageName }
+    val packageNames = (usageStats.keys + openCounts.keys + sessions.map { it.packageName }).distinct()
+    val sources =
+        packageNames.map { packageName ->
+            val packageSessions = sessionsByPackage[packageName].orEmpty()
+            val role =
+                when {
+                    packageName in controlPackageNames -> BehaviorMapRole.CONTROL
+                    packageName in encouragePackageNames -> BehaviorMapRole.ENCOURAGE
+                    else -> BehaviorMapRole.UNGROUPED
+                }
+            BehaviorMapSource(
+                packageName = packageName,
+                label = appLabels[packageName] ?: packageName,
+                usageMillis = usageStats[packageName] ?: packageSessions.sumOf { it.endTime - it.startTime },
+                openCount = openCounts[packageName] ?: 0,
+                sessionCount = packageSessions.size,
+                longestSessionMillis = packageSessions.maxOfOrNull { it.endTime - it.startTime } ?: 0L,
+                nightUsageMillis = packageSessions.sumOf { sessionNightOverlapMillis(it, dayStartMillis) },
+                role = role,
+                status = BehaviorMapStatus.NORMAL,
+            )
+        }
+    return buildBehaviorMapSectionData(sources)
+}
+
+private fun buildBehaviorMapSectionData(sources: List<BehaviorMapSource>): BehaviorMapSectionData? {
+    val candidates =
+        sources
+            .filter { it.usageMillis > 0L || it.openCount > 0 }
+            .filter {
+                it.role != BehaviorMapRole.UNGROUPED ||
+                    it.usageMillis >= BEHAVIOR_MAP_UNGROUPED_MIN_USAGE_MILLIS ||
+                    it.openCount >= BEHAVIOR_MAP_UNGROUPED_MIN_OPEN_COUNT
+            }
+    if (candidates.isEmpty()) return null
+
+    val totalUsage = candidates.sumOf { it.usageMillis }.coerceAtLeast(1L)
+    val totalOpens = candidates.sumOf { it.openCount }.coerceAtLeast(1)
+    val weighted =
+        candidates.map { source ->
+            val durationShare = source.usageMillis.toFloat() / totalUsage.toFloat()
+            val openShare = source.openCount.toFloat() / totalOpens.toFloat()
+            val rawWeight =
+                when (source.role) {
+                    BehaviorMapRole.CONTROL -> 0.60f * durationShare + 0.40f * openShare
+                    BehaviorMapRole.ENCOURAGE -> 0.75f * durationShare + 0.25f * openShare
+                    BehaviorMapRole.UNGROUPED -> 0.65f * durationShare + 0.35f * openShare
+                }
+            source to rawWeight
+        }
+    val visibleWeighted = weighted.sortedByDescending { it.second }.take(BEHAVIOR_MAP_MAX_POINTS)
+    val visibleSources = visibleWeighted.map { it.first }
+    val maxWeight = visibleWeighted.maxOfOrNull { it.second }?.coerceAtLeast(0.0001f) ?: 1f
+    val durationThreshold =
+        max(
+            BEHAVIOR_MAP_MIN_HIGH_USAGE_MILLIS,
+            percentileLong(visibleSources.map { it.usageMillis }, 0.60f),
+        )
+    val openThreshold =
+        max(
+            BEHAVIOR_MAP_MIN_HIGH_OPEN_COUNT,
+            percentileInt(visibleSources.map { it.openCount }, 0.60f),
+        )
+    val highlightPackages = behaviorMapHighlightPackageNames(visibleSources, durationThreshold, openThreshold)
+    val points =
+        visibleWeighted.map { (source, rawWeight) ->
+            BehaviorMapPoint(
+                packageName = source.packageName,
+                label = source.label,
+                usageMillis = source.usageMillis,
+                openCount = source.openCount,
+                sessionCount = source.sessionCount,
+                longestSessionMillis = source.longestSessionMillis,
+                nightUsageMillis = source.nightUsageMillis,
+                attentionWeight = (rawWeight / maxWeight).coerceIn(0f, 1f),
+                role = source.role,
+                status = source.status,
+                quadrantLabel =
+                    behaviorMapQuadrantLabel(
+                        role = source.role,
+                        highDuration = source.usageMillis >= durationThreshold,
+                        highOpens = source.openCount >= openThreshold,
+                    ),
+                isHighlighted = source.packageName in highlightPackages,
+            )
+        }
+    return BehaviorMapSectionData(
+        durationThresholdMillis = durationThreshold,
+        openThreshold = openThreshold,
+        maxDurationMillis = niceBehaviorMapDurationAxis(points.maxOf { it.usageMillis }),
+        maxOpenCount = niceBehaviorMapOpenAxis(points.maxOf { it.openCount }, openThreshold),
+        points = points.sortedWith(compareBy<BehaviorMapPoint> { !it.isHighlighted }.thenByDescending { it.attentionWeight }),
+        insights = buildBehaviorMapInsights(points, durationThreshold, openThreshold),
+        highlights = buildBehaviorMapHighlights(points, durationThreshold, openThreshold),
+    )
+}
+
+private fun behaviorMapHighlightPackageNames(
+    sources: List<BehaviorMapSource>,
+    durationThreshold: Long,
+    openThreshold: Int,
+): Set<String> =
+    buildSet {
+        sources
+            .filter { it.role == BehaviorMapRole.CONTROL && it.usageMillis >= durationThreshold && it.openCount >= openThreshold }
+            .maxByOrNull { it.usageMillis + it.openCount * 60_000L }
+            ?.let { add(it.packageName) }
+        sources
+            .filter { it.openCount >= openThreshold && it.usageMillis < durationThreshold }
+            .maxByOrNull { it.openCount }
+            ?.let { add(it.packageName) }
+        sources
+            .filter { it.role == BehaviorMapRole.ENCOURAGE && it.usageMillis >= durationThreshold }
+            .maxByOrNull { it.usageMillis }
+            ?.let { add(it.packageName) }
+        sources
+            .filter { it.role == BehaviorMapRole.UNGROUPED && (it.usageMillis >= durationThreshold || it.openCount >= openThreshold) }
+            .maxByOrNull { it.usageMillis + it.openCount * 60_000L }
+            ?.let { add(it.packageName) }
+    }
+
+private fun buildBehaviorMapInsights(
+    points: List<BehaviorMapPoint>,
+    durationThreshold: Long,
+    openThreshold: Int,
+): List<BehaviorMapInsight> {
+    val candidates =
+        listOfNotNull(
+            points
+                .filter { it.openCount >= openThreshold && it.usageMillis < durationThreshold }
+                .maxByOrNull { it.openCount }
+                ?.let { point ->
+                    val key =
+                        if (point.role == BehaviorMapRole.ENCOURAGE) {
+                            "stats_behavior_map_insight_light_checkin"
+                        } else {
+                            "stats_behavior_map_insight_frequent_interrupt"
+                        }
+                    BehaviorMapInsight(
+                        message = AppText.t(key, point.label, formatDuration(point.usageMillis), point.openCount),
+                        tone = if (point.role == BehaviorMapRole.ENCOURAGE) BehaviorMapInsightTone.POSITIVE else BehaviorMapInsightTone.WARNING,
+                    )
+                },
+            points
+                .filter { it.role == BehaviorMapRole.ENCOURAGE && it.usageMillis >= durationThreshold }
+                .maxByOrNull { it.usageMillis }
+                ?.let { point ->
+                    BehaviorMapInsight(
+                        message = AppText.t("stats_behavior_map_insight_deep_investment", point.label, formatDuration(point.usageMillis), point.openCount),
+                        tone = BehaviorMapInsightTone.POSITIVE,
+                    )
+                },
+            points
+                .filter { it.role == BehaviorMapRole.CONTROL && it.usageMillis >= durationThreshold && it.openCount >= openThreshold }
+                .maxByOrNull { it.usageMillis + it.openCount * 60_000L }
+                ?.let { point ->
+                    BehaviorMapInsight(
+                        message = AppText.t("stats_behavior_map_insight_repeated_trap", point.label, formatDuration(point.usageMillis), point.openCount),
+                        tone = BehaviorMapInsightTone.WARNING,
+                    )
+                },
+            points
+                .filter { it.role == BehaviorMapRole.UNGROUPED && (it.usageMillis >= durationThreshold || it.openCount >= openThreshold) }
+                .maxByOrNull { it.usageMillis + it.openCount * 60_000L }
+                ?.let { point ->
+                    BehaviorMapInsight(
+                        message = AppText.t("stats_behavior_map_insight_ungrouped_leak", point.label, formatDuration(point.usageMillis)),
+                        tone = BehaviorMapInsightTone.NEUTRAL,
+                    )
+                },
+        )
+    return candidates.distinctBy { it.message }.take(3)
+}
+
+private fun buildBehaviorMapHighlights(
+    points: List<BehaviorMapPoint>,
+    durationThreshold: Long,
+    openThreshold: Int,
+): List<BehaviorMapHighlight> {
+    val highlights =
+        listOfNotNull(
+            points
+                .filter { it.openCount >= openThreshold && it.usageMillis < durationThreshold }
+                .maxByOrNull { it.openCount }
+                ?.let {
+                    BehaviorMapHighlight(
+                        title = if (it.role == BehaviorMapRole.ENCOURAGE) AppText.t("stats_behavior_map_light_checkin") else AppText.t("stats_behavior_map_frequent_interrupt"),
+                        point = it,
+                        tone = if (it.role == BehaviorMapRole.ENCOURAGE) BehaviorMapInsightTone.POSITIVE else BehaviorMapInsightTone.WARNING,
+                    )
+                },
+            points
+                .filter { it.role == BehaviorMapRole.ENCOURAGE && it.usageMillis >= durationThreshold }
+                .maxByOrNull { it.usageMillis }
+                ?.let {
+                    BehaviorMapHighlight(
+                        title = AppText.t("stats_behavior_map_deep_investment"),
+                        point = it,
+                        tone = BehaviorMapInsightTone.POSITIVE,
+                    )
+                },
+            points
+                .filter { it.role == BehaviorMapRole.CONTROL && it.usageMillis >= durationThreshold && it.openCount >= openThreshold }
+                .maxByOrNull { it.usageMillis + it.openCount * 60_000L }
+                ?.let {
+                    BehaviorMapHighlight(
+                        title = AppText.t("stats_behavior_map_repeated_trap"),
+                        point = it,
+                        tone = BehaviorMapInsightTone.WARNING,
+                    )
+                },
+        )
+    return highlights.distinctBy { it.point.packageName }.take(3)
+}
+
+private fun behaviorMapQuadrantLabel(
+    role: BehaviorMapRole,
+    highDuration: Boolean,
+    highOpens: Boolean,
+): String =
+    when (role) {
+        BehaviorMapRole.CONTROL ->
+            when {
+                highDuration && highOpens -> AppText.t("stats_behavior_map_quadrant_control_repeated_trap")
+                highDuration -> AppText.t("stats_behavior_map_quadrant_control_long_slip")
+                highOpens -> AppText.t("stats_behavior_map_quadrant_control_frequent_interrupt")
+                else -> AppText.t("stats_behavior_map_quadrant_control_light_pass")
+            }
+        BehaviorMapRole.ENCOURAGE ->
+            when {
+                highDuration && highOpens -> AppText.t("stats_behavior_map_quadrant_encourage_steady_investment")
+                highDuration -> AppText.t("stats_behavior_map_quadrant_encourage_deep_investment")
+                highOpens -> AppText.t("stats_behavior_map_quadrant_encourage_light_checkin")
+                else -> AppText.t("stats_behavior_map_quadrant_encourage_underinvested")
+            }
+        BehaviorMapRole.UNGROUPED ->
+            when {
+                highDuration && highOpens -> AppText.t("stats_behavior_map_quadrant_ungrouped_high_use")
+                highDuration -> AppText.t("stats_behavior_map_quadrant_ungrouped_long_use")
+                highOpens -> AppText.t("stats_behavior_map_quadrant_ungrouped_fragment")
+                else -> AppText.t("stats_behavior_map_quadrant_ungrouped_low_impact")
+            }
+    }
+
+private fun percentileLong(values: List<Long>, percentile: Float): Long {
+    if (values.isEmpty()) return 0L
+    val sorted = values.sorted()
+    val index = ceil((sorted.lastIndex * percentile).toDouble()).toInt().coerceIn(0, sorted.lastIndex)
+    return sorted[index]
+}
+
+private fun percentileInt(values: List<Int>, percentile: Float): Int {
+    if (values.isEmpty()) return 0
+    val sorted = values.sorted()
+    val index = ceil((sorted.lastIndex * percentile).toDouble()).toInt().coerceIn(0, sorted.lastIndex)
+    return sorted[index]
+}
+
+private fun niceBehaviorMapDurationAxis(maxUsage: Long): Long {
+    val hourMillis = 60L * 60_000L
+    val targetMillis = maxUsage.coerceAtLeast(1L)
+    val targetHours = (targetMillis + hourMillis - 1L) / hourMillis
+    return max(3L, targetHours) * hourMillis
+}
+
+private fun niceBehaviorMapOpenAxis(maxOpen: Int, threshold: Int): Int {
+    val target = max(maxOpen, threshold) + 100
+    return max(300, ((target + 99) / 100) * 100)
+}
+
+private fun sessionNightOverlapMillis(session: AppSession, dayStartMillis: Long): Long {
+    val firstNightStart = dayStartMillis
+    val firstNightEnd = dayStartMillis + 6L * 60L * 60_000L
+    val secondNightStart = dayStartMillis + 22L * 60L * 60_000L
+    val secondNightEnd = dayStartMillis + 24L * 60L * 60_000L
+    return overlapMillis(session.startTime, session.endTime, firstNightStart, firstNightEnd) +
+        overlapMillis(session.startTime, session.endTime, secondNightStart, secondNightEnd)
+}
+
+private fun overlapMillis(start: Long, end: Long, windowStart: Long, windowEnd: Long): Long =
+    (min(end, windowEnd) - max(start, windowStart)).coerceAtLeast(0L)
+
+private const val BEHAVIOR_MAP_MAX_POINTS = 20
+private const val BEHAVIOR_MAP_MIN_HIGH_USAGE_MILLIS = 30L * 60_000L
+private const val BEHAVIOR_MAP_UNGROUPED_MIN_USAGE_MILLIS = 15L * 60_000L
+private const val BEHAVIOR_MAP_MIN_HIGH_OPEN_COUNT = 8
+private const val BEHAVIOR_MAP_UNGROUPED_MIN_OPEN_COUNT = 10
 
 internal fun buildArchivedDayBehaviorStructure(
     items: List<ArchivedAppSnapshot>,
@@ -2665,6 +3038,14 @@ internal suspend fun buildDailyReportUiState(
     val deviceUsageStats = todayUsageStats.filterKeys { it in devicePackageSet }
     val deviceOpenCounts = todayOpenCounts.filterKeys { it in devicePackageSet }
     val deviceSessions = todaySessions.filter { it.packageName in devicePackageSet }
+    val controlPackageNames =
+        groupsWithApps
+            .filter { it.group.type == GroupType.CONTROL }
+            .flatMapTo(linkedSetOf()) { it.packageNames }
+    val encouragePackageNames =
+        groupsWithApps
+            .filter { it.group.type == GroupType.ENCOURAGE }
+            .flatMapTo(linkedSetOf()) { it.packageNames }
 
     val timelineBuckets =
         buildTimelineBuckets(
@@ -2675,6 +3056,16 @@ internal suspend fun buildDailyReportUiState(
         )
     val periodUsage = buildPeriodUsageStats(timelineBuckets)
     val timelineInsight = buildTimelineSectionData(timelineBuckets)
+    val behaviorMapData =
+        buildLiveBehaviorMapSectionData(
+            usageStats = deviceUsageStats,
+            openCounts = deviceOpenCounts,
+            sessions = deviceSessions,
+            appLabels = devicePackages.mapValues { it.value.label },
+            controlPackageNames = controlPackageNames,
+            encouragePackageNames = encouragePackageNames,
+            dayStartMillis = todayStart,
+        )
 
     val usageTopApps = deviceUsageStats.toList()
         .sortedByDescending { it.second }
@@ -2739,6 +3130,7 @@ internal suspend fun buildDailyReportUiState(
             } else {
                 SectionState.Ready(TopAppsSectionData(usageTopApps = usageTopApps))
             },
+            behaviorMapState = behaviorMapData?.let { SectionState.Ready(it) } ?: SectionState.Empty,
         )
     }
 
@@ -2829,6 +3221,7 @@ internal fun buildPlaceholderUiState(tab: ReportTab): DailyReportUiState {
         isPermissionGranted = true,
         selectedTab = tab,
         isRefreshing = false,
+        behaviorMapState = SectionState.Empty,
         placeholderTitle = title,
         placeholderDescription = description,
     )

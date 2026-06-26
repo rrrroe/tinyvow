@@ -50,14 +50,22 @@ internal fun rememberAppChartColors(
     val appColorPreferences by preferences.appColorPreferences.collectAsState(
         initial = StoredAppColorPreferences(),
     )
+    val initialColors =
+        remember(context, stablePackages, fallbackColors, appColorPreferences) {
+            resolveAppChartColors(
+                context = context.applicationContext,
+                packageNames = stablePackages,
+                fallbackColors = fallbackColors,
+                preferences = appColorPreferences,
+            )
+        }
     val colors by produceState(
-        initialValue = stablePackages.associateWith { packageName ->
-            stableAppFallbackColor(packageName, fallbackColors)
-        },
+        initialValue = initialColors,
         key1 = stablePackages,
         key2 = appColorPreferences,
         key3 = fallbackColors,
     ) {
+        value = initialColors
         value = withContext(Dispatchers.Default) {
             resolveAppChartColors(
                 context = context.applicationContext,

@@ -2,6 +2,7 @@ package com.rrrrz.tinyvow.data.special
 
 import android.content.Context
 import com.rrrrz.tinyvow.data.db.AppDatabase
+import com.rrrrz.tinyvow.data.db.EncourageMetric
 import com.rrrrz.tinyvow.data.db.GroupType
 import com.rrrrz.tinyvow.data.db.LimitPeriod
 import com.rrrrz.tinyvow.data.db.PointLedgerEntryType
@@ -716,7 +717,10 @@ class SpecialAppUsageRepository(
         val currentRemoteUsage = getUsageForDate(today)
         if (currentRemoteUsage <= 0L) return
         val groupIds = crossRefDao.getGroupIdsForPackageSync(WEREAD_PACKAGE_NAME)
-        val groups = groupDao.getGroupsByIdsSync(groupIds).filter { it.type == GroupType.ENCOURAGE }
+        val groups =
+            groupDao.getGroupsByIdsSync(groupIds).filter {
+                it.type == GroupType.ENCOURAGE && it.encourageMetric == EncourageMetric.APP_USAGE
+            }
         for (group in groups) {
             if (group.pointsPerMinute > 0.0) {
                 val credit = pointCreditDao.get(WEREAD_PROVIDER, group.id, todayString)

@@ -6,16 +6,11 @@ import android.content.Context
 import android.content.ClipData
 import android.content.Intent
 import android.graphics.Bitmap
-import android.graphics.Paint
 import android.graphics.RectF
 import android.provider.Settings
 import android.widget.Toast
-import androidx.compose.animation.core.LinearEasing
-import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.infiniteRepeatable
-import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
@@ -29,6 +24,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
@@ -57,7 +53,6 @@ import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Insights
-import androidx.compose.material.icons.filled.NightsStay
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.RocketLaunch
 import androidx.compose.material.icons.filled.Schedule
@@ -88,11 +83,15 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ColorFilter
+import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -101,9 +100,11 @@ import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.graphics.drawable.toBitmap
@@ -1302,7 +1303,13 @@ internal fun DailyAppFocusCard(
     val topAppsData = (topAppsState as? SectionState.Ready)?.data
     val usageTopApps = topAppsData?.usageTopApps.orEmpty()
     val appProfiles = topAppsData?.appProfiles.orEmpty()
-    val appColors = rememberAppChartColors(usageTopApps.map { it.packageName })
+    val sliceCells = topAppsData?.sliceCells.orEmpty()
+    val appColorPackages =
+        remember(usageTopApps, sliceCells) {
+            (usageTopApps.map { it.packageName } + sliceCells.mapNotNull { it.packageName })
+                .distinct()
+        }
+    val appColors = rememberAppChartColors(appColorPackages)
     ReportCard {
         Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
             SectionHeader(
@@ -1332,8 +1339,9 @@ internal fun DailyAppFocusCard(
                             appColors = appColors,
                         )
                     } else {
-                        DailyAppSolarSystemPanel(
+                        DailyAppClockFocusPanel(
                             profiles = appProfiles,
+                            sliceCells = sliceCells,
                             appColors = appColors,
                         )
                     }
@@ -1344,8 +1352,9 @@ internal fun DailyAppFocusCard(
 }
 
 @Composable
-private fun DailyAppSolarSystemPanel(
+private fun DailyAppClockFocusPanel(
     profiles: List<AppFocusProfileItem>,
+    sliceCells: List<DailyTimelineSliceCell>,
     appColors: Map<String, Color>,
     modifier: Modifier = Modifier,
 ) {
@@ -1363,16 +1372,18 @@ private fun DailyAppSolarSystemPanel(
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 16.dp),
                 verticalArrangement = Arrangement.spacedBy(14.dp),
             ) {
-                AppSolarSystemChart(
+                AppUsageClockChart(
                     profiles = visibleProfiles,
+                    sliceCells = sliceCells,
+                    appColors = appColors,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(if (compact) 300.dp else 344.dp),
+                        .height(if (compact) 330.dp else 390.dp),
                 )
                 AdaptiveRowGrid(
                     itemCount = visibleProfiles.size,
                     compactColumns = 1,
-                    expandedColumns = 2,
+                    expandedColumns = 1,
                     horizontalSpacing = 10.dp,
                     verticalSpacing = 10.dp,
                 ) { itemModifier, index ->
@@ -1393,120 +1404,84 @@ private fun DailyAppSolarSystemPanel(
 }
 
 @Composable
-private fun AppSolarSystemChart(
+private fun AppUsageClockChart(
     profiles: List<AppFocusProfileItem>,
+    sliceCells: List<DailyTimelineSliceCell>,
+    appColors: Map<String, Color>,
     modifier: Modifier = Modifier,
 ) {
-    val planets = profiles.take(9)
+    val visibleProfiles = profiles.take(10)
     val outline = MaterialTheme.colorScheme.outlineVariant
-    val totalUsageMillis = planets.sumOf { it.usageMillis }.coerceAtLeast(1L)
-    Box(modifier = modifier, contentAlignment = Alignment.Center) {
+    val totalUsageMillis = visibleProfiles.sumOf { it.usageMillis }.coerceAtLeast(1L)
+    val surface = MaterialTheme.colorScheme.surface
+    val surfaceVariant = MaterialTheme.colorScheme.surfaceVariant
+    val onSurface = MaterialTheme.colorScheme.onSurface
+    val onSurfaceVariant = MaterialTheme.colorScheme.onSurfaceVariant
+    val primary = MaterialTheme.colorScheme.primary
+    val reportPalette = LocalReportColors.current.appChartPalette.ifEmpty { listOf(Color(0xFF4F7DFF)) }
+    val cellsByIndex = sliceCells.associateBy { it.sliceIndex }
+    BoxWithConstraints(modifier = modifier) {
+        val centerOffsetY = maxHeight * (UsageClockCenterYFraction - 0.5f)
         Canvas(modifier = Modifier.fillMaxSize()) {
-            val center = Offset(size.width * 0.5f, size.height * 0.5f)
-            planets.forEachIndexed { index, _ ->
-                val orbitRadius = min(size.width, size.height) * solarOrbitProgress(index, planets.size)
-                drawCircle(
-                    color = outline.copy(alpha = 0.44f),
-                    radius = orbitRadius,
-                    center = center,
-                    style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.15f),
-                )
-            }
-        }
-        planets.forEachIndexed { index, item ->
-            val planetRotation by rememberInfiniteTransition(label = "app_planet_orbit_$index").animateFloat(
-                initialValue = 0f,
-                targetValue = 360f,
-                animationSpec =
-                    infiniteRepeatable(
-                        animation = tween(durationMillis = planetOrbitDurationMillis(index), easing = LinearEasing),
-                        repeatMode = RepeatMode.Restart,
-                    ),
-                label = "app_planet_orbit_rotation_$index",
+            val center = usageClockCenter(size)
+            val baseRadius = min(size.width, size.height) * 0.345f
+            drawUsageClockBackdrop(
+                center = center,
+                outerRadius = baseRadius * 1.28f,
+                outline = outline,
+                surface = surface,
+                primary = primary,
             )
-            val angle = -82f + index * 137.5f + item.peakHour * 6f + planetRotation
-            val orbitProgress = solarOrbitProgress(index, planets.size)
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .graphicsLayer {
-                        val radius = min(size.width, size.height) * orbitProgress
-                        val radians = angle * (PI.toFloat() / 180f)
-                        translationX = cos(radians) * radius
-                        translationY = sin(radians) * radius
-                    },
-                contentAlignment = Alignment.Center,
-            ) {
-                val areaRatio = (item.usageMillis.toFloat() / totalUsageMillis.toFloat()).coerceIn(0f, 1f)
-                val iconSize = (60f * sqrt(areaRatio)).coerceAtLeast(14f).dp
-                SolarSystemAppIcon(
-                    pkg = item.packageName,
-                    size = iconSize,
-                )
-            }
-        }
-        SolarSystemTotalUsageSun(totalUsageMillis = totalUsageMillis)
-    }
-}
-
-private fun solarOrbitProgress(
-    index: Int,
-    count: Int,
-): Float {
-    if (count <= 1) return 0.32f
-    val t = index.toFloat() / (count - 1).toFloat()
-    val eased = t * 0.58f + (1f - (1f - t) * (1f - t)) * 0.42f
-    return 0.18f + (0.43f - 0.18f) * eased
-}
-
-private fun planetOrbitDurationMillis(index: Int): Int =
-    180_000 + index * 36_000
-
-@Composable
-private fun SolarSystemAppIcon(
-    pkg: String,
-    size: Dp,
-    modifier: Modifier = Modifier,
-) {
-    val context = LocalContext.current
-    val icon = remember(pkg) {
-        AppVisualCache.getIcon(context, pkg)
-    }
-    Surface(
-        modifier = modifier.size(size),
-        shape = CircleShape,
-        color = MaterialTheme.colorScheme.surface,
-    ) {
-        if (icon != null) {
-            val bitmap = remember(icon, size) {
-                icon.toBitmap(width = 96, height = 96, config = Bitmap.Config.ARGB_8888).asImageBitmap()
-            }
-            Image(
-                bitmap = bitmap,
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .fillMaxSize()
-                    .clip(CircleShape)
-                    .graphicsLayer {
-                        scaleX = 1.1f
-                        scaleY = 1.1f
-                    },
+            drawUsageClockHourlyRing(
+                cellsByIndex = cellsByIndex,
+                radius = baseRadius * 1.04f,
+                emptyColor = outline,
+                colorResolver = { cell ->
+                    resolveUsageClockCellColor(cell, appColors, reportPalette, outline)
+                },
+            )
+            drawUsageClockOuterGuide(
+                center = center,
+                radius = baseRadius * 1.30f,
+                outline = outline,
+            )
+            drawUsageClockCenterGlow(
+                center = center,
+                radius = baseRadius * 0.28f,
+                primary = primary,
+                surface = surfaceVariant,
             )
         }
+        UsageClockCenterBadge(
+            totalUsageMillis = totalUsageMillis,
+            modifier =
+                Modifier
+                    .align(Alignment.Center)
+                    .offset(y = centerOffsetY),
+            labelColor = onSurfaceVariant,
+            valueColor = onSurface,
+        )
     }
 }
 
+private const val UsageClockCenterXFraction = 0.5f
+private const val UsageClockCenterYFraction = 0.52f
+private const val UsageClockDayHours = 24
+private const val UsageClockSlicesPerHour = 12
+private const val UsageClockHourMillis = 60L * 60_000L
+
 @Composable
-private fun SolarSystemTotalUsageSun(
+private fun UsageClockCenterBadge(
     totalUsageMillis: Long,
     modifier: Modifier = Modifier,
+    labelColor: Color,
+    valueColor: Color,
 ) {
     Surface(
-        modifier = modifier.size(60.dp),
+        modifier = modifier.size(102.dp),
         shape = CircleShape,
-        color = MaterialTheme.colorScheme.primaryContainer,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.34f)),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.84f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.16f)),
     ) {
         Box(
             modifier =
@@ -1516,26 +1491,186 @@ private fun SolarSystemTotalUsageSun(
                         Brush.radialGradient(
                             colors =
                                 listOf(
-                                    MaterialTheme.colorScheme.surface.copy(alpha = 0.52f),
-                                    MaterialTheme.colorScheme.primaryContainer,
-                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.22f),
+                                    Color.White.copy(alpha = 0.76f),
+                                    MaterialTheme.colorScheme.surface.copy(alpha = 0.94f),
+                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.10f),
                                 ),
                         ),
                     )
-                    .padding(horizontal = 5.dp),
+                    .padding(horizontal = 8.dp),
             contentAlignment = Alignment.Center,
         ) {
-            Text(
-                text = formatDuration(totalUsageMillis).replace(" ", "\n"),
-                style = MaterialTheme.typography.labelMedium,
-                fontWeight = FontWeight.ExtraBold,
-                color = MaterialTheme.colorScheme.onPrimaryContainer,
-                textAlign = TextAlign.Center,
-                maxLines = 2,
-                overflow = TextOverflow.Ellipsis,
+            Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    text = AppText.t("history_total_duration"),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = labelColor,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = formatDuration(totalUsageMillis),
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = valueColor,
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
+private fun usageClockCenter(size: Size): Offset =
+    Offset(size.width * UsageClockCenterXFraction, size.height * UsageClockCenterYFraction)
+
+private fun DrawScope.drawUsageClockBackdrop(
+    center: Offset,
+    outerRadius: Float,
+    outline: Color,
+    surface: Color,
+    primary: Color,
+) {
+    drawCircle(
+        brush =
+            Brush.radialGradient(
+                colors =
+                    listOf(
+                        surface.copy(alpha = 0.12f),
+                        primary.copy(alpha = 0.05f),
+                        Color.Transparent,
+                    ),
+                center = center,
+                radius = outerRadius * 1.10f,
+            ),
+        radius = outerRadius * 1.10f,
+        center = center,
+    )
+    drawCircle(
+        color = outline.copy(alpha = 0.12f),
+        radius = outerRadius,
+        center = center,
+        style = Stroke(width = max(1f, size.minDimension * 0.009f)),
+    )
+}
+
+private fun DrawScope.drawUsageClockHourlyRing(
+    cellsByIndex: Map<Int, DailyTimelineSliceCell>,
+    radius: Float,
+    emptyColor: Color,
+    colorResolver: (DailyTimelineSliceCell) -> Color,
+) {
+    val sweep = 360f / UsageClockDayHours.toFloat()
+    val particleHeight = 22.dp.toPx()
+    val particleWidth = 8.dp.toPx()
+    val corner = 3.2.dp.toPx()
+    repeat(UsageClockDayHours) { hour ->
+        val particle = resolveHourParticle(cellsByIndex, hour)
+        val intensity = (particle.totalMillis.toFloat() / UsageClockHourMillis.toFloat()).coerceIn(0f, 1f)
+        val color =
+            particle.dominantCell
+                ?.takeIf { particle.totalMillis > 0L }
+                ?.let { colorResolver(it).copy(alpha = 0.42f + intensity * 0.54f) }
+                ?: emptyColor.copy(alpha = 0.14f)
+        val angle = -90f + (hour + 0.5f) * sweep
+        val point = radialPoint(center, radius, angle)
+        rotate(degrees = angle + 90f, pivot = point) {
+            drawRoundRect(
+                color = color,
+                topLeft = Offset(point.x - particleWidth / 2f, point.y - particleHeight / 2f),
+                size = Size(particleWidth, particleHeight),
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(corner, corner),
             )
         }
     }
+}
+
+private data class UsageClockParticle(
+    val dominantCell: DailyTimelineSliceCell?,
+    val totalMillis: Long,
+)
+
+private fun resolveHourParticle(
+    cellsByIndex: Map<Int, DailyTimelineSliceCell>,
+    hour: Int,
+): UsageClockParticle {
+    val startIndex = hour * UsageClockSlicesPerHour
+    val cells = (0 until UsageClockSlicesPerHour).mapNotNull { offset -> cellsByIndex[startIndex + offset] }
+    val totalMillis = cells.sumOf { it.millis }.coerceAtMost(UsageClockHourMillis)
+    val millisByPackage =
+        cells
+            .filter { it.packageName != null && it.millis > 0L }
+            .groupBy { it.packageName.orEmpty() }
+            .mapValues { (_, packageCells) -> packageCells.sumOf { it.millis } }
+    val dominant =
+        millisByPackage
+            .maxByOrNull { it.value }
+            ?.key
+            ?.let { packageName -> cells.firstOrNull { it.packageName == packageName } }
+    return UsageClockParticle(
+        dominantCell = dominant,
+        totalMillis = totalMillis,
+    )
+}
+
+private fun radialPoint(
+    center: Offset,
+    radius: Float,
+    angleDegrees: Float,
+): Offset {
+    val radians = angleDegrees * PI.toFloat() / 180f
+    return Offset(
+        x = center.x + cos(radians) * radius,
+        y = center.y + sin(radians) * radius,
+    )
+}
+
+private fun resolveUsageClockCellColor(
+    cell: DailyTimelineSliceCell,
+    appColors: Map<String, Color>,
+    fallbackPalette: List<Color>,
+    outline: Color,
+): Color {
+    val packageName = cell.packageName ?: return outline
+    return appColors[packageName]
+        ?: fallbackPalette[(packageName.hashCode() and Int.MAX_VALUE) % fallbackPalette.size]
+}
+
+private fun DrawScope.drawUsageClockOuterGuide(
+    center: Offset,
+    radius: Float,
+    outline: Color,
+) {
+    drawCircle(
+        color = outline.copy(alpha = 0.16f),
+        radius = radius,
+        center = center,
+        style = Stroke(width = max(1.4f, size.minDimension * 0.006f)),
+    )
+}
+
+private fun DrawScope.drawUsageClockCenterGlow(
+    center: Offset,
+    radius: Float,
+    primary: Color,
+    surface: Color,
+) {
+    drawCircle(
+        brush =
+            Brush.radialGradient(
+                colors =
+                    listOf(
+                        surface.copy(alpha = 0.70f),
+                        primary.copy(alpha = 0.10f),
+                        Color.Transparent,
+                    ),
+                center = center,
+                radius = radius * 1.45f,
+            ),
+        radius = radius * 1.45f,
+        center = center,
+    )
 }
 
 @Composable
@@ -1745,53 +1880,681 @@ internal data class BehaviorTotalMetric(
 
 @Composable
 internal fun DailyInsightCard(
-    comparisonState: SectionState<ComparisonSectionData>,
+    behaviorMapState: SectionState<BehaviorMapSectionData>,
 ) {
     ReportCard {
         Column(
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
             SectionHeader(
-                icon = Icons.AutoMirrored.Filled.CompareArrows,
-                title = AppText.t("stats_daily_insights"),
-                subtitle = AppText.t("stats_daily_insights_description"),
+                icon = Icons.Default.BarChart,
+                title = AppText.t("stats_behavior_map_title"),
+                subtitle = AppText.t("stats_behavior_map_description"),
             )
-            when (comparisonState) {
+            when (behaviorMapState) {
                 SectionState.Loading -> {
-                    repeat(2) {
-                        SkeletonBlock(
-                            modifier = Modifier.fillMaxWidth(),
-                            height = 92.dp,
-                            shape = RoundedCornerShape(18.dp),
-                        )
-                    }
+                    SkeletonBlock(
+                        modifier = Modifier.fillMaxWidth(),
+                        height = 360.dp,
+                        shape = RoundedCornerShape(22.dp),
+                    )
                 }
                 SectionState.Empty -> {
                     Text(
-                        text = AppText.t("stats_not_enough_earlier_archive_samples"),
+                        text = AppText.t("stats_behavior_map_empty"),
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
                 is SectionState.Ready -> {
-                    AdaptiveRowGrid(
-                        itemCount = comparisonState.data.comparisons.size,
-                        compactColumns = 1,
-                        expandedColumns = 2,
-                        horizontalSpacing = 10.dp,
-                        verticalSpacing = 10.dp,
-                    ) { modifier, index ->
-                        ComparisonRow(
-                            item = comparisonState.data.comparisons[index],
-                            showChips = true,
-                            modifier = modifier,
-                        )
-                    }
+                    BehaviorMapContent(data = behaviorMapState.data)
                 }
             }
         }
     }
 }
+
+@Composable
+private fun BehaviorMapContent(data: BehaviorMapSectionData) {
+    var selectedPoint by remember(data.points) { mutableStateOf<BehaviorMapPoint?>(null) }
+    var activeLegendRoles by remember(data.points) {
+        mutableStateOf(setOf(BehaviorMapRole.CONTROL, BehaviorMapRole.ENCOURAGE, BehaviorMapRole.UNGROUPED))
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        BehaviorMapScatter(
+            data = data,
+            selectedPoint = selectedPoint,
+            activeLegendRoles = activeLegendRoles,
+            onToggleLegendRole = { role ->
+                activeLegendRoles =
+                    if (role in activeLegendRoles) {
+                        activeLegendRoles - role
+                    } else {
+                        activeLegendRoles + role
+                    }
+            },
+            onSelectPoint = { selectedPoint = it },
+        )
+        selectedPoint?.let { BehaviorMapSelectedPointCard(point = it) }
+        BehaviorMapMatrix(data = data)
+    }
+}
+
+@Composable
+private fun BehaviorMapScatter(
+    data: BehaviorMapSectionData,
+    selectedPoint: BehaviorMapPoint?,
+    activeLegendRoles: Set<BehaviorMapRole>,
+    onToggleLegendRole: (BehaviorMapRole) -> Unit,
+    onSelectPoint: (BehaviorMapPoint) -> Unit,
+) {
+    val axisColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.58f)
+    val surfaceColor = MaterialTheme.colorScheme.surfaceContainerLowest.copy(alpha = 0.80f)
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(22.dp),
+        color = surfaceColor,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.28f)),
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            BoxWithConstraints(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .height(286.dp),
+            ) {
+                val chartHeight = 286.dp
+                val left = 18.dp
+                val right = 8.dp
+                val top = 14.dp
+                val bottom = 38.dp
+                val plotWidth = (maxWidth - left - right).coerceAtLeast(1.dp)
+                val plotHeight = (chartHeight - top - bottom).coerceAtLeast(1.dp)
+                Canvas(modifier = Modifier.fillMaxSize()) {
+                    val leftPx = left.toPx()
+                    val rightPx = size.width - right.toPx()
+                    val topPx = top.toPx()
+                    val bottomPx = size.height - bottom.toPx()
+                    drawLine(axisColor, Offset(leftPx, topPx), Offset(leftPx, bottomPx), strokeWidth = 2.4f)
+                    drawLine(axisColor, Offset(leftPx, bottomPx), Offset(rightPx, bottomPx), strokeWidth = 2.4f)
+                    drawCircle(axisColor, radius = 5f, center = Offset(leftPx, topPx))
+                    drawCircle(axisColor, radius = 5f, center = Offset(rightPx, bottomPx))
+                }
+
+                BehaviorMapAxisLabel(
+                    text = AppText.t("stats_behavior_map_y_axis"),
+                    modifier = Modifier.offset(x = left + 34.dp, y = top - 9.dp),
+                )
+                BehaviorMapTickLabel(
+                    text = "0",
+                    modifier = Modifier.offset(x = left + 3.dp, y = chartHeight - bottom + 5.dp),
+                )
+                Row(
+                    modifier = Modifier.align(Alignment.BottomEnd).offset(x = -right - 10.dp, y = (-19).dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    BehaviorMapAxisLabel(text = AppText.t("stats_behavior_map_x_axis"))
+                    BehaviorMapTickLabel(text = formatDuration(data.maxDurationMillis))
+                }
+                BehaviorMapTickLabel(
+                    text = data.maxOpenCount.toString(),
+                    modifier = Modifier.offset(x = left + 4.dp, y = top - 9.dp),
+                )
+
+                data.points.forEach { point ->
+                    val radius = behaviorMapIconRadius(point.attentionWeight)
+                    val size = radius * 2f
+                    val nodeSize = behaviorMapNodeSize(size)
+                    val selected = selectedPoint?.packageName == point.packageName
+                    val dimmed = point.role !in activeLegendRoles
+                    val xRatio = (point.usageMillis.toFloat() / data.maxDurationMillis.toFloat()).coerceIn(0f, 1f)
+                    val yRatio = (point.openCount.toFloat() / data.maxOpenCount.toFloat()).coerceIn(0f, 1f)
+                    val jitterX = if (point.isHighlighted) 0.dp else behaviorMapJitter(point.packageName, salt = 0)
+                    val jitterY = if (point.isHighlighted) 0.dp else behaviorMapJitter(point.packageName, salt = 11)
+                    val x = left + plotWidth * xRatio + jitterX
+                    val y = top + plotHeight * (1f - yRatio) - nodeSize + jitterY
+                    val z =
+                        when {
+                            selected -> 10_000f
+                            dimmed -> -10_000f - nodeSize.value
+                            else -> 1_000f - nodeSize.value
+                        }
+                    BehaviorMapPointNode(
+                        point = point,
+                        size = size,
+                        selected = selected,
+                        dimmed = dimmed,
+                        modifier =
+                            Modifier
+                                .offset(x = x, y = y)
+                                .zIndex(z),
+                        onClick = { onSelectPoint(point) },
+                    )
+                }
+            }
+            BehaviorMapLegend(
+                activeRoles = activeLegendRoles,
+                onToggleRole = onToggleLegendRole,
+            )
+        }
+    }
+}
+
+private fun behaviorMapIconRadius(weight: Float): Dp {
+    val normalized = weight.coerceIn(0f, 1f)
+    val logScaled = kotlin.math.ln(1f + normalized * 15f) / kotlin.math.ln(16f)
+    val radius = 3f + logScaled * 29f
+    return radius.dp
+}
+
+@Composable
+private fun BehaviorMapAxisLabel(
+    text: String,
+    modifier: Modifier = Modifier,
+    vertical: Boolean = false,
+) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+        textAlign = TextAlign.Center,
+        modifier =
+            if (vertical) {
+                modifier.width(28.dp)
+            } else {
+                modifier
+            },
+    )
+}
+
+@Composable
+private fun BehaviorMapTickLabel(text: String, modifier: Modifier = Modifier) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelSmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.86f),
+        modifier = modifier,
+    )
+}
+
+private fun behaviorMapNodeSize(iconSize: Dp): Dp {
+    val ringStroke = behaviorMapRingStroke(iconSize)
+    val ringSize = iconSize + ringStroke * 4f
+    return maxOf(ringSize, 24.dp)
+}
+
+private fun behaviorMapRingStroke(iconSize: Dp): Dp =
+    (iconSize * 0.045f).coerceIn(0.72.dp, 1.92.dp)
+
+private fun behaviorMapJitter(packageName: String, salt: Int): Dp {
+    val bucket = ((packageName.hashCode() xor salt) and Int.MAX_VALUE) % 9
+    return (bucket - 4).dp
+}
+
+@Composable
+private fun BehaviorMapPointNode(
+    point: BehaviorMapPoint,
+    size: Dp,
+    selected: Boolean,
+    dimmed: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    val dimmedColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.62f)
+    val roleColor = if (dimmed) dimmedColor else behaviorMapRoleColor(point.role)
+    val isGrouped = point.role != BehaviorMapRole.UNGROUPED
+    val iconSize = size
+    val ringStroke = behaviorMapRingStroke(size)
+    val ringSize = size + ringStroke * 4f
+    val iconColorFilter = if (dimmed) behaviorMapDisabledColorFilter() else null
+    Box(
+        modifier =
+            modifier
+                .size(maxOf(ringSize, 24.dp))
+                .graphicsLayer { alpha = if (dimmed) 0.10f else 1f }
+                .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (isGrouped) {
+            Canvas(modifier = Modifier.size(ringSize)) {
+                val strokePx = ringStroke.toPx()
+                val iconRadius = iconSize.toPx() / 2f
+                val center = Offset(this.size.width / 2f, this.size.height / 2f)
+                drawCircle(
+                    color = roleColor,
+                    radius = iconRadius + strokePx * 1.5f,
+                    center = center,
+                    style = Stroke(width = strokePx),
+                )
+                drawCircle(
+                    color = Color.White.copy(alpha = 0.96f),
+                    radius = iconRadius + strokePx * 0.5f,
+                    center = center,
+                    style = Stroke(width = strokePx),
+                )
+            }
+        }
+        BehaviorMapAppIcon(
+            pkg = point.packageName,
+            size = size,
+            iconPadding = 0.dp,
+            showBorder = false,
+            colorFilter = iconColorFilter,
+        )
+    }
+}
+
+@Composable
+private fun BehaviorMapAppIcon(
+    pkg: String,
+    size: Dp,
+    iconPadding: Dp,
+    showBorder: Boolean,
+    colorFilter: ColorFilter?,
+) {
+    val context = LocalContext.current
+    val icon = remember(pkg) {
+        AppVisualCache.getIcon(context, pkg)
+    }
+    Surface(
+        modifier = Modifier.size(size),
+        shape = CircleShape,
+        color = MaterialTheme.colorScheme.surface,
+        border = if (showBorder) BorderStroke(1.dp, Color.White.copy(alpha = 0.95f)) else null,
+    ) {
+        if (icon != null) {
+            val bitmap = remember(icon) {
+                icon
+                    .toBitmap(width = 96, height = 96, config = Bitmap.Config.ARGB_8888)
+                    .copy(Bitmap.Config.ARGB_8888, false)
+                    .asImageBitmap()
+            }
+            Image(
+                bitmap = bitmap,
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                colorFilter = colorFilter,
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .padding(iconPadding)
+                        .clip(CircleShape)
+                        .graphicsLayer {
+                            scaleX = 1.08f
+                            scaleY = 1.08f
+                        },
+            )
+        }
+    }
+}
+
+@Composable
+private fun BehaviorMapLegend(
+    activeRoles: Set<BehaviorMapRole>,
+    onToggleRole: (BehaviorMapRole) -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        BehaviorMapLegendButton(
+            label = AppText.t("stats_behavior_map_role_control"),
+            color = behaviorMapRoleColor(BehaviorMapRole.CONTROL),
+            active = BehaviorMapRole.CONTROL in activeRoles,
+            modifier = Modifier.weight(1f),
+            onClick = { onToggleRole(BehaviorMapRole.CONTROL) },
+        )
+        BehaviorMapLegendButton(
+            label = AppText.t("stats_behavior_map_role_encourage"),
+            color = behaviorMapRoleColor(BehaviorMapRole.ENCOURAGE),
+            active = BehaviorMapRole.ENCOURAGE in activeRoles,
+            modifier = Modifier.weight(1f),
+            onClick = { onToggleRole(BehaviorMapRole.ENCOURAGE) },
+        )
+        BehaviorMapLegendButton(
+            label = AppText.t("stats_behavior_map_role_ungrouped"),
+            color = behaviorMapRoleColor(BehaviorMapRole.UNGROUPED),
+            active = BehaviorMapRole.UNGROUPED in activeRoles,
+            modifier = Modifier.weight(1f),
+            onClick = { onToggleRole(BehaviorMapRole.UNGROUPED) },
+        )
+    }
+}
+
+@Composable
+private fun BehaviorMapLegendButton(
+    label: String,
+    color: Color,
+    active: Boolean,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    val inactiveColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.48f)
+    val contentColor = if (active) MaterialTheme.colorScheme.onSurfaceVariant else inactiveColor
+    val indicatorColor = if (active) color else inactiveColor
+    Surface(
+        modifier =
+            modifier
+                .height(34.dp)
+                .clickable(onClick = onClick),
+        shape = RoundedCornerShape(10.dp),
+        color =
+            if (active) {
+                color.copy(alpha = 0.10f)
+            } else {
+                MaterialTheme.colorScheme.surfaceContainerHigh.copy(alpha = 0.34f)
+            },
+        border = null,
+    ) {
+        Row(
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 4.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center,
+        ) {
+            Box(
+                modifier =
+                    Modifier
+                        .size(12.dp)
+                        .border(1.4.dp, indicatorColor, CircleShape),
+            )
+            Spacer(modifier = Modifier.width(4.dp))
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall,
+                color = contentColor,
+                textDecoration = if (active) TextDecoration.None else TextDecoration.LineThrough,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
+private fun behaviorMapDisabledColorFilter(): ColorFilter {
+    val matrix = ColorMatrix()
+    matrix.setToSaturation(0f)
+    return ColorFilter.colorMatrix(matrix)
+}
+
+@Composable
+private fun BehaviorMapSelectedPointCard(point: BehaviorMapPoint) {
+    Surface(
+        shape = RoundedCornerShape(18.dp),
+        color = behaviorMapRoleColor(point.role).copy(alpha = 0.10f),
+        border = BorderStroke(1.dp, behaviorMapRoleColor(point.role).copy(alpha = 0.22f)),
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            AppIconCircle(pkg = point.packageName, size = 38.dp)
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(3.dp),
+            ) {
+                Text(
+                    text = point.label,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = point.quadrantLabel,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Column(horizontalAlignment = Alignment.End) {
+                Text(text = formatDuration(point.usageMillis), style = MaterialTheme.typography.labelLarge)
+                Text(
+                    text = AppText.t("stats_value_times_4", point.openCount),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+private enum class BehaviorMapMatrixColumn {
+    HIGH_FREQ_LOW_TIME,
+    LOW_FREQ_HIGH_TIME,
+    HIGH_FREQ_HIGH_TIME,
+}
+
+@Composable
+private fun BehaviorMapMatrix(data: BehaviorMapSectionData) {
+    val roles = listOf(BehaviorMapRole.ENCOURAGE, BehaviorMapRole.UNGROUPED, BehaviorMapRole.CONTROL)
+    val columns =
+        listOf(
+            BehaviorMapMatrixColumn.HIGH_FREQ_LOW_TIME,
+            BehaviorMapMatrixColumn.LOW_FREQ_HIGH_TIME,
+            BehaviorMapMatrixColumn.HIGH_FREQ_HIGH_TIME,
+        )
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        roles.forEach { role ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                columns.forEach { column ->
+                    BehaviorMapMatrixCard(
+                        role = role,
+                        column = column,
+                        point = data.matrixPoint(role, column),
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            }
+        }
+    }
+}
+
+private fun BehaviorMapSectionData.matrixPoint(
+    role: BehaviorMapRole,
+    column: BehaviorMapMatrixColumn,
+): BehaviorMapPoint? =
+    points
+        .filter { it.role == role }
+        .filter { point ->
+            val highDuration = point.usageMillis >= durationThresholdMillis
+            val highOpens = point.openCount >= openThreshold
+            when (column) {
+                BehaviorMapMatrixColumn.HIGH_FREQ_LOW_TIME -> highOpens && !highDuration
+                BehaviorMapMatrixColumn.LOW_FREQ_HIGH_TIME -> !highOpens && highDuration
+                BehaviorMapMatrixColumn.HIGH_FREQ_HIGH_TIME -> highOpens && highDuration
+            }
+        }
+        .maxWithOrNull(
+            compareBy<BehaviorMapPoint> { it.attentionWeight }
+                .thenBy { it.usageMillis }
+                .thenBy { it.openCount },
+        )
+
+@Composable
+private fun BehaviorMapMatrixCard(
+    role: BehaviorMapRole,
+    column: BehaviorMapMatrixColumn,
+    point: BehaviorMapPoint?,
+    modifier: Modifier = Modifier,
+) {
+    val roleColor = behaviorMapRoleColor(role)
+    Surface(
+        modifier = modifier.aspectRatio(1f),
+        shape = RoundedCornerShape(12.dp),
+        color = roleColor.copy(alpha = if (point == null) 0.06f else 0.11f),
+        border = BorderStroke(1.dp, roleColor.copy(alpha = if (point == null) 0.16f else 0.28f)),
+    ) {
+        Column(
+            modifier =
+                Modifier
+                    .fillMaxSize()
+                    .padding(horizontal = 7.dp, vertical = 8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.SpaceBetween,
+        ) {
+            Text(
+                text = behaviorMapMatrixTitle(role, column),
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+                textAlign = TextAlign.Center,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (point == null) {
+                Box(
+                    modifier =
+                        Modifier
+                            .size(34.dp)
+                            .border(1.4.dp, roleColor.copy(alpha = 0.62f), CircleShape),
+                )
+            } else {
+                AppIconCircle(
+                    pkg = point.packageName,
+                    size = 34.dp,
+                    iconPadding = 0.dp,
+                    showBorder = false,
+                )
+            }
+            Text(
+                text =
+                    AppText.t(
+                        "stats_behavior_map_matrix_meta",
+                        behaviorMapRoleLabel(role),
+                        behaviorMapMatrixColumnLabel(column),
+                    ),
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text =
+                    if (point == null) {
+                        AppText.t("stats_behavior_map_matrix_empty")
+                    } else {
+                        AppText.t("stats_behavior_map_matrix_value", point.openCount, formatDuration(point.usageMillis))
+                    },
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.86f),
+                textAlign = TextAlign.Center,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
+private fun behaviorMapRoleLabel(role: BehaviorMapRole): String =
+    when (role) {
+        BehaviorMapRole.CONTROL -> AppText.t("stats_behavior_map_role_control")
+        BehaviorMapRole.ENCOURAGE -> AppText.t("stats_behavior_map_role_encourage")
+        BehaviorMapRole.UNGROUPED -> AppText.t("stats_behavior_map_role_ungrouped")
+    }
+
+@Composable
+private fun behaviorMapMatrixColumnLabel(column: BehaviorMapMatrixColumn): String =
+    when (column) {
+        BehaviorMapMatrixColumn.HIGH_FREQ_LOW_TIME -> AppText.t("stats_behavior_map_matrix_high_freq_low_time")
+        BehaviorMapMatrixColumn.LOW_FREQ_HIGH_TIME -> AppText.t("stats_behavior_map_matrix_low_freq_high_time")
+        BehaviorMapMatrixColumn.HIGH_FREQ_HIGH_TIME -> AppText.t("stats_behavior_map_matrix_high_freq_high_time")
+    }
+
+@Composable
+private fun behaviorMapMatrixTitle(
+    role: BehaviorMapRole,
+    column: BehaviorMapMatrixColumn,
+): String =
+    when (role) {
+        BehaviorMapRole.ENCOURAGE ->
+            when (column) {
+                BehaviorMapMatrixColumn.HIGH_FREQ_LOW_TIME -> AppText.t("stats_behavior_map_quadrant_encourage_light_checkin")
+                BehaviorMapMatrixColumn.LOW_FREQ_HIGH_TIME -> AppText.t("stats_behavior_map_quadrant_encourage_deep_investment")
+                BehaviorMapMatrixColumn.HIGH_FREQ_HIGH_TIME -> AppText.t("stats_behavior_map_quadrant_encourage_steady_investment")
+            }
+        BehaviorMapRole.UNGROUPED ->
+            when (column) {
+                BehaviorMapMatrixColumn.HIGH_FREQ_LOW_TIME -> AppText.t("stats_behavior_map_quadrant_ungrouped_fragment")
+                BehaviorMapMatrixColumn.LOW_FREQ_HIGH_TIME -> AppText.t("stats_behavior_map_quadrant_ungrouped_long_use")
+                BehaviorMapMatrixColumn.HIGH_FREQ_HIGH_TIME -> AppText.t("stats_behavior_map_quadrant_ungrouped_high_use")
+            }
+        BehaviorMapRole.CONTROL ->
+            when (column) {
+                BehaviorMapMatrixColumn.HIGH_FREQ_LOW_TIME -> AppText.t("stats_behavior_map_quadrant_control_frequent_interrupt")
+                BehaviorMapMatrixColumn.LOW_FREQ_HIGH_TIME -> AppText.t("stats_behavior_map_quadrant_control_long_slip")
+                BehaviorMapMatrixColumn.HIGH_FREQ_HIGH_TIME -> AppText.t("stats_behavior_map_quadrant_control_repeated_trap")
+            }
+    }
+
+@Composable
+private fun BehaviorMapHighlightCard(
+    highlight: BehaviorMapHighlight,
+    modifier: Modifier = Modifier,
+) {
+    val color = behaviorMapInsightColor(highlight.tone)
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(18.dp),
+        color = color.copy(alpha = 0.10f),
+        border = BorderStroke(1.dp, color.copy(alpha = 0.16f)),
+    ) {
+        Row(
+            modifier = Modifier.padding(12.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            AppIconCircle(pkg = highlight.point.packageName, size = 34.dp)
+            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(
+                    text = highlight.title,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Text(
+                    text = highlight.point.label,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                Text(
+                    text = AppText.t("stats_behavior_map_point_value", formatDuration(highlight.point.usageMillis), highlight.point.openCount),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun behaviorMapRoleColor(role: BehaviorMapRole): Color =
+    when (role) {
+        BehaviorMapRole.CONTROL -> Color(0xFFE95A3B)
+        BehaviorMapRole.ENCOURAGE -> Color(0xFF2FBF71)
+        BehaviorMapRole.UNGROUPED -> MaterialTheme.colorScheme.outline.copy(alpha = 0.72f)
+    }
+
+@Composable
+private fun behaviorMapInsightColor(tone: BehaviorMapInsightTone): Color =
+    when (tone) {
+        BehaviorMapInsightTone.WARNING -> Color(0xFFE95A3B)
+        BehaviorMapInsightTone.POSITIVE -> Color(0xFF2FBF71)
+        BehaviorMapInsightTone.NEUTRAL -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.62f)
+    }
 
 @Composable
 internal fun BehaviorRadarPanel(

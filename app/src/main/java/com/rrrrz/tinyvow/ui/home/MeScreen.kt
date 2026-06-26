@@ -3,6 +3,7 @@ package com.rrrrz.tinyvow.ui.home
 import com.rrrrz.tinyvow.i18n.AppText
 
 import android.content.Intent
+import com.rrrrz.tinyvow.BuildConfig
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
@@ -419,13 +420,15 @@ fun MeScreen(
             }
 
             MeMenuSection(title = AppText.t("me_feature_settings_section")) {
-                MeMenuItem(
-                    icon = Icons.Default.AccessTime,
-                    title = AppText.t("day_boundary_settings_title"),
-                    trailingText = AppText.t("day_boundary_hour_value", dayBoundaryHour),
-                    onClick = onNavigateToDayBoundarySettings,
-                )
-                SettingsDivider()
+                if (BuildConfig.DEBUG) {
+                    MeMenuItem(
+                        icon = Icons.Default.AccessTime,
+                        title = AppText.t("day_boundary_settings_title"),
+                        trailingText = AppText.t("day_boundary_hour_value", dayBoundaryHour),
+                        onClick = onNavigateToDayBoundarySettings,
+                    )
+                    SettingsDivider()
+                }
                 MeMenuItem(
                     icon = Icons.Default.Notifications,
                     title = AppText.t("notification_settings_title"),

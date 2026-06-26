@@ -915,6 +915,46 @@ object AppDatabaseMigrations {
             }
         }
 
+    val MIGRATION_24_25 =
+        object : Migration(24, 25) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `app_groups` ADD COLUMN `encourage_metric` TEXT NOT NULL DEFAULT 'APP_USAGE'")
+                db.execSQL("ALTER TABLE `app_groups` ADD COLUMN `step_target` INTEGER NOT NULL DEFAULT 8000")
+                db.execSQL("ALTER TABLE `app_groups` ADD COLUMN `points_per_step` REAL NOT NULL DEFAULT 0.01")
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `step_days` (
+                        `id` TEXT NOT NULL,
+                        `step_date` TEXT NOT NULL,
+                        `steps` INTEGER NOT NULL,
+                        `sensor_base_steps` INTEGER NOT NULL,
+                        `last_sensor_steps` INTEGER NOT NULL,
+                        `updated_at` INTEGER NOT NULL,
+                        PRIMARY KEY(`id`)
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS `index_step_days_step_date` ON `step_days` (`step_date`)"
+                )
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `step_point_credits` (
+                        `id` TEXT NOT NULL,
+                        `group_id` TEXT NOT NULL,
+                        `credit_date` TEXT NOT NULL,
+                        `credited_steps` INTEGER NOT NULL,
+                        `updated_at` INTEGER NOT NULL,
+                        PRIMARY KEY(`id`)
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS `index_step_point_credits_group_id_credit_date` ON `step_point_credits` (`group_id`, `credit_date`)"
+                )
+            }
+        }
+
     val ALL: Array<Migration> = arrayOf(
         MIGRATION_9_10,
         MIGRATION_10_11,
@@ -931,5 +971,6 @@ object AppDatabaseMigrations {
         MIGRATION_21_22,
         MIGRATION_22_23,
         MIGRATION_23_24,
+        MIGRATION_24_25,
     )
 }

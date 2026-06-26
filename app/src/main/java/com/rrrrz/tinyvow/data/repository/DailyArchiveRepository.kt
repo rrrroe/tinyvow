@@ -13,6 +13,7 @@ import com.rrrrz.tinyvow.data.db.AppGroupEntity
 import com.rrrrz.tinyvow.data.db.DailyArchiveEntity
 import com.rrrrz.tinyvow.data.db.DailyArchiveStateEntity
 import com.rrrrz.tinyvow.data.db.DailyGroupArchiveEntity
+import com.rrrrz.tinyvow.data.db.EncourageMetric
 import com.rrrrz.tinyvow.data.db.GroupAppCrossRef
 import com.rrrrz.tinyvow.data.db.GroupType
 import com.rrrrz.tinyvow.data.db.LimitPeriod
@@ -551,6 +552,8 @@ class DailyArchiveRepository(
                 limitMinutes = snapshot?.limitMinutes ?: current!!.limitMinutes,
                 bonusMinutes = bonusMinutes,
                 pointsPerMinute = snapshot?.pointsPerMinute ?: current!!.pointsPerMinute,
+                encourageMetric = if (snapshot != null) EncourageMetric.APP_USAGE else current!!.encourageMetric,
+                stepTarget = current?.stepTarget ?: 8000,
                 packageNames = packageNames,
                 sortOrder = snapshot?.sortOrder ?: current?.sortOrder ?: 0,
             )
@@ -577,6 +580,8 @@ class DailyArchiveRepository(
         blockEventCount: Int,
     ): GroupArchiveBuildResult {
         val packageNames = group.packageNames
+        val isStepEncourage = group.type == GroupType.ENCOURAGE && group.encourageMetric == EncourageMetric.STEPS
+        val stepCount = if (isStepEncourage) database.stepDayDao().getByDate(archiveDate)?.steps ?: 0 else 0
         val dailyUsageMillis = packageNames.sumOf { packageName -> dailyUsageByPackage[packageName] ?: 0L }
         val periodUsageMillisAtClose = packageNames.sumOf { packageName -> periodUsageByPackage[packageName] ?: 0L }
         val periodUsageMillisBeforeDay = packageNames.sumOf { packageName -> periodUsageBeforeDayByPackage[packageName] ?: 0L }
@@ -601,7 +606,12 @@ class DailyArchiveRepository(
         val completed =
             when (group.type) {
                 GroupType.CONTROL -> controlCompleted
-                GroupType.ENCOURAGE -> periodUsageMillisAtClose >= effectiveLimitMillisAtClose
+                GroupType.ENCOURAGE ->
+                    if (isStepEncourage) {
+                        stepCount >= group.stepTarget
+                    } else {
+                        periodUsageMillisAtClose >= effectiveLimitMillisAtClose
+                    }
             }
         val targetMillis = group.limitMinutes * 60_000L
         val targetReachedDuringDay =
@@ -665,14 +675,18 @@ class DailyArchiveRepository(
             when (group.type) {
                 GroupType.CONTROL -> pointLedgerDao.sumEarnedByDateAndGroup(archiveDate, group.id)
                 GroupType.ENCOURAGE ->
-                    calculateUsageEarnedPoints(normalUsageMillis, group.pointsPerMinute) +
-                        calculateUsageEarnedPoints(doubledUsageMillis, group.pointsPerMinute) * pointsMultiplier +
-                        if (targetReachedDuringDay) {
-                            calculateTargetBonusPoints(group.limitMinutes, group.pointsPerMinute) *
-                                if (targetReachedAfterDoubleActivation) pointsMultiplier else 1.0
-                        } else {
-                            0.0
-                        }
+                    if (isStepEncourage) {
+                        pointLedgerDao.sumEarnedByDateAndGroup(archiveDate, group.id)
+                    } else {
+                        calculateUsageEarnedPoints(normalUsageMillis, group.pointsPerMinute) +
+                            calculateUsageEarnedPoints(doubledUsageMillis, group.pointsPerMinute) * pointsMultiplier +
+                            if (targetReachedDuringDay) {
+                                calculateTargetBonusPoints(group.limitMinutes, group.pointsPerMinute) *
+                                    if (targetReachedAfterDoubleActivation) pointsMultiplier else 1.0
+                            } else {
+                                0.0
+                            }
+                    }
             }
 
         return GroupArchiveBuildResult(
@@ -960,6 +974,8 @@ class DailyArchiveRepository(
         val limitMinutes: Int,
         val bonusMinutes: Int,
         val pointsPerMinute: Double,
+        val encourageMetric: EncourageMetric,
+        val stepTarget: Int,
         val packageNames: List<String>,
         val sortOrder: Int,
     )

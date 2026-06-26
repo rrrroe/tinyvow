@@ -15,6 +15,7 @@ import com.rrrrz.tinyvow.data.db.CrossRefDao
 import com.rrrrz.tinyvow.data.db.DailyArchiveDao
 import com.rrrrz.tinyvow.data.db.DailyGroupArchiveDao
 import com.rrrrz.tinyvow.data.db.DailyGroupArchiveEntity
+import com.rrrrz.tinyvow.data.db.EncourageMetric
 import com.rrrrz.tinyvow.data.db.GroupAppCrossRef
 import com.rrrrz.tinyvow.data.db.GroupType
 import com.rrrrz.tinyvow.data.db.LimitPeriod
@@ -250,6 +251,7 @@ class AppLimitRepository(
                     limitPeriod = limitPeriod,
                     limitMinutes = limitMinutes,
                     pointsPerMinute = pointsPerMinute,
+                    encourageMetric = EncourageMetric.APP_USAGE,
                     createdAt = existing?.createdAt ?: System.currentTimeMillis(),
                     updatedAt = System.currentTimeMillis(),
                     isDeleted = existing?.isDeleted ?: false,
@@ -276,6 +278,12 @@ class AppLimitRepository(
             val now = System.currentTimeMillis()
             groupDao.softDeleteGroup(groupId, now)
             crossRefDao.softDeleteAllForGroup(groupId, now)
+        }
+    }
+
+    suspend fun deleteDeprecatedStepGroups() {
+        withContext(Dispatchers.IO) {
+            groupDao.softDeleteDeprecatedStepGroups(System.currentTimeMillis())
         }
     }
 

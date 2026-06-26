@@ -28,6 +28,9 @@ interface AppGroupDao {
     @Query("UPDATE app_groups SET is_deleted = 1, updated_at = :updatedAt WHERE id = :groupId")
     suspend fun softDeleteGroup(groupId: String, updatedAt: Long)
 
+    @Query("UPDATE app_groups SET is_deleted = 1, updated_at = :updatedAt WHERE encourage_metric = 'STEPS' AND is_deleted = 0")
+    suspend fun softDeleteDeprecatedStepGroups(updatedAt: Long)
+
     @Query("SELECT COALESCE(MAX(sort_order), -1) FROM app_groups WHERE type = :type AND is_deleted = 0")
     suspend fun getMaxSortOrder(type: GroupType): Int
 

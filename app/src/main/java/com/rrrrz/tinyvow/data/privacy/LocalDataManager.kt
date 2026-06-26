@@ -299,6 +299,8 @@ class LocalDataManager(
             LocalDataTable("daily_group_archives", "Per-group daily usage summaries."),
             LocalDataTable("daily_app_archives", "Per-app package labels, usage duration, sessions, opens, and night usage."),
             LocalDataTable("daily_app_time_slice_archives", "Per-app five-minute foreground usage slices used by daily attention maps."),
+            LocalDataTable("step_days", "Local daily step totals used by step encouragement groups."),
+            LocalDataTable("step_point_credits", "Local counters preventing duplicate step point credits."),
             LocalDataTable("point_ledger", "Local points earned or spent."),
             LocalDataTable("redemptions", "Local reward catalog."),
             LocalDataTable("redemption_history", "Local reward redemption history."),

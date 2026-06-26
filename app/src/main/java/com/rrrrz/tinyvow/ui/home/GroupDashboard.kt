@@ -103,6 +103,7 @@ import androidx.compose.ui.zIndex
 import androidx.core.content.FileProvider
 import androidx.core.view.WindowCompat
 import coil.compose.AsyncImage
+import com.rrrrz.tinyvow.R
 import com.rrrrz.tinyvow.data.apps.ManagedApp
 import com.rrrrz.tinyvow.data.db.ActiveRewardEffectEntity
 import com.rrrrz.tinyvow.data.db.DailyGroupArchiveEntity
@@ -362,9 +363,9 @@ private fun SectionCard(
         Column(
             modifier = Modifier.padding(
                 horizontal = 14.dp,
-                vertical = 16.dp,
+                vertical = 12.dp,
             ),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -498,8 +499,8 @@ private fun GroupCard(
             .fillMaxWidth()
             .clip(RoundedCornerShape(TinyVowRadius.Control))
             .combinedClickable(onClick = onClick, onLongClick = onLongClick)
-            .padding(vertical = 7.dp),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
+            .padding(vertical = 4.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -802,9 +803,9 @@ private fun GroupDetailDialog(
     }
 
     LaunchedEffect(groupData.group.id, groupData.packageNames, today, dayStartHour) {
-        val usageRepository = MergedUsageRepository(context)
         weekUsageByDay = withContext(Dispatchers.IO) {
             val result = mutableListOf<Pair<LocalDate, Long>>()
+            val usageRepository = MergedUsageRepository(context)
             var date = weekStart
             while (!date.isAfter(today)) {
                 val start = BusinessDay.startOfDayMillis(date, zoneId, dayStartHour)
@@ -1093,7 +1094,8 @@ private fun GroupEditDialog(
     val canSaveBase = groupName.trim().isNotBlank() &&
         (limitText.toIntOrNull()?.coerceIn(1, 1440) != null) &&
         (forcedType != GroupType.ENCOURAGE || pointRateText.toDoubleOrNull() != null)
-    val appCountAllowed = ProFeatureGate.canSaveGroupApps(isProActive, selectedPackages.size)
+    val savedPackageCount = selectedPackages.size
+    val appCountAllowed = ProFeatureGate.canSaveGroupApps(isProActive, savedPackageCount)
     val canSave = canSaveBase && appCountAllowed
 
     val visibleApps = remember(installedApps, excludedPackages, showOnlyUsedInSevenDays, selectedPackages, searchQuery) {
@@ -1174,7 +1176,14 @@ private fun GroupEditDialog(
                             } else {
                                 0.0
                             }
-                            onSave(name, limit, forcedType, selectedPeriod, points, selectedPackages.toList())
+                            onSave(
+                                name,
+                                limit,
+                                forcedType,
+                                selectedPeriod,
+                                points,
+                                selectedPackages.toList(),
+                            )
                         },
                         enabled = canSaveBase
                     ) {

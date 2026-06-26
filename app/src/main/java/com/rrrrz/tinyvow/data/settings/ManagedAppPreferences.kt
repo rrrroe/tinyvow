@@ -11,7 +11,9 @@ import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.rrrrz.tinyvow.BuildConfig
 import com.rrrrz.tinyvow.data.supermode.SuperModeStoredState
+import com.rrrrz.tinyvow.data.steps.StepTrackingRepository
 import com.rrrrz.tinyvow.data.time.BusinessDay
 import com.rrrrz.tinyvow.ui.theme.DefaultThemeSeed
 import com.rrrrz.tinyvow.i18n.AppLanguage
@@ -40,6 +42,9 @@ data class StoredAppColorSelection(
 class ManagedAppPreferences(
     private val context: Context,
 ) {
+    private fun effectiveDayBoundaryHour(hour: Int?): Int =
+        if (BuildConfig.DEBUG) BusinessDay.normalizeStartHour(hour) else BusinessDay.DEFAULT_START_HOUR
+
     private object Keys {
         val selectedPackageName = stringPreferencesKey("selected_package_name")
         val userPoints = doublePreferencesKey("user_points")
@@ -81,6 +86,7 @@ class ManagedAppPreferences(
         val appColorDefaultAlgorithm = stringPreferencesKey("app_color_default_algorithm")
         val appColorChoicesJson = stringPreferencesKey("app_color_choices_json")
         val dailyRhythmCellIconsEnabled = booleanPreferencesKey("daily_rhythm_cell_icons_enabled")
+        val stepPointsPerStep = doublePreferencesKey("step_points_per_step")
     }
 
     val selectedPackageName: Flow<String?> = context.managedAppDataStore.data.map { preferences ->
@@ -135,7 +141,7 @@ class ManagedAppPreferences(
                 com.rrrrz.tinyvow.data.repository.ArchiveDateUtils.localDateAt(
                     System.currentTimeMillis(),
                     java.time.ZoneId.systemDefault(),
-                    BusinessDay.normalizeStartHour(preferences[Keys.dayBoundaryHour]),
+                    effectiveDayBoundaryHour(preferences[Keys.dayBoundaryHour]),
                 ),
             )
         if (lastReset == today) {
@@ -174,7 +180,7 @@ class ManagedAppPreferences(
     }
 
     val dayBoundaryHour: Flow<Int> = context.managedAppDataStore.data.map { preferences ->
-        BusinessDay.normalizeStartHour(preferences[Keys.dayBoundaryHour])
+        effectiveDayBoundaryHour(preferences[Keys.dayBoundaryHour])
     }
 
     val profileDisplayName: Flow<String?> = context.managedAppDataStore.data.map { preferences ->
@@ -230,6 +236,10 @@ class ManagedAppPreferences(
 
     val dailyRhythmCellIconsEnabled: Flow<Boolean> = context.managedAppDataStore.data.map { preferences ->
         preferences[Keys.dailyRhythmCellIconsEnabled] ?: false
+    }
+
+    val stepPointsPerStep: Flow<Double> = context.managedAppDataStore.data.map { preferences ->
+        preferences[Keys.stepPointsPerStep] ?: StepTrackingRepository.DEFAULT_POINTS_PER_STEP
     }
 
     fun sharePosterModuleIds(tabKey: String): Flow<List<String>> =
@@ -385,7 +395,7 @@ class ManagedAppPreferences(
     }
 
     suspend fun setDayBoundaryHour(hour: Int) {
-        val normalized = BusinessDay.normalizeStartHour(hour)
+        val normalized = effectiveDayBoundaryHour(hour)
         context.managedAppDataStore.edit { preferences ->
             preferences[Keys.dayBoundaryHour] = normalized
         }
@@ -595,6 +605,12 @@ class ManagedAppPreferences(
                 selections = current.selections + (packageName to StoredAppColorSelection(APP_COLOR_SOURCE_MANUAL, argb)),
                 manualColors = current.manualColors + (packageName to argb),
             )
+        }
+    }
+
+    suspend fun setStepPointsPerStep(pointsPerStep: Double) {
+        context.managedAppDataStore.edit { preferences ->
+            preferences[Keys.stepPointsPerStep] = pointsPerStep.coerceAtLeast(0.0)
         }
     }
 
