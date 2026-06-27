@@ -173,6 +173,36 @@ internal data class DailyBehaviorStructureMetric(
     val visualRatio: Float,
 )
 
+internal enum class TimeTideMetricType {
+    TOTAL,
+    ENCOURAGE,
+    CONTROL,
+    SAVED,
+}
+
+internal data class TimeTideMetric(
+    val type: TimeTideMetricType,
+    val label: String,
+    val currentMillis: Long,
+    val previousMillis: Long?,
+    val averageMillis: Long?,
+)
+
+internal data class DailyTimeTideSectionData(
+    val currentLabel: String,
+    val previousLabel: String,
+    val averageLabel: String,
+    val currentTotalMillis: Long,
+    val previousTotalMillis: Long?,
+    val averageTotalMillis: Long?,
+    val currentHourlyMillis: List<Long>,
+    val previousHourlyMillis: List<Long>,
+    val averageHourlyMillis: List<Long>,
+    val metrics: List<TimeTideMetric>,
+    val summaryTitle: String,
+    val summaryBody: String,
+)
+
 internal data class DailyBehaviorScoreMetric(
     val label: String,
     val score: Int,
@@ -550,6 +580,7 @@ internal data class DailyReportUiState(
     val timelineState: SectionState<TimelineSectionData> = SectionState.Loading,
     val topAppsState: SectionState<TopAppsSectionData> = SectionState.Loading,
     val behaviorState: SectionState<BehaviorSectionData> = SectionState.Loading,
+    val timeTideState: SectionState<DailyTimeTideSectionData> = SectionState.Loading,
     val comparisonState: SectionState<ComparisonSectionData> = SectionState.Loading,
     val behaviorMapState: SectionState<BehaviorMapSectionData> = SectionState.Loading,
     val periodReportState: SectionState<PeriodReportData> = SectionState.Empty,

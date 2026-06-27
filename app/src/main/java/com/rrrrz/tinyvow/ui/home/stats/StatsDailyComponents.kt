@@ -87,10 +87,12 @@ import androidx.compose.ui.graphics.ColorFilter
 import androidx.compose.ui.graphics.ColorMatrix
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
@@ -462,6 +464,696 @@ internal fun BattleMetricTile(
                 overflow = TextOverflow.Ellipsis,
             )
         }
+    }
+}
+
+@Composable
+internal fun DailyTimeTideCard(
+    timeTideState: SectionState<DailyTimeTideSectionData>,
+    animateValues: Boolean = false,
+) {
+    when (timeTideState) {
+        SectionState.Empty -> Unit
+        SectionState.Loading -> {
+            ReportCard {
+                SkeletonSectionHeader()
+                SkeletonBlock(
+                    modifier = Modifier.fillMaxWidth(),
+                    height = 330.dp,
+                    shape = RoundedCornerShape(24.dp),
+                )
+            }
+        }
+        is SectionState.Ready -> {
+            val themeColors = LocalThemeColors.current
+            val reportColors = LocalReportColors.current
+            val colorScheme = MaterialTheme.colorScheme
+            val colors =
+                TimeTideColors(
+                    current = themeColors.base,
+                    previous = lerp(themeColors.control, reportColors.danger, 0.42f),
+                    average = themeColors.encourage,
+                    control = themeColors.control,
+                    saved = reportColors.positive,
+                    surface = colorScheme.surface,
+                    onSurface = colorScheme.onSurface,
+                    muted = colorScheme.onSurfaceVariant,
+                    backgroundStart = lerp(colorScheme.surface, themeColors.baseContainer, 0.62f),
+                    backgroundMid = lerp(colorScheme.surface, themeColors.encourageContainer, 0.38f),
+                    backgroundEnd = lerp(colorScheme.surface, themeColors.controlContainer, 0.30f),
+                )
+            ReportCard {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(24.dp),
+                    color = colors.backgroundStart.copy(alpha = 0.88f),
+                    border = BorderStroke(1.dp, colorScheme.outlineVariant.copy(alpha = 0.24f)),
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(14.dp),
+                    ) {
+                        TimeTideHeader(colors = colors)
+                        TimeTideWavePanel(
+                            data = timeTideState.data,
+                            colors = colors,
+                            animateValues = animateValues,
+                        )
+                        TimeTideMetricGrid(
+                            metrics = timeTideState.data.metrics,
+                            colors = colors,
+                            animateValues = animateValues,
+                        )
+                        TimeTideSummaryPanel(
+                            title = timeTideState.data.summaryTitle,
+                            body = timeTideState.data.summaryBody,
+                            colors = colors,
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TimeTideHeader(colors: TimeTideColors) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.Top,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(
+                    text = AppText.t("stats_time_tide_title"),
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = colors.onSurface,
+                )
+                Surface(
+                    shape = RoundedCornerShape(999.dp),
+                    color = colors.current.copy(alpha = 0.13f),
+                    border = BorderStroke(1.dp, colors.current.copy(alpha = 0.18f)),
+                ) {
+                    Text(
+                        text = AppText.t("stats_time_tide_badge"),
+                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = colors.current,
+                    )
+                }
+            }
+            Text(
+                text = AppText.t("stats_time_tide_description"),
+                style = MaterialTheme.typography.bodyMedium,
+                color = colors.muted,
+            )
+        }
+        Icon(
+            imageVector = Icons.Default.Timeline,
+            contentDescription = null,
+            tint = colors.current,
+            modifier = Modifier.size(24.dp),
+        )
+    }
+}
+
+@Composable
+private fun TimeTideWavePanel(
+    data: DailyTimeTideSectionData,
+    colors: TimeTideColors,
+    animateValues: Boolean,
+) {
+    val maxValue =
+        (
+            data.currentHourlyMillis +
+                data.previousHourlyMillis +
+                data.averageHourlyMillis
+            ).maxOrNull()?.coerceAtLeast(1L) ?: 1L
+    val currentPeak = data.currentHourlyMillis.peakPoint()
+    val previousPeak = data.previousHourlyMillis.peakPoint()
+    val averagePeak = data.averageHourlyMillis.peakPoint()
+    Surface(
+        shape = RoundedCornerShape(22.dp),
+        color = Color.Transparent,
+        border = BorderStroke(1.dp, colors.onSurface.copy(alpha = 0.08f)),
+    ) {
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .height(300.dp)
+                    .background(
+                        Brush.verticalGradient(
+                            listOf(
+                                colors.backgroundStart,
+                                colors.backgroundMid,
+                                colors.backgroundEnd,
+                            ),
+                        ),
+                    ),
+        ) {
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                drawTimeTideBackdrop(colors = colors)
+                drawTimeTideAxis(colors = colors)
+                drawTimeTideCurve(
+                    values = data.averageHourlyMillis,
+                    maxValue = maxValue,
+                    color = colors.average,
+                    strokeWidth = 3.dp.toPx(),
+                    alpha = 0.72f,
+                )
+                drawTimeTideCurve(
+                    values = data.previousHourlyMillis,
+                    maxValue = maxValue,
+                    color = colors.previous,
+                    strokeWidth = 3.5.dp.toPx(),
+                    alpha = 0.78f,
+                )
+                drawTimeTideCurve(
+                    values = data.currentHourlyMillis,
+                    maxValue = maxValue,
+                    color = colors.current,
+                    strokeWidth = 5.dp.toPx(),
+                    alpha = 0.95f,
+                )
+                drawTimeTidePoint(currentPeak, maxValue, colors.current, 7.dp.toPx())
+                drawTimeTidePoint(previousPeak, maxValue, colors.previous, 5.5.dp.toPx())
+                drawTimeTidePoint(averagePeak, maxValue, colors.average, 5.5.dp.toPx())
+            }
+            TimeTideAxisLabels(
+                colors = colors,
+                modifier =
+                    Modifier
+                        .align(Alignment.Center)
+                        .offset(y = 6.dp)
+                        .padding(horizontal = 30.dp),
+            )
+            TimeTidePeakBubble(
+                label = data.currentLabel,
+                valueMillis = data.currentTotalMillis,
+                color = colors.current,
+                animateValues = animateValues,
+                modifier =
+                    Modifier
+                        .align(Alignment.TopCenter)
+                        .padding(top = 56.dp),
+            )
+            Row(
+                modifier =
+                    Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(horizontal = 12.dp, vertical = 10.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                TimeTideLegendDot(label = data.currentLabel, color = colors.current)
+                TimeTideLegendDot(label = data.previousLabel, color = colors.previous)
+                TimeTideLegendDot(label = data.averageLabel, color = colors.average)
+            }
+        }
+    }
+}
+
+@Composable
+private fun TimeTideAxisLabels(
+    colors: TimeTideColors,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        listOf(
+            AppText.t("stats_time_tide_axis_06"),
+            AppText.t("stats_time_tide_axis_12"),
+            AppText.t("stats_time_tide_axis_18"),
+            AppText.t("stats_time_tide_axis_24"),
+        ).forEach { label ->
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall,
+                color = colors.muted.copy(alpha = 0.78f),
+                maxLines = 1,
+            )
+        }
+    }
+}
+
+@Composable
+private fun TimeTidePeakBubble(
+    label: String,
+    valueMillis: Long,
+    color: Color,
+    animateValues: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    val valueText = formatTideMinutes(valueMillis)
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.80f),
+        border = BorderStroke(1.dp, color.copy(alpha = 0.22f)),
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 11.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold,
+                color = color,
+            )
+            if (animateValues) {
+                AnimatedMetricText(
+                    rawText = valueText,
+                    label = "time_tide_peak_$valueText",
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = color,
+                )
+            } else {
+                Text(
+                    text = valueText,
+                    style = MaterialTheme.typography.headlineSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = color,
+                    maxLines = 1,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun TimeTideLegendDot(label: String, color: Color) {
+    Surface(
+        shape = RoundedCornerShape(999.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.72f),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(5.dp),
+        ) {
+            Box(
+                modifier =
+                    Modifier
+                        .size(8.dp)
+                        .clip(CircleShape)
+                        .background(color),
+            )
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
+private fun TimeTideMetricGrid(
+    metrics: List<TimeTideMetric>,
+    colors: TimeTideColors,
+    animateValues: Boolean,
+) {
+    AdaptiveRowGrid(
+        itemCount = metrics.size,
+        compactColumns = 2,
+        expandedColumns = 4,
+        horizontalSpacing = 10.dp,
+        verticalSpacing = 10.dp,
+    ) { modifier, index ->
+        metrics.getOrNull(index)?.let { metric ->
+            TimeTideMetricCard(
+                metric = metric,
+                color = colors.metricColor(metric.type),
+                animateValues = animateValues,
+                modifier = modifier,
+            )
+        }
+    }
+}
+
+@Composable
+private fun TimeTideMetricCard(
+    metric: TimeTideMetric,
+    color: Color,
+    animateValues: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(18.dp),
+        color = color.copy(alpha = 0.08f),
+        border = BorderStroke(1.dp, color.copy(alpha = 0.18f)),
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Icon(
+                    imageVector = timeTideMetricIcon(metric.type),
+                    contentDescription = null,
+                    tint = color,
+                    modifier = Modifier.size(19.dp),
+                )
+                Text(
+                    text = metric.label,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            val valueText = formatTideMinutes(metric.currentMillis)
+            if (animateValues) {
+                AnimatedMetricText(
+                    rawText = valueText,
+                    label = "time_tide_metric_${metric.type}_$valueText",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = color,
+                )
+            } else {
+                Text(
+                    text = valueText,
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = color,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                TimeTideDeltaLine(
+                    label = AppText.t("stats_time_tide_vs_previous"),
+                    currentMillis = metric.currentMillis,
+                    baselineMillis = metric.previousMillis,
+                    positiveIsGood = metric.type.positiveDeltaIsGood(),
+                )
+                TimeTideDeltaLine(
+                    label = AppText.t("stats_time_tide_vs_average"),
+                    currentMillis = metric.currentMillis,
+                    baselineMillis = metric.averageMillis,
+                    positiveIsGood = metric.type.positiveDeltaIsGood(),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun TimeTideDeltaLine(
+    label: String,
+    currentMillis: Long,
+    baselineMillis: Long?,
+    positiveIsGood: Boolean,
+) {
+    val delta = baselineMillis?.let { currentMillis - it }
+    val color =
+        when {
+            delta == null || delta == 0L -> MaterialTheme.colorScheme.onSurfaceVariant
+            (delta > 0L) == positiveIsGood -> LocalReportColors.current.positive
+            else -> LocalReportColors.current.danger
+        }
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Text(
+            text = formatTideDelta(delta),
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = color,
+            maxLines = 1,
+        )
+    }
+}
+
+@Composable
+private fun TimeTideSummaryPanel(
+    title: String,
+    body: String,
+    colors: TimeTideColors,
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        color = lerp(MaterialTheme.colorScheme.surface, colors.current, 0.10f).copy(alpha = 0.92f),
+        border = BorderStroke(1.dp, colors.current.copy(alpha = 0.16f)),
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 13.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.Top,
+        ) {
+            Icon(
+                imageVector = Icons.Default.WbSunny,
+                contentDescription = null,
+                tint = colors.current,
+                modifier = Modifier.size(20.dp),
+            )
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = colors.onSurface,
+                )
+                Text(
+                    text = body,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = colors.muted,
+                )
+            }
+        }
+    }
+}
+
+private data class TimeTideColors(
+    val current: Color,
+    val previous: Color,
+    val average: Color,
+    val control: Color,
+    val saved: Color,
+    val surface: Color,
+    val onSurface: Color,
+    val muted: Color,
+    val backgroundStart: Color,
+    val backgroundMid: Color,
+    val backgroundEnd: Color,
+)
+
+private fun TimeTideColors.metricColor(type: TimeTideMetricType): Color =
+    when (type) {
+        TimeTideMetricType.TOTAL -> current
+        TimeTideMetricType.ENCOURAGE -> average
+        TimeTideMetricType.CONTROL -> control
+        TimeTideMetricType.SAVED -> saved
+    }
+
+private fun timeTideMetricIcon(type: TimeTideMetricType): ImageVector =
+    when (type) {
+        TimeTideMetricType.TOTAL -> Icons.Default.Schedule
+        TimeTideMetricType.ENCOURAGE -> Icons.Default.RocketLaunch
+        TimeTideMetricType.CONTROL -> Icons.Default.Bolt
+        TimeTideMetricType.SAVED -> Icons.Default.WbSunny
+    }
+
+private fun TimeTideMetricType.positiveDeltaIsGood(): Boolean =
+    when (this) {
+        TimeTideMetricType.TOTAL,
+        TimeTideMetricType.CONTROL -> false
+        TimeTideMetricType.ENCOURAGE,
+        TimeTideMetricType.SAVED -> true
+    }
+
+private fun List<Long>.peakPoint(): Pair<Int, Long> {
+    val index = indices.maxByOrNull { this[it] } ?: 0
+    return index to getOrElse(index) { 0L }
+}
+
+private fun DrawScope.drawTimeTideBackdrop(colors: TimeTideColors) {
+    drawCircle(
+        color = colors.saved.copy(alpha = 0.22f),
+        radius = 18.dp.toPx(),
+        center = Offset(size.width * 0.12f, size.height * 0.34f),
+    )
+    val moonCenter = Offset(size.width * 0.88f, size.height * 0.22f)
+    drawCircle(
+        color = colors.surface.copy(alpha = 0.88f),
+        radius = 17.dp.toPx(),
+        center = moonCenter,
+    )
+    drawCircle(
+        color = colors.backgroundStart,
+        radius = 15.dp.toPx(),
+        center = moonCenter + Offset(7.dp.toPx(), (-5).dp.toPx()),
+    )
+    val starColor = colors.onSurface.copy(alpha = 0.30f)
+    listOf(
+        0.22f to 0.18f,
+        0.41f to 0.14f,
+        0.58f to 0.20f,
+        0.76f to 0.16f,
+        0.94f to 0.35f,
+    ).forEach { (x, y) ->
+        drawCircle(
+            color = starColor,
+            radius = 2.dp.toPx(),
+            center = Offset(size.width * x, size.height * y),
+        )
+    }
+    drawPath(
+        path =
+            Path().apply {
+                moveTo(0f, size.height * 0.72f)
+                cubicTo(size.width * 0.26f, size.height * 0.56f, size.width * 0.48f, size.height * 0.82f, size.width, size.height * 0.62f)
+                lineTo(size.width, size.height)
+                lineTo(0f, size.height)
+                close()
+            },
+        color = colors.average.copy(alpha = 0.10f),
+    )
+}
+
+private fun DrawScope.drawTimeTideAxis(colors: TimeTideColors) {
+    val rect = timeTideChartRect()
+    val axisColor = colors.muted.copy(alpha = 0.36f)
+    drawLine(
+        color = axisColor,
+        start = Offset(rect.left, rect.centerY()),
+        end = Offset(rect.right, rect.centerY()),
+        strokeWidth = 1.dp.toPx(),
+        pathEffect = PathEffect.dashPathEffect(floatArrayOf(9.dp.toPx(), 8.dp.toPx())),
+    )
+    listOf(6, 12, 18, 23).forEach { hour ->
+        val x = rect.left + rect.width * (hour / 23f)
+        drawCircle(
+            color = colors.muted.copy(alpha = 0.52f),
+            radius = 3.dp.toPx(),
+            center = Offset(x, rect.centerY()),
+        )
+    }
+}
+
+private fun DrawScope.drawTimeTideCurve(
+    values: List<Long>,
+    maxValue: Long,
+    color: Color,
+    strokeWidth: Float,
+    alpha: Float,
+) {
+    val points = timeTidePoints(values, maxValue)
+    if (points.size < 2) return
+    val path = Path().apply {
+        moveTo(points.first().x, points.first().y)
+        points.zipWithNext().forEach { (from, to) ->
+            val midX = (from.x + to.x) / 2f
+            cubicTo(midX, from.y, midX, to.y, to.x, to.y)
+        }
+    }
+    drawPath(
+        path = path,
+        color = color.copy(alpha = 0.16f * alpha),
+        style = Stroke(width = strokeWidth + 5.dp.toPx(), cap = StrokeCap.Round),
+    )
+    drawPath(
+        path = path,
+        color = color.copy(alpha = alpha),
+        style = Stroke(width = strokeWidth, cap = StrokeCap.Round),
+    )
+}
+
+private fun DrawScope.drawTimeTidePoint(
+    peak: Pair<Int, Long>,
+    maxValue: Long,
+    color: Color,
+    radius: Float,
+) {
+    val point = timeTidePoint(peak.first, peak.second, maxValue)
+    drawCircle(
+        color = Color.White.copy(alpha = 0.92f),
+        radius = radius + 3.dp.toPx(),
+        center = point,
+    )
+    drawCircle(
+        color = color,
+        radius = radius,
+        center = point,
+    )
+}
+
+private data class TimeTideChartRect(
+    val left: Float,
+    val top: Float,
+    val right: Float,
+    val bottom: Float,
+) {
+    val width: Float get() = right - left
+    val height: Float get() = bottom - top
+    fun centerY(): Float = top + height * 0.55f
+}
+
+private fun DrawScope.timeTideChartRect(): TimeTideChartRect =
+    TimeTideChartRect(
+        left = 22.dp.toPx(),
+        top = 78.dp.toPx(),
+        right = size.width - 22.dp.toPx(),
+        bottom = size.height - 54.dp.toPx(),
+    )
+
+private fun DrawScope.timeTidePoints(values: List<Long>, maxValue: Long): List<Offset> =
+    (0 until 24).map { hour ->
+        timeTidePoint(hour, values.getOrElse(hour) { 0L }, maxValue)
+    }
+
+private fun DrawScope.timeTidePoint(hour: Int, value: Long, maxValue: Long): Offset {
+    val rect = timeTideChartRect()
+    val x = rect.left + rect.width * (hour.coerceIn(0, 23) / 23f)
+    val ratio = kotlin.math.sqrt((value.toFloat() / maxValue.toFloat()).coerceIn(0f, 1f))
+    val y = rect.bottom - rect.height * (0.12f + ratio * 0.78f)
+    return Offset(x, y)
+}
+
+private fun formatTideMinutes(millis: Long): String {
+    val minutes = (millis / 60_000L).coerceAtLeast(0L)
+    return AppText.t("stats_time_tide_minutes_value", minutes)
+}
+
+private fun formatTideDelta(deltaMillis: Long?): String {
+    if (deltaMillis == null) return AppText.t("stats_not_enough_samples")
+    val minutes = kotlin.math.abs(deltaMillis / 60_000L)
+    return when {
+        deltaMillis > 0L -> AppText.t("stats_time_tide_delta_positive", minutes)
+        deltaMillis < 0L -> AppText.t("stats_time_tide_delta_negative", minutes)
+        else -> AppText.t("stats_time_tide_delta_flat")
     }
 }
 

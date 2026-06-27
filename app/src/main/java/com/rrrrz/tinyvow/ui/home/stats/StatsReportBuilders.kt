@@ -72,6 +72,7 @@ internal fun createRefreshingUiState(
         timelineState = if (selectedTab == ReportTab.DAY) SectionState.Loading else SectionState.Empty,
         topAppsState = if (selectedTab == ReportTab.DAY) SectionState.Loading else SectionState.Empty,
         behaviorState = if (selectedTab == ReportTab.DAY) SectionState.Loading else SectionState.Empty,
+        timeTideState = if (selectedTab == ReportTab.DAY) SectionState.Loading else SectionState.Empty,
         comparisonState = if (selectedTab == ReportTab.DAY) SectionState.Loading else SectionState.Empty,
         behaviorMapState = if (selectedTab == ReportTab.DAY) SectionState.Loading else SectionState.Empty,
         periodReportState =
@@ -134,6 +135,7 @@ internal suspend fun buildArchivedWindowReportUiState(
                 timelineState = SectionState.Empty,
                 topAppsState = SectionState.Empty,
                 behaviorState = SectionState.Empty,
+                timeTideState = SectionState.Empty,
                 comparisonState = SectionState.Empty,
                 behaviorMapState = SectionState.Empty,
                 periodReportState = SectionState.Empty,
@@ -260,6 +262,7 @@ internal suspend fun buildArchivedWindowReportUiState(
             timelineState = SectionState.Empty,
             topAppsState = SectionState.Empty,
             behaviorState = SectionState.Empty,
+            timeTideState = SectionState.Empty,
             comparisonState = SectionState.Empty,
             behaviorMapState = SectionState.Empty,
             periodReportState = SectionState.Ready(reportData),
@@ -1634,6 +1637,7 @@ internal suspend fun buildArchivedDayReportUiState(
                 timelineState = SectionState.Empty,
                 topAppsState = SectionState.Empty,
                 behaviorState = SectionState.Empty,
+                timeTideState = SectionState.Empty,
                 comparisonState = SectionState.Empty,
                 behaviorMapState = SectionState.Empty,
                 selectedArchiveDate = null,
@@ -1704,6 +1708,13 @@ internal suspend fun buildArchivedDayReportUiState(
             topApp = topApps.firstOrNull(),
         )
     val earlierArchives = archivesDesc.drop(selectedIndex + 1).take(7)
+    val earlierSnapshotsByDate =
+        earlierArchives.associate { archive ->
+            archive.archiveDate to
+                mergeArchivedAppSnapshots(
+                    archiveRepository.getAppArchivesByDate(archive.archiveDate).first(),
+                )
+        }
     val averagePerDayUsage =
         if (earlierArchives.isEmpty()) {
             0L
@@ -1712,11 +1723,7 @@ internal suspend fun buildArchivedDayReportUiState(
         }
     val earlierMetrics =
         earlierArchives.map { archive ->
-            buildArchivedWindowMetrics(
-                mergeArchivedAppSnapshots(
-                    archiveRepository.getAppArchivesByDate(archive.archiveDate).first(),
-                ),
-            )
+            buildArchivedWindowMetrics(earlierSnapshotsByDate[archive.archiveDate].orEmpty())
         }
     val averageMetrics =
         WindowMetrics(
@@ -1801,6 +1808,15 @@ internal suspend fun buildArchivedDayReportUiState(
             archive = selectedArchive,
             groupArchives = currentGroupArchives,
         )
+    val timeTideData =
+        buildDailyTimeTideSectionData(
+            currentArchive = selectedArchive,
+            previousArchive = previousArchive,
+            currentSnapshots = currentSnapshots,
+            previousSnapshots = previousSnapshots,
+            averageArchives = earlierArchives,
+            averageSnapshots = earlierSnapshotsByDate.values.toList(),
+        )
     val shareData =
         buildShareReportData(
             selectedTab = ReportTab.DAY,
@@ -1868,6 +1884,7 @@ internal suspend fun buildArchivedDayReportUiState(
                         ),
                     )
                 },
+            timeTideState = SectionState.Ready(timeTideData),
             comparisonState =
                 if (comparisons.isEmpty()) {
                     SectionState.Empty
@@ -2072,6 +2089,142 @@ internal fun buildArchivedDaySummary(
         tertiaryValue = formatDuration(averagePerDayUsage),
         tags = listOf(AppText.t("stats_net_points_value_3", formatSignedPointsLocal(archive.pointsNet)), AppText.t("stats_value_redemptions_2", archive.redemptionCount), AppText.t("stats_saved_duration_value", formatDuration(archive.savedMillis))),
     )
+}
+
+internal fun buildDailyTimeTideSectionData(
+    currentArchive: DailyArchiveEntity,
+    previousArchive: DailyArchiveEntity?,
+    currentSnapshots: List<ArchivedAppSnapshot>,
+    previousSnapshots: List<ArchivedAppSnapshot>,
+    averageArchives: List<DailyArchiveEntity>,
+    averageSnapshots: List<List<ArchivedAppSnapshot>>,
+): DailyTimeTideSectionData {
+    val averageTotal = averageArchives.averageLongOrNull { it.totalUsageMillis }
+    val averageEncourage = averageArchives.averageLongOrNull { it.encourageUsageMillis }
+    val averageControl = averageArchives.averageLongOrNull { it.controlUsageMillis }
+    val averageSaved = averageArchives.averageLongOrNull { it.savedMillis }
+    val metrics =
+        listOf(
+            TimeTideMetric(
+                type = TimeTideMetricType.TOTAL,
+                label = AppText.t("stats_time_tide_metric_total"),
+                currentMillis = currentArchive.totalUsageMillis,
+                previousMillis = previousArchive?.totalUsageMillis,
+                averageMillis = averageTotal,
+            ),
+            TimeTideMetric(
+                type = TimeTideMetricType.ENCOURAGE,
+                label = AppText.t("stats_time_tide_metric_invested"),
+                currentMillis = currentArchive.encourageUsageMillis,
+                previousMillis = previousArchive?.encourageUsageMillis,
+                averageMillis = averageEncourage,
+            ),
+            TimeTideMetric(
+                type = TimeTideMetricType.CONTROL,
+                label = AppText.t("stats_time_tide_metric_vow"),
+                currentMillis = currentArchive.controlUsageMillis,
+                previousMillis = previousArchive?.controlUsageMillis,
+                averageMillis = averageControl,
+            ),
+            TimeTideMetric(
+                type = TimeTideMetricType.SAVED,
+                label = AppText.t("stats_time_tide_metric_saved"),
+                currentMillis = currentArchive.savedMillis,
+                previousMillis = previousArchive?.savedMillis,
+                averageMillis = averageSaved,
+            ),
+        )
+    val summary = buildTimeTideSummary(
+        currentArchive = currentArchive,
+        previousArchive = previousArchive,
+        averageTotal = averageTotal,
+        averageEncourage = averageEncourage,
+        averageControl = averageControl,
+        averageSaved = averageSaved,
+    )
+    return DailyTimeTideSectionData(
+        currentLabel = AppText.t("stats_time_tide_current"),
+        previousLabel = AppText.t("stats_time_tide_previous"),
+        averageLabel = AppText.t("stats_time_tide_average"),
+        currentTotalMillis = currentArchive.totalUsageMillis,
+        previousTotalMillis = previousArchive?.totalUsageMillis,
+        averageTotalMillis = averageTotal,
+        currentHourlyMillis = hourlyTotals(currentSnapshots),
+        previousHourlyMillis = hourlyTotals(previousSnapshots),
+        averageHourlyMillis = averageHourlyTotals(averageSnapshots),
+        metrics = metrics,
+        summaryTitle = summary.first,
+        summaryBody = summary.second,
+    )
+}
+
+private fun buildTimeTideSummary(
+    currentArchive: DailyArchiveEntity,
+    previousArchive: DailyArchiveEntity?,
+    averageTotal: Long?,
+    averageEncourage: Long?,
+    averageControl: Long?,
+    averageSaved: Long?,
+): Pair<String, String> {
+    val totalAboveAverage =
+        averageTotal != null &&
+            averageTotal > 0L &&
+            currentArchive.totalUsageMillis > averageTotal * 1.15f
+    val totalBelowAverage =
+        averageTotal != null &&
+            averageTotal > 0L &&
+            currentArchive.totalUsageMillis < averageTotal * 0.85f
+    val encourageAboveAverage =
+        averageEncourage != null &&
+            averageEncourage > 0L &&
+            currentArchive.encourageUsageMillis > averageEncourage * 1.10f
+    val savedAboveAverage =
+        averageSaved != null &&
+            averageSaved > 0L &&
+            currentArchive.savedMillis > averageSaved * 1.10f
+    val controlLowerThanPrevious =
+        previousArchive != null &&
+            previousArchive.controlUsageMillis > 0L &&
+            currentArchive.controlUsageMillis < previousArchive.controlUsageMillis * 0.92f
+    val controlAboveAverage =
+        averageControl != null &&
+            averageControl > 0L &&
+            currentArchive.controlUsageMillis > averageControl * 1.10f
+    return when {
+        totalAboveAverage && encourageAboveAverage && (controlLowerThanPrevious || savedAboveAverage) ->
+            AppText.t("stats_time_tide_summary_rebound_title") to
+                AppText.t("stats_time_tide_summary_rebound_body")
+        totalAboveAverage && controlAboveAverage ->
+            AppText.t("stats_time_tide_summary_rising_title") to
+                AppText.t("stats_time_tide_summary_rising_body")
+        totalBelowAverage || savedAboveAverage ->
+            AppText.t("stats_time_tide_summary_calm_title") to
+                AppText.t("stats_time_tide_summary_calm_body")
+        else ->
+            AppText.t("stats_time_tide_summary_steady_title") to
+                AppText.t("stats_time_tide_summary_steady_body")
+    }
+}
+
+private fun List<DailyArchiveEntity>.averageLongOrNull(selector: (DailyArchiveEntity) -> Long): Long? {
+    if (isEmpty()) return null
+    return (sumOf(selector) / size.toDouble()).roundToLongSafe()
+}
+
+private fun hourlyTotals(items: List<ArchivedAppSnapshot>): List<Long> =
+    (0 until 24).map { hour ->
+        items.sumOf { item -> item.hourlyBuckets.getOrElse(hour) { 0L } }
+    }
+
+private fun averageHourlyTotals(itemsByDay: List<List<ArchivedAppSnapshot>>): List<Long> {
+    if (itemsByDay.isEmpty()) return List(24) { 0L }
+    return (0 until 24).map { hour ->
+        itemsByDay.sumOf { items ->
+            items.sumOf { item -> item.hourlyBuckets.getOrElse(hour) { 0L } }
+        }.toDouble()
+            .div(itemsByDay.size.toDouble())
+            .roundToLongSafe()
+    }
 }
 
 internal fun buildArchivedDayBehaviorInsight(
@@ -3130,6 +3283,7 @@ internal suspend fun buildDailyReportUiState(
             } else {
                 SectionState.Ready(TopAppsSectionData(usageTopApps = usageTopApps))
             },
+            timeTideState = SectionState.Empty,
             behaviorMapState = behaviorMapData?.let { SectionState.Ready(it) } ?: SectionState.Empty,
         )
     }
@@ -3221,6 +3375,7 @@ internal fun buildPlaceholderUiState(tab: ReportTab): DailyReportUiState {
         isPermissionGranted = true,
         selectedTab = tab,
         isRefreshing = false,
+        timeTideState = SectionState.Empty,
         behaviorMapState = SectionState.Empty,
         placeholderTitle = title,
         placeholderDescription = description,

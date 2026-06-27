@@ -166,6 +166,7 @@ private val ReportNavigatorArrowSize = 34.dp
 
 private enum class SharePosterModule {
     BEHAVIOR,
+    TIME_TIDE,
     FOCUS,
     APPS,
     RHYTHM,
@@ -675,6 +676,7 @@ private fun ReportPageContent(
     val defaultDayModules =
         buildList {
             add(SharePosterModule.BEHAVIOR)
+            add(SharePosterModule.TIME_TIDE)
             add(SharePosterModule.FOCUS)
             add(SharePosterModule.RHYTHM)
             if (isProActive) add(SharePosterModule.INSIGHTS)
@@ -696,6 +698,10 @@ private fun ReportPageContent(
                             behaviorState = state.behaviorState,
                         )
                     }
+                    SharePosterModule.TIME_TIDE -> DailyTimeTideCard(
+                        timeTideState = state.timeTideState,
+                        animateValues = state.animateValues,
+                    )
                     SharePosterModule.FOCUS -> {
                         DailyFocusCard(
                             focusState = state.dailyFocusState,
@@ -782,6 +788,7 @@ private fun PeriodShareReportContent(
                     SharePosterModule.APPS -> PeriodAppFocusCard(data.appFocus)
                     SharePosterModule.INSIGHTS -> PeriodInsightSection(data = data)
                     SharePosterModule.BEHAVIOR,
+                    SharePosterModule.TIME_TIDE,
                     SharePosterModule.RHYTHM -> Unit
                 }
             }
@@ -2500,6 +2507,9 @@ private fun availableSharePosterModules(
             if (behaviorStructure != null && behaviorStructure.scoreMetrics.isNotEmpty()) {
                 add(SharePosterModule.BEHAVIOR)
             }
+            if (state.timeTideState is SectionState.Ready) {
+                add(SharePosterModule.TIME_TIDE)
+            }
             if (state.dailyFocusState is SectionState.Ready) {
                 add(SharePosterModule.FOCUS)
             }
@@ -2556,6 +2566,7 @@ private fun restoredSharePosterModules(
 private fun SharePosterModule.labelKey(selectedTab: ReportTab): String =
     when (this) {
         SharePosterModule.BEHAVIOR -> "stats_share_module_behavior"
+        SharePosterModule.TIME_TIDE -> "stats_share_module_time_tide"
         SharePosterModule.FOCUS -> "stats_share_module_focus"
         SharePosterModule.APPS -> "stats_share_module_apps"
         SharePosterModule.RHYTHM -> "stats_share_module_rhythm"
