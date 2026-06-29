@@ -23,6 +23,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.DirectionsWalk
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
 import androidx.compose.ui.graphics.Brush
@@ -35,6 +36,7 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.TransformOrigin
@@ -51,6 +53,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.width
@@ -60,17 +63,20 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.requiredHeight
 import androidx.compose.foundation.layout.requiredWidth
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.GenericShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.windowInsetsBottomHeight
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.DropdownMenu
@@ -130,6 +136,7 @@ import com.rrrrz.tinyvow.data.accessibility.AccessibilityServiceStateChecker
 import com.rrrrz.tinyvow.data.apps.InstalledAppRepository
 import com.rrrrz.tinyvow.data.apps.ManagedApp
 import com.rrrrz.tinyvow.data.db.AppDatabase
+import com.rrrrz.tinyvow.data.db.OfflineFocusMode
 import com.rrrrz.tinyvow.data.notification.NotificationPermissionChecker
 import com.rrrrz.tinyvow.data.privacy.LocalDataManager
 import com.rrrrz.tinyvow.data.pro.ProFeatureGate
@@ -148,6 +155,10 @@ import com.rrrrz.tinyvow.data.repository.DailyArchiveRepository
 import com.rrrrz.tinyvow.data.repository.CustomRewardDraft
 import com.rrrrz.tinyvow.data.repository.PointsRepository
 import com.rrrrz.tinyvow.data.repository.InventoryRewardItem
+import com.rrrrz.tinyvow.data.repository.OfflineFocusCategory
+import com.rrrrz.tinyvow.data.repository.OfflineFocusRepository
+import com.rrrrz.tinyvow.data.repository.OfflineFocusSession
+import com.rrrrz.tinyvow.data.repository.OfflineFocusTodaySummary
 import com.rrrrz.tinyvow.data.repository.PendingStreakShieldItem
 import com.rrrrz.tinyvow.data.repository.ProtectionEventRepository
 import com.rrrrz.tinyvow.data.repository.PurchaseRewardResult
@@ -155,6 +166,11 @@ import com.rrrrz.tinyvow.data.repository.RewardStoreItem
 import com.rrrrz.tinyvow.data.repository.RewardSaveResult
 import com.rrrrz.tinyvow.data.repository.RewardSaveValidationError
 import com.rrrrz.tinyvow.data.repository.UseRewardResult
+import com.rrrrz.tinyvow.data.settings.HomeActivityRingColorPreference
+import com.rrrrz.tinyvow.data.settings.HomeActivityRingColorPreferences
+import com.rrrrz.tinyvow.data.settings.HomeActivityRingColorSource
+import com.rrrrz.tinyvow.data.settings.HomeActivityRingMetric
+import com.rrrrz.tinyvow.data.settings.HomeActivityRingPreferences
 import com.rrrrz.tinyvow.data.settings.ManagedAppPreferences
 import com.rrrrz.tinyvow.data.special.SpecialAppUsageRepository
 import com.rrrrz.tinyvow.data.steps.StepTrackingRepository
@@ -171,6 +187,8 @@ import com.rrrrz.tinyvow.data.usage.UsageAccessStateChecker
 import com.rrrrz.tinyvow.data.usage.UsageAccessStatus
 import com.rrrrz.tinyvow.data.usage.AppSession
 import com.rrrrz.tinyvow.service.block.AppLimitAccessibilityService
+import com.rrrrz.tinyvow.service.offline.OfflineFocusTimerService
+import com.rrrrz.tinyvow.ui.theme.ThemeTokens
 import com.rrrrz.tinyvow.ui.theme.TinyVowTheme
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -220,8 +238,10 @@ import com.rrrrz.tinyvow.ui.rewards.RedeemScreen
 import com.rrrrz.tinyvow.ui.rewards.AchievementScreen
 import com.rrrrz.tinyvow.ui.rewards.AchievementBadge
 import com.rrrrz.tinyvow.ui.rewards.RewardInventoryScreen
+import com.rrrrz.tinyvow.ui.theme.DailyRandomThemeId
 import com.rrrrz.tinyvow.ui.theme.DefaultThemeSeed
 import com.rrrrz.tinyvow.ui.theme.LocalThemeColors
+import com.rrrrz.tinyvow.ui.theme.ThemePresets
 import com.rrrrz.tinyvow.ui.theme.TinyVowButton
 import com.rrrrz.tinyvow.ui.theme.TinyVowButtonTone
 import com.rrrrz.tinyvow.ui.theme.TinyVowCard
@@ -229,14 +249,17 @@ import com.rrrrz.tinyvow.ui.theme.TinyVowElevation
 import com.rrrrz.tinyvow.ui.theme.TinyVowRadius
 import com.rrrrz.tinyvow.ui.theme.TinyVowSpacing
 import com.rrrrz.tinyvow.ui.theme.TinyVowSnackbarHost
+import com.rrrrz.tinyvow.ui.theme.selectedThemeDisplayName
 
-enum class Screen { HOME, REWARDS, STATS, ME, CHECK_IN_OVERVIEW, ME_PRO, ME_PERMISSIONS, ME_NOTIFICATIONS, ME_DAY_BOUNDARY, ME_DATA_PRIVACY, ME_VERSION, SUPER_MODE, LABORATORY, HISTORY, THEME, LANGUAGE, HELP_FEEDBACK, CONTACT_US, SPECIAL_APPS, WEREAD_SPECIAL_APP, APP_COLOR_DEBUG, PERMISSION_DIAGNOSTICS }
+enum class Screen { HOME, REWARDS, STATS, ME, CHECK_IN_OVERVIEW, ME_PRO, ME_PERMISSIONS, ME_NOTIFICATIONS, ME_DAY_BOUNDARY, ME_OFFLINE_FOCUS, ME_APPEARANCE, ME_RING_SETTINGS, ME_DATA_PRIVACY, ME_VERSION, SUPER_MODE, LABORATORY, LAB_FOCUS_HISTORY_EDITOR, HISTORY, THEME, LANGUAGE, HELP_FEEDBACK, CONTACT_US, SPECIAL_APPS, WEREAD_SPECIAL_APP, MEDIA_APPS, APP_COLOR_DEBUG, PERMISSION_DIAGNOSTICS }
 enum class RewardsSection { STORE, INVENTORY, ACHIEVEMENTS }
 
 private const val CONTACT_EMAIL = "rrrr.zhao@qq.com"
 private const val WEREAD_AUTO_SYNC_DEBOUNCE_MS = 60_000L
 private const val HOME_CONTROL_TOLERANCE_MINUTES = 5L
 private const val HOME_OVERVIEW_DATA_REVEAL_MILLIS = 1_440
+private const val HOME_CONTROL_RING_CLOSE_HOUR = 20
+private val HomeCompactCardHeight = 64.dp
 
 private data class PendingSuperModeRequest(
     val message: String,
@@ -281,13 +304,13 @@ private fun QuietBottomNavigation(
 
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
+        color = themeColors.surfaceGlass,
         tonalElevation = 0.dp,
-        shadowElevation = 0.dp,
+        shadowElevation = TinyVowElevation.Card,
     ) {
         Column {
             HorizontalDivider(
-                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.28f),
+                color = themeColors.dividerSoft.copy(alpha = 0.80f),
                 thickness = 0.5.dp,
             )
             BoxWithConstraints(
@@ -312,7 +335,7 @@ private fun QuietBottomNavigation(
                             .offset(x = indicatorOffset)
                             .size(width = indicatorWidth, height = 3.dp)
                             .clip(RoundedCornerShape(100.dp))
-                            .background(themeColors.base.copy(alpha = 0.72f)),
+                            .background(themeColors.base.copy(alpha = 0.86f)),
                 )
 
                 Row(
@@ -333,6 +356,7 @@ private fun QuietBottomNavigation(
                     }
                 }
             }
+            Spacer(Modifier.windowInsetsBottomHeight(WindowInsets.navigationBars))
         }
     }
 }
@@ -355,7 +379,14 @@ private fun QuietBottomNavigationItem(
         modifier =
             modifier
                 .fillMaxHeight()
-                .clip(RoundedCornerShape(14.dp))
+                .clip(RoundedCornerShape(18.dp))
+                .background(
+                    if (selected) {
+                        LocalThemeColors.current.navSelectedContainer.copy(alpha = 0.70f)
+                    } else {
+                        Color.Transparent
+                    },
+                )
                 .clickable(onClick = onClick)
                 .padding(vertical = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -389,6 +420,7 @@ private enum class SensitivePermissionDisclosure {
 private data class HomeOverviewUiState(
     val dateLabel: String,
     val tagline: String,
+    val activityRings: HomeActivityRingsUiState,
     val control: HomeControlOverviewUiState,
     val encourage: HomeEncourageOverviewUiState,
     val history: HomeHistoryOverviewUiState,
@@ -399,6 +431,47 @@ private data class HomeOverviewUiState(
     val behaviorScoreMetrics: List<DailyBehaviorScoreMetric>,
     val behaviorComparisonMetrics: List<DailyBehaviorScoreMetric>,
     val battleActions: List<HomeBattleAction>,
+)
+
+data class HomeActivityRingsUiState(
+    val controlProgress: Float,
+    val encourageProgress: Float,
+    val growthProgress: Float,
+    val stepProgress: Float = 0f,
+    val focusProgress: Float = 0f,
+    val controlAvailable: Boolean,
+    val encourageAvailable: Boolean,
+    val growthAvailable: Boolean,
+    val stepAvailable: Boolean = false,
+    val focusAvailable: Boolean = false,
+    val growthTargetPoints: Double,
+    val stepCount: Int = 0,
+    val stepTarget: Int = 0,
+    val focusMillis: Long = 0L,
+    val focusTargetMillis: Long = 0L,
+    val controlDetail: HomeActivityRingDetailUiState = HomeActivityRingDetailUiState(),
+    val encourageDetail: HomeActivityRingDetailUiState = HomeActivityRingDetailUiState(),
+    val growthDetail: HomeActivityRingDetailUiState = HomeActivityRingDetailUiState(),
+    val outer: HomeActivityRingSlotUiState = HomeActivityRingSlotUiState(HomeActivityRingMetric.CONTROL, controlProgress, controlAvailable),
+    val middle: HomeActivityRingSlotUiState = HomeActivityRingSlotUiState(HomeActivityRingMetric.ENCOURAGE, encourageProgress, encourageAvailable),
+    val inner: HomeActivityRingSlotUiState = HomeActivityRingSlotUiState(HomeActivityRingMetric.GROWTH, growthProgress, growthAvailable),
+)
+
+data class HomeActivityRingSlotUiState(
+    val metric: HomeActivityRingMetric,
+    val progress: Float = 0f,
+    val available: Boolean = false,
+)
+
+data class HomeActivityRingDetailUiState(
+    val groupCount: Int = 0,
+    val usedMillis: Long = 0L,
+    val targetMillis: Long = 0L,
+    val expectedMillis: Long = 0L,
+    val periodElapsedProgress: Float = 0f,
+    val healthProgress: Float = 0f,
+    val earnedPoints: Double = 0.0,
+    val targetPoints: Double = 0.0,
 )
 
 private data class YesterdayReportUiState(
@@ -716,6 +789,7 @@ fun HomeRoute(
     val dailyArchiveRepository = remember(database, context) { DailyArchiveRepository(context, database) }
     val dailyCheckInRepository = remember(database, context) { DailyCheckInRepository(context, database) }
     val stepTrackingRepository = remember(database, context) { StepTrackingRepository(context, database) }
+    val offlineFocusRepository = remember(database, context) { OfflineFocusRepository(context, database) }
     val statsReportMemoryCache = remember { StatsReportMemoryCache() }
     val protectionEventRepository = remember(database, preferences) {
         ProtectionEventRepository(database) { preferences.getDayBoundaryHourOnce() }
@@ -734,6 +808,42 @@ fun HomeRoute(
     val businessToday = remember(currentTimeMillis) {
         BusinessDay.today(ZoneId.systemDefault(), BusinessDay.cachedStartHour(), currentTimeMillis)
     }
+    val offlineFocusDayStartMillis = remember(businessToday) {
+        BusinessDay.startOfDayMillis(businessToday, ZoneId.systemDefault(), BusinessDay.cachedStartHour())
+    }
+    val offlineFocusDayEndMillis = remember(businessToday) {
+        BusinessDay.nextDayStartMillis(businessToday, ZoneId.systemDefault(), BusinessDay.cachedStartHour())
+    }
+    LaunchedEffect(offlineFocusRepository) {
+        offlineFocusRepository.ensureBuiltInCategories()
+    }
+    val offlineFocusCategories by offlineFocusRepository.observeCategories()
+        .collectAsStateWithLifecycle(initialValue = emptyList(), lifecycle = lifecycle)
+    val offlineFocusAllCategories by offlineFocusRepository.observeCategories(includeArchived = true)
+        .collectAsStateWithLifecycle(initialValue = emptyList(), lifecycle = lifecycle)
+    val offlineFocusActiveSession by offlineFocusRepository.observeActiveSession()
+        .collectAsStateWithLifecycle(initialValue = null, lifecycle = lifecycle)
+    val offlineFocusTodaySummary by offlineFocusRepository
+        .observeSummaryForDay(offlineFocusDayStartMillis, offlineFocusDayEndMillis)
+        .collectAsStateWithLifecycle(initialValue = OfflineFocusTodaySummary(), lifecycle = lifecycle)
+    val offlineFocusDefaultCategoryId by preferences.offlineFocusDefaultCategoryId
+        .collectAsStateWithLifecycle(initialValue = null, lifecycle = lifecycle)
+    val offlineFocusDefaultDurationMinutes by preferences.offlineFocusDefaultDurationMinutes
+        .collectAsStateWithLifecycle(
+            initialValue = ManagedAppPreferences.DEFAULT_OFFLINE_FOCUS_DURATION_MINUTES,
+            lifecycle = lifecycle,
+        )
+    val offlineFocusDefaultMode by preferences.offlineFocusDefaultMode
+        .collectAsStateWithLifecycle(initialValue = OfflineFocusMode.NORMAL, lifecycle = lifecycle)
+    val offlineFocusWhitelistPackages by preferences.offlineFocusWhitelistPackages
+        .collectAsStateWithLifecycle(initialValue = emptySet(), lifecycle = lifecycle)
+    val offlineFocusContinueOnLock by preferences.offlineFocusContinueOnLock
+        .collectAsStateWithLifecycle(initialValue = true, lifecycle = lifecycle)
+    val offlineFocusDailyPointCap by preferences.offlineFocusDailyPointCap
+        .collectAsStateWithLifecycle(
+            initialValue = ManagedAppPreferences.DEFAULT_OFFLINE_FOCUS_DAILY_POINT_CAP,
+            lifecycle = lifecycle,
+        )
     val todayStepState by stepTrackingRepository.observeToday(businessToday.toString()).collectAsStateWithLifecycle(
         initialValue =
             com.rrrrz.tinyvow.data.steps.TodayStepState(
@@ -745,13 +855,37 @@ fun HomeRoute(
         lifecycle = lifecycle,
     )
     
-    val groupsWithApps by appLimitRepository.getAllGroupsWithApps().collectAsStateWithLifecycle(initialValue = emptyList(), lifecycle = lifecycle)
+    val loadedGroupsWithApps by appLimitRepository.getAllGroupsWithApps()
+        .map<List<AppGroupWithApps>, List<AppGroupWithApps>?> { it }
+        .collectAsStateWithLifecycle(initialValue = null, lifecycle = lifecycle)
+    val groupsWithAppsLoaded = loadedGroupsWithApps != null
+    val groupsWithApps = loadedGroupsWithApps.orEmpty()
     val userPoints by preferences.userPoints.collectAsStateWithLifecycle(initialValue = 0.0, lifecycle = lifecycle)
     val todayPoints by preferences.todayPoints.collectAsStateWithLifecycle(initialValue = 0.0, lifecycle = lifecycle)
+    val todayEarnedPoints by database.pointLedgerDao().observeEarnedByDate(businessToday.toString())
+        .collectAsStateWithLifecycle(initialValue = 0.0, lifecycle = lifecycle)
     val stepPointsPerStep by preferences.stepPointsPerStep.collectAsStateWithLifecycle(
         initialValue = StepTrackingRepository.DEFAULT_POINTS_PER_STEP,
         lifecycle = lifecycle,
     )
+    val stepPointsRewardThreshold by preferences.stepPointsRewardThreshold.collectAsStateWithLifecycle(
+        initialValue = StepTrackingRepository.DEFAULT_REWARD_THRESHOLD,
+        lifecycle = lifecycle,
+    )
+    val homeActivityRingPreferences by preferences.homeActivityRingPreferences.collectAsStateWithLifecycle(
+        initialValue = HomeActivityRingPreferences(),
+        lifecycle = lifecycle,
+    )
+    val homeActivityRingColorPreferences by preferences.homeActivityRingColorPreferences.collectAsStateWithLifecycle(
+        initialValue = HomeActivityRingColorPreferences(),
+        lifecycle = lifecycle,
+    )
+    val offlineFocusDailyTargetMinutes by preferences.offlineFocusDailyTargetMinutes.collectAsStateWithLifecycle(
+        initialValue = ManagedAppPreferences.DEFAULT_OFFLINE_FOCUS_DAILY_TARGET_MINUTES,
+        lifecycle = lifecycle,
+    )
+    val offlineFocusEnabled by preferences.offlineFocusEnabled
+        .collectAsStateWithLifecycle(initialValue = false, lifecycle = lifecycle)
     val selectedThemeId by preferences.selectedThemeId.collectAsStateWithLifecycle(initialValue = DefaultThemeSeed.id, lifecycle = lifecycle)
     val customThemes by preferences.customThemes.collectAsStateWithLifecycle(initialValue = emptyList(), lifecycle = lifecycle)
     val selectedAppLanguage by preferences.selectedAppLanguage.collectAsStateWithLifecycle(initialValue = com.rrrrz.tinyvow.i18n.AppLanguage.SYSTEM, lifecycle = lifecycle)
@@ -789,6 +923,8 @@ fun HomeRoute(
     )
     val pendingShieldItems by appLimitRepository.observePendingStreakShields().collectAsStateWithLifecycle(initialValue = emptyList(), lifecycle = lifecycle)
     val allRewardEffects by database.activeRewardEffectDao().observeAll().collectAsStateWithLifecycle(initialValue = emptyList(), lifecycle = lifecycle)
+    val activeBonusTimes by database.bonusTimeDao().observeActive(currentTimeMillis)
+        .collectAsStateWithLifecycle(initialValue = emptyList(), lifecycle = lifecycle)
     val homeOverviewGroupsWithAppsLoaded by appLimitRepository.getAllGroupsWithApps()
         .map<List<AppGroupWithApps>, List<AppGroupWithApps>?> { it }
         .collectAsStateWithLifecycle(initialValue = null, lifecycle = lifecycle)
@@ -796,6 +932,9 @@ fun HomeRoute(
         .map<Double, Double?> { it }
         .collectAsStateWithLifecycle(initialValue = null, lifecycle = lifecycle)
     val homeOverviewTodayPointsLoaded by preferences.todayPoints
+        .map<Double, Double?> { it }
+        .collectAsStateWithLifecycle(initialValue = null, lifecycle = lifecycle)
+    val homeOverviewTodayEarnedPointsLoaded by database.pointLedgerDao().observeEarnedByDate(businessToday.toString())
         .map<Double, Double?> { it }
         .collectAsStateWithLifecycle(initialValue = null, lifecycle = lifecycle)
     val homeOverviewAchievementProgressLoaded by appLimitRepository.observeAchievementProgress()
@@ -819,6 +958,7 @@ fun HomeRoute(
         homeOverviewGroupsWithAppsLoaded != null &&
             homeOverviewUserPointsLoaded != null &&
             homeOverviewTodayPointsLoaded != null &&
+            homeOverviewTodayEarnedPointsLoaded != null &&
             homeOverviewAchievementProgressLoaded != null &&
             homeOverviewAllRewardEffectsLoaded != null &&
             historicalArchivesLoaded != null &&
@@ -829,6 +969,11 @@ fun HomeRoute(
                 it.startAt <= currentTimeMillis &&
                 it.expireAt > currentTimeMillis
         }
+    }
+    val activeBonusMinutesByGroup = remember(activeBonusTimes) {
+        activeBonusTimes
+            .groupBy { it.targetGroupId }
+            .mapValues { (_, bonusTimes) -> bonusTimes.sumOf { it.extraMinutes.coerceAtLeast(0) } }
     }
     val achievements by appLimitRepository.getAllAchievements().collectAsStateWithLifecycle(initialValue = emptyList(), lifecycle = lifecycle)
     val achievementProgress by appLimitRepository.observeAchievementProgress().collectAsStateWithLifecycle(initialValue = AchievementProgress(), lifecycle = lifecycle)
@@ -1336,9 +1481,9 @@ fun HomeRoute(
                     rewardsSection = RewardsSection.STORE
                 }
                 currentScreen = when (currentScreen) {
-                    Screen.WEREAD_SPECIAL_APP, Screen.APP_COLOR_DEBUG -> Screen.SPECIAL_APPS
+                    Screen.WEREAD_SPECIAL_APP, Screen.MEDIA_APPS, Screen.APP_COLOR_DEBUG -> Screen.SPECIAL_APPS
                     Screen.PERMISSION_DIAGNOSTICS -> Screen.HOME
-                    Screen.CHECK_IN_OVERVIEW, Screen.ME_PRO, Screen.ME_PERMISSIONS, Screen.ME_NOTIFICATIONS, Screen.ME_DAY_BOUNDARY, Screen.ME_DATA_PRIVACY, Screen.ME_VERSION, Screen.SUPER_MODE, Screen.LABORATORY, Screen.HISTORY, Screen.THEME, Screen.LANGUAGE, Screen.HELP_FEEDBACK, Screen.CONTACT_US, Screen.SPECIAL_APPS -> Screen.ME
+                    Screen.CHECK_IN_OVERVIEW, Screen.ME_PRO, Screen.ME_PERMISSIONS, Screen.ME_NOTIFICATIONS, Screen.ME_DAY_BOUNDARY, Screen.ME_OFFLINE_FOCUS, Screen.ME_APPEARANCE, Screen.ME_RING_SETTINGS, Screen.ME_DATA_PRIVACY, Screen.ME_VERSION, Screen.SUPER_MODE, Screen.LABORATORY, Screen.HISTORY, Screen.THEME, Screen.LANGUAGE, Screen.HELP_FEEDBACK, Screen.CONTACT_US, Screen.SPECIAL_APPS -> Screen.ME
                     else -> Screen.HOME
                 }
             }
@@ -1373,11 +1518,18 @@ fun HomeRoute(
     }
 
     LaunchedEffect(proEntitlement.isProActive, selectedThemeId, customThemes) {
+        val selectedRemovedBuiltInTheme =
+            selectedThemeId == DailyRandomThemeId ||
+                (selectedThemeId.startsWith("preset_") && ThemePresets.none { it.id == selectedThemeId }) ||
+                ProFeatureGate.isMemberTheme(selectedThemeId)
+        if (selectedRemovedBuiltInTheme) {
+            preferences.setSelectedThemeId(DefaultThemeSeed.id)
+            return@LaunchedEffect
+        }
         if (!proEntitlement.isProActive) {
             val customIndex = customThemes.indexOfFirst { it.id == selectedThemeId }
             val selectedThemeLocked =
-                ProFeatureGate.isMemberTheme(selectedThemeId) ||
-                    (customIndex >= ProFeatureGate.limits(false).customThemeLimit)
+                customIndex >= ProFeatureGate.limits(false).customThemeLimit
             if (selectedThemeLocked) {
                 preferences.setSelectedThemeId(DefaultThemeSeed.id)
             }
@@ -1414,19 +1566,69 @@ fun HomeRoute(
                         permissionReliabilitySnapshot = permissionReliabilitySnapshot,
                         installedApps = installedApps,
                         groupsWithApps = groupsWithApps,
+                        groupsWithAppsLoaded = groupsWithAppsLoaded,
                         dayBoundaryHour = dayBoundaryHour,
                         activeRewardEffects = activeRewardEffects,
+                        activeBonusMinutesByGroup = activeBonusMinutesByGroup,
                         appIconCache = homeAppIconCache,
                         onAppIconLoaded = { packageName, icon ->
                             homeAppIconCache = homeAppIconCache + (packageName to icon)
                         },
                         userPoints = userPoints,
                         todayPoints = todayPoints,
+                        todayEarnedPoints = todayEarnedPoints,
                         todayStepCount = todayStepState.steps,
                         todayStepPoints = todayStepState.steps * stepPointsPerStep,
                         stepPointsPerStep = stepPointsPerStep,
+                        stepPointsRewardThreshold = stepPointsRewardThreshold,
+                        homeActivityRingPreferences = homeActivityRingPreferences,
+                        homeActivityRingColorPreferences = homeActivityRingColorPreferences,
                         isStepCounterAvailable = todayStepState.available,
                         isActivityRecognitionPermissionGranted = todayStepState.permissionGranted,
+                        offlineFocusCategories = offlineFocusCategories,
+                        offlineFocusActiveSession = offlineFocusActiveSession,
+                        offlineFocusTodaySummary = offlineFocusTodaySummary,
+                        offlineFocusDefaultCategoryId = offlineFocusDefaultCategoryId,
+                        offlineFocusDefaultDurationMinutes = offlineFocusDefaultDurationMinutes,
+                        offlineFocusDefaultMode = offlineFocusDefaultMode,
+                        offlineFocusDailyTargetMinutes = offlineFocusDailyTargetMinutes,
+                        offlineFocusEnabled = offlineFocusEnabled,
+                        onStartOfflineFocus = { categoryId, minutes, mode ->
+                            coroutineScope.launch {
+                                if (!proEntitlement.isProActive) {
+                                    proUpsellSource = ProUpsellSource.FOCUS_MODE
+                                    return@launch
+                                }
+                                val session = offlineFocusRepository.startSession(categoryId, minutes, mode)
+                                preferences.setOfflineFocusDefaultMode(mode)
+                                OfflineFocusTimerService.start(context, session.id)
+                            }
+                        },
+                        onUpsertOfflineFocusCategory = { categoryId, name, iconKey, customIconPath, colorArgb, pointsPerMinute ->
+                            coroutineScope.launch {
+                                offlineFocusRepository.upsertCategory(
+                                    categoryId = categoryId,
+                                    name = name,
+                                    iconKey = iconKey,
+                                    customIconPath = customIconPath,
+                                    colorArgb = colorArgb,
+                                    pointsPerMinute = pointsPerMinute,
+                                )
+                                snackbarHostState.showSnackbar(AppText.t("offline_focus_settings_saved"))
+                            }
+                        },
+                        onFinishOfflineFocusEarly = { sessionId ->
+                            coroutineScope.launch {
+                                offlineFocusRepository.stopSessionEarly(sessionId)
+                            }
+                            OfflineFocusTimerService.stopEarly(context, sessionId)
+                        },
+                        onAbandonOfflineFocus = { sessionId ->
+                            coroutineScope.launch {
+                                offlineFocusRepository.abandonSession(sessionId)
+                            }
+                            OfflineFocusTimerService.abandon(context, sessionId)
+                        },
                         overviewInputsReady = homeOverviewInputsReady,
                         overviewRuntimeState = homeOverviewRuntimeState,
                         onOverviewRuntimeStateChange = { homeOverviewRuntimeState = it },
@@ -1503,6 +1705,11 @@ fun HomeRoute(
                         onSaveStepPointsPerStep = { pointsPerStep ->
                             coroutineScope.launch {
                                 preferences.setStepPointsPerStep(pointsPerStep)
+                            }
+                        },
+                        onSaveStepPointsRewardThreshold = { threshold ->
+                            coroutineScope.launch {
+                                preferences.setStepPointsRewardThreshold(threshold)
                             }
                         },
                         onSaveGroup = { id, name, limit, type, period, pts, pkgs ->
@@ -1689,6 +1896,7 @@ fun HomeRoute(
                             reportMemoryCache = statsReportMemoryCache,
                             screenEnterReplayToken = statsAnimationReplayToken,
                             isProActive = proEntitlement.isProActive,
+                            offlineFocusEnabled = offlineFocusEnabled,
                             onShowProUpsell = { proUpsellSource = it },
                             onRequestUsageAccess = { requestUsageAccessSettings() },
                             modifier = Modifier.fillMaxSize(),
@@ -1860,8 +2068,16 @@ fun HomeRoute(
                         onNavigateToHistory = { currentScreen = Screen.HISTORY },
                         onNavigateToCheckInOverview = { currentScreen = Screen.CHECK_IN_OVERVIEW },
                         onNavigateToThemeSettings = { currentScreen = Screen.THEME },
+                        onNavigateToAppearanceSettings = { currentScreen = Screen.ME_APPEARANCE },
                         onNavigateToLanguageSettings = { currentScreen = Screen.LANGUAGE },
                         onNavigateToDayBoundarySettings = { currentScreen = Screen.ME_DAY_BOUNDARY },
+                        onNavigateToOfflineFocusSettings = {
+                            if (proEntitlement.isProActive) {
+                                currentScreen = Screen.ME_OFFLINE_FOCUS
+                            } else {
+                                proUpsellSource = ProUpsellSource.FOCUS_MODE
+                            }
+                        },
                         onNavigateToHelpFeedback = { currentScreen = Screen.HELP_FEEDBACK },
                         onNavigateToContactUs = { currentScreen = Screen.CONTACT_US },
                         onNavigateToSpecialAppSettings = { currentScreen = Screen.SPECIAL_APPS },
@@ -2117,6 +2333,168 @@ fun HomeRoute(
                         LaunchedEffect(Unit) { currentScreen = Screen.ME }
                     }
                 }
+                Screen.ME_OFFLINE_FOCUS -> {
+                    if (!proEntitlement.isProActive) {
+                        LaunchedEffect(Unit) {
+                            currentScreen = Screen.ME
+                            proUpsellSource = ProUpsellSource.FOCUS_MODE
+                        }
+                    } else {
+                    OfflineFocusSettingsScreen(
+                        categories = offlineFocusAllCategories,
+                        installedApps = installedApps,
+                        enabled = offlineFocusEnabled,
+                        defaultCategoryId = offlineFocusDefaultCategoryId,
+                        defaultDurationMinutes = offlineFocusDefaultDurationMinutes,
+                        defaultMode = offlineFocusDefaultMode,
+                        whitelistPackages = offlineFocusWhitelistPackages,
+                        continueOnLock = offlineFocusContinueOnLock,
+                        dailyPointCap = offlineFocusDailyPointCap,
+                        onBack = { currentScreen = Screen.ME },
+                        onSetEnabled = { enabled ->
+                            coroutineScope.launch {
+                                preferences.setOfflineFocusEnabled(enabled)
+                                snackbarHostState.showSnackbar(AppText.t("offline_focus_settings_saved"))
+                            }
+                        },
+                        onSelectDefaultCategory = { categoryId ->
+                            coroutineScope.launch {
+                                preferences.setOfflineFocusDefaultCategoryId(categoryId)
+                                snackbarHostState.showSnackbar(AppText.t("offline_focus_settings_saved"))
+                            }
+                        },
+                        onSelectDefaultDuration = { minutes ->
+                            coroutineScope.launch {
+                                preferences.setOfflineFocusDefaultDurationMinutes(minutes)
+                                snackbarHostState.showSnackbar(AppText.t("offline_focus_settings_saved"))
+                            }
+                        },
+                        onSelectDefaultMode = { mode ->
+                            coroutineScope.launch {
+                                preferences.setOfflineFocusDefaultMode(mode)
+                                snackbarHostState.showSnackbar(AppText.t("offline_focus_settings_saved"))
+                            }
+                        },
+                        onSetWhitelistPackages = { packages ->
+                            coroutineScope.launch {
+                                preferences.setOfflineFocusWhitelistPackages(packages)
+                                snackbarHostState.showSnackbar(AppText.t("offline_focus_settings_saved"))
+                            }
+                        },
+                        onSetContinueOnLock = { enabled ->
+                            coroutineScope.launch {
+                                preferences.setOfflineFocusContinueOnLock(enabled)
+                                snackbarHostState.showSnackbar(AppText.t("offline_focus_settings_saved"))
+                            }
+                        },
+                        onSetDailyPointCap = { points ->
+                            coroutineScope.launch {
+                                preferences.setOfflineFocusDailyPointCap(points)
+                                snackbarHostState.showSnackbar(AppText.t("offline_focus_settings_saved"))
+                            }
+                        },
+                        onUpsertCategory = { categoryId, name, iconKey, customIconPath, colorArgb, pointsPerMinute ->
+                            coroutineScope.launch {
+                                offlineFocusRepository.upsertCategory(
+                                    categoryId = categoryId,
+                                    name = name,
+                                    iconKey = iconKey,
+                                    customIconPath = customIconPath,
+                                    colorArgb = colorArgb,
+                                    pointsPerMinute = pointsPerMinute,
+                                )
+                                snackbarHostState.showSnackbar(AppText.t("offline_focus_settings_saved"))
+                            }
+                        },
+                        onImportCategoryIcon = { categoryId, uri ->
+                            coroutineScope.launch {
+                                offlineFocusRepository.importCategoryIcon(categoryId, uri)
+                                snackbarHostState.showSnackbar(AppText.t("offline_focus_settings_saved"))
+                            }
+                        },
+                        onMoveCategory = { categoryId, direction ->
+                            coroutineScope.launch {
+                                offlineFocusRepository.moveCategory(categoryId, direction)
+                                snackbarHostState.showSnackbar(AppText.t("offline_focus_settings_saved"))
+                            }
+                        },
+                        onSetCategoryArchived = { categoryId, archived ->
+                            coroutineScope.launch {
+                                val updated = offlineFocusRepository.setCategoryArchived(categoryId, archived)
+                                snackbarHostState.showSnackbar(
+                                    if (updated) {
+                                        AppText.t("offline_focus_settings_saved")
+                                    } else {
+                                        AppText.t("offline_focus_category_archive_last_error")
+                                    },
+                                )
+                            }
+                        },
+                        onDeleteCategory = { categoryId ->
+                            coroutineScope.launch {
+                                val updated = offlineFocusRepository.deleteCategory(categoryId)
+                                snackbarHostState.showSnackbar(
+                                    if (updated) {
+                                        AppText.t("offline_focus_settings_saved")
+                                    } else {
+                                        AppText.t("offline_focus_category_archive_last_error")
+                                    },
+                                )
+                            }
+                        },
+                    )
+                    }
+                }
+                Screen.ME_APPEARANCE -> {
+                    AppearanceSettingsScreen(
+                        isProActive = proEntitlement.isProActive,
+                        onBack = { currentScreen = Screen.ME },
+                        onOpenRingSettings = { currentScreen = Screen.ME_RING_SETTINGS },
+                        onShowProUpsell = { proUpsellSource = it },
+                    )
+                }
+                Screen.ME_RING_SETTINGS -> {
+                    if (!proEntitlement.isProActive) {
+                        LaunchedEffect(Unit) {
+                            currentScreen = Screen.ME_APPEARANCE
+                            proUpsellSource = ProUpsellSource.RING_SETTINGS
+                        }
+                    } else {
+                        RingSettingsScreen(
+                            ringPreferences = homeActivityRingPreferences,
+                            ringColorPreferences = homeActivityRingColorPreferences,
+                            stepRewardThreshold = stepPointsRewardThreshold,
+                            stepPointsPerStep = stepPointsPerStep,
+                            offlineFocusDailyTargetMinutes = offlineFocusDailyTargetMinutes,
+                            onBack = { currentScreen = Screen.ME_APPEARANCE },
+                            onSelectRingMetric = { slot, metric ->
+                                coroutineScope.launch {
+                                    preferences.setHomeActivityRingMetric(slot, metric)
+                                    snackbarHostState.showSnackbar(AppText.t("ring_settings_saved"))
+                                }
+                            },
+                            onSelectRingMetricColor = { metric, source, customArgb ->
+                                coroutineScope.launch {
+                                    preferences.setHomeActivityRingMetricColor(metric, source, customArgb)
+                                    snackbarHostState.showSnackbar(AppText.t("ring_settings_saved"))
+                                }
+                            },
+                            onSaveStepSettings = { threshold, pointsPerStep ->
+                                coroutineScope.launch {
+                                    preferences.setStepPointsRewardThreshold(threshold)
+                                    preferences.setStepPointsPerStep(pointsPerStep)
+                                    snackbarHostState.showSnackbar(AppText.t("ring_settings_saved"))
+                                }
+                            },
+                            onSaveOfflineFocusDailyTarget = { minutes ->
+                                coroutineScope.launch {
+                                    preferences.setOfflineFocusDailyTargetMinutes(minutes)
+                                    snackbarHostState.showSnackbar(AppText.t("ring_settings_saved"))
+                                }
+                            },
+                        )
+                    }
+                }
                 Screen.ME_DATA_PRIVACY -> {
                     DataPrivacyPage(
                         onBack = { currentScreen = Screen.ME },
@@ -2313,11 +2691,19 @@ fun HomeRoute(
                     SpecialAppsScreen(
                         onBack = { currentScreen = Screen.ME },
                         onOpenWeRead = { currentScreen = Screen.WEREAD_SPECIAL_APP },
+                        onOpenMediaApps = { currentScreen = Screen.MEDIA_APPS },
                         onOpenAppColors = { currentScreen = Screen.APP_COLOR_DEBUG },
+                        isProActive = proEntitlement.isProActive,
+                        onOpenProMembership = { currentScreen = Screen.ME_PRO },
                     )
                 }
                 Screen.WEREAD_SPECIAL_APP -> {
                     SpecialAppSettingsScreen(
+                        onBack = { currentScreen = Screen.SPECIAL_APPS },
+                    )
+                }
+                Screen.MEDIA_APPS -> {
+                    MediaAppSettingsScreen(
                         onBack = { currentScreen = Screen.SPECIAL_APPS },
                     )
                 }
@@ -2443,6 +2829,7 @@ fun HomeRoute(
                                 snackbarHostState.showSnackbar(AppText.t("lab_advanced_center_test_triggered"))
                             }
                         },
+                        onOpenFocusHistoryEditor = { currentScreen = Screen.LAB_FOCUS_HISTORY_EDITOR },
                         showDebugProControls = BuildConfig.DEBUG,
                         onExtendDebugPro = { days ->
                             coroutineScope.launch {
@@ -2464,6 +2851,19 @@ fun HomeRoute(
                             }
                         },
                         onBack = { currentScreen = Screen.ME }
+                    )
+                }
+                Screen.LAB_FOCUS_HISTORY_EDITOR -> {
+                    OfflineFocusHistoryEditorScreen(
+                        categories = offlineFocusAllCategories.filterNot { it.isDeleted },
+                        onCreate = { input ->
+                            coroutineScope.launch {
+                                offlineFocusRepository.createDebugSession(input)
+                                snackbarHostState.showSnackbar(AppText.t("lab_focus_history_created"))
+                                currentScreen = Screen.LABORATORY
+                            }
+                        },
+                        onBack = { currentScreen = Screen.LABORATORY },
                     )
                 }
             }
@@ -3080,17 +3480,35 @@ fun HomeScreen(
     permissionReliabilitySnapshot: PermissionReliabilitySnapshot,
     installedApps: List<ManagedApp>,
     groupsWithApps: List<AppGroupWithApps>,
+    groupsWithAppsLoaded: Boolean = true,
     dayBoundaryHour: Int = BusinessDay.DEFAULT_START_HOUR,
     activeRewardEffects: List<ActiveRewardEffectEntity>,
+    activeBonusMinutesByGroup: Map<String, Int> = emptyMap(),
     appIconCache: Map<String, Drawable> = emptyMap(),
     onAppIconLoaded: (String, Drawable) -> Unit = { _, _ -> },
     userPoints: Double,
     todayPoints: Double,
+    todayEarnedPoints: Double = todayPoints,
     todayStepCount: Int = 0,
     todayStepPoints: Double = 0.0,
     stepPointsPerStep: Double = StepTrackingRepository.DEFAULT_POINTS_PER_STEP,
+    stepPointsRewardThreshold: Int = StepTrackingRepository.DEFAULT_REWARD_THRESHOLD,
+    homeActivityRingPreferences: HomeActivityRingPreferences = HomeActivityRingPreferences(),
+    homeActivityRingColorPreferences: HomeActivityRingColorPreferences = HomeActivityRingColorPreferences(),
     isStepCounterAvailable: Boolean = false,
     isActivityRecognitionPermissionGranted: Boolean = false,
+    offlineFocusCategories: List<OfflineFocusCategory> = emptyList(),
+    offlineFocusActiveSession: OfflineFocusSession? = null,
+    offlineFocusTodaySummary: OfflineFocusTodaySummary = OfflineFocusTodaySummary(),
+    offlineFocusDefaultCategoryId: String? = null,
+    offlineFocusDefaultDurationMinutes: Int = ManagedAppPreferences.DEFAULT_OFFLINE_FOCUS_DURATION_MINUTES,
+    offlineFocusDefaultMode: OfflineFocusMode = OfflineFocusMode.NORMAL,
+    offlineFocusDailyTargetMinutes: Int = ManagedAppPreferences.DEFAULT_OFFLINE_FOCUS_DAILY_TARGET_MINUTES,
+    offlineFocusEnabled: Boolean = false,
+    onStartOfflineFocus: (String, Int, OfflineFocusMode) -> Unit = { _, _, _ -> },
+    onUpsertOfflineFocusCategory: (String?, String, String, String?, Int, Double) -> Unit = { _, _, _, _, _, _ -> },
+    onFinishOfflineFocusEarly: (String) -> Unit = {},
+    onAbandonOfflineFocus: (String) -> Unit = {},
     overviewInputsReady: Boolean = true,
     overviewRuntimeState: HomeOverviewRuntimeState = HomeOverviewRuntimeState(),
     onOverviewRuntimeStateChange: (HomeOverviewRuntimeState) -> Unit = {},
@@ -3116,6 +3534,7 @@ fun HomeScreen(
     onOpenStepProComparison: () -> Unit = {},
     onRefreshStepData: () -> Unit = {},
     onSaveStepPointsPerStep: (Double) -> Unit = {},
+    onSaveStepPointsRewardThreshold: (Int) -> Unit = {},
     onSaveGroup: (
         id: String?,
         name: String,
@@ -3292,12 +3711,19 @@ fun HomeScreen(
             todayAppOpenCountMap,
             todaySessions,
             activeRewardEffects,
+            activeBonusMinutesByGroup,
             recentGroupArchives,
             yesterdayGroupArchives,
             yesterdayAppArchives,
             historicalArchives,
             userPoints,
             todayPoints,
+            todayEarnedPoints,
+            todayStepCount,
+            stepPointsRewardThreshold,
+            homeActivityRingPreferences,
+            offlineFocusTodaySummary,
+            offlineFocusDailyTargetMinutes,
             achievementProgress,
             isYesterdayArchivePending,
         ) {
@@ -3311,12 +3737,19 @@ fun HomeScreen(
                 todayAppOpenCountMap = todayAppOpenCountMap,
                 todaySessions = todaySessions,
                 activeRewardEffects = activeRewardEffects,
+                activeBonusMinutesByGroup = activeBonusMinutesByGroup,
                 recentGroupArchives = recentGroupArchives,
                 yesterdayGroupArchives = yesterdayGroupArchives,
                 yesterdayAppArchives = yesterdayAppArchives,
                 historicalArchives = historicalArchives,
                 userPoints = userPoints,
                 todayPoints = todayPoints,
+                todayEarnedPoints = todayEarnedPoints,
+                todayStepCount = todayStepCount,
+                stepPointsRewardThreshold = stepPointsRewardThreshold,
+                ringPreferences = homeActivityRingPreferences,
+                offlineFocusTodaySummary = offlineFocusTodaySummary,
+                offlineFocusDailyTargetMinutes = offlineFocusDailyTargetMinutes,
                 achievementProgress = achievementProgress,
                 isYesterdayArchivePending = isYesterdayArchivePending,
             )
@@ -3366,7 +3799,7 @@ fun HomeScreen(
                     dismissedPermissionPrompts = dismissedPermissionPrompts,
                 )
             val showStartupReliabilityCard =
-                when (permissionReliabilitySnapshot.primaryStep) {
+                groupsWithAppsLoaded && when (permissionReliabilitySnapshot.primaryStep) {
                     StartupReliabilityStep.CREATE_FIRST_VOW -> true
                     StartupReliabilityStep.READY -> startupDismissIds.isNotEmpty()
                     else -> startupDismissIds.isNotEmpty()
@@ -3385,28 +3818,12 @@ fun HomeScreen(
                 if (usageAccessGranted) {
                     HomeOverviewHeader(
                         dateLabel = overviewState.dateLabel,
-                        todayStepCount = todayStepCount,
-                        todayStepPoints = todayStepPoints,
-                        isProActive = isProActive,
-                        onStepSummaryClick = {
-                            if (isProActive) {
-                                onRefreshStepData()
-                            } else {
-                                onOpenStepProComparison()
-                            }
-                        },
-                        onStepSummaryLongClick = {
-                            if (isProActive) {
-                                showStepPointsDialog = true
-                            } else {
-                                onOpenStepProComparison()
-                            }
-                        },
                         superModeStatus = superModeStatus,
                         onOpenSuperModeInfo = onOpenSuperModeEntry,
                     )
                     HomeOverviewPaperCard(
                         state = overviewState,
+                        ringColorPreferences = homeActivityRingColorPreferences,
                         isDataReady = isOverviewReady,
                         overviewAnimationReplayToken = overviewAnimationReplayToken,
                         shouldPlayDataReveal = shouldPlayOverviewDataReveal,
@@ -3435,6 +3852,68 @@ fun HomeScreen(
                     },
                     modifier = Modifier.fillMaxWidth(),
                 )
+
+                if (usageAccessGranted) {
+                    val focusSessionForHome = offlineFocusActiveSession.takeIf { isProActive }
+                    val focusIsRunning = focusSessionForHome != null
+                    val compactCardHeightModifier =
+                        if (focusIsRunning) {
+                            Modifier.fillMaxHeight()
+                        } else {
+                            Modifier.height(HomeCompactCardHeight)
+                        }
+                    Row(
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .then(if (focusIsRunning) Modifier.height(IntrinsicSize.Min) else Modifier),
+                        horizontalArrangement = Arrangement.spacedBy(TinyVowSpacing.CardGap),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        HomeStepSummaryCard(
+                            steps = todayStepCount,
+                            earnedPoints = todayStepPoints,
+                            rewardThreshold = stepPointsRewardThreshold,
+                            isProActive = isProActive,
+                            onClick = {
+                                if (isProActive) {
+                                    onRefreshStepData()
+                                } else {
+                                    onOpenStepProComparison()
+                                }
+                            },
+                            onLongClick = {
+                                if (isProActive) {
+                                    showStepPointsDialog = true
+                                } else {
+                                    onOpenStepProComparison()
+                                }
+                            },
+                            modifier =
+                                Modifier
+                                    .weight(1f)
+                                    .then(compactCardHeightModifier),
+                        )
+                        OfflineFocusHomeCard(
+                            categories = offlineFocusCategories,
+                            activeSession = focusSessionForHome,
+                            todaySummary = offlineFocusTodaySummary,
+                            defaultCategoryId = offlineFocusDefaultCategoryId,
+                            defaultDurationMinutes = offlineFocusDefaultDurationMinutes,
+                            defaultMode = offlineFocusDefaultMode,
+                            isProActive = isProActive,
+                            onStart = onStartOfflineFocus,
+                            onLocked = { onShowProUpsell(ProUpsellSource.FOCUS_MODE) },
+                            onUpsertCategory = onUpsertOfflineFocusCategory,
+                            onFinishEarly = onFinishOfflineFocusEarly,
+                            onAbandon = onAbandonOfflineFocus,
+                            modifier =
+                                Modifier
+                                    .weight(1f)
+                                    .then(compactCardHeightModifier),
+                        )
+                    }
+                }
 
                 if (usageAccessGranted && activeRewardEffects.isNotEmpty()) {
                     HomeActiveEffectsCard(
@@ -3471,11 +3950,13 @@ fun HomeScreen(
                 StepPointsSettingsDialog(
                     todaySteps = todayStepCount,
                     currentPointsPerStep = stepPointsPerStep,
+                    currentRewardThreshold = stepPointsRewardThreshold,
                     isStepCounterAvailable = isStepCounterAvailable,
                     isActivityRecognitionPermissionGranted = isActivityRecognitionPermissionGranted,
                     onRequestActivityRecognitionPermission = onRequestActivityRecognitionPermission,
-                    onSave = { pointsPerStep ->
+                    onSave = { pointsPerStep, rewardThreshold ->
                         onSaveStepPointsPerStep(pointsPerStep)
+                        onSaveStepPointsRewardThreshold(rewardThreshold)
                         showStepPointsDialog = false
                     },
                     onDismiss = { showStepPointsDialog = false },
@@ -4577,6 +5058,7 @@ private fun FirstRunCoachmarkOverlay(
 @Composable
 private fun HomeOverviewPaperCard(
     state: HomeOverviewUiState,
+    ringColorPreferences: HomeActivityRingColorPreferences,
     isDataReady: Boolean,
     overviewAnimationReplayToken: Int,
     shouldPlayDataReveal: Boolean,
@@ -4585,9 +5067,6 @@ private fun HomeOverviewPaperCard(
     modifier: Modifier = Modifier,
 ) {
     val themeColors = LocalThemeColors.current
-    val score = homeOverviewScore(state)
-    val scoreMetrics = homeOverviewScoreMetrics(state)
-    val ringTrackColor = themeColors.inkFaint.copy(alpha = 0.30f)
     val dataRevealProgress = remember { Animatable(if (shouldPlayDataReveal && !isDataReady) 0f else 1f) }
     LaunchedEffect(isDataReady) {
         when {
@@ -4621,6 +5100,9 @@ private fun HomeOverviewPaperCard(
     val displayHistoryExtendedLifeMinutes = (state.history.extendedLifeMinutes * boundedDataRevealProgress).roundToLong()
     val displayHistoryTotalEarnedPoints = state.history.totalEarnedPoints * boundedDataRevealProgress
     val displayHistoryCurrentPoints = state.history.currentPoints * boundedDataRevealProgress
+    val outerRingColor = homeActivityRingMetricColor(state.activityRings.outer.metric, ringColorPreferences, themeColors)
+    val middleRingColor = homeActivityRingMetricColor(state.activityRings.middle.metric, ringColorPreferences, themeColors)
+    val innerRingColor = homeActivityRingMetricColor(state.activityRings.inner.metric, ringColorPreferences, themeColors)
 
     TinyVowCard(
         modifier = modifier.fillMaxWidth(),
@@ -4641,6 +5123,7 @@ private fun HomeOverviewPaperCard(
             val centerGapPx = with(density) { centerGap.toPx() }
             val notchRadiusPx = with(density) { (centerSize / 2 + 21.dp).toPx() }
             val compact = maxWidth < 380.dp
+            val ringCenterOffsetY = 0.dp
             Column(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -4676,13 +5159,15 @@ private fun HomeOverviewPaperCard(
                             secondaryMetricLabel = AppText.t("home_equivalent_live_more"),
                             secondaryMetricValue = roundedDaysValue(displayHistoryExtendedLifeMinutes).toString(),
                             secondaryMetricUnit = AppText.t("home_day_unit"),
-                            color = themeColors.controlContainer,
+                            color = themeColors.controlContainer.copy(alpha = 0.28f),
                             contentColor = themeColors.onControlContainer,
                             accent = themeColors.control,
                             compact = compact,
                             centerGapPx = centerGapPx,
                             notchRadiusPx = notchRadiusPx,
-                            modifier = Modifier.weight(1f),
+                            modifier = Modifier
+                                .weight(1f)
+                                .offset(x = 5.dp),
                         )
                         Spacer(modifier = Modifier.width(centerGap))
                         HomeOverviewWingPanel(
@@ -4705,7 +5190,7 @@ private fun HomeOverviewPaperCard(
                             secondaryMetricLabel = AppText.t("home_current_remaining"),
                             secondaryMetricValue = formatHomePointValue(displayHistoryCurrentPoints),
                             secondaryMetricUnit = AppText.t("group_points"),
-                            color = themeColors.encourageContainer,
+                            color = themeColors.encourageContainer.copy(alpha = 0.28f),
                             contentColor = themeColors.onEncourageContainer,
                             accent = themeColors.encourage,
                             compact = compact,
@@ -4715,15 +5200,29 @@ private fun HomeOverviewPaperCard(
                         )
                     }
 
-                    HomeOverviewScoreDial(
-                        score = score,
-                        metrics = scoreMetrics,
-                        ringTrackColor = ringTrackColor,
-                        scoreColor = themeColors.inkStrong,
+                    HomeActivityRingsDial(
+                        rings = state.activityRings,
+                        outerColor = outerRingColor,
+                        middleColor = middleRingColor,
+                        innerColor = innerRingColor,
                         replayToken = overviewAnimationReplayToken,
                         revealProgress = boundedDataRevealProgress,
                         onClick = onOpenBehaviorRadar,
-                        modifier = Modifier.size(centerSize),
+                        modifier = Modifier
+                            .size(centerSize)
+                            .offset(y = ringCenterOffsetY),
+                    )
+                    HomeActivityRingsProgressLabels(
+                        rings = state.activityRings,
+                        outerColor = outerRingColor,
+                        middleColor = middleRingColor,
+                        innerColor = innerRingColor,
+                        contentColor = themeColors.inkStrong,
+                        modifier =
+                            Modifier
+                                .align(Alignment.Center)
+                                .offset(x = 5.dp, y = centerSize / 2 + 31.dp + ringCenterOffsetY)
+                                .width(centerSize),
                     )
                 }
             }
@@ -4734,9 +5233,89 @@ private fun HomeOverviewPaperCard(
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
+private fun HomeStepSummaryCard(
+    steps: Int,
+    earnedPoints: Double,
+    rewardThreshold: Int,
+    isProActive: Boolean,
+    onClick: () -> Unit,
+    onLongClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val themeColors = LocalThemeColors.current
+    val earnedPointsFloor = kotlin.math.floor(earnedPoints.coerceAtLeast(0.0)).toLong()
+    val stepTitleValue =
+        if (rewardThreshold > 0) {
+            "${formatStepCount(steps)}/${formatStepCount(rewardThreshold)}"
+        } else {
+            formatStepCount(steps)
+        }
+    TinyVowCard(
+        modifier =
+            modifier
+                .combinedClickable(
+                    onClick = onClick,
+                    onLongClick = onLongClick,
+                ),
+        shape = RoundedCornerShape(TinyVowRadius.FeaturedCard),
+        borderAlpha = 0.30f,
+        shadowElevation = TinyVowElevation.FeaturedCard,
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Surface(
+                modifier = Modifier.size(30.dp),
+                shape = RoundedCornerShape(10.dp),
+                color = themeColors.encourage.copy(alpha = 0.12f),
+                border = BorderStroke(1.dp, themeColors.encourage.copy(alpha = 0.20f)),
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Filled.DirectionsWalk,
+                        contentDescription = null,
+                        tint = themeColors.encourage,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+            }
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Text(
+                    text =
+                        homeStepTitleText(
+                            title = AppText.t("home_steps_title"),
+                            value = stepTitleValue,
+                            valueColor = themeColors.encourage,
+                            titleColor = themeColors.inkStrong,
+                        ),
+                    style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.sp, lineHeight = 15.sp),
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                )
+                if (isProActive) {
+                    Text(
+                        text = AppText.t("home_step_points_plus_value", earnedPointsFloor),
+                        style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.8.sp, lineHeight = 14.sp),
+                        fontWeight = FontWeight.Medium,
+                        color = themeColors.inkMuted,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalFoundationApi::class)
+@Composable
 private fun HomeStepCornerSummary(
     steps: Int,
     earnedPoints: Double,
+    rewardThreshold: Int,
     isProActive: Boolean,
     onClick: () -> Unit,
     onLongClick: () -> Unit,
@@ -4745,6 +5324,16 @@ private fun HomeStepCornerSummary(
     val themeColors = LocalThemeColors.current
     val textStyle = MaterialTheme.typography.labelMedium
     val earnedPointsFloor = kotlin.math.floor(earnedPoints.coerceAtLeast(0.0)).toLong()
+    val stepSummaryText =
+        if (rewardThreshold > 0 && steps < rewardThreshold) {
+            AppText.t(
+                "home_step_points_reward_progress_summary",
+                formatStepCount(steps),
+                formatStepCount(rewardThreshold),
+            )
+        } else {
+            AppText.t("home_today_steps_value", formatStepCount(steps))
+        }
     Column(
         modifier =
             modifier
@@ -4758,7 +5347,7 @@ private fun HomeStepCornerSummary(
         verticalArrangement = Arrangement.spacedBy(1.dp),
     ) {
         Text(
-            text = AppText.t("home_today_steps_value", formatStepCount(steps)),
+            text = stepSummaryText,
             style = textStyle,
             fontWeight = FontWeight.SemiBold,
             color = themeColors.encourage,
@@ -4784,17 +5373,32 @@ private fun HomeStepCornerSummary(
 private fun StepPointsSettingsDialog(
     todaySteps: Int,
     currentPointsPerStep: Double,
+    currentRewardThreshold: Int,
     isStepCounterAvailable: Boolean,
     isActivityRecognitionPermissionGranted: Boolean,
     onRequestActivityRecognitionPermission: () -> Unit,
-    onSave: (Double) -> Unit,
+    onSave: (Double, Int) -> Unit,
     onDismiss: () -> Unit,
 ) {
     var rateText by remember(currentPointsPerStep) {
         mutableStateOf(formatStepRate(currentPointsPerStep))
     }
+    var rewardThresholdText by remember(currentRewardThreshold) {
+        mutableStateOf(currentRewardThreshold.toString())
+    }
     val parsedRate = rateText.toDoubleOrNull()?.coerceAtLeast(0.0)
+    val parsedRewardThreshold = rewardThresholdText.toIntOrNull()?.coerceAtLeast(0)
     val estimatedPoints = todaySteps * (parsedRate ?: 0.0)
+    val rewardProgressValue =
+        when {
+            parsedRewardThreshold == null -> null
+            parsedRewardThreshold <= 0 || todaySteps >= parsedRewardThreshold -> AppText.t("home_step_points_reward_reached")
+            else -> AppText.t(
+                "home_step_points_reward_progress_value",
+                formatStepCount(todaySteps),
+                formatStepCount(parsedRewardThreshold),
+            )
+        }
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text(AppText.t("home_step_points_settings_title")) },
@@ -4808,6 +5412,12 @@ private fun StepPointsSettingsDialog(
                     label = AppText.t("home_step_points_estimate"),
                     value = AppText.t("group_points_value", formatHomePointValue(estimatedPoints)),
                 )
+                rewardProgressValue?.let { progress ->
+                    HomeStepSettingsMetricRow(
+                        label = AppText.t("home_step_points_reward_progress_label"),
+                        value = progress,
+                    )
+                }
                 OutlinedTextField(
                     value = rateText,
                     onValueChange = { rateText = sanitizeHomeDecimalInput(it) },
@@ -4815,6 +5425,19 @@ private fun StepPointsSettingsDialog(
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                     modifier = Modifier.fillMaxWidth(),
+                )
+                OutlinedTextField(
+                    value = rewardThresholdText,
+                    onValueChange = { rewardThresholdText = sanitizeHomeIntegerInput(it) },
+                    label = { Text(AppText.t("home_step_points_reward_threshold_label")) },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Text(
+                    text = AppText.t("home_step_points_reward_threshold_hint"),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
                 if (!isStepCounterAvailable) {
                     Text(
@@ -4840,8 +5463,12 @@ private fun StepPointsSettingsDialog(
         confirmButton = {
             TinyVowButton(
                 text = AppText.t("group_save"),
-                onClick = { parsedRate?.let(onSave) },
-                enabled = parsedRate != null,
+                onClick = {
+                    if (parsedRate != null && parsedRewardThreshold != null) {
+                        onSave(parsedRate, parsedRewardThreshold)
+                    }
+                },
+                enabled = parsedRate != null && parsedRewardThreshold != null,
                 tone = TinyVowButtonTone.Primary,
             )
         },
@@ -5063,6 +5690,560 @@ private fun HomeBehaviorOverviewPanelContent(
 private fun formatHomeBehaviorMetricMinutes(durationMillis: Long): String {
     if (durationMillis <= 0L) return "0"
     return ((durationMillis + 59_999L) / 60_000L).toString()
+}
+
+private fun homeActivityRingMetricColor(
+    metric: HomeActivityRingMetric,
+    preferences: HomeActivityRingColorPreferences,
+    themeColors: ThemeTokens,
+): Color =
+    homeActivityRingColor(preferences.preferenceFor(metric), themeColors)
+
+private fun homeActivityRingColor(
+    preference: HomeActivityRingColorPreference,
+    themeColors: ThemeTokens,
+): Color =
+    when (preference.source) {
+        HomeActivityRingColorSource.CONTROL -> themeColors.control
+        HomeActivityRingColorSource.ENCOURAGE -> themeColors.encourage
+        HomeActivityRingColorSource.THEME -> themeColors.base
+        HomeActivityRingColorSource.CUSTOM -> preference.customArgb?.let(::Color) ?: themeColors.base
+    }
+
+@Composable
+fun HomeActivityRingsDial(
+    rings: HomeActivityRingsUiState,
+    outerColor: Color,
+    middleColor: Color,
+    innerColor: Color,
+    replayToken: Int,
+    revealProgress: Float,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val replayProgress =
+        animateReplayFractionValue(
+            targetValue = 1f,
+            replayKey = replayToken,
+            durationMillis = 860,
+        )
+    val boundedRevealProgress = (revealProgress.coerceIn(0f, 1f) * replayProgress).coerceIn(0f, 1f)
+
+    Box(
+        modifier =
+            modifier
+                .clip(CircleShape)
+                .clickable(
+                    onClickLabel = AppText.t("home_activity_rings_action"),
+                    onClick = onClick,
+                ),
+        contentAlignment = Alignment.Center,
+    ) {
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            val strokeWidth = (12.dp.toPx() * 1.2f).roundToInt().toFloat()
+            val ringGap = 2.dp.toPx().roundToInt().toFloat()
+            val outerInset = strokeWidth / 2f
+            drawHomeActivityRing(
+                progress = if (rings.outer.available) rings.outer.progress * boundedRevealProgress else 0f,
+                color = outerColor,
+                trackColor = homeActivityRingTrackColor(outerColor),
+                inset = outerInset,
+                strokeWidth = strokeWidth,
+            )
+            drawHomeActivityRing(
+                progress = if (rings.middle.available) rings.middle.progress * boundedRevealProgress else 0f,
+                color = middleColor,
+                trackColor = homeActivityRingTrackColor(middleColor),
+                inset = outerInset + strokeWidth + ringGap,
+                strokeWidth = strokeWidth,
+            )
+            drawHomeActivityRing(
+                progress = if (rings.inner.available) rings.inner.progress * boundedRevealProgress else 0f,
+                color = innerColor,
+                trackColor = homeActivityRingTrackColor(innerColor),
+                inset = outerInset + (strokeWidth + ringGap) * 2f,
+                strokeWidth = strokeWidth,
+            )
+        }
+    }
+}
+
+@Composable
+private fun HomeActivityRingsProgressLabels(
+    rings: HomeActivityRingsUiState,
+    outerColor: Color,
+    middleColor: Color,
+    innerColor: Color,
+    contentColor: Color,
+    modifier: Modifier = Modifier,
+) {
+    var selectedRing by remember { mutableStateOf<HomeActivityRingMetric?>(null) }
+
+    selectedRing?.let { kind ->
+        HomeActivityRingExplanationDialog(
+            kind = kind,
+            rings = rings,
+            onDismiss = { selectedRing = null },
+        )
+    }
+
+    Column(
+        modifier = modifier.fillMaxWidth(),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(1.dp),
+    ) {
+        HomeActivityRingProgressLabel(
+            label = homeActivityRingMetricLabel(rings.outer.metric),
+            value = formatHomeActivityRingProgress(rings.outer.progress, rings.outer.available),
+            color = outerColor,
+            contentColor = contentColor,
+            onClick = { selectedRing = rings.outer.metric },
+        )
+        HomeActivityRingProgressLabel(
+            label = homeActivityRingMetricLabel(rings.middle.metric),
+            value = formatHomeActivityRingProgress(rings.middle.progress, rings.middle.available),
+            color = middleColor,
+            contentColor = contentColor,
+            onClick = { selectedRing = rings.middle.metric },
+        )
+        HomeActivityRingProgressLabel(
+            label = homeActivityRingMetricLabel(rings.inner.metric),
+            value = formatHomeActivityRingProgress(rings.inner.progress, rings.inner.available),
+            color = innerColor,
+            contentColor = contentColor,
+            onClick = { selectedRing = rings.inner.metric },
+        )
+    }
+}
+
+@Composable
+private fun HomeActivityRingProgressLabel(
+    label: String,
+    value: String,
+    color: Color,
+    contentColor: Color,
+    onClick: () -> Unit,
+) {
+    Row(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(8.dp))
+                .clickable(onClick = onClick)
+                .padding(vertical = 1.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(
+            modifier = Modifier.width(10.dp),
+            contentAlignment = Alignment.CenterStart,
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(5.dp)
+                    .clip(CircleShape)
+                    .background(color),
+            )
+        }
+        Text(
+            text = label,
+            modifier = Modifier.width(32.dp),
+            style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+            fontWeight = FontWeight.SemiBold,
+            color = contentColor.copy(alpha = 0.78f),
+            textAlign = androidx.compose.ui.text.style.TextAlign.Start,
+            maxLines = 1,
+            overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+        )
+        Box(
+            modifier = Modifier
+                .offset(x = (-5).dp)
+                .width(31.dp),
+            contentAlignment = Alignment.CenterStart,
+        ) {
+            Text(
+                text = value,
+                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
+                fontWeight = FontWeight.SemiBold,
+                color = contentColor.copy(alpha = 0.78f),
+                textAlign = androidx.compose.ui.text.style.TextAlign.Start,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+            )
+        }
+    }
+}
+
+@Composable
+private fun HomeActivityRingExplanationDialog(
+    kind: HomeActivityRingMetric,
+    rings: HomeActivityRingsUiState,
+    onDismiss: () -> Unit,
+) {
+    val title = homeActivityRingMetricLabel(kind)
+    val progress =
+        when (kind) {
+            HomeActivityRingMetric.CONTROL -> rings.controlProgress
+            HomeActivityRingMetric.ENCOURAGE -> rings.encourageProgress
+            HomeActivityRingMetric.GROWTH -> rings.growthProgress
+            HomeActivityRingMetric.STEPS -> rings.stepProgress
+            HomeActivityRingMetric.FOCUS -> rings.focusProgress
+        }
+    val available =
+        when (kind) {
+            HomeActivityRingMetric.CONTROL -> rings.controlAvailable
+            HomeActivityRingMetric.ENCOURAGE -> rings.encourageAvailable
+            HomeActivityRingMetric.GROWTH -> rings.growthAvailable
+            HomeActivityRingMetric.STEPS -> rings.stepAvailable
+            HomeActivityRingMetric.FOCUS -> rings.focusAvailable
+        }
+    val detail =
+        when (kind) {
+            HomeActivityRingMetric.CONTROL -> rings.controlDetail
+            HomeActivityRingMetric.ENCOURAGE -> rings.encourageDetail
+            HomeActivityRingMetric.GROWTH -> rings.growthDetail
+            HomeActivityRingMetric.STEPS -> HomeActivityRingDetailUiState()
+            HomeActivityRingMetric.FOCUS -> HomeActivityRingDetailUiState()
+        }
+    val formula =
+        when (kind) {
+            HomeActivityRingMetric.CONTROL -> AppText.t("home_activity_ring_control_formula")
+            HomeActivityRingMetric.ENCOURAGE -> AppText.t("home_activity_ring_encourage_formula")
+            HomeActivityRingMetric.GROWTH -> AppText.t("home_activity_ring_growth_formula")
+            HomeActivityRingMetric.STEPS -> AppText.t("home_activity_ring_steps_formula")
+            HomeActivityRingMetric.FOCUS -> AppText.t("home_activity_ring_focus_formula")
+        }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(AppText.t("home_activity_ring_detail_title", title)) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    text = formula,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                HomeActivityRingDetailRow(
+                    label = AppText.t("home_activity_ring_detail_progress"),
+                    value = formatHomeActivityRingProgress(progress, available),
+                )
+                if (available) {
+                    when (kind) {
+                        HomeActivityRingMetric.CONTROL -> {
+                            HomeActivityRingDetailRow(
+                                label = AppText.t("home_activity_ring_detail_period_elapsed"),
+                                value = formatHomeActivityRingPercent(detail.periodElapsedProgress),
+                            )
+                            HomeActivityRingDetailRow(
+                                label = AppText.t("home_activity_ring_detail_control_health"),
+                                value = formatHomeActivityRingPercent(detail.healthProgress),
+                            )
+                            HomeActivityRingDetailRow(
+                                label = AppText.t("home_activity_ring_detail_usage_limit"),
+                                value =
+                                    AppText.t(
+                                        "home_activity_ring_detail_duration_pair",
+                                        formatDuration(detail.usedMillis),
+                                        formatDuration(detail.targetMillis),
+                                    ),
+                            )
+                            HomeActivityRingDetailRow(
+                                label = AppText.t("home_activity_ring_detail_expected_usage"),
+                                value = formatDuration(detail.expectedMillis),
+                            )
+                        }
+                        HomeActivityRingMetric.ENCOURAGE -> {
+                            HomeActivityRingDetailRow(
+                                label = AppText.t("home_activity_ring_detail_usage_target"),
+                                value =
+                                    AppText.t(
+                                        "home_activity_ring_detail_duration_pair",
+                                        formatDuration(detail.usedMillis),
+                                        formatDuration(detail.targetMillis),
+                                    ),
+                            )
+                        }
+                        HomeActivityRingMetric.GROWTH -> {
+                            HomeActivityRingDetailRow(
+                                label = AppText.t("home_activity_ring_detail_points_target"),
+                                value =
+                                    AppText.t(
+                                        "home_activity_ring_detail_points_pair",
+                                        formatHomePointValue(detail.earnedPoints),
+                                        formatHomePointValue(detail.targetPoints),
+                                    ),
+                            )
+                        }
+                        HomeActivityRingMetric.STEPS -> {
+                            HomeActivityRingDetailRow(
+                                label = AppText.t("home_activity_ring_detail_steps_target"),
+                                value = AppText.t("home_activity_ring_detail_steps_pair", formatStepCount(rings.stepCount), formatStepCount(rings.stepTarget)),
+                            )
+                        }
+                        HomeActivityRingMetric.FOCUS -> {
+                            HomeActivityRingDetailRow(
+                                label = AppText.t("home_activity_ring_detail_focus_target"),
+                                value =
+                                    AppText.t(
+                                        "home_activity_ring_detail_duration_pair",
+                                        formatDuration(rings.focusMillis),
+                                        formatDuration(rings.focusTargetMillis),
+                                    ),
+                            )
+                        }
+                    }
+                    if (kind == HomeActivityRingMetric.CONTROL || kind == HomeActivityRingMetric.ENCOURAGE || kind == HomeActivityRingMetric.GROWTH) {
+                        HomeActivityRingDetailRow(
+                            label = AppText.t("home_activity_ring_detail_groups"),
+                            value = AppText.t("home_activity_ring_detail_group_count", detail.groupCount),
+                        )
+                    }
+                } else {
+                    Text(
+                        text = AppText.t("home_activity_ring_detail_no_data"),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(AppText.t("stats_score_info_close"))
+            }
+        },
+    )
+}
+
+@Composable
+private fun HomeActivityRingDetailRow(
+    label: String,
+    value: String,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.Top,
+    ) {
+        Text(
+            text = label,
+            modifier = Modifier.weight(0.46f),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Text(
+            text = value,
+            modifier = Modifier.weight(0.54f),
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = MaterialTheme.colorScheme.onSurface,
+            textAlign = androidx.compose.ui.text.style.TextAlign.End,
+        )
+    }
+}
+
+private fun formatHomeActivityRingProgress(
+    progress: Float,
+    available: Boolean,
+): String =
+    if (available) {
+        formatHomeActivityRingPercent(progress)
+    } else {
+        AppText.t("home_activity_ring_empty_value")
+    }
+
+private fun formatHomeActivityRingPercent(progress: Float): String =
+    "${(progress.coerceAtLeast(0f) * 100f).roundToInt()}%"
+
+private fun homeActivityRingMetricLabel(metric: HomeActivityRingMetric): String =
+    when (metric) {
+        HomeActivityRingMetric.CONTROL -> AppText.t("home_activity_ring_control_label")
+        HomeActivityRingMetric.ENCOURAGE -> AppText.t("home_activity_ring_encourage_label")
+        HomeActivityRingMetric.GROWTH -> AppText.t("home_activity_ring_growth_label")
+        HomeActivityRingMetric.STEPS -> AppText.t("home_activity_ring_steps_label")
+        HomeActivityRingMetric.FOCUS -> AppText.t("home_activity_ring_focus_label")
+    }
+
+private fun homeActivityRingTrackColor(color: Color): Color =
+    color.copy(alpha = 0.18f)
+
+private fun DrawScope.drawHomeActivityRing(
+    progress: Float,
+    color: Color,
+    trackColor: Color,
+    inset: Float,
+    strokeWidth: Float,
+) {
+    val arcTopLeft = Offset(inset, inset)
+    val arcSize =
+        androidx.compose.ui.geometry.Size(
+            width = size.width - inset * 2f,
+            height = size.height - inset * 2f,
+        )
+    val center = Offset(size.width / 2f, size.height / 2f)
+    val radius = arcSize.width.coerceAtMost(arcSize.height) / 2f
+    drawCircle(
+        color = trackColor,
+        radius = radius,
+        center = center,
+        style = Stroke(width = strokeWidth, cap = StrokeCap.Round),
+    )
+    val boundedProgress = progress.coerceAtLeast(0f)
+    if (boundedProgress <= 0f) return
+
+    val extraProgress = boundedProgress - kotlin.math.floor(boundedProgress)
+    val hasCompletedLoop = boundedProgress >= 0.995f
+    if (hasCompletedLoop) {
+        drawCircle(
+            color = color,
+            radius = radius,
+            center = center,
+            style = Stroke(width = strokeWidth, cap = StrokeCap.Round),
+        )
+    }
+
+    val visibleSweep =
+        when {
+            boundedProgress < 0.995f -> boundedProgress * 360f
+            extraProgress > 0.01f -> extraProgress * 360f
+            else -> 0f
+        }
+    if (visibleSweep <= 0f) {
+        val completedHeadAngle = 270f
+        drawHomeActivityRingCapShadow(
+            center = center,
+            radius = radius,
+            strokeWidth = strokeWidth,
+            angleDegrees = completedHeadAngle,
+        )
+        drawHomeActivityRingCap(
+            center = center,
+            radius = radius,
+            strokeWidth = strokeWidth,
+            angleDegrees = completedHeadAngle,
+            color = color,
+        )
+        return
+    }
+
+    val endAngle = -90f + visibleSweep
+    drawArc(
+        color = color,
+        startAngle = -90f,
+        sweepAngle = visibleSweep,
+        useCenter = false,
+        topLeft = arcTopLeft,
+        size = arcSize,
+        style = Stroke(width = strokeWidth, cap = StrokeCap.Butt),
+    )
+    if (!hasCompletedLoop) {
+        drawHomeActivityRingCap(
+            center = center,
+            radius = radius,
+            strokeWidth = strokeWidth,
+            angleDegrees = -90f,
+            color = color,
+        )
+    }
+    drawHomeActivityRingCapShadow(
+        center = center,
+        radius = radius,
+        strokeWidth = strokeWidth,
+        angleDegrees = endAngle,
+    )
+    drawHomeActivityRingCap(
+        center = center,
+        radius = radius,
+        strokeWidth = strokeWidth,
+        angleDegrees = endAngle,
+        color = color,
+    )
+}
+
+private fun DrawScope.drawHomeActivityRingCap(
+    center: Offset,
+    radius: Float,
+    strokeWidth: Float,
+    angleDegrees: Float,
+    color: Color,
+) {
+    drawCircle(
+        color = color,
+        radius = strokeWidth / 2f,
+        center = center + homeActivityRingUnitVector(angleDegrees) * radius,
+    )
+}
+
+private fun DrawScope.drawHomeActivityRingCapShadow(
+    center: Offset,
+    radius: Float,
+    strokeWidth: Float,
+    angleDegrees: Float,
+) {
+    val direction = homeActivityRingUnitVector(angleDegrees)
+    val tangent = homeActivityRingTangentVector(angleDegrees)
+    val capCenter = center + direction * radius
+    val shadowCenter = capCenter + tangent * (strokeWidth * 0.16f)
+    val radialRadius = strokeWidth / 2f
+    val tangentRadius = strokeWidth * 0.44f
+    val gradientRadius = strokeWidth * 0.68f
+    val ringClipPath =
+        Path().apply {
+            fillType = androidx.compose.ui.graphics.PathFillType.EvenOdd
+            val outerRadius = radius + strokeWidth / 2f
+            val innerRadius = (radius - strokeWidth / 2f).coerceAtLeast(0f)
+            addOval(
+                Rect(
+                    left = center.x - outerRadius,
+                    top = center.y - outerRadius,
+                    right = center.x + outerRadius,
+                    bottom = center.y + outerRadius,
+                ),
+            )
+            addOval(
+                Rect(
+                    left = center.x - innerRadius,
+                    top = center.y - innerRadius,
+                    right = center.x + innerRadius,
+                    bottom = center.y + innerRadius,
+                ),
+            )
+    }
+
+    clipPath(ringClipPath) {
+        rotate(degrees = angleDegrees + 90f, pivot = shadowCenter) {
+            drawOval(
+                brush =
+                    Brush.radialGradient(
+                        colors =
+                            listOf(
+                                Color.Black.copy(alpha = 0.48f),
+                                Color.Black.copy(alpha = 0.22f),
+                                Color.Transparent,
+                            ),
+                        center = shadowCenter,
+                        radius = gradientRadius,
+                    ),
+                topLeft = Offset(shadowCenter.x - tangentRadius, shadowCenter.y - radialRadius),
+                size =
+                    androidx.compose.ui.geometry.Size(
+                        width = tangentRadius * 2f,
+                        height = radialRadius * 2f,
+                    ),
+            )
+        }
+    }
+}
+
+private fun homeActivityRingUnitVector(angleDegrees: Float): Offset {
+    val radians = Math.toRadians(angleDegrees.toDouble())
+    return Offset(cos(radians).toFloat(), sin(radians).toFloat())
+}
+
+private fun homeActivityRingTangentVector(angleDegrees: Float): Offset {
+    val radians = Math.toRadians(angleDegrees.toDouble())
+    return Offset(-sin(radians).toFloat(), cos(radians).toFloat())
 }
 
 @Composable
@@ -5287,36 +6468,56 @@ private fun HomeOverviewWingPanel(
         } else {
             androidx.compose.ui.text.style.TextAlign.End
         }
-    Surface(
-        modifier = modifier.fillMaxHeight(),
-        shape = panelShape,
-        color = color,
-        border = BorderStroke(1.dp, accent.copy(alpha = 0.10f)),
-    ) {
-        Column(
-            modifier = Modifier.padding(
-                start = if (isLeft) 14.dp else if (compact) 18.dp else 22.dp,
-                end = if (isLeft) if (compact) 18.dp else 22.dp else 14.dp,
-                top = 14.dp,
-                bottom = 14.dp,
-            ),
-            horizontalAlignment = horizontalAlignment,
-            verticalArrangement = Arrangement.spacedBy(if (compact) 7.dp else 8.dp),
+    BoxWithConstraints(modifier = modifier.fillMaxHeight()) {
+        val outwardExpansion = 5.dp
+        Surface(
+            modifier =
+                Modifier
+                    .offset(x = if (isLeft) -outwardExpansion else 0.dp)
+                    .requiredWidth(maxWidth + outwardExpansion)
+                    .fillMaxHeight(),
+            shape = panelShape,
+            color = color,
+            border = BorderStroke(3.dp, accent),
         ) {
+            Column(
+                modifier = Modifier.padding(
+                    start = if (isLeft) 14.dp else if (compact) 13.dp else 17.dp,
+                    end = if (isLeft) if (compact) 13.dp else 17.dp else 14.dp,
+                    top = 14.dp,
+                    bottom = 14.dp,
+                ),
+                horizontalAlignment = horizontalAlignment,
+                verticalArrangement = Arrangement.spacedBy(if (compact) 7.dp else 8.dp),
+            ) {
             Column(horizontalAlignment = horizontalAlignment, verticalArrangement = Arrangement.spacedBy(1.dp)) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleMedium.copy(
-                        fontSize = if (compact) 17.sp else 18.sp,
-                        lineHeight = if (compact) 20.sp else 21.sp,
-                    ),
-                    fontWeight = FontWeight.Bold,
-                    color = contentColor,
-                    textAlign = textAlign,
-                    maxLines = 2,
-                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = if (isLeft) Arrangement.Start else Arrangement.End,
                     modifier = Modifier.fillMaxWidth(),
-                )
+                ) {
+                    if (isLeft) {
+                        HomeOverviewWingAccentDot(accent = accent)
+                        Spacer(modifier = Modifier.width(7.dp))
+                    }
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.titleMedium.copy(
+                            fontSize = if (compact) 17.sp else 18.sp,
+                            lineHeight = if (compact) 20.sp else 21.sp,
+                        ),
+                        fontWeight = FontWeight.Bold,
+                        color = contentColor,
+                        textAlign = textAlign,
+                        maxLines = 2,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f),
+                    )
+                    if (!isLeft) {
+                        Spacer(modifier = Modifier.width(7.dp))
+                        HomeOverviewWingAccentDot(accent = accent)
+                    }
+                }
                 Text(
                     text = label,
                     style = MaterialTheme.typography.labelMedium.copy(
@@ -5364,7 +6565,20 @@ private fun HomeOverviewWingPanel(
                 )
             }
         }
+        }
     }
+}
+
+@Composable
+private fun HomeOverviewWingAccentDot(
+    accent: Color,
+) {
+    Box(
+        modifier = Modifier
+            .size(8.dp)
+            .clip(CircleShape)
+            .background(accent),
+    )
 }
 
 @Composable
@@ -6271,11 +7485,6 @@ private fun HomeOverviewPill(
 @Composable
 private fun HomeOverviewHeader(
     dateLabel: String,
-    todayStepCount: Int,
-    todayStepPoints: Double,
-    isProActive: Boolean,
-    onStepSummaryClick: () -> Unit,
-    onStepSummaryLongClick: () -> Unit,
     superModeStatus: SuperModeStatus,
     onOpenSuperModeInfo: () -> Unit,
 ) {
@@ -6293,13 +7502,6 @@ private fun HomeOverviewHeader(
             maxLines = 1,
             softWrap = false,
             overflow = androidx.compose.ui.text.style.TextOverflow.Clip,
-        )
-        HomeStepCornerSummary(
-            steps = todayStepCount,
-            earnedPoints = todayStepPoints,
-            isProActive = isProActive,
-            onClick = onStepSummaryClick,
-            onLongClick = onStepSummaryLongClick,
         )
         if (superModeStatus.isConfigured && superModeStatus.isEnabled) {
             Surface(
@@ -6339,29 +7541,19 @@ private fun HomeBattleStation(
     modifier: Modifier = Modifier,
 ) {
     if (actions.isEmpty()) return
-    TinyVowCard(
+    Row(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(TinyVowRadius.FeaturedCard),
-        borderAlpha = 0.30f,
-        shadowElevation = TinyVowElevation.FeaturedCard,
+        horizontalArrangement = Arrangement.spacedBy(TinyVowSpacing.CardGap),
     ) {
-        Row(
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 10.dp, vertical = 9.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            actions.forEach { action ->
-                HomeBattleActionTile(
-                    action = action,
-                    onClick = { onActionClick(action) },
-                    modifier =
-                        Modifier
-                            .weight(1f)
-                            .heightIn(min = 52.dp),
-                )
-            }
+        actions.forEach { action ->
+            HomeBattleActionTile(
+                action = action,
+                onClick = { onActionClick(action) },
+                modifier =
+                    Modifier
+                        .weight(1f)
+                        .height(HomeCompactCardHeight),
+            )
         }
     }
 }
@@ -6396,89 +7588,113 @@ private fun HomeBattleActionTile(
             action.type == HomeBattleActionType.ENCOURAGE
     val roleIconBorderAlpha = if (isStatusOnly) 0.45f else 0.24f
 
-    Surface(
-        color = Color.Transparent,
+    TinyVowCard(
+        shape = RoundedCornerShape(TinyVowRadius.FeaturedCard),
+        borderAlpha = 0.30f,
+        shadowElevation = TinyVowElevation.FeaturedCard,
         modifier =
             modifier
-                .clip(RoundedCornerShape(TinyVowRadius.Control))
                 .then(if (isStatusOnly) Modifier else Modifier.clickable(onClick = onClick)),
     ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 6.dp, vertical = 4.dp),
-            verticalArrangement = Arrangement.spacedBy(5.dp),
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(9.dp),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            Box(
+                modifier =
+                    Modifier
+                        .size(32.dp)
+                        .clip(RoundedCornerShape(11.dp))
+                        .background(accent.copy(alpha = 0.12f))
+                        .border(
+                            width = 1.dp,
+                            color = accent.copy(alpha = roleIconBorderAlpha),
+                            shape = RoundedCornerShape(11.dp),
+                        ),
+                contentAlignment = Alignment.Center,
             ) {
-                Box(
-                    modifier =
-                        Modifier
-                            .size(22.dp)
-                            .clip(RoundedCornerShape(9.dp))
-                            .background(accent.copy(alpha = 0.12f))
-                            .border(
-                                width = 1.dp,
-                                color = accent.copy(alpha = roleIconBorderAlpha),
-                                shape = RoundedCornerShape(9.dp),
-                            ),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        imageVector = icon,
-                        contentDescription = null,
-                        tint = accent,
-                        modifier = Modifier.size(14.dp),
-                    )
-                }
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = accent,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 Text(
-                    text = action.title,
-                    modifier = Modifier.weight(1f),
+                    text = homeBattleTitleText(action.title, action.value, accent, themeColors.inkStrong),
                     style = MaterialTheme.typography.labelMedium.copy(fontSize = 12.sp, lineHeight = 15.sp),
                     fontWeight = FontWeight.SemiBold,
-                    color = themeColors.inkStrong,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                )
+                Text(
+                    text =
+                        homeBattleSubtitleText(
+                            subtitle = action.subtitle,
+                            subtitleGroupName = action.subtitleGroupName,
+                            accent = accent,
+                            restColor = themeColors.inkMuted,
+                        ),
+                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.8.sp, lineHeight = 14.sp),
+                    fontWeight = FontWeight.Medium,
                     maxLines = 1,
                     overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                 )
             }
-            Text(
-                text =
-                    homeBattleHintText(
-                        value = action.value,
-                        subtitle = action.subtitle,
-                        subtitleGroupName = action.subtitleGroupName,
-                        valueColor = accent,
-                        restColor = themeColors.inkMuted,
-                    ),
-                style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.8.sp, lineHeight = 14.sp),
-                fontWeight = FontWeight.Medium,
-                maxLines = 1,
-                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
-            )
         }
     }
 }
 
-private fun homeBattleHintText(
+private fun homeBattleTitleText(
+    title: String,
     value: String,
+    valueColor: Color,
+    titleColor: Color,
+) = buildAnnotatedString {
+    withStyle(SpanStyle(color = titleColor, fontWeight = FontWeight.SemiBold)) {
+        append(title)
+    }
+    if (value.isNotBlank()) {
+        withStyle(SpanStyle(color = titleColor.copy(alpha = 0.42f))) {
+            append(" · ")
+        }
+        withStyle(SpanStyle(color = valueColor, fontWeight = FontWeight.SemiBold)) {
+            append(value)
+        }
+    }
+}
+
+private fun homeStepTitleText(
+    title: String,
+    value: String,
+    valueColor: Color,
+    titleColor: Color,
+) = buildAnnotatedString {
+    withStyle(SpanStyle(color = titleColor, fontWeight = FontWeight.SemiBold)) {
+        append(title)
+    }
+    if (value.isNotBlank()) {
+        append(" ")
+        withStyle(SpanStyle(color = valueColor, fontWeight = FontWeight.SemiBold)) {
+            append(value)
+        }
+    }
+}
+
+private fun homeBattleSubtitleText(
     subtitle: String,
     subtitleGroupName: String? = null,
-    valueColor: Color,
+    accent: Color,
     restColor: Color,
 ) = buildAnnotatedString {
-    withStyle(SpanStyle(color = valueColor, fontWeight = FontWeight.SemiBold)) {
-        append(value)
-    }
-    withStyle(SpanStyle(color = restColor)) {
-        append(AppText.t("home_battle_action_hint_separator"))
-    }
     val name = subtitleGroupName
     if (name != null && name.isNotEmpty()) {
         val idx = subtitle.indexOf(name)
         if (idx >= 0) {
             withStyle(SpanStyle(color = restColor)) { append(subtitle.substring(0, idx)) }
-            withStyle(SpanStyle(color = valueColor, fontWeight = FontWeight.SemiBold)) { append(name) }
+            withStyle(SpanStyle(color = accent, fontWeight = FontWeight.SemiBold)) { append(name) }
             withStyle(SpanStyle(color = restColor)) { append(subtitle.substring(idx + name.length)) }
         } else {
             withStyle(SpanStyle(color = restColor)) { append(subtitle) }
@@ -6822,6 +8038,13 @@ private fun sanitizeHomeDecimalInput(value: String): String {
     return builder.toString().take(10)
 }
 
+private fun sanitizeHomeIntegerInput(value: String): String =
+    buildString {
+        value.forEach { char ->
+            if (char.isDigit()) append(char)
+        }
+    }.take(6)
+
 private fun homeStreakLabel(
     archivedStreak: Int,
     todayCompleted: Boolean,
@@ -6899,6 +8122,7 @@ private fun buildRealtimeHomeBehaviorScoreMetrics(
     encourageGroups: List<AppGroupWithApps>,
     periodUsageMap: Map<String, Long>,
     activeRewardEffects: List<ActiveRewardEffectEntity>,
+    activeBonusMinutesByGroup: Map<String, Int>,
     analysis: BehaviorScoreAnalysis,
     yesterdayGroupArchives: List<DailyGroupArchiveEntity>,
     yesterdayAppArchives: List<DailyAppArchiveEntity>,
@@ -6993,9 +8217,10 @@ private fun buildRealtimeHomeBehaviorScoreMetrics(
                                             buildUsageSlashValue(
                                                 usedMillis,
                                                 homeEffectiveControlLimitMillis(
-                                                    activeRewardEffects,
-                                                    group.group.id,
-                                                    group.group.limitMinutes,
+                                                    activeRewardEffects = activeRewardEffects,
+                                                    activeBonusMinutesByGroup = activeBonusMinutesByGroup,
+                                                    groupId = group.group.id,
+                                                    limitMinutes = group.group.limitMinutes,
                                                 ),
                                             ),
                                         yesterdayValue =
@@ -7234,11 +8459,242 @@ private data class HomeEncouragePromptCandidate(
     val earnablePoints: Double,
 )
 
+private fun buildHomeActivityRings(
+    controlGroups: List<AppGroupWithApps>,
+    encourageGroups: List<AppGroupWithApps>,
+    periodUsageMap: Map<String, Long>,
+    activeRewardEffects: List<ActiveRewardEffectEntity>,
+    activeBonusMinutesByGroup: Map<String, Int>,
+    todayEarnedPoints: Double,
+    todayStepCount: Int,
+    stepPointsRewardThreshold: Int,
+    offlineFocusTodaySummary: OfflineFocusTodaySummary,
+    offlineFocusDailyTargetMinutes: Int,
+    ringPreferences: HomeActivityRingPreferences,
+): HomeActivityRingsUiState {
+    val validControlGroups = controlGroups.filter { it.group.limitMinutes > 0 }
+    val nowMillis = System.currentTimeMillis()
+    val controlGroupProgress =
+        validControlGroups.map { group ->
+            homeControlRingGroupProgress(
+                usedMillis = periodUsageMap[group.group.id] ?: 0L,
+                limitMillis = group.group.limitMinutes * 60_000L,
+                limitPeriod = group.group.limitPeriod,
+                nowMillis = nowMillis,
+            )
+        }
+    val controlProgress =
+        controlGroupProgress
+            .map { it.progress }
+            .takeIf { it.isNotEmpty() }
+            ?.average()
+            ?.toFloat()
+            ?: 0f
+    val controlDetail =
+        HomeActivityRingDetailUiState(
+            groupCount = validControlGroups.size,
+            usedMillis = controlGroupProgress.sumOf { it.usedMillis },
+            targetMillis = controlGroupProgress.sumOf { it.limitMillis },
+            expectedMillis = controlGroupProgress.sumOf { it.expectedMillis },
+            periodElapsedProgress =
+                controlGroupProgress
+                    .map { it.periodElapsedProgress }
+                    .takeIf { it.isNotEmpty() }
+                    ?.average()
+                    ?.toFloat()
+                    ?: 0f,
+            healthProgress =
+                controlGroupProgress
+                    .map { it.healthProgress }
+                    .takeIf { it.isNotEmpty() }
+                    ?.average()
+                    ?.toFloat()
+                    ?: 0f,
+        )
+
+    val validEncourageGroups = encourageGroups.filter { it.group.limitMinutes > 0 }
+    val encourageUsedMillis =
+        validEncourageGroups.sumOf { group -> periodUsageMap[group.group.id] ?: 0L }
+    val encourageTargetMillis =
+        validEncourageGroups.sumOf { group -> group.group.limitMinutes * 60_000L }
+    val encourageProgress =
+        validEncourageGroups
+            .map { group ->
+                val targetMillis = group.group.limitMinutes * 60_000L
+                (periodUsageMap[group.group.id] ?: 0L).toFloat() / targetMillis.toFloat()
+            }
+            .takeIf { it.isNotEmpty() }
+            ?.average()
+            ?.toFloat()
+            ?.coerceAtLeast(0f)
+            ?: 0f
+
+    val growthTargetPoints =
+        validEncourageGroups.sumOf { group ->
+            val targetUsagePoints = group.group.limitMinutes * group.group.pointsPerMinute
+            targetUsagePoints.coerceAtLeast(0.0)
+        }
+    val growthProgress =
+        if (growthTargetPoints > 0.0) {
+            (todayEarnedPoints / growthTargetPoints).toFloat().coerceAtLeast(0f)
+        } else {
+            0f
+        }
+    val stepTarget = stepPointsRewardThreshold.coerceAtLeast(0)
+    val stepProgress =
+        if (stepTarget > 0) {
+            todayStepCount.toFloat() / stepTarget.toFloat()
+        } else {
+            0f
+        }
+    val focusTargetMillis = offlineFocusDailyTargetMinutes.coerceAtLeast(0) * 60_000L
+    val focusProgress =
+        if (focusTargetMillis > 0L) {
+            offlineFocusTodaySummary.totalMillis.toFloat() / focusTargetMillis.toFloat()
+        } else {
+            0f
+        }
+    val controlAvailable = validControlGroups.isNotEmpty()
+    val encourageAvailable = validEncourageGroups.isNotEmpty()
+    val growthAvailable = growthTargetPoints > 0.0
+    val stepAvailable = stepTarget > 0
+    val focusAvailable = focusTargetMillis > 0L
+
+    return HomeActivityRingsUiState(
+        controlProgress = controlProgress.coerceIn(0f, 1f),
+        encourageProgress = encourageProgress,
+        growthProgress = growthProgress,
+        stepProgress = stepProgress,
+        focusProgress = focusProgress,
+        controlAvailable = controlAvailable,
+        encourageAvailable = encourageAvailable,
+        growthAvailable = growthAvailable,
+        stepAvailable = stepAvailable,
+        focusAvailable = focusAvailable,
+        growthTargetPoints = growthTargetPoints,
+        stepCount = todayStepCount,
+        stepTarget = stepTarget,
+        focusMillis = offlineFocusTodaySummary.totalMillis,
+        focusTargetMillis = focusTargetMillis,
+        controlDetail = controlDetail,
+        encourageDetail =
+            HomeActivityRingDetailUiState(
+                groupCount = validEncourageGroups.size,
+                usedMillis = encourageUsedMillis,
+                targetMillis = encourageTargetMillis,
+            ),
+        growthDetail =
+            HomeActivityRingDetailUiState(
+                groupCount = validEncourageGroups.size,
+                earnedPoints = todayEarnedPoints,
+                targetPoints = growthTargetPoints,
+            ),
+        outer = homeActivityRingSlot(ringPreferences.outer, controlProgress, encourageProgress, growthProgress, stepProgress, focusProgress, controlAvailable, encourageAvailable, growthAvailable, stepAvailable, focusAvailable),
+        middle = homeActivityRingSlot(ringPreferences.middle, controlProgress, encourageProgress, growthProgress, stepProgress, focusProgress, controlAvailable, encourageAvailable, growthAvailable, stepAvailable, focusAvailable),
+        inner = homeActivityRingSlot(ringPreferences.inner, controlProgress, encourageProgress, growthProgress, stepProgress, focusProgress, controlAvailable, encourageAvailable, growthAvailable, stepAvailable, focusAvailable),
+    )
+}
+
+private fun homeActivityRingSlot(
+    metric: HomeActivityRingMetric,
+    controlProgress: Float,
+    encourageProgress: Float,
+    growthProgress: Float,
+    stepProgress: Float,
+    focusProgress: Float,
+    controlAvailable: Boolean,
+    encourageAvailable: Boolean,
+    growthAvailable: Boolean,
+    stepAvailable: Boolean,
+    focusAvailable: Boolean,
+): HomeActivityRingSlotUiState =
+    when (metric) {
+        HomeActivityRingMetric.CONTROL -> HomeActivityRingSlotUiState(metric, controlProgress.coerceIn(0f, 1f), controlAvailable)
+        HomeActivityRingMetric.ENCOURAGE -> HomeActivityRingSlotUiState(metric, encourageProgress, encourageAvailable)
+        HomeActivityRingMetric.GROWTH -> HomeActivityRingSlotUiState(metric, growthProgress, growthAvailable)
+        HomeActivityRingMetric.STEPS -> HomeActivityRingSlotUiState(metric, stepProgress, stepAvailable)
+        HomeActivityRingMetric.FOCUS -> HomeActivityRingSlotUiState(metric, focusProgress, focusAvailable)
+    }
+
+private data class HomeControlRingGroupProgress(
+    val progress: Float,
+    val usedMillis: Long,
+    val limitMillis: Long,
+    val expectedMillis: Long,
+    val periodElapsedProgress: Float,
+    val healthProgress: Float,
+)
+
+private fun homeControlRingGroupProgress(
+    usedMillis: Long,
+    limitMillis: Long,
+    limitPeriod: LimitPeriod,
+    nowMillis: Long,
+): HomeControlRingGroupProgress {
+    val limit = limitMillis.coerceAtLeast(1L)
+    val bounds = homeActivityRingPeriodBounds(limitPeriod, nowMillis)
+    val targetEndMillis = bounds.second
+    val periodElapsedProgress =
+        if (nowMillis >= targetEndMillis) {
+            1f
+        } else {
+            ((nowMillis - bounds.first).toFloat() / (targetEndMillis - bounds.first).coerceAtLeast(1L).toFloat())
+                .coerceIn(0f, 1f)
+        }
+    val expectedMillis = (limit * periodElapsedProgress).roundToLong().coerceIn(0L, limit)
+    val healthProgress =
+        when {
+            usedMillis <= 0L -> 1f
+            nowMillis >= targetEndMillis -> (limit.toFloat() / usedMillis.toFloat()).coerceIn(0f, 1f)
+            usedMillis <= expectedMillis -> 1f
+            else -> (expectedMillis.toFloat() / usedMillis.toFloat()).coerceIn(0f, 1f)
+        }
+
+    return HomeControlRingGroupProgress(
+        progress = (periodElapsedProgress * healthProgress).coerceIn(0f, 1f),
+        usedMillis = usedMillis,
+        limitMillis = limitMillis,
+        expectedMillis = expectedMillis,
+        periodElapsedProgress = periodElapsedProgress,
+        healthProgress = healthProgress,
+    )
+}
+
+private fun homeActivityRingPeriodBounds(
+    period: LimitPeriod,
+    nowMillis: Long,
+): Pair<Long, Long> {
+    val zoneId = ZoneId.systemDefault()
+    val dayStartHour = BusinessDay.cachedStartHour()
+    val currentDate = BusinessDay.today(zoneId, dayStartHour, nowMillis)
+    val startDate =
+        when (period) {
+            LimitPeriod.DAILY -> currentDate
+            LimitPeriod.WEEKLY -> currentDate.minusDays(6)
+            LimitPeriod.MONTHLY -> currentDate.withDayOfMonth(1)
+        }
+    val closeDate =
+        when (period) {
+            LimitPeriod.DAILY,
+            LimitPeriod.WEEKLY -> currentDate
+            LimitPeriod.MONTHLY -> currentDate.withDayOfMonth(currentDate.lengthOfMonth())
+        }
+    val closeMillis =
+        closeDate
+            .atTime(HOME_CONTROL_RING_CLOSE_HOUR, 0)
+            .atZone(zoneId)
+            .toInstant()
+            .toEpochMilli()
+    return BusinessDay.startOfDayMillis(startDate, zoneId, dayStartHour) to
+        closeMillis
+}
+
 private fun buildHomeBattleActions(
     controlGroups: List<AppGroupWithApps>,
     encourageGroups: List<AppGroupWithApps>,
     usageMap: Map<String, Long>,
     activeRewardEffects: List<ActiveRewardEffectEntity>,
+    activeBonusMinutesByGroup: Map<String, Int>,
     recentGroupArchives: List<DailyGroupArchiveEntity>,
     achievementProgress: AchievementProgress,
 ): List<HomeBattleAction> {
@@ -7250,6 +8706,7 @@ private fun buildHomeBattleActions(
                 val effectiveLimitMillis =
                     homeEffectiveControlLimitMillis(
                         activeRewardEffects = activeRewardEffects,
+                        activeBonusMinutesByGroup = activeBonusMinutesByGroup,
                         groupId = group.group.id,
                         limitMinutes = group.group.limitMinutes,
                     )
@@ -7468,9 +8925,15 @@ private fun hasActivePeriodPass(
 
 private fun homeEffectiveControlLimitMillis(
     activeRewardEffects: List<ActiveRewardEffectEntity>,
+    activeBonusMinutesByGroup: Map<String, Int>,
     groupId: String,
     limitMinutes: Int,
-): Long = (limitMinutes + activeRewardExtraMinutes(activeRewardEffects, groupId)).coerceAtLeast(1) * 60_000L
+): Long =
+    (
+        limitMinutes +
+            (activeBonusMinutesByGroup[groupId] ?: 0) +
+            activeRewardExtraMinutes(activeRewardEffects, groupId)
+    ).coerceAtLeast(1) * 60_000L
 
 private fun activeEncouragePointsMultiplier(
     activeRewardEffects: List<ActiveRewardEffectEntity>,
@@ -7486,12 +8949,18 @@ private fun activeEncouragePointsMultiplier(
 
 private fun homeControlGroupCompleted(
     activeRewardEffects: List<ActiveRewardEffectEntity>,
+    activeBonusMinutesByGroup: Map<String, Int>,
     groupId: String,
     usedMillis: Long,
     limitMinutes: Int,
 ): Boolean =
     hasActivePeriodPass(activeRewardEffects, groupId) ||
-        usedMillis <= homeEffectiveControlLimitMillis(activeRewardEffects, groupId, limitMinutes)
+        usedMillis <= homeEffectiveControlLimitMillis(
+            activeRewardEffects = activeRewardEffects,
+            activeBonusMinutesByGroup = activeBonusMinutesByGroup,
+            groupId = groupId,
+            limitMinutes = limitMinutes,
+        )
 
 private fun calculateRealtimeNightOutsideEncourageMillis(
     sessions: List<AppSession>,
@@ -7534,6 +9003,7 @@ private fun buildHomeBehaviorScoreInputs(
     todayAppOpenCountMap: Map<String, Int>,
     todaySessions: List<AppSession>,
     activeRewardEffects: List<ActiveRewardEffectEntity>,
+    activeBonusMinutesByGroup: Map<String, Int>,
 ): BehaviorScoreInputs {
     val controlPackageNames = controlGroups.flatMapTo(linkedSetOf()) { it.packageNames }
     val encouragePackageNames = encourageGroups.flatMapTo(linkedSetOf()) { it.packageNames }
@@ -7544,8 +9014,21 @@ private fun buildHomeBehaviorScoreInputs(
                 val usedMillis = periodUsageMap[group.group.id] ?: 0L
                 BehaviorControlScoreInput(
                     usedMillis = usedMillis,
-                    effectiveLimitMillis = homeEffectiveControlLimitMillis(activeRewardEffects, group.group.id, group.group.limitMinutes),
-                    completed = homeControlGroupCompleted(activeRewardEffects, group.group.id, usedMillis, group.group.limitMinutes),
+                    effectiveLimitMillis =
+                        homeEffectiveControlLimitMillis(
+                            activeRewardEffects = activeRewardEffects,
+                            activeBonusMinutesByGroup = activeBonusMinutesByGroup,
+                            groupId = group.group.id,
+                            limitMinutes = group.group.limitMinutes,
+                        ),
+                    completed =
+                        homeControlGroupCompleted(
+                            activeRewardEffects = activeRewardEffects,
+                            activeBonusMinutesByGroup = activeBonusMinutesByGroup,
+                            groupId = group.group.id,
+                            usedMillis = usedMillis,
+                            limitMinutes = group.group.limitMinutes,
+                        ),
                 )
             },
         encourageGroups =
@@ -7723,12 +9206,19 @@ private fun buildHomeOverviewUiState(
     todayAppOpenCountMap: Map<String, Int>,
     todaySessions: List<AppSession>,
     activeRewardEffects: List<ActiveRewardEffectEntity>,
+    activeBonusMinutesByGroup: Map<String, Int>,
     recentGroupArchives: List<DailyGroupArchiveEntity>,
     yesterdayGroupArchives: List<DailyGroupArchiveEntity>,
     yesterdayAppArchives: List<DailyAppArchiveEntity>,
     historicalArchives: List<com.rrrrz.tinyvow.data.db.DailyArchiveEntity>,
     userPoints: Double,
     todayPoints: Double,
+    todayEarnedPoints: Double,
+    todayStepCount: Int,
+    stepPointsRewardThreshold: Int,
+    ringPreferences: HomeActivityRingPreferences,
+    offlineFocusTodaySummary: OfflineFocusTodaySummary,
+    offlineFocusDailyTargetMinutes: Int,
     achievementProgress: AchievementProgress,
     isYesterdayArchivePending: Boolean,
 ): HomeOverviewUiState {
@@ -7746,6 +9236,7 @@ private fun buildHomeOverviewUiState(
         controlGroups.count { group ->
             homeControlGroupCompleted(
                 activeRewardEffects = activeRewardEffects,
+                activeBonusMinutesByGroup = activeBonusMinutesByGroup,
                 groupId = group.group.id,
                 usedMillis = periodUsageMap[group.group.id] ?: 0L,
                 limitMinutes = group.group.limitMinutes,
@@ -7765,6 +9256,7 @@ private fun buildHomeOverviewUiState(
             todayAppOpenCountMap = todayAppOpenCountMap,
             todaySessions = todaySessions,
             activeRewardEffects = activeRewardEffects,
+            activeBonusMinutesByGroup = activeBonusMinutesByGroup,
         )
     val behaviorScoreAnalysis = analyzeBehaviorScores(behaviorScoreInputs)
     val behaviorScoreBreakdown = behaviorScoreAnalysis.breakdown
@@ -7773,7 +9265,13 @@ private fun buildHomeOverviewUiState(
     val controlTodaySavedMinutes =
         controlGroups.sumOf { group ->
             val todayUsageMinutes = ((usageMap[group.group.id] ?: 0L) / 60_000L).toInt()
-            val effectiveLimitMinutes = (homeEffectiveControlLimitMillis(activeRewardEffects, group.group.id, group.group.limitMinutes) / 60_000L).toInt()
+            val effectiveLimitMinutes =
+                (homeEffectiveControlLimitMillis(
+                    activeRewardEffects = activeRewardEffects,
+                    activeBonusMinutesByGroup = activeBonusMinutesByGroup,
+                    groupId = group.group.id,
+                    limitMinutes = group.group.limitMinutes,
+                ) / 60_000L).toInt()
             (effectiveLimitMinutes - todayUsageMinutes).coerceAtLeast(0)
         }
     val encourageTodayEarnedPoints =
@@ -7799,15 +9297,30 @@ private fun buildHomeOverviewUiState(
         } else {
             null
         }
+    val activityRings =
+        buildHomeActivityRings(
+            controlGroups = controlGroups,
+            encourageGroups = encourageGroups,
+            periodUsageMap = periodUsageMap,
+            activeRewardEffects = activeRewardEffects,
+            activeBonusMinutesByGroup = activeBonusMinutesByGroup,
+            todayEarnedPoints = encourageTodayEarnedPoints,
+            todayStepCount = todayStepCount,
+            stepPointsRewardThreshold = stepPointsRewardThreshold,
+            offlineFocusTodaySummary = offlineFocusTodaySummary,
+            offlineFocusDailyTargetMinutes = offlineFocusDailyTargetMinutes,
+            ringPreferences = ringPreferences,
+        )
     val totalSavedMinutes = historicalArchives.sumOf { it.savedMillis } / 60_000L
     val extendedLifeMinutes = totalSavedMinutes * 3L
-    val totalEarnedPoints = historicalArchives.sumOf { it.pointsEarned } + todayPoints
+    val totalEarnedPoints = historicalArchives.sumOf { it.pointsEarned } + todayEarnedPoints
     val behaviorScoreMetrics =
         buildRealtimeHomeBehaviorScoreMetrics(
             controlGroups = controlGroups,
             encourageGroups = encourageGroups,
             periodUsageMap = periodUsageMap,
             activeRewardEffects = activeRewardEffects,
+            activeBonusMinutesByGroup = activeBonusMinutesByGroup,
             analysis = behaviorScoreAnalysis,
             yesterdayGroupArchives = yesterdayGroupArchives,
             yesterdayAppArchives = yesterdayAppArchives,
@@ -7844,6 +9357,7 @@ private fun buildHomeOverviewUiState(
     return HomeOverviewUiState(
         dateLabel = currentDate,
         tagline = AppText.t(homeSurpriseKeyForDate(today)),
+        activityRings = activityRings,
         control =
             HomeControlOverviewUiState(
                 todaySavedMinutes = controlTodaySavedMinutes,
@@ -7890,6 +9404,7 @@ private fun buildHomeOverviewUiState(
                 encourageGroups = encourageGroups,
                 usageMap = periodUsageMap,
                 activeRewardEffects = activeRewardEffects,
+                activeBonusMinutesByGroup = activeBonusMinutesByGroup,
                 recentGroupArchives = recentGroupArchives,
                 achievementProgress = achievementProgress,
             ),

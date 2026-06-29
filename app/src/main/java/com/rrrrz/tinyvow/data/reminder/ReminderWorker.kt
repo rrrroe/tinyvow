@@ -5,6 +5,7 @@ import androidx.work.CoroutineWorker
 import androidx.work.WorkerParameters
 import com.rrrrz.tinyvow.data.notification.NotificationPermissionChecker
 import com.rrrrz.tinyvow.data.settings.ManagedAppPreferences
+import com.rrrrz.tinyvow.data.time.BusinessDay
 import com.rrrrz.tinyvow.data.usage.UsageAccessStateChecker
 import com.rrrrz.tinyvow.data.usage.UsageAccessStatus
 import com.rrrrz.tinyvow.i18n.AppText
@@ -17,6 +18,7 @@ class ControlRemainingReminderWorker(
         if (!canSendReminders()) return Result.success()
 
         val preferences = ManagedAppPreferences(applicationContext)
+        BusinessDay.updateCachedStartHour(preferences.getDayBoundaryHourOnce())
         AppText.setLanguage(preferences.getSelectedAppLanguageOnce(), applicationContext)
         val isProActive = resolveReminderProActive(applicationContext, preferences)
         val settings = currentNotificationReminderSettings(preferences, isProActive)
@@ -31,6 +33,7 @@ class EncourageIncompleteReminderWorker(
 ) : CoroutineWorker(appContext, workerParams) {
     override suspend fun doWork(): Result {
         val preferences = ManagedAppPreferences(applicationContext)
+        BusinessDay.updateCachedStartHour(preferences.getDayBoundaryHourOnce())
         AppText.setLanguage(preferences.getSelectedAppLanguageOnce(), applicationContext)
         val isProActive = resolveReminderProActive(applicationContext, preferences)
         val settings = currentNotificationReminderSettings(preferences, isProActive)

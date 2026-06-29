@@ -8,6 +8,7 @@ import androidx.room.PrimaryKey
 enum class PointLedgerEntryType {
     USAGE_EARN,
     TARGET_BONUS_EARN,
+    OFFLINE_FOCUS,
     REWARD_SPEND,
     MANUAL_ADJUSTMENT,
 }

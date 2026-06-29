@@ -11,7 +11,7 @@ import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
-import com.rrrrz.tinyvow.BuildConfig
+import com.rrrrz.tinyvow.data.db.OfflineFocusMode
 import com.rrrrz.tinyvow.data.supermode.SuperModeStoredState
 import com.rrrrz.tinyvow.data.steps.StepTrackingRepository
 import com.rrrrz.tinyvow.data.time.BusinessDay
@@ -39,11 +39,60 @@ data class StoredAppColorSelection(
     val argb: Int,
 )
 
+enum class HomeActivityRingMetric {
+    CONTROL,
+    ENCOURAGE,
+    GROWTH,
+    STEPS,
+    FOCUS,
+}
+
+enum class HomeActivityRingSlot {
+    OUTER,
+    MIDDLE,
+    INNER,
+}
+
+enum class HomeActivityRingColorSource {
+    ENCOURAGE,
+    CONTROL,
+    THEME,
+    CUSTOM,
+}
+
+data class HomeActivityRingPreferences(
+    val outer: HomeActivityRingMetric = HomeActivityRingMetric.CONTROL,
+    val middle: HomeActivityRingMetric = HomeActivityRingMetric.ENCOURAGE,
+    val inner: HomeActivityRingMetric = HomeActivityRingMetric.GROWTH,
+)
+
+data class HomeActivityRingColorPreference(
+    val source: HomeActivityRingColorSource,
+    val customArgb: Int? = null,
+)
+
+data class HomeActivityRingColorPreferences(
+    val control: HomeActivityRingColorPreference = HomeActivityRingColorPreference(HomeActivityRingColorSource.CONTROL),
+    val encourage: HomeActivityRingColorPreference = HomeActivityRingColorPreference(HomeActivityRingColorSource.ENCOURAGE),
+    val growth: HomeActivityRingColorPreference = HomeActivityRingColorPreference(HomeActivityRingColorSource.THEME),
+    val steps: HomeActivityRingColorPreference = HomeActivityRingColorPreference(HomeActivityRingColorSource.ENCOURAGE),
+    val focus: HomeActivityRingColorPreference = HomeActivityRingColorPreference(HomeActivityRingColorSource.THEME),
+) {
+    fun preferenceFor(metric: HomeActivityRingMetric): HomeActivityRingColorPreference =
+        when (metric) {
+            HomeActivityRingMetric.CONTROL -> control
+            HomeActivityRingMetric.ENCOURAGE -> encourage
+            HomeActivityRingMetric.GROWTH -> growth
+            HomeActivityRingMetric.STEPS -> steps
+            HomeActivityRingMetric.FOCUS -> focus
+        }
+}
+
 class ManagedAppPreferences(
     private val context: Context,
 ) {
     private fun effectiveDayBoundaryHour(hour: Int?): Int =
-        if (BuildConfig.DEBUG) BusinessDay.normalizeStartHour(hour) else BusinessDay.DEFAULT_START_HOUR
+        BusinessDay.normalizeStartHour(hour)
 
     private object Keys {
         val selectedPackageName = stringPreferencesKey("selected_package_name")
@@ -87,6 +136,28 @@ class ManagedAppPreferences(
         val appColorChoicesJson = stringPreferencesKey("app_color_choices_json")
         val dailyRhythmCellIconsEnabled = booleanPreferencesKey("daily_rhythm_cell_icons_enabled")
         val stepPointsPerStep = doublePreferencesKey("step_points_per_step")
+        val stepPointsRewardThreshold = intPreferencesKey("step_points_reward_threshold")
+        val homeActivityRingOuter = stringPreferencesKey("home_activity_ring_outer")
+        val homeActivityRingMiddle = stringPreferencesKey("home_activity_ring_middle")
+        val homeActivityRingInner = stringPreferencesKey("home_activity_ring_inner")
+        val homeActivityRingControlColorSource = stringPreferencesKey("home_activity_ring_color_control_source")
+        val homeActivityRingControlCustomColor = intPreferencesKey("home_activity_ring_color_control_custom")
+        val homeActivityRingEncourageColorSource = stringPreferencesKey("home_activity_ring_color_encourage_source")
+        val homeActivityRingEncourageCustomColor = intPreferencesKey("home_activity_ring_color_encourage_custom")
+        val homeActivityRingGrowthColorSource = stringPreferencesKey("home_activity_ring_color_growth_source")
+        val homeActivityRingGrowthCustomColor = intPreferencesKey("home_activity_ring_color_growth_custom")
+        val homeActivityRingStepsColorSource = stringPreferencesKey("home_activity_ring_color_steps_source")
+        val homeActivityRingStepsCustomColor = intPreferencesKey("home_activity_ring_color_steps_custom")
+        val homeActivityRingFocusColorSource = stringPreferencesKey("home_activity_ring_color_focus_source")
+        val homeActivityRingFocusCustomColor = intPreferencesKey("home_activity_ring_color_focus_custom")
+        val offlineFocusDailyTargetMinutes = intPreferencesKey("offline_focus_daily_target_minutes")
+        val offlineFocusEnabled = booleanPreferencesKey("offline_focus_enabled")
+        val offlineFocusDefaultCategoryId = stringPreferencesKey("offline_focus_default_category_id")
+        val offlineFocusDefaultDurationMinutes = intPreferencesKey("offline_focus_default_duration_minutes")
+        val offlineFocusDefaultMode = stringPreferencesKey("offline_focus_default_mode")
+        val offlineFocusWhitelistPackages = stringSetPreferencesKey("offline_focus_whitelist_packages")
+        val offlineFocusContinueOnLock = booleanPreferencesKey("offline_focus_continue_on_lock")
+        val offlineFocusDailyPointCap = intPreferencesKey("offline_focus_daily_point_cap")
     }
 
     val selectedPackageName: Flow<String?> = context.managedAppDataStore.data.map { preferences ->
@@ -242,6 +313,80 @@ class ManagedAppPreferences(
         preferences[Keys.stepPointsPerStep] ?: StepTrackingRepository.DEFAULT_POINTS_PER_STEP
     }
 
+    val stepPointsRewardThreshold: Flow<Int> = context.managedAppDataStore.data.map { preferences ->
+        normalizeStepPointsRewardThreshold(preferences[Keys.stepPointsRewardThreshold])
+    }
+
+    val homeActivityRingPreferences: Flow<HomeActivityRingPreferences> = context.managedAppDataStore.data.map { preferences ->
+        HomeActivityRingPreferences(
+            outer = parseHomeActivityRingMetric(preferences[Keys.homeActivityRingOuter], HomeActivityRingMetric.CONTROL),
+            middle = parseHomeActivityRingMetric(preferences[Keys.homeActivityRingMiddle], HomeActivityRingMetric.ENCOURAGE),
+            inner = parseHomeActivityRingMetric(preferences[Keys.homeActivityRingInner], HomeActivityRingMetric.GROWTH),
+        )
+    }
+
+    val homeActivityRingColorPreferences: Flow<HomeActivityRingColorPreferences> = context.managedAppDataStore.data.map { preferences ->
+        HomeActivityRingColorPreferences(
+            control = parseHomeActivityRingColorPreference(
+                metric = HomeActivityRingMetric.CONTROL,
+                source = preferences[Keys.homeActivityRingControlColorSource],
+                customArgb = preferences[Keys.homeActivityRingControlCustomColor],
+            ),
+            encourage = parseHomeActivityRingColorPreference(
+                metric = HomeActivityRingMetric.ENCOURAGE,
+                source = preferences[Keys.homeActivityRingEncourageColorSource],
+                customArgb = preferences[Keys.homeActivityRingEncourageCustomColor],
+            ),
+            growth = parseHomeActivityRingColorPreference(
+                metric = HomeActivityRingMetric.GROWTH,
+                source = preferences[Keys.homeActivityRingGrowthColorSource],
+                customArgb = preferences[Keys.homeActivityRingGrowthCustomColor],
+            ),
+            steps = parseHomeActivityRingColorPreference(
+                metric = HomeActivityRingMetric.STEPS,
+                source = preferences[Keys.homeActivityRingStepsColorSource],
+                customArgb = preferences[Keys.homeActivityRingStepsCustomColor],
+            ),
+            focus = parseHomeActivityRingColorPreference(
+                metric = HomeActivityRingMetric.FOCUS,
+                source = preferences[Keys.homeActivityRingFocusColorSource],
+                customArgb = preferences[Keys.homeActivityRingFocusCustomColor],
+            ),
+        )
+    }
+
+    val offlineFocusDailyTargetMinutes: Flow<Int> = context.managedAppDataStore.data.map { preferences ->
+        normalizeOfflineFocusDailyTargetMinutes(preferences[Keys.offlineFocusDailyTargetMinutes])
+    }
+
+    val offlineFocusEnabled: Flow<Boolean> = context.managedAppDataStore.data.map { preferences ->
+        preferences[Keys.offlineFocusEnabled] ?: false
+    }
+
+    val offlineFocusDefaultCategoryId: Flow<String?> = context.managedAppDataStore.data.map { preferences ->
+        preferences[Keys.offlineFocusDefaultCategoryId]?.takeIf { it.isNotBlank() }
+    }
+
+    val offlineFocusDefaultDurationMinutes: Flow<Int> = context.managedAppDataStore.data.map { preferences ->
+        normalizeOfflineFocusDuration(preferences[Keys.offlineFocusDefaultDurationMinutes])
+    }
+
+    val offlineFocusDefaultMode: Flow<OfflineFocusMode> = context.managedAppDataStore.data.map { preferences ->
+        parseOfflineFocusMode(preferences[Keys.offlineFocusDefaultMode])
+    }
+
+    val offlineFocusWhitelistPackages: Flow<Set<String>> = context.managedAppDataStore.data.map { preferences ->
+        preferences[Keys.offlineFocusWhitelistPackages].orEmpty()
+    }
+
+    val offlineFocusContinueOnLock: Flow<Boolean> = context.managedAppDataStore.data.map { preferences ->
+        preferences[Keys.offlineFocusContinueOnLock] ?: true
+    }
+
+    val offlineFocusDailyPointCap: Flow<Int> = context.managedAppDataStore.data.map { preferences ->
+        normalizeOfflineFocusDailyPointCap(preferences[Keys.offlineFocusDailyPointCap])
+    }
+
     fun sharePosterModuleIds(tabKey: String): Flow<List<String>> =
         context.managedAppDataStore.data.map { preferences ->
             parseSharePosterModuleIds(preferences[sharePosterModuleKey(tabKey)])
@@ -257,7 +402,7 @@ class ManagedAppPreferences(
                     com.rrrrz.tinyvow.data.repository.ArchiveDateUtils.localDateAt(
                         System.currentTimeMillis(),
                         java.time.ZoneId.systemDefault(),
-                        BusinessDay.normalizeStartHour(preferences[Keys.dayBoundaryHour]),
+                        effectiveDayBoundaryHour(preferences[Keys.dayBoundaryHour]),
                     ),
                 )
             val lastReset = preferences[Keys.lastPointsResetDate]
@@ -614,6 +759,95 @@ class ManagedAppPreferences(
         }
     }
 
+    suspend fun setStepPointsRewardThreshold(threshold: Int) {
+        context.managedAppDataStore.edit { preferences ->
+            preferences[Keys.stepPointsRewardThreshold] = normalizeStepPointsRewardThreshold(threshold)
+        }
+    }
+
+    suspend fun setHomeActivityRingMetric(
+        slot: HomeActivityRingSlot,
+        metric: HomeActivityRingMetric,
+    ) {
+        context.managedAppDataStore.edit { preferences ->
+            preferences[
+                when (slot) {
+                    HomeActivityRingSlot.OUTER -> Keys.homeActivityRingOuter
+                    HomeActivityRingSlot.MIDDLE -> Keys.homeActivityRingMiddle
+                    HomeActivityRingSlot.INNER -> Keys.homeActivityRingInner
+                }
+            ] = metric.name
+        }
+    }
+
+    suspend fun setHomeActivityRingMetricColor(
+        metric: HomeActivityRingMetric,
+        source: HomeActivityRingColorSource,
+        customArgb: Int?,
+    ) {
+        context.managedAppDataStore.edit { preferences ->
+            preferences[homeActivityRingColorSourceKey(metric)] = source.name
+            if (customArgb != null) {
+                preferences[homeActivityRingCustomColorKey(metric)] = normalizeHomeActivityRingCustomColor(customArgb)
+            } else if (source == HomeActivityRingColorSource.CUSTOM) {
+                preferences.remove(homeActivityRingCustomColorKey(metric))
+            }
+        }
+    }
+
+    suspend fun setOfflineFocusDailyTargetMinutes(minutes: Int) {
+        context.managedAppDataStore.edit { preferences ->
+            preferences[Keys.offlineFocusDailyTargetMinutes] = normalizeOfflineFocusDailyTargetMinutes(minutes)
+        }
+    }
+
+    suspend fun setOfflineFocusEnabled(enabled: Boolean) {
+        context.managedAppDataStore.edit { preferences ->
+            preferences[Keys.offlineFocusEnabled] = enabled
+        }
+    }
+
+    suspend fun setOfflineFocusDefaultCategoryId(categoryId: String?) {
+        context.managedAppDataStore.edit { preferences ->
+            val normalized = categoryId?.trim().orEmpty()
+            if (normalized.isBlank()) {
+                preferences.remove(Keys.offlineFocusDefaultCategoryId)
+            } else {
+                preferences[Keys.offlineFocusDefaultCategoryId] = normalized
+            }
+        }
+    }
+
+    suspend fun setOfflineFocusDefaultDurationMinutes(minutes: Int) {
+        context.managedAppDataStore.edit { preferences ->
+            preferences[Keys.offlineFocusDefaultDurationMinutes] = normalizeOfflineFocusDuration(minutes)
+        }
+    }
+
+    suspend fun setOfflineFocusDefaultMode(mode: OfflineFocusMode) {
+        context.managedAppDataStore.edit { preferences ->
+            preferences[Keys.offlineFocusDefaultMode] = mode.name
+        }
+    }
+
+    suspend fun setOfflineFocusWhitelistPackages(packages: Set<String>) {
+        context.managedAppDataStore.edit { preferences ->
+            preferences[Keys.offlineFocusWhitelistPackages] = packages.map { it.trim() }.filter { it.isNotBlank() }.toSet()
+        }
+    }
+
+    suspend fun setOfflineFocusContinueOnLock(enabled: Boolean) {
+        context.managedAppDataStore.edit { preferences ->
+            preferences[Keys.offlineFocusContinueOnLock] = enabled
+        }
+    }
+
+    suspend fun setOfflineFocusDailyPointCap(points: Int) {
+        context.managedAppDataStore.edit { preferences ->
+            preferences[Keys.offlineFocusDailyPointCap] = normalizeOfflineFocusDailyPointCap(points)
+        }
+    }
+
     suspend fun setSharePosterModuleIds(
         tabKey: String,
         moduleIds: List<String>,
@@ -679,6 +913,34 @@ class ManagedAppPreferences(
 
     suspend fun getAppColorPreferencesOnce(): StoredAppColorPreferences {
         return appColorPreferences.first()
+    }
+
+    suspend fun getOfflineFocusDefaultCategoryIdOnce(): String? {
+        return offlineFocusDefaultCategoryId.first()
+    }
+
+    suspend fun getOfflineFocusEnabledOnce(): Boolean {
+        return offlineFocusEnabled.first()
+    }
+
+    suspend fun getOfflineFocusDefaultDurationMinutesOnce(): Int {
+        return offlineFocusDefaultDurationMinutes.first()
+    }
+
+    suspend fun getOfflineFocusDefaultModeOnce(): OfflineFocusMode {
+        return offlineFocusDefaultMode.first()
+    }
+
+    suspend fun getOfflineFocusWhitelistPackagesOnce(): Set<String> {
+        return offlineFocusWhitelistPackages.first()
+    }
+
+    suspend fun getOfflineFocusContinueOnLockOnce(): Boolean {
+        return offlineFocusContinueOnLock.first()
+    }
+
+    suspend fun getOfflineFocusDailyPointCapOnce(): Int {
+        return offlineFocusDailyPointCap.first()
     }
 
     suspend fun getSharePosterModuleIdsOnce(tabKey: String): List<String> {
@@ -881,6 +1143,74 @@ class ManagedAppPreferences(
             .toString()
     }
 
+    private fun normalizeOfflineFocusDuration(minutes: Int?): Int {
+        val value = minutes ?: DEFAULT_OFFLINE_FOCUS_DURATION_MINUTES
+        return value.coerceIn(MIN_OFFLINE_FOCUS_DURATION_MINUTES, MAX_OFFLINE_FOCUS_DURATION_MINUTES)
+    }
+
+    private fun normalizeOfflineFocusDailyPointCap(points: Int?): Int {
+        val value = points ?: DEFAULT_OFFLINE_FOCUS_DAILY_POINT_CAP
+        return value.coerceIn(MIN_OFFLINE_FOCUS_DAILY_POINT_CAP, MAX_OFFLINE_FOCUS_DAILY_POINT_CAP)
+    }
+
+    private fun normalizeStepPointsRewardThreshold(threshold: Int?): Int {
+        val value = threshold ?: StepTrackingRepository.DEFAULT_REWARD_THRESHOLD
+        return value.coerceIn(MIN_STEP_POINTS_REWARD_THRESHOLD, MAX_STEP_POINTS_REWARD_THRESHOLD)
+    }
+
+    private fun normalizeOfflineFocusDailyTargetMinutes(minutes: Int?): Int {
+        val value = minutes ?: DEFAULT_OFFLINE_FOCUS_DAILY_TARGET_MINUTES
+        return value.coerceIn(MIN_OFFLINE_FOCUS_DAILY_TARGET_MINUTES, MAX_OFFLINE_FOCUS_DAILY_TARGET_MINUTES)
+    }
+
+    private fun parseHomeActivityRingMetric(
+        value: String?,
+        fallback: HomeActivityRingMetric,
+    ): HomeActivityRingMetric =
+        runCatching { HomeActivityRingMetric.valueOf(value.orEmpty()) }.getOrDefault(fallback)
+
+    private fun parseHomeActivityRingColorPreference(
+        metric: HomeActivityRingMetric,
+        source: String?,
+        customArgb: Int?,
+    ): HomeActivityRingColorPreference {
+        val fallback = defaultHomeActivityRingColorPreference(metric)
+        val parsedSource =
+            runCatching { HomeActivityRingColorSource.valueOf(source.orEmpty()) }
+                .getOrDefault(fallback.source)
+        return HomeActivityRingColorPreference(
+            source = parsedSource,
+            customArgb = customArgb?.let(::normalizeHomeActivityRingCustomColor),
+        )
+    }
+
+    private fun defaultHomeActivityRingColorPreference(metric: HomeActivityRingMetric): HomeActivityRingColorPreference =
+        HomeActivityRingColorPreferences().preferenceFor(metric)
+
+    private fun normalizeHomeActivityRingCustomColor(argb: Int): Int =
+        argb or 0xFF000000.toInt()
+
+    private fun homeActivityRingColorSourceKey(metric: HomeActivityRingMetric) =
+        when (metric) {
+            HomeActivityRingMetric.CONTROL -> Keys.homeActivityRingControlColorSource
+            HomeActivityRingMetric.ENCOURAGE -> Keys.homeActivityRingEncourageColorSource
+            HomeActivityRingMetric.GROWTH -> Keys.homeActivityRingGrowthColorSource
+            HomeActivityRingMetric.STEPS -> Keys.homeActivityRingStepsColorSource
+            HomeActivityRingMetric.FOCUS -> Keys.homeActivityRingFocusColorSource
+        }
+
+    private fun homeActivityRingCustomColorKey(metric: HomeActivityRingMetric) =
+        when (metric) {
+            HomeActivityRingMetric.CONTROL -> Keys.homeActivityRingControlCustomColor
+            HomeActivityRingMetric.ENCOURAGE -> Keys.homeActivityRingEncourageCustomColor
+            HomeActivityRingMetric.GROWTH -> Keys.homeActivityRingGrowthCustomColor
+            HomeActivityRingMetric.STEPS -> Keys.homeActivityRingStepsCustomColor
+            HomeActivityRingMetric.FOCUS -> Keys.homeActivityRingFocusCustomColor
+        }
+
+    private fun parseOfflineFocusMode(value: String?): OfflineFocusMode =
+        runCatching { OfflineFocusMode.valueOf(value.orEmpty()) }.getOrDefault(OfflineFocusMode.NORMAL)
+
     companion object {
         const val DEFAULT_APP_COLOR_ALGORITHM = "current"
         const val APP_COLOR_SOURCE_MANUAL = "manual"
@@ -888,6 +1218,17 @@ class ManagedAppPreferences(
         const val MIN_CONTROL_REMAINING_REMINDER_MINUTES = 1
         const val MAX_CONTROL_REMAINING_REMINDER_MINUTES = 120
         val DEFAULT_ENCOURAGE_REMINDER_TIMES_MINUTES = listOf(8 * 60, 18 * 60, 20 * 60)
+        const val DEFAULT_OFFLINE_FOCUS_DURATION_MINUTES = 25
+        const val MIN_OFFLINE_FOCUS_DURATION_MINUTES = 1
+        const val MAX_OFFLINE_FOCUS_DURATION_MINUTES = 240
+        const val DEFAULT_OFFLINE_FOCUS_DAILY_POINT_CAP = 240
+        const val MIN_OFFLINE_FOCUS_DAILY_POINT_CAP = 0
+        const val MAX_OFFLINE_FOCUS_DAILY_POINT_CAP = 1440
+        const val MIN_STEP_POINTS_REWARD_THRESHOLD = 0
+        const val MAX_STEP_POINTS_REWARD_THRESHOLD = 100000
+        const val DEFAULT_OFFLINE_FOCUS_DAILY_TARGET_MINUTES = 60
+        const val MIN_OFFLINE_FOCUS_DAILY_TARGET_MINUTES = 0
+        const val MAX_OFFLINE_FOCUS_DAILY_TARGET_MINUTES = 1440
         private const val MINUTES_PER_DAY = 24 * 60
     }
 }

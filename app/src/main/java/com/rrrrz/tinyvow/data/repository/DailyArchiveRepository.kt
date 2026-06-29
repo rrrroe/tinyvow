@@ -46,7 +46,7 @@ class DailyArchiveRepository(
     private companion object {
         private const val MIN_UNGROUPED_APP_ARCHIVE_USAGE_MILLIS = 60_000L
         private const val UNGROUPED_SCOPE_KEY = "__ungrouped__"
-        private const val SYSTEM_USAGE_ARCHIVE_VERSION = 2
+        private const val SYSTEM_USAGE_ARCHIVE_VERSION = 3
     }
 
     private val zoneId = ZoneId.systemDefault()
@@ -443,6 +443,11 @@ class DailyArchiveRepository(
             groupSnapshots.sumOf { it.earnedPoints } +
                 pointLedgerDao.sumUngroupedEarnedByDate(archiveDate)
         val pointsSpent = pointLedgerDao.sumSpentByDate(archiveDate)
+        val activityRings =
+            buildActivityRingProgressSnapshot(
+                groupSnapshots = groupSnapshots,
+                pointsEarned = pointsEarned,
+            )
         val controlPackageNames =
             groupConfigs
                 .filter { it.type == GroupType.CONTROL }
@@ -485,6 +490,14 @@ class DailyArchiveRepository(
                 pointsSpent = pointsSpent,
                 pointsNet = pointsEarned - pointsSpent,
                 redemptionCount = redemptionHistoryDao.countInRange(dayStart, nextDayStart),
+                activityControlProgress = activityRings.controlProgress,
+                activityEncourageProgress = activityRings.encourageProgress,
+                activityGrowthProgress = activityRings.growthProgress,
+                activityControlAvailable = activityRings.controlAvailable,
+                activityEncourageAvailable = activityRings.encourageAvailable,
+                activityGrowthAvailable = activityRings.growthAvailable,
+                activityGrowthTargetPoints = activityRings.growthTargetPoints,
+                activityRingsCompleted = activityRings.ringsCompleted,
                 archiveVersion = SYSTEM_USAGE_ARCHIVE_VERSION,
                 createdAt = archiveTime,
                 updatedAt = archiveTime,

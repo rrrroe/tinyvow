@@ -35,16 +35,17 @@ internal fun reportColorsFromTokens(
             tokens.base,
             tokens.control,
             tokens.encourage,
-            lerp(tokens.base, tokens.encourage, 0.45f),
+            tokens.save,
+            tokens.restraint,
         ),
         appChartPalette = tokens.chartPalette,
         skeletonBase = colorScheme.surfaceContainerHighest.copy(alpha = 0.46f),
         skeletonHighlight = colorScheme.surface.copy(alpha = 0.92f),
-        skeletonAccent = colorScheme.outlineVariant.copy(alpha = 0.32f),
+        skeletonAccent = tokens.dividerSoft.copy(alpha = 0.42f),
         positive = tokens.encourage,
         warning = tokens.warning,
-        danger = tokens.control,
-        info = tokens.base,
+        danger = tokens.restraint,
+        info = tokens.save,
     )
 }
 

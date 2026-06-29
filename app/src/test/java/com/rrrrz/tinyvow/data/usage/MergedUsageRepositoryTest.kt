@@ -67,12 +67,36 @@ class MergedUsageRepositoryTest {
         assertEquals(mapOf(WEREAD_PACKAGE_NAME to 3), repository.getAppOpenCount(0L, 10_000L))
     }
 
+    @Test
+    fun getUsageStats_replacesConfiguredMediaApps() = runBlocking {
+        val mediaPackage = "app.podcast.cosmos"
+        val repository =
+            MergedUsageRepository(
+                baseRepository = FakeUsageRepository(mapOf(mediaPackage to 120_000L, "other" to 7_000L)),
+                specialRepository = FakeSpecialOverride(enabledTypes = emptySet(), replacement = null),
+                mediaRepository = FakeSpecialOverride(
+                    enabledTypes = setOf(GroupType.CONTROL),
+                    replacement = 45_000L,
+                    packageNames = setOf(mediaPackage),
+                ),
+            )
+
+        val usage = repository.getUsageStats(0L, 10_000L, GroupType.CONTROL)
+
+        assertEquals(45_000L, usage[mediaPackage])
+        assertEquals(7_000L, usage["other"])
+    }
+
     private class FakeSpecialOverride(
         private val enabledTypes: Set<GroupType>,
         private val replacement: Long?,
+        private val packageNames: Set<String> = setOf(WEREAD_PACKAGE_NAME),
     ) : SpecialUsageOverride {
         override suspend fun isReplacementEnabled(groupType: GroupType?): Boolean =
             groupType == null || groupType in enabledTypes
+
+        override suspend fun replacementPackageNames(groupType: GroupType?): Set<String> =
+            if (isReplacementEnabled(groupType)) packageNames else emptySet()
 
         override suspend fun replacementUsageMillis(
             packageName: String,

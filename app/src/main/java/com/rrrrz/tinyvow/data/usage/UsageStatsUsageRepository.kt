@@ -28,9 +28,10 @@ class UsageStatsUsageRepository(
     override suspend fun getYesterdayUsageMillis(packageName: String): Long =
         withContext(Dispatchers.Default) {
             val zoneId = ZoneId.systemDefault()
-            val yesterday = LocalDate.now(zoneId).minusDays(1)
-            val startMillis = yesterday.atStartOfDay(zoneId).toInstant().toEpochMilli()
-            val endMillis = yesterday.plusDays(1).atStartOfDay(zoneId).toInstant().toEpochMilli()
+            val dayStartHour = BusinessDay.cachedStartHour()
+            val yesterday = BusinessDay.today(zoneId, dayStartHour).minusDays(1)
+            val startMillis = BusinessDay.startOfDayMillis(yesterday, zoneId, dayStartHour)
+            val endMillis = BusinessDay.nextDayStartMillis(yesterday, zoneId, dayStartHour)
 
             getUsageMillis(packageName, startMillis, endMillis)
         }

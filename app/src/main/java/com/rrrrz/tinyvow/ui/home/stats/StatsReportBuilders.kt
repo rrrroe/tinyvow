@@ -10,6 +10,8 @@ import com.rrrrz.tinyvow.data.db.GroupType
 import com.rrrrz.tinyvow.data.repository.AppGroupWithApps
 import com.rrrrz.tinyvow.data.repository.ArchiveDateUtils
 import com.rrrrz.tinyvow.data.repository.DailyArchiveRepository
+import com.rrrrz.tinyvow.data.repository.OfflineFocusRepository
+import com.rrrrz.tinyvow.data.repository.OfflineFocusTodaySummary
 import com.rrrrz.tinyvow.data.time.BusinessDay
 import com.rrrrz.tinyvow.data.usage.AppSession
 import com.rrrrz.tinyvow.data.usage.UsageRepository
@@ -45,6 +47,12 @@ internal fun createRefreshingUiState(
         animateValues = true,
         heroState = if (selectedTab == ReportTab.DAY) SectionState.Loading else SectionState.Empty,
         dailyFocusState =
+            if (selectedTab == ReportTab.DAY) {
+                SectionState.Loading
+            } else {
+                SectionState.Empty
+            },
+        offlineFocusState =
             if (selectedTab == ReportTab.DAY) {
                 SectionState.Loading
             } else {
@@ -104,6 +112,7 @@ internal suspend fun buildArchivedWindowReportUiState(
     selectedTab: ReportTab,
     zoneId: ZoneId,
     archiveRepository: DailyArchiveRepository,
+    offlineFocusRepository: OfflineFocusRepository,
     recentArchives: List<DailyArchiveEntity>,
     selectedWeekStart: LocalDate?,
     selectedMonth: YearMonth?,
@@ -218,6 +227,15 @@ internal suspend fun buildArchivedWindowReportUiState(
             groupArchives = currentGroupArchives,
             activeDayCount = currentArchives.size,
         )
+    val dayStartHour = BusinessDay.cachedStartHour()
+    val offlineFocusStartMillis = ArchiveDateUtils.startOfDayMillis(periodBounds.startDate, zoneId, dayStartHour)
+    val offlineFocusEndMillis = ArchiveDateUtils.endOfDayMillis(periodBounds.endDate, zoneId, dayStartHour)
+    val offlineFocusData =
+        buildOfflineFocusSectionData(
+            summary = offlineFocusRepository.getSummaryForDay(offlineFocusStartMillis, offlineFocusEndMillis),
+            dayStartMillis = offlineFocusStartMillis,
+            dayEndMillis = offlineFocusEndMillis,
+        )
     val comparisonData =
         buildArchivedComparisonMetrics(
             selectedTab = selectedTab,
@@ -235,6 +253,7 @@ internal suspend fun buildArchivedWindowReportUiState(
             snapshots = currentSnapshots,
             topApps = topApps,
             windowFocus = windowFocusData,
+            offlineFocus = offlineFocusData,
             behavior =
                 if (behaviorStructure == null) {
                     null
@@ -403,6 +422,7 @@ internal fun buildPeriodReportData(
     snapshots: List<ArchivedAppSnapshot>,
     topApps: List<AppDisplayItem>,
     windowFocus: WindowFocusSectionData,
+    offlineFocus: OfflineFocusSectionData,
     behavior: BehaviorSectionData?,
     comparison: ComparisonSectionData?,
 ): PeriodReportData {
@@ -415,6 +435,7 @@ internal fun buildPeriodReportData(
                 snapshots = snapshots,
                 topApps = topApps,
                 windowFocus = windowFocus,
+                offlineFocus = offlineFocus,
                 behavior = behavior,
                 comparison = comparison,
             )
@@ -426,6 +447,7 @@ internal fun buildPeriodReportData(
                 snapshots = snapshots,
                 topApps = topApps,
                 windowFocus = windowFocus,
+                offlineFocus = offlineFocus,
                 behavior = behavior,
                 comparison = comparison,
             )
@@ -437,6 +459,7 @@ internal fun buildPeriodReportData(
                 snapshots = snapshots,
                 topApps = topApps,
                 windowFocus = windowFocus,
+                offlineFocus = offlineFocus,
                 behavior = behavior,
                 comparison = comparison,
             )
@@ -459,6 +482,7 @@ internal fun buildWeeklyReportData(
     snapshots: List<ArchivedAppSnapshot>,
     topApps: List<AppDisplayItem>,
     windowFocus: WindowFocusSectionData,
+    offlineFocus: OfflineFocusSectionData,
     behavior: BehaviorSectionData?,
     comparison: ComparisonSectionData?,
 ): PeriodReportData {
@@ -528,6 +552,7 @@ internal fun buildWeeklyReportData(
                     ),
             ),
         trend = trend,
+        offlineFocus = offlineFocus,
         appFocus =
             buildAppFocusSectionData(ReportTab.WEEK, topApps, snapshots, totalUsage).copy(
                 weeklyTopAppRows = buildWeeklyTopAppRows(bounds.startDate, snapshots),
@@ -545,6 +570,7 @@ internal fun buildMonthlyReportData(
     snapshots: List<ArchivedAppSnapshot>,
     topApps: List<AppDisplayItem>,
     windowFocus: WindowFocusSectionData,
+    offlineFocus: OfflineFocusSectionData,
     behavior: BehaviorSectionData?,
     comparison: ComparisonSectionData?,
 ): PeriodReportData {
@@ -601,6 +627,7 @@ internal fun buildMonthlyReportData(
                         DailyFocusMetric(AppText.t("stats_time_saved"), formatDuration(totalSaved)),
                     ),
             ),
+        offlineFocus = offlineFocus,
         heatmap =
             PeriodHeatmapData(
                 title = AppText.t("stats_month_calendar_heatmap"),
@@ -633,6 +660,7 @@ internal fun buildYearlyReportData(
     snapshots: List<ArchivedAppSnapshot>,
     topApps: List<AppDisplayItem>,
     windowFocus: WindowFocusSectionData,
+    offlineFocus: OfflineFocusSectionData,
     behavior: BehaviorSectionData?,
     comparison: ComparisonSectionData?,
 ): PeriodReportData {
@@ -684,6 +712,7 @@ internal fun buildYearlyReportData(
                     ),
             ),
         trend = trend,
+        offlineFocus = offlineFocus,
         heatmap =
             PeriodHeatmapData(
                 title = AppText.t("stats_year_month_heatmap"),
@@ -1622,6 +1651,7 @@ internal suspend fun buildArchivedDayReportUiState(
     selectedDate: String?,
     recentArchives: List<DailyArchiveEntity>,
     archiveRepository: DailyArchiveRepository,
+    offlineFocusRepository: OfflineFocusRepository,
     updateState: ((DailyReportUiState) -> DailyReportUiState) -> Unit,
 ) {
     if (selectedDate == null || recentArchives.isEmpty()) {
@@ -1630,6 +1660,7 @@ internal suspend fun buildArchivedDayReportUiState(
                 isRefreshing = false,
                 heroState = SectionState.Empty,
                 dailyFocusState = SectionState.Empty,
+                offlineFocusState = SectionState.Empty,
                 windowFocusState = SectionState.Empty,
                 heatmapState = SectionState.Empty,
                 yearDualScopeState = SectionState.Empty,
@@ -1660,6 +1691,16 @@ internal suspend fun buildArchivedDayReportUiState(
     val currentTimeSliceArchives = archiveRepository.getAppTimeSliceArchivesByDate(selectedArchive.archiveDate).first()
     val currentSnapshots = mergeArchivedAppSnapshots(currentAppArchives)
     val currentGroupArchives = archiveRepository.getGroupArchivesByDate(selectedArchive.archiveDate).first()
+    val offlineFocusData =
+        buildOfflineFocusSectionData(
+            summary =
+                offlineFocusRepository.getSummaryForDay(
+                    selectedArchive.dayStartAt,
+                    selectedArchive.dayEndAt,
+                ),
+            dayStartMillis = selectedArchive.dayStartAt,
+            dayEndMillis = selectedArchive.dayEndAt,
+        )
     val previousGroupArchives =
         previousArchive?.let {
             archiveRepository.getGroupArchivesByDate(it.archiveDate).first()
@@ -1851,6 +1892,12 @@ internal suspend fun buildArchivedDayReportUiState(
                     ),
                 ),
             dailyFocusState = SectionState.Ready(dailyFocusData),
+            offlineFocusState =
+                if (offlineFocusData.totalMillis > 0L || offlineFocusData.completedCount > 0) {
+                    SectionState.Ready(offlineFocusData)
+                } else {
+                    SectionState.Empty
+                },
             windowFocusState = SectionState.Empty,
             heatmapState = SectionState.Empty,
             yearDualScopeState = SectionState.Empty,
@@ -1901,6 +1948,48 @@ internal suspend fun buildArchivedDayReportUiState(
             placeholderDescription = null,
         )
     }
+}
+
+internal fun buildOfflineFocusSectionData(
+    summary: OfflineFocusTodaySummary,
+    dayStartMillis: Long,
+    dayEndMillis: Long,
+): OfflineFocusSectionData {
+    val completedSessions =
+        summary.sessions
+            .filter { it.completedAt != null && it.actualDurationMillis > 0L }
+            .map { session ->
+                val endMillis = session.completedAt ?: (session.startedAt + session.actualDurationMillis)
+                OfflineFocusTimelineItem(
+                    categoryName = session.categoryName,
+                    iconKey = session.iconKey,
+                    colorArgb = session.colorArgb,
+                    startMillis = session.startedAt,
+                    endMillis = endMillis,
+                    durationMillis = session.actualDurationMillis,
+                    pointsAwarded = session.pointsAwarded,
+                )
+            }
+            .sortedBy { it.startMillis }
+    return OfflineFocusSectionData(
+        totalMillis = summary.totalMillis,
+        completedCount = summary.completedCount,
+        pointsAwarded = summary.pointsAwarded,
+        dayStartMillis = dayStartMillis,
+        dayEndMillis = dayEndMillis,
+        sessions = completedSessions,
+        categories =
+            summary.categories.map { category ->
+                OfflineFocusCategoryBreakdown(
+                    categoryName = category.categoryName,
+                    iconKey = category.iconKey,
+                    colorArgb = category.colorArgb,
+                    totalMillis = category.totalMillis,
+                    completedCount = category.completedCount,
+                    pointsAwarded = category.pointsAwarded,
+                )
+            },
+    )
 }
 
 internal fun buildArchiveTimelineSectionData(
@@ -2626,13 +2715,13 @@ private fun percentileInt(values: List<Int>, percentile: Float): Int {
 
 private fun niceBehaviorMapDurationAxis(maxUsage: Long): Long {
     val hourMillis = 60L * 60_000L
-    val targetMillis = maxUsage.coerceAtLeast(1L)
+    val targetMillis = (maxUsage.toDouble() * BEHAVIOR_MAP_AXIS_PADDING_FACTOR).toLong().coerceAtLeast(1L)
     val targetHours = (targetMillis + hourMillis - 1L) / hourMillis
     return max(3L, targetHours) * hourMillis
 }
 
 private fun niceBehaviorMapOpenAxis(maxOpen: Int, threshold: Int): Int {
-    val target = max(maxOpen, threshold) + 100
+    val target = ceil(max(maxOpen, threshold) * BEHAVIOR_MAP_AXIS_PADDING_FACTOR).toInt() + 100
     return max(300, ((target + 99) / 100) * 100)
 }
 
@@ -2653,6 +2742,7 @@ private const val BEHAVIOR_MAP_MIN_HIGH_USAGE_MILLIS = 30L * 60_000L
 private const val BEHAVIOR_MAP_UNGROUPED_MIN_USAGE_MILLIS = 15L * 60_000L
 private const val BEHAVIOR_MAP_MIN_HIGH_OPEN_COUNT = 8
 private const val BEHAVIOR_MAP_UNGROUPED_MIN_OPEN_COUNT = 10
+private const val BEHAVIOR_MAP_AXIS_PADDING_FACTOR = 1.18
 
 internal fun buildArchivedDayBehaviorStructure(
     items: List<ArchivedAppSnapshot>,

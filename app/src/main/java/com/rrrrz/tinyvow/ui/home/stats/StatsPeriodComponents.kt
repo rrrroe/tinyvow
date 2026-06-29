@@ -166,6 +166,7 @@ internal fun PeriodReportScreen(
                 data = data.windowFocus,
                 animateValues = animateValues,
             )
+            OfflineFocusDailyCard(state = SectionState.Ready(data.offlineFocus))
             when (data.tab) {
                 ReportTab.WEEK -> {
                     PeriodTrendCard(data.trend)

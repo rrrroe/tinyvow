@@ -45,4 +45,37 @@ class UsagePeriodBoundsTest {
         )
         assertEquals(nowMillis, bounds.endMillis)
     }
+
+    @Test
+    fun daily_startsAtCustomBusinessDayBoundary() {
+        val bounds = usagePeriodBounds(LimitPeriod.DAILY, zoneId, currentDate, nowMillis, dayStartHour = 3)
+
+        assertEquals(
+            currentDate.atTime(3, 0).atZone(zoneId).toInstant().toEpochMilli(),
+            bounds.startMillis,
+        )
+        assertEquals(nowMillis, bounds.endMillis)
+    }
+
+    @Test
+    fun weekly_startsAtCustomBusinessDayBoundary() {
+        val bounds = usagePeriodBounds(LimitPeriod.WEEKLY, zoneId, currentDate, nowMillis, dayStartHour = 3)
+
+        assertEquals(
+            currentDate.minusDays(6).atTime(3, 0).atZone(zoneId).toInstant().toEpochMilli(),
+            bounds.startMillis,
+        )
+        assertEquals(nowMillis, bounds.endMillis)
+    }
+
+    @Test
+    fun monthly_startsAtCustomBusinessDayBoundary() {
+        val bounds = usagePeriodBounds(LimitPeriod.MONTHLY, zoneId, currentDate, nowMillis, dayStartHour = 3)
+
+        assertEquals(
+            LocalDate.of(2026, 5, 1).atTime(3, 0).atZone(zoneId).toInstant().toEpochMilli(),
+            bounds.startMillis,
+        )
+        assertEquals(nowMillis, bounds.endMillis)
+    }
 }

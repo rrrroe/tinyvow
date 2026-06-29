@@ -19,6 +19,7 @@ import com.rrrrz.tinyvow.data.repository.calculateTargetBonusPoints
 import com.rrrrz.tinyvow.data.repository.calculateUsageEarnedPoints
 import com.rrrrz.tinyvow.data.repository.parseRewardPayload
 import com.rrrrz.tinyvow.data.settings.ManagedAppPreferences
+import com.rrrrz.tinyvow.data.time.BusinessDay
 import com.rrrrz.tinyvow.data.usage.SpecialUsageOverride
 import com.rrrrz.tinyvow.data.usage.UsageStatsUsageRepository
 import com.rrrrz.tinyvow.data.usage.usagePeriodBounds
@@ -120,11 +121,19 @@ class SpecialAppUsageRepository(
 
     suspend fun getWeReadConfig(): SpecialAppConfigEntity = ensureWeReadConfig()
 
+    private suspend fun currentDayStartHour(): Int = preferences.getDayBoundaryHourOnce()
+
+    private fun businessDateAt(
+        millis: Long,
+        dayStartHour: Int,
+    ): LocalDate = ArchiveDateUtils.localDateAt(millis, zoneId, dayStartHour)
+
     suspend fun buildSettingsState(): WeReadSettingsState =
         withContext(Dispatchers.IO) {
             val config = ensureWeReadConfig()
             val apiKey = apiKeyStore.get()
-            val today = LocalDate.now(zoneId)
+            val dayStartHour = currentDayStartHour()
+            val today = businessDateAt(System.currentTimeMillis(), dayStartHour)
             val weekStart = today.minusDays(6)
             val monthStart = today.withDayOfMonth(1)
             val todaySnapshots = getSnapshotsForDateRange(today, today)
@@ -134,9 +143,9 @@ class SpecialAppUsageRepository(
                 config = config,
                 hasApiKey = apiKey?.isNotBlank() == true,
                 apiKeyPreview = apiKey?.takeIf { it.isNotBlank() }?.let(::maskApiKey),
-                todayUsageMillis = sumEffectiveUsageInRange(today, today, config.usagePreference).usageMillis,
-                weekUsageMillis = sumEffectiveUsageInRange(weekStart, today, config.usagePreference).usageMillis,
-                monthUsageMillis = sumEffectiveUsageInRange(monthStart, today, config.usagePreference).usageMillis,
+                todayUsageMillis = sumEffectiveUsageInRange(today, today, config.usagePreference, dayStartHour).usageMillis,
+                weekUsageMillis = sumEffectiveUsageInRange(weekStart, today, config.usagePreference, dayStartHour).usageMillis,
+                monthUsageMillis = sumEffectiveUsageInRange(monthStart, today, config.usagePreference, dayStartHour).usageMillis,
                 todayReadingMillis = sumReadingUsage(todaySnapshots),
                 weekReadingMillis = sumReadingUsage(weekSnapshots),
                 monthReadingMillis = sumReadingUsage(monthSnapshots),
@@ -197,7 +206,7 @@ class SpecialAppUsageRepository(
         }
     }
 
-    suspend fun testWeReadApi(targetDate: LocalDate = LocalDate.now(zoneId)): Result<WeReadApiCheckResult> =
+    suspend fun testWeReadApi(targetDate: LocalDate): Result<WeReadApiCheckResult> =
         withContext(Dispatchers.IO) {
             val apiKey = apiKeyStore.get()
             if (apiKey.isNullOrBlank()) {
@@ -229,7 +238,8 @@ class SpecialAppUsageRepository(
                 return@withContext Result.failure(IllegalStateException(error))
             }
             runCatching {
-                val today = LocalDate.now(zoneId)
+                val dayStartHour = currentDayStartHour()
+                val today = businessDateAt(now, dayStartHour)
                 val months = buildList {
                     add(YearMonth.from(today))
                     if (today.dayOfMonth <= 7) add(YearMonth.from(today.minusMonths(1)))
@@ -245,13 +255,14 @@ class SpecialAppUsageRepository(
                         readingUsage = result.dailyUsageMillis,
                         readingSyncedAt = now,
                         collectPhoneUsage = true,
+                        dayStartHour = dayStartHour,
                     )
                 }
                 if (snapshots.isNotEmpty()) {
                     snapshotDao.upsertAll(snapshots)
                 }
                 configDao.updateSyncState(WEREAD_PROVIDER, now, now, null, now)
-                creditRemoteEncourageUsage(today, now)
+                creditRemoteEncourageUsage(today, now, dayStartHour)
                 WeReadSyncSummary(
                     monthsQueried = months.size,
                     totalUsageMillis = totalUsageMillis,
@@ -273,7 +284,8 @@ class SpecialAppUsageRepository(
         daysBack: Long = DEFAULT_HISTORY_BACKFILL_DAYS,
     ): Result<WeReadHistoryRefreshSummary> =
         withContext(Dispatchers.IO) {
-            val today = LocalDate.now(zoneId)
+            val dayStartHour = currentDayStartHour()
+            val today = businessDateAt(System.currentTimeMillis(), dayStartHour)
             val yesterday = today.minusDays(1)
             val fromDate = today.minusDays(daysBack).coerceAtLeast(LocalDate.of(2000, 1, 1))
             if (yesterday.isBefore(fromDate)) {
@@ -286,14 +298,15 @@ class SpecialAppUsageRepository(
                     .filter { date -> existing[date]?.sourceSyncedAt ?: 0L <= 0L }
                     .toList()
             if (missingDates.isEmpty()) {
-                return@withContext Result.success(collectPhoneUsageForDates(existing.keys.toList()))
+                return@withContext Result.success(collectPhoneUsageForDates(existing.keys.toList(), dayStartHour))
             }
-            refreshWeReadHistoryForDates(missingDates)
+            refreshWeReadHistoryForDates(missingDates, dayStartHour)
         }
 
     suspend fun refreshWeReadHistoryMonth(month: YearMonth): Result<WeReadHistoryRefreshSummary> =
         withContext(Dispatchers.IO) {
-            val today = LocalDate.now(zoneId)
+            val dayStartHour = currentDayStartHour()
+            val today = businessDateAt(System.currentTimeMillis(), dayStartHour)
             val startDate = month.atDay(1)
             val endDate = minOf(month.atEndOfMonth(), today)
             if (endDate.isBefore(startDate)) {
@@ -302,18 +315,20 @@ class SpecialAppUsageRepository(
             refreshWeReadHistoryForDates(
                 generateSequence(startDate) { it.plusDays(1) }
                     .takeWhile { !it.isAfter(endDate) }
-                    .toList()
+                    .toList(),
+                dayStartHour,
             )
         }
 
     suspend fun refreshWeReadHistoryDate(date: LocalDate): Result<WeReadHistoryRefreshSummary> =
         withContext(Dispatchers.IO) {
-            refreshWeReadHistoryForDates(listOf(date))
+            refreshWeReadHistoryForDates(listOf(date), currentDayStartHour())
         }
 
     suspend fun refreshPhoneHistoryMonth(month: YearMonth): WeReadHistoryRefreshSummary =
         withContext(Dispatchers.IO) {
-            val today = LocalDate.now(zoneId)
+            val dayStartHour = currentDayStartHour()
+            val today = businessDateAt(System.currentTimeMillis(), dayStartHour)
             val startDate = month.atDay(1)
             val endDate = minOf(month.atEndOfMonth(), today)
             if (endDate.isBefore(startDate)) {
@@ -322,13 +337,15 @@ class SpecialAppUsageRepository(
             collectPhoneUsageForDates(
                 generateSequence(startDate) { it.plusDays(1) }
                     .takeWhile { !it.isAfter(endDate) }
-                    .toList()
+                    .toList(),
+                dayStartHour,
             )
         }
 
     suspend fun getWeReadHistoryMonth(month: YearMonth): List<WeReadHistoryDay> =
         withContext(Dispatchers.IO) {
-            val today = LocalDate.now(zoneId)
+            val dayStartHour = currentDayStartHour()
+            val today = businessDateAt(System.currentTimeMillis(), dayStartHour)
             val startDate = month.atDay(1)
             val endDate = minOf(month.atEndOfMonth(), today)
             val snapshots =
@@ -370,6 +387,9 @@ class SpecialAppUsageRepository(
         }
     }
 
+    override suspend fun replacementPackageNames(groupType: GroupType?): Set<String> =
+        if (isReplacementEnabled(groupType)) setOf(WEREAD_PACKAGE_NAME) else emptySet()
+
     override suspend fun replacementUsageMillis(
         packageName: String,
         startMillis: Long,
@@ -378,10 +398,13 @@ class SpecialAppUsageRepository(
     ): Long? {
         if (packageName != WEREAD_PACKAGE_NAME) return null
         if (!isReplacementEnabled(groupType)) return null
-        val startDate = ArchiveDateUtils.localDateAt(startMillis, zoneId)
-        val endDate = ArchiveDateUtils.localDateAt((endMillis - 1).coerceAtLeast(startMillis), zoneId)
+        val dayStartHour = currentDayStartHour()
+        val startDate = ArchiveDateUtils.localDateAt(startMillis, zoneId, dayStartHour)
+        val endDate = ArchiveDateUtils.localDateAt((endMillis - 1).coerceAtLeast(startMillis), zoneId, dayStartHour)
         val config = configDao.get(WEREAD_PROVIDER) ?: ensureWeReadConfig()
-        return sumEffectiveUsageInRange(startDate, endDate, config.usagePreference).takeIf { it.hasOverride }?.usageMillis
+        return sumEffectiveUsageInRange(startDate, endDate, config.usagePreference, dayStartHour)
+            .takeIf { it.hasOverride }
+            ?.usageMillis
     }
 
     suspend fun usageSourceForDate(
@@ -391,6 +414,7 @@ class SpecialAppUsageRepository(
     ): SpecialAppUsageSource? {
         if (packageName != WEREAD_PACKAGE_NAME || !isReplacementEnabled(groupType)) return null
         val config = configDao.get(WEREAD_PROVIDER) ?: return null
+        val dayStartHour = currentDayStartHour()
         val targetDate = LocalDate.parse(date)
         val snapshot = snapshotDao.getByDate(WEREAD_PROVIDER, date)
         val effectiveUsage =
@@ -399,7 +423,7 @@ class SpecialAppUsageRepository(
                 snapshot = snapshot,
                 preference = config.usagePreference,
                 livePhoneUsageMillis = null,
-                today = LocalDate.now(zoneId),
+                today = businessDateAt(System.currentTimeMillis(), dayStartHour),
             )
         val provider =
             when (effectiveUsage.source) {
@@ -413,14 +437,23 @@ class SpecialAppUsageRepository(
 
     suspend fun getUsageMillis(startMillis: Long, endMillis: Long): Long {
         if (endMillis <= startMillis) return 0L
-        val startDate = ArchiveDateUtils.localDateAt(startMillis, zoneId)
-        val endDate = ArchiveDateUtils.localDateAt((endMillis - 1).coerceAtLeast(startMillis), zoneId)
+        val dayStartHour = currentDayStartHour()
+        val startDate = ArchiveDateUtils.localDateAt(startMillis, zoneId, dayStartHour)
+        val endDate = ArchiveDateUtils.localDateAt((endMillis - 1).coerceAtLeast(startMillis), zoneId, dayStartHour)
         val config = configDao.get(WEREAD_PROVIDER) ?: ensureWeReadConfig()
-        return sumEffectiveUsageInRange(startDate, endDate, config.usagePreference).usageMillis
+        return sumEffectiveUsageInRange(startDate, endDate, config.usagePreference, dayStartHour).usageMillis
     }
 
     override suspend fun getUsageInPeriod(period: LimitPeriod): Long {
-        val bounds = usagePeriodBounds(period, zoneId)
+        val dayStartHour = currentDayStartHour()
+        val now = System.currentTimeMillis()
+        val bounds = usagePeriodBounds(
+            period = period,
+            zoneId = zoneId,
+            currentDate = businessDateAt(now, dayStartHour),
+            nowMillis = now,
+            dayStartHour = dayStartHour,
+        )
         return getUsageMillis(bounds.startMillis, bounds.endMillis)
     }
 
@@ -435,9 +468,12 @@ class SpecialAppUsageRepository(
         )
     }
 
-    private suspend fun refreshWeReadHistoryForDates(dates: List<LocalDate>): Result<WeReadHistoryRefreshSummary> {
+    private suspend fun refreshWeReadHistoryForDates(
+        dates: List<LocalDate>,
+        dayStartHour: Int,
+    ): Result<WeReadHistoryRefreshSummary> {
         if (dates.isEmpty()) {
-            val today = LocalDate.now(zoneId)
+            val today = businessDateAt(System.currentTimeMillis(), dayStartHour)
             return Result.success(WeReadHistoryRefreshSummary(today, today, 0, 0, 0))
         }
         val config = ensureWeReadConfig()
@@ -463,6 +499,7 @@ class SpecialAppUsageRepository(
                     readingUsage = readingUsageByDate,
                     readingSyncedAt = now,
                     collectPhoneUsage = true,
+                    dayStartHour = dayStartHour,
                 )
             if (snapshots.isNotEmpty()) {
                 snapshotDao.upsertAll(snapshots)
@@ -486,7 +523,10 @@ class SpecialAppUsageRepository(
         }
     }
 
-    private suspend fun collectPhoneUsageForDates(dates: List<LocalDate>): WeReadHistoryRefreshSummary {
+    private suspend fun collectPhoneUsageForDates(
+        dates: List<LocalDate>,
+        dayStartHour: Int,
+    ): WeReadHistoryRefreshSummary {
         val now = System.currentTimeMillis()
         val snapshots =
             dates.distinct().sorted().map { date ->
@@ -495,14 +535,14 @@ class SpecialAppUsageRepository(
                     readingUsageMillis = null,
                     readingBucketAvailable = null,
                     readingSyncedAt = null,
-                    phoneUsageMillis = readPhoneUsageForDate(date),
+                    phoneUsageMillis = readPhoneUsageForDate(date, dayStartHour),
                     phoneCollectedAt = now,
                 )
             }
         if (snapshots.isNotEmpty()) {
             snapshotDao.upsertAll(snapshots)
         }
-        val first = dates.minOrNull() ?: LocalDate.now(zoneId)
+        val first = dates.minOrNull() ?: businessDateAt(now, dayStartHour)
         val last = dates.maxOrNull() ?: first
         return WeReadHistoryRefreshSummary(
             fromDate = first,
@@ -518,6 +558,7 @@ class SpecialAppUsageRepository(
         readingUsage: Map<LocalDate, Long>,
         readingSyncedAt: Long,
         collectPhoneUsage: Boolean,
+        dayStartHour: Int,
     ): List<SpecialAppUsageSnapshotEntity> {
         val phoneCollectedAt = if (collectPhoneUsage) System.currentTimeMillis() else null
         return dates.distinct().map { date ->
@@ -526,7 +567,7 @@ class SpecialAppUsageRepository(
                 readingUsageMillis = readingUsage[date],
                 readingBucketAvailable = readingUsage.containsKey(date),
                 readingSyncedAt = readingSyncedAt,
-                phoneUsageMillis = if (collectPhoneUsage) readPhoneUsageForDate(date) else null,
+                phoneUsageMillis = if (collectPhoneUsage) readPhoneUsageForDate(date, dayStartHour) else null,
                 phoneCollectedAt = phoneCollectedAt,
             )
         }
@@ -558,9 +599,9 @@ class SpecialAppUsageRepository(
         )
     }
 
-    private suspend fun readPhoneUsageForDate(date: LocalDate): Long {
-        val startMillis = date.atStartOfDay(zoneId).toInstant().toEpochMilli()
-        val endMillis = date.plusDays(1).atStartOfDay(zoneId).toInstant().toEpochMilli()
+    private suspend fun readPhoneUsageForDate(date: LocalDate, dayStartHour: Int): Long {
+        val startMillis = ArchiveDateUtils.startOfDayMillis(date, zoneId, dayStartHour)
+        val endMillis = ArchiveDateUtils.nextDayStartMillis(date, zoneId, dayStartHour)
         return baseUsageRepository.getUsageMillis(WEREAD_PACKAGE_NAME, startMillis, minOf(endMillis, System.currentTimeMillis()))
     }
 
@@ -578,15 +619,16 @@ class SpecialAppUsageRepository(
         return config
     }
 
-    private suspend fun getUsageForDate(date: LocalDate): Long {
+    private suspend fun getUsageForDate(date: LocalDate, dayStartHour: Int): Long {
         val dateString = ArchiveDateUtils.formatDate(date)
         val config = configDao.get(WEREAD_PROVIDER) ?: ensureWeReadConfig()
+        val today = businessDateAt(System.currentTimeMillis(), dayStartHour)
         return resolveEffectiveUsage(
             date = date,
             snapshot = snapshotDao.getByDate(WEREAD_PROVIDER, dateString),
             preference = config.usagePreference,
-            livePhoneUsageMillis = if (date == LocalDate.now(zoneId)) readPhoneUsageForDate(date) else null,
-            today = LocalDate.now(zoneId),
+            livePhoneUsageMillis = if (date == today) readPhoneUsageForDate(date, dayStartHour) else null,
+            today = today,
         ).usageMillis
     }
 
@@ -608,13 +650,14 @@ class SpecialAppUsageRepository(
         startDate: LocalDate,
         endDate: LocalDate,
         preference: SpecialAppUsagePreference,
+        dayStartHour: Int,
     ): EffectiveRangeUsage {
         if (endDate.isBefore(startDate)) return EffectiveRangeUsage(0L, false)
-        val today = LocalDate.now(zoneId)
+        val today = businessDateAt(System.currentTimeMillis(), dayStartHour)
         val snapshotsByDate = getSnapshotsForDateRange(startDate, endDate).associateBy { LocalDate.parse(it.usageDate) }
         val livePhoneUsageToday =
             if (!today.isBefore(startDate) && !today.isAfter(endDate)) {
-                readPhoneUsageForDate(today)
+                readPhoneUsageForDate(today, dayStartHour)
             } else {
                 null
             }
@@ -704,7 +747,11 @@ class SpecialAppUsageRepository(
         }
     }
 
-    private suspend fun creditRemoteEncourageUsage(today: LocalDate, now: Long) {
+    private suspend fun creditRemoteEncourageUsage(
+        today: LocalDate,
+        now: Long,
+        dayStartHour: Int,
+    ) {
         val config = configDao.get(WEREAD_PROVIDER) ?: return
         if (!config.syncEnabled ||
             !config.enabledForEncourage ||
@@ -713,8 +760,9 @@ class SpecialAppUsageRepository(
             return
         }
         val todayString = ArchiveDateUtils.formatDate(today)
-        val todayStart = ArchiveDateUtils.startOfDayMillis(today, zoneId)
-        val currentRemoteUsage = getUsageForDate(today)
+        val todayStart = ArchiveDateUtils.startOfDayMillis(today, zoneId, dayStartHour)
+        val tomorrowStart = ArchiveDateUtils.nextDayStartMillis(today, zoneId, dayStartHour)
+        val currentRemoteUsage = getUsageForDate(today, dayStartHour)
         if (currentRemoteUsage <= 0L) return
         val groupIds = crossRefDao.getGroupIdsForPackageSync(WEREAD_PACKAGE_NAME)
         val groups =
@@ -755,7 +803,7 @@ class SpecialAppUsageRepository(
                         if (packageName == WEREAD_PACKAGE_NAME) {
                             currentRemoteUsage
                         } else {
-                            baseUsageRepository.getTodayUsageMillis(packageName)
+                            baseUsageRepository.getUsageMillis(packageName, todayStart, minOf(tomorrowStart, now))
                         }
                     }
                 if (totalTodayUsage >= group.limitMinutes * 60_000L) {

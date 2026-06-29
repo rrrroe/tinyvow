@@ -75,6 +75,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -111,17 +112,20 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.Popup
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.ui.window.PopupProperties
 import androidx.compose.ui.zIndex
 import coil.compose.AsyncImage
 import com.rrrrz.tinyvow.R
 import com.rrrrz.tinyvow.data.apps.InstalledAppRepository
 import com.rrrrz.tinyvow.data.apps.ManagedApp
+import com.rrrrz.tinyvow.data.db.AppDatabase
 import com.rrrrz.tinyvow.data.db.DailyAppArchiveEntity
 import com.rrrrz.tinyvow.data.db.DailyArchiveEntity
 import com.rrrrz.tinyvow.data.db.DailyGroupArchiveEntity
@@ -129,6 +133,7 @@ import com.rrrrz.tinyvow.data.db.GroupType
 import com.rrrrz.tinyvow.data.repository.AppGroupWithApps
 import com.rrrrz.tinyvow.data.repository.ArchiveDateUtils
 import com.rrrrz.tinyvow.data.repository.DailyArchiveRepository
+import com.rrrrz.tinyvow.data.repository.OfflineFocusRepository
 import com.rrrrz.tinyvow.data.settings.ManagedAppPreferences
 import com.rrrrz.tinyvow.data.usage.AppSession
 import com.rrrrz.tinyvow.data.usage.UsageAccessStatus
@@ -161,13 +166,16 @@ import kotlin.math.roundToInt
 import kotlin.math.roundToLong
 
 private const val STAT_CHART_ANIMATIONS_ENABLED = false
+private const val SharePosterMinExportWidthPx = 1440f
+private const val SharePosterMaxExportScale = 2f
 private val ReportTopControlHeight = 50.dp
-private val ReportNavigatorArrowSize = 34.dp
+private val ReportNavigatorArrowSize = ReportTopControlHeight
 
 private enum class SharePosterModule {
     BEHAVIOR,
     TIME_TIDE,
     FOCUS,
+    OFFLINE,
     APPS,
     RHYTHM,
     INSIGHTS,
@@ -248,10 +256,15 @@ fun StatsRoute(
     reportMemoryCache: StatsReportMemoryCache,
     screenEnterReplayToken: Int,
     isProActive: Boolean,
+    offlineFocusEnabled: Boolean,
     onShowProUpsell: (ProUpsellSource) -> Unit,
     onRequestUsageAccess: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    val context = LocalContext.current
+    val offlineFocusRepository = remember(context) {
+        OfflineFocusRepository(context, AppDatabase.getDatabase(context))
+    }
     val zoneId = remember { ZoneId.systemDefault() }
     val restoredState = remember(reportMemoryCache) { reportMemoryCache.restoreState() }
     var selectedTab by remember(reportMemoryCache) { mutableStateOf(restoredState?.selectedTab ?: ReportTab.DAY) }
@@ -366,6 +379,7 @@ fun StatsRoute(
                     selectedDate = normalizedSelectedDate,
                     recentArchives = recentArchives,
                     archiveRepository = archiveRepository,
+                    offlineFocusRepository = offlineFocusRepository,
                     updateState = { transform ->
                         val nextState = transform(uiState)
                         applyUiState(nextState)
@@ -421,6 +435,7 @@ fun StatsRoute(
                     selectedTab = selectedTab,
                     zoneId = zoneId,
                     archiveRepository = archiveRepository,
+                    offlineFocusRepository = offlineFocusRepository,
                     recentArchives = recentArchives,
                     selectedWeekStart = normalizedWeekStart,
                     selectedMonth = normalizedMonth,
@@ -480,6 +495,7 @@ fun StatsRoute(
             selectedYear = year
         },
         isProActive = isProActive,
+        offlineFocusEnabled = offlineFocusEnabled,
         onShowProUpsell = onShowProUpsell,
         onRequestUsageAccess = onRequestUsageAccess,
         screenEnterReplayToken = screenEnterReplayToken,
@@ -504,15 +520,17 @@ private fun StatsScreenLayout(
     onNextYear: () -> Unit,
     onSelectYear: (Int) -> Unit,
     isProActive: Boolean,
+    offlineFocusEnabled: Boolean,
     onShowProUpsell: (ProUpsellSource) -> Unit,
     onRequestUsageAccess: () -> Unit,
     screenEnterReplayToken: Int,
     modifier: Modifier = Modifier,
 ) {
+    val reportColors = LocalReportColors.current
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background),
+            .background(Brush.verticalGradient(reportColors.pageGradient)),
     ) {
         when {
             !state.isPermissionGranted -> PermissionRequiredState(
@@ -538,6 +556,7 @@ private fun StatsScreenLayout(
                 onNextYear = onNextYear,
                 onSelectYear = onSelectYear,
                 isProActive = isProActive,
+                offlineFocusEnabled = offlineFocusEnabled,
                 onShowProUpsell = onShowProUpsell,
                 screenEnterReplayToken = screenEnterReplayToken,
             )
@@ -562,10 +581,12 @@ private fun DailyReportScreen(
     onNextYear: () -> Unit,
     onSelectYear: (Int) -> Unit,
     isProActive: Boolean,
+    offlineFocusEnabled: Boolean,
     onShowProUpsell: (ProUpsellSource) -> Unit,
     screenEnterReplayToken: Int,
 ) {
     val listState = rememberLazyListState()
+    val reportColors = LocalReportColors.current
     val canShare = isReportShareReady(state = state, isProActive = isProActive)
     var showSharePreview by remember(
         state.selectedTab,
@@ -588,7 +609,7 @@ private fun DailyReportScreen(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(MaterialTheme.colorScheme.background)
+                .background(Brush.verticalGradient(reportColors.pageGradient))
                 .padding(
                     horizontal = TinyVowSpacing.PageHorizontal,
                     vertical = 6.dp,
@@ -645,6 +666,7 @@ private fun DailyReportScreen(
                     ReportPageContent(
                         state = state,
                         isProActive = isProActive,
+                        offlineFocusEnabled = offlineFocusEnabled,
                         onShowProUpsell = onShowProUpsell,
                         screenEnterReplayToken = screenEnterReplayToken,
                     )
@@ -658,6 +680,7 @@ private fun DailyReportScreen(
         ReportPageSharePreviewDialog(
             state = state,
             isProActive = isProActive,
+            offlineFocusEnabled = offlineFocusEnabled,
             onDismiss = { showSharePreview = false },
         )
     }
@@ -667,6 +690,7 @@ private fun DailyReportScreen(
 private fun ReportPageContent(
     state: DailyReportUiState,
     isProActive: Boolean,
+    offlineFocusEnabled: Boolean,
     onShowProUpsell: (ProUpsellSource) -> Unit,
     screenEnterReplayToken: Int,
     modifier: Modifier = Modifier,
@@ -676,8 +700,8 @@ private fun ReportPageContent(
     val defaultDayModules =
         buildList {
             add(SharePosterModule.BEHAVIOR)
-            add(SharePosterModule.TIME_TIDE)
             add(SharePosterModule.FOCUS)
+            if (offlineFocusEnabled) add(SharePosterModule.OFFLINE)
             add(SharePosterModule.RHYTHM)
             if (isProActive) add(SharePosterModule.INSIGHTS)
         }
@@ -710,6 +734,9 @@ private fun ReportPageContent(
                             screenEnterReplayToken = screenEnterReplayToken,
                         )
                     }
+                    SharePosterModule.OFFLINE -> {
+                        OfflineFocusDailyCard(state = state.offlineFocusState)
+                    }
                     SharePosterModule.APPS -> Unit
                     SharePosterModule.RHYTHM -> DailyRhythmCard(
                         timelineState = state.timelineState,
@@ -725,6 +752,9 @@ private fun ReportPageContent(
                     SharePosterModule.HEATMAP,
                     SharePosterModule.STRUCTURE -> Unit
                 }
+            }
+            if (shareModules == null && offlineFocusEnabled) {
+                OfflineFocusPomodoroRhythmCard(state = state.offlineFocusState)
             }
         } else {
             if (shareModules == null) {
@@ -776,6 +806,7 @@ private fun PeriodShareReportContent(
                             animateValues = animateValues,
                         )
                     }
+                    SharePosterModule.OFFLINE -> OfflineFocusDailyCard(state = SectionState.Ready(data.offlineFocus))
                     SharePosterModule.TREND -> PeriodTrendCard(data.trend)
                     SharePosterModule.HEATMAP -> data.heatmap?.let { PeriodHeatmapCard(it) }
                     SharePosterModule.STRUCTURE -> {
@@ -880,14 +911,12 @@ private fun ReportNavigatorSkeleton(
     Surface(
         modifier = modifier.height(ReportTopControlHeight),
         shape = RoundedCornerShape(18.dp),
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.32f)),
-        shadowElevation = TinyVowElevation.Card,
+        color = Color.Transparent,
     ) {
         Row(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 4.dp, vertical = 4.dp),
+                .padding(horizontal = 0.dp, vertical = 0.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
@@ -970,18 +999,16 @@ private fun PeriodNavigator(
     Surface(
         modifier = modifier.height(ReportTopControlHeight),
         shape = RoundedCornerShape(18.dp),
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.32f)),
-        shadowElevation = TinyVowElevation.Card,
+        color = Color.Transparent,
     ) {
         Row(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 4.dp, vertical = 4.dp),
+                .padding(horizontal = 0.dp, vertical = 0.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            IconButton(
+            ReportNavigatorArrowButton(
                 modifier = Modifier.size(ReportNavigatorArrowSize),
                 onClick = {
                     when (selectedTab) {
@@ -992,16 +1019,16 @@ private fun PeriodNavigator(
                     }
                 },
                 enabled = canGoPrevious,
-            ) {
-                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = AppText.t("stats_previous"))
-            }
+                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                contentDescription = AppText.t("stats_previous"),
+            )
             Surface(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxHeight()
                     .clickable { showDialog = true },
                 shape = RoundedCornerShape(14.dp),
-                color = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.86f),
+                color = LocalThemeColors.current.baseContainer.copy(alpha = 0.46f),
             ) {
                 Row(
                     modifier = Modifier
@@ -1022,7 +1049,7 @@ private fun PeriodNavigator(
                     )
                 }
             }
-            IconButton(
+            ReportNavigatorArrowButton(
                 modifier = Modifier.size(ReportNavigatorArrowSize),
                 onClick = {
                     when (selectedTab) {
@@ -1033,9 +1060,9 @@ private fun PeriodNavigator(
                     }
                 },
                 enabled = canGoNext,
-            ) {
-                Icon(Icons.AutoMirrored.Filled.ArrowForward, contentDescription = AppText.t("stats_next"))
-            }
+                imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                contentDescription = AppText.t("stats_next"),
+            )
         }
     }
     if (showDialog) {
@@ -1071,6 +1098,38 @@ private fun PeriodNavigator(
                     },
                 )
             ReportTab.DAY -> Unit
+        }
+    }
+}
+
+@Composable
+private fun ReportNavigatorArrowButton(
+    imageVector: ImageVector,
+    contentDescription: String,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val themeColors = LocalThemeColors.current
+    Surface(
+        modifier = modifier.clickable(enabled = enabled, onClick = onClick),
+        shape = RoundedCornerShape(14.dp),
+        color =
+            if (enabled) {
+                themeColors.baseContainer.copy(alpha = 0.46f)
+            } else {
+                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.20f)
+            },
+    ) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center,
+        ) {
+            Icon(
+                imageVector = imageVector,
+                contentDescription = contentDescription,
+                tint = if (enabled) themeColors.base else themeColors.inkMuted.copy(alpha = 0.42f),
+            )
         }
     }
 }
@@ -1246,27 +1305,22 @@ private fun ArchiveDateNavigator(
     Surface(
         modifier = modifier.height(ReportTopControlHeight),
         shape = RoundedCornerShape(18.dp),
-        color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.32f)),
-        shadowElevation = TinyVowElevation.Card,
+        color = Color.Transparent,
     ) {
         Row(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 4.dp, vertical = 4.dp),
+                .padding(horizontal = 0.dp, vertical = 0.dp),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            IconButton(
+            ReportNavigatorArrowButton(
                 modifier = Modifier.size(ReportNavigatorArrowSize),
                 onClick = onPreviousArchiveDate,
                 enabled = previousArchiveDate != null,
-            ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = AppText.t("stats_previous_day"),
-                )
-            }
+                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                contentDescription = AppText.t("stats_previous_day"),
+            )
             Surface(
                 modifier =
                     Modifier
@@ -1274,7 +1328,7 @@ private fun ArchiveDateNavigator(
                         .fillMaxHeight()
                         .clickable { showCalendar = true },
                 shape = RoundedCornerShape(14.dp),
-                color = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.86f),
+                color = LocalThemeColors.current.baseContainer.copy(alpha = 0.46f),
             ) {
                 Row(
                     modifier = Modifier
@@ -1295,16 +1349,13 @@ private fun ArchiveDateNavigator(
                     )
                 }
             }
-            IconButton(
+            ReportNavigatorArrowButton(
                 modifier = Modifier.size(ReportNavigatorArrowSize),
                 onClick = onNextArchiveDate,
                 enabled = nextArchiveDate != null,
-            ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowForward,
-                    contentDescription = AppText.t("stats_next_day"),
-                )
-            }
+                imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                contentDescription = AppText.t("stats_next_day"),
+            )
         }
     }
     if (showCalendar) {
@@ -1591,9 +1642,7 @@ private fun ReportTabDropdown(
             modifier = Modifier.fillMaxSize(),
             onClick = { expanded = true },
             shape = RoundedCornerShape(18.dp),
-            color = themeColors.baseContainer,
-            border = BorderStroke(1.dp, themeColors.base.copy(alpha = 0.18f)),
-            shadowElevation = TinyVowElevation.Card,
+            color = themeColors.baseContainer.copy(alpha = 0.46f),
         ) {
             Row(
                 modifier = Modifier
@@ -2155,6 +2204,7 @@ private fun DailyFocusCard(
                         summary = focusState.data.control,
                         icon = Icons.Default.Bolt,
                         compact = compactLayout,
+                        useHomeMetricCardStyle = true,
                         animateValues = animateValues,
                         replayToken = screenEnterReplayToken,
                         modifier = modifier,
@@ -2164,6 +2214,7 @@ private fun DailyFocusCard(
                         summary = focusState.data.encourage,
                         icon = Icons.Default.RocketLaunch,
                         compact = compactLayout,
+                        useHomeMetricCardStyle = true,
                         animateValues = animateValues,
                         replayToken = screenEnterReplayToken,
                         modifier = modifier,
@@ -2397,17 +2448,15 @@ private fun ReportShareIconCard(
         shape = shape,
         color =
             if (enabled) {
-                themeColors.baseContainer
+                themeColors.baseContainer.copy(alpha = 0.46f)
             } else {
-                MaterialTheme.colorScheme.surface
+                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.20f)
             },
-        border = BorderStroke(
-            1.dp,
-            if (enabled) themeColors.base.copy(alpha = 0.18f) else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.32f),
-        ),
-        shadowElevation = TinyVowElevation.Card,
     ) {
-        Box(contentAlignment = Alignment.Center) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center,
+        ) {
             Icon(
                 imageVector = Icons.Default.Share,
                 contentDescription = AppText.t("group_share"),
@@ -2478,9 +2527,13 @@ private fun ReportShareActionCard(
     }
 
     if (showPreview) {
+        val context = LocalContext.current
+        val preferences = remember(context) { ManagedAppPreferences(context.applicationContext) }
+        val offlineFocusEnabled by preferences.offlineFocusEnabled.collectAsStateWithLifecycle(initialValue = false)
         ReportPageSharePreviewDialog(
             state = state,
             isProActive = isProActive,
+            offlineFocusEnabled = offlineFocusEnabled,
             onDismiss = { showPreview = false },
         )
     }
@@ -2500,6 +2553,7 @@ private fun isReportShareReady(
 private fun availableSharePosterModules(
     state: DailyReportUiState,
     isProActive: Boolean,
+    offlineFocusEnabled: Boolean,
 ): List<SharePosterModule> {
     return if (state.selectedTab == ReportTab.DAY) {
         buildList {
@@ -2507,11 +2561,11 @@ private fun availableSharePosterModules(
             if (behaviorStructure != null && behaviorStructure.scoreMetrics.isNotEmpty()) {
                 add(SharePosterModule.BEHAVIOR)
             }
-            if (state.timeTideState is SectionState.Ready) {
-                add(SharePosterModule.TIME_TIDE)
-            }
             if (state.dailyFocusState is SectionState.Ready) {
                 add(SharePosterModule.FOCUS)
+            }
+            if (offlineFocusEnabled && state.offlineFocusState is SectionState.Ready) {
+                add(SharePosterModule.OFFLINE)
             }
             val timeline = (state.timelineState as? SectionState.Ready)?.data
             if (timeline != null && (timeline.buckets.isNotEmpty() || timeline.periodUsage.any { it.deviceMillis > 0L })) {
@@ -2528,6 +2582,9 @@ private fun availableSharePosterModules(
             if (periodData != null) {
                 add(SharePosterModule.OVERVIEW)
                 add(SharePosterModule.FOCUS)
+                if (offlineFocusEnabled && (periodData.offlineFocus.totalMillis > 0L || periodData.offlineFocus.completedCount > 0)) {
+                    add(SharePosterModule.OFFLINE)
+                }
                 if (periodData.trend.points.isNotEmpty()) {
                     add(SharePosterModule.TREND)
                 }
@@ -2560,7 +2617,7 @@ private fun restoredSharePosterModules(
     return moduleIds
         .mapNotNull { id -> availableModules.firstOrNull { it.name == id } }
         .distinct()
-        .ifEmpty { availableModules.take(2) }
+        .ifEmpty { availableModules.take(3) }
 }
 
 private fun SharePosterModule.labelKey(selectedTab: ReportTab): String =
@@ -2568,6 +2625,7 @@ private fun SharePosterModule.labelKey(selectedTab: ReportTab): String =
         SharePosterModule.BEHAVIOR -> "stats_share_module_behavior"
         SharePosterModule.TIME_TIDE -> "stats_share_module_time_tide"
         SharePosterModule.FOCUS -> "stats_share_module_focus"
+        SharePosterModule.OFFLINE -> "stats_share_module_offline_focus"
         SharePosterModule.APPS -> "stats_share_module_apps"
         SharePosterModule.RHYTHM -> "stats_share_module_rhythm"
         SharePosterModule.INSIGHTS ->
@@ -2587,6 +2645,7 @@ private fun SharePosterModule.labelKey(selectedTab: ReportTab): String =
 private fun ReportPageSharePreviewDialog(
     state: DailyReportUiState,
     isProActive: Boolean,
+    offlineFocusEnabled: Boolean,
     onDismiss: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -2595,16 +2654,34 @@ private fun ReportPageSharePreviewDialog(
     val graphicsLayer = rememberGraphicsLayer()
     val scope = rememberCoroutineScope()
     val posterWidth = 390.dp
-    val storageKey = remember(state.selectedTab) { state.selectedTab.sharePosterStorageKey() }
-    val availableModules = remember(state, isProActive) {
-        availableSharePosterModules(state = state, isProActive = isProActive)
+    val baseDensity = LocalDensity.current
+    val exportScale = remember(baseDensity, posterWidth) {
+        with(baseDensity) {
+            (SharePosterMinExportWidthPx / posterWidth.toPx())
+                .coerceAtLeast(1f)
+                .coerceAtMost(SharePosterMaxExportScale)
+        }
     }
-    val restoredModuleIds by produceState<List<String>?>(initialValue = null, preferences, storageKey) {
+    val exportDensity = remember(baseDensity, exportScale) {
+        Density(
+            density = baseDensity.density * exportScale,
+            fontScale = baseDensity.fontScale,
+        )
+    }
+    val storageKey = remember(state.selectedTab) { state.selectedTab.sharePosterStorageKey() }
+    val availableModules = remember(state, isProActive, offlineFocusEnabled) {
+        availableSharePosterModules(
+            state = state,
+            isProActive = isProActive,
+            offlineFocusEnabled = offlineFocusEnabled,
+        )
+    }
+    val restoredModuleIds by produceState<List<String>?>(initialValue = null, preferences, storageKey, offlineFocusEnabled) {
         value = withContext(Dispatchers.IO) {
             preferences.getSharePosterModuleIdsOnce(storageKey)
         }
     }
-    var selectedModules by remember(state.selectedTab, state.selectedArchiveDate, state.selectedWeekStart, state.selectedMonth, state.selectedYear, isProActive) {
+    var selectedModules by remember(state.selectedTab, state.selectedArchiveDate, state.selectedWeekStart, state.selectedMonth, state.selectedYear, isProActive, offlineFocusEnabled) {
         mutableStateOf(availableModules.take(2))
     }
     LaunchedEffect(availableModules, restoredModuleIds) {
@@ -2712,49 +2789,53 @@ private fun ReportPageSharePreviewDialog(
                         contentAlignment = Alignment.TopCenter,
                     ) {
                         val previewScale = (maxWidth / posterWidth).coerceAtMost(1f)
+                        val displayScale = previewScale / exportScale
                         Box(
                             modifier = Modifier
                                 .requiredWidth(posterWidth)
                                 .layout { measurable, constraints ->
                                     val placeable = measurable.measure(constraints)
                                     layout(
-                                        width = (placeable.width * previewScale).roundToInt(),
-                                        height = (placeable.height * previewScale).roundToInt(),
+                                        width = (placeable.width * displayScale).roundToInt(),
+                                        height = (placeable.height * displayScale).roundToInt(),
                                     ) {
                                         placeable.placeRelativeWithLayer(0, 0) {
-                                            scaleX = previewScale
-                                            scaleY = previewScale
+                                            scaleX = displayScale
+                                            scaleY = displayScale
                                             transformOrigin = TransformOrigin(0f, 0f)
                                         }
                                     }
                                 },
                             contentAlignment = Alignment.TopCenter,
                         ) {
-                            Column(
-                                modifier = Modifier
-                                    .requiredWidth(posterWidth)
-                                    .drawWithContent {
-                                        graphicsLayer.record {
-                                            this@drawWithContent.drawContent()
+                            CompositionLocalProvider(LocalDensity provides exportDensity) {
+                                Column(
+                                    modifier = Modifier
+                                        .requiredWidth(posterWidth)
+                                        .drawWithContent {
+                                            graphicsLayer.record {
+                                                this@drawWithContent.drawContent()
+                                            }
+                                            drawLayer(graphicsLayer)
                                         }
-                                        drawLayer(graphicsLayer)
-                                    }
-                                    .clip(RoundedCornerShape(18.dp))
-                                    .background(MaterialTheme.colorScheme.background)
-                                    .padding(
-                                        horizontal = TinyVowSpacing.PageHorizontal,
-                                        vertical = TinyVowSpacing.CardVertical,
-                                    ),
-                                verticalArrangement = Arrangement.spacedBy(TinyVowSpacing.SectionGap),
-                            ) {
-                                ReportPageContent(
-                                    state = state,
-                                    isProActive = isProActive,
-                                    onShowProUpsell = {},
-                                    screenEnterReplayToken = 0,
-                                    shareModules = selectedModules,
-                                )
-                                SharePosterDownloadFooter()
+                                        .clip(RoundedCornerShape(18.dp))
+                                        .background(MaterialTheme.colorScheme.background)
+                                        .padding(
+                                            horizontal = TinyVowSpacing.PageHorizontal,
+                                            vertical = TinyVowSpacing.CardVertical,
+                                        ),
+                                    verticalArrangement = Arrangement.spacedBy(TinyVowSpacing.SectionGap),
+                                ) {
+                                    ReportPageContent(
+                                        state = state,
+                                        isProActive = isProActive,
+                                        offlineFocusEnabled = offlineFocusEnabled,
+                                        onShowProUpsell = {},
+                                        screenEnterReplayToken = 0,
+                                        shareModules = selectedModules,
+                                    )
+                                    SharePosterDownloadFooter()
+                                }
                             }
                         }
                     }
@@ -2986,6 +3067,7 @@ internal fun DailyModeSummaryCard(
     summary: DailyModeSummary,
     icon: ImageVector,
     compact: Boolean = false,
+    useHomeMetricCardStyle: Boolean = false,
     animateValues: Boolean = false,
     replayToken: Int = 0,
     modifier: Modifier = Modifier,
@@ -2999,6 +3081,17 @@ internal fun DailyModeSummaryCard(
             summary.isWarning -> reportColors.warning
             else -> MaterialTheme.colorScheme.primary
         }
+    val metricContainerColor =
+        if (useHomeMetricCardStyle) {
+            when {
+                summary.title == AppText.t("stats_control_results") -> themeColors.controlContainer.copy(alpha = 0.28f)
+                summary.title == AppText.t("stats_encourage_progress") -> themeColors.encourageContainer.copy(alpha = 0.28f)
+                else -> accent.copy(alpha = 0.28f)
+            }
+        } else {
+            accent.copy(alpha = 0.1f)
+        }
+    val metricBorderColor = accent.takeIf { useHomeMetricCardStyle }
     val primaryValue =
         if (animateValues) {
             animateMetricDisplayText(
@@ -3102,6 +3195,8 @@ internal fun DailyModeSummaryCard(
                                 modifier = Modifier.size(metricSize),
                                 emphasizeValue = true,
                                 valueColor = accent,
+                                containerColor = metricContainerColor,
+                                borderColor = metricBorderColor,
                                 animateValue = animateValues,
                             )
                         } ?: Spacer(modifier = Modifier.size(metricSize))
@@ -3117,6 +3212,8 @@ internal fun DailyModeSummaryCard(
                                 modifier = Modifier.size(metricSize),
                                 emphasizeValue = true,
                                 valueColor = accent,
+                                containerColor = metricContainerColor,
+                                borderColor = metricBorderColor,
                                 animateValue = animateValues,
                             )
                         }
@@ -3428,9 +3525,15 @@ private fun FocusMetricPill(
     modifier: Modifier = Modifier,
     emphasizeValue: Boolean = false,
     valueColor: Color = MaterialTheme.colorScheme.onSurface,
+    containerColor: Color = accent.copy(alpha = 0.1f),
+    borderColor: Color? = null,
     animateValue: Boolean = false,
 ) {
     val themeColors = LocalThemeColors.current
+    val labelStyle =
+        MaterialTheme.typography.labelSmall.copy(
+            fontSize = MaterialTheme.typography.labelSmall.fontSize * 1.2f,
+        )
     val displayValue =
         if (animateValue && STAT_CHART_ANIMATIONS_ENABLED) {
             animateMetricDisplayText(
@@ -3444,7 +3547,8 @@ private fun FocusMetricPill(
     Surface(
         modifier = modifier,
         shape = RoundedCornerShape(14.dp),
-        color = accent.copy(alpha = 0.1f),
+        color = containerColor,
+        border = borderColor?.let { BorderStroke(2.dp, it) },
     ) {
         if (emphasizeValue) {
             val valueParts = splitMetricValue(displayValue)
@@ -3456,7 +3560,7 @@ private fun FocusMetricPill(
             ) {
                 Text(
                     text = metric.label,
-                    style = MaterialTheme.typography.labelSmall,
+                    style = labelStyle,
                     color = themeColors.inkFaint,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -3490,7 +3594,7 @@ private fun FocusMetricPill(
             ) {
                 Text(
                     text = metric.label,
-                    style = MaterialTheme.typography.labelSmall,
+                    style = labelStyle,
                     color = themeColors.inkFaint,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,

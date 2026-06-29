@@ -825,20 +825,54 @@ private fun StoreRewardItemCard(
                     overflow = TextOverflow.Ellipsis,
                 )
             }
-            Button(
-                onClick = onPurchase,
+            RewardPricePill(
+                text = "${reward.pointCost} PT",
                 enabled = canPurchase,
-                shape = RoundedCornerShape(14.dp),
-                contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
-            ) {
-                Text(
-                    text = "${reward.pointCost} PT",
-                    maxLines = 1,
-                    textAlign = TextAlign.Center,
-                )
-            }
+                onClick = onPurchase,
+            )
         }
 
+    }
+}
+
+@Composable
+private fun RewardPricePill(
+    text: String,
+    enabled: Boolean,
+    onClick: () -> Unit,
+) {
+    val themeColors = LocalThemeColors.current
+    Surface(
+        modifier = Modifier
+            .defaultMinSize(minWidth = 92.dp, minHeight = 48.dp)
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick),
+        shape = RoundedCornerShape(18.dp),
+        color =
+            if (enabled) {
+                themeColors.base
+            } else {
+                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.32f)
+            },
+        border =
+            if (enabled) {
+                null
+            } else {
+                BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.24f))
+            },
+    ) {
+        Box(
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 10.dp),
+            contentAlignment = Alignment.Center,
+        ) {
+            Text(
+                text = text,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                color = if (enabled) Color.White else themeColors.inkMuted.copy(alpha = 0.62f),
+                maxLines = 1,
+                textAlign = TextAlign.Center,
+            )
+        }
     }
 }
 

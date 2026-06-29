@@ -33,8 +33,13 @@ import com.rrrrz.tinyvow.data.db.migration.AppDatabaseMigrations
         DailyAppTimeSliceArchiveEntity::class,
         StepDayEntity::class,
         StepPointCreditEntity::class,
+        MediaAppConfigEntity::class,
+        MediaAppPlaybackDayEntity::class,
+        MediaAppPlaybackSegmentEntity::class,
+        OfflineFocusCategoryEntity::class,
+        OfflineFocusSessionEntity::class,
     ],
-    version = 25,
+    version = 29,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -63,6 +68,11 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun dailyAppTimeSliceArchiveDao(): DailyAppTimeSliceArchiveDao
     abstract fun stepDayDao(): StepDayDao
     abstract fun stepPointCreditDao(): StepPointCreditDao
+    abstract fun mediaAppConfigDao(): MediaAppConfigDao
+    abstract fun mediaAppPlaybackDayDao(): MediaAppPlaybackDayDao
+    abstract fun mediaAppPlaybackSegmentDao(): MediaAppPlaybackSegmentDao
+    abstract fun offlineFocusCategoryDao(): OfflineFocusCategoryDao
+    abstract fun offlineFocusSessionDao(): OfflineFocusSessionDao
 
     companion object {
         const val DEFAULT_DATABASE_NAME = "tinyvow_database"
@@ -83,6 +93,10 @@ abstract class AppDatabase : RoomDatabase() {
         val MIGRATION_22_23 = AppDatabaseMigrations.MIGRATION_22_23
         val MIGRATION_23_24 = AppDatabaseMigrations.MIGRATION_23_24
         val MIGRATION_24_25 = AppDatabaseMigrations.MIGRATION_24_25
+        val MIGRATION_25_26 = AppDatabaseMigrations.MIGRATION_25_26
+        val MIGRATION_26_27 = AppDatabaseMigrations.MIGRATION_26_27
+        val MIGRATION_27_28 = AppDatabaseMigrations.MIGRATION_27_28
+        val MIGRATION_28_29 = AppDatabaseMigrations.MIGRATION_28_29
 
         @Volatile
         private var INSTANCE: AppDatabase? = null

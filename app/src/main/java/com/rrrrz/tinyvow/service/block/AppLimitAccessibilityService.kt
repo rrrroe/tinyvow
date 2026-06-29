@@ -23,6 +23,7 @@ import com.rrrrz.tinyvow.data.notification.TinyVowNotifier
 import com.rrrrz.tinyvow.data.reminder.ReminderPolicy
 import com.rrrrz.tinyvow.data.repository.AppLimitRepository
 import com.rrrrz.tinyvow.data.repository.ArchiveDateUtils
+import com.rrrrz.tinyvow.data.repository.OfflineFocusRepository
 import com.rrrrz.tinyvow.data.repository.PointsRepository
 import com.rrrrz.tinyvow.data.repository.UseRewardResult
 import com.rrrrz.tinyvow.data.repository.calculateTargetBonusPoints
@@ -63,6 +64,7 @@ class AppLimitAccessibilityService : AccessibilityService() {
     private val usageRepository by lazy { MergedUsageRepository(applicationContext) }
     private val specialAppUsageRepository by lazy { SpecialAppUsageRepository(applicationContext) }
     private val preferences by lazy { ManagedAppPreferences(applicationContext) }
+    private val offlineFocusRepository by lazy { OfflineFocusRepository(applicationContext, database) }
     private val notifier by lazy { TinyVowNotifier(applicationContext) }
     @Volatile private var overlayPalette: OverlayPalette = overlayPaletteForSeed(DefaultThemeSeed)
     @Volatile private var accessibilityDisclosureAccepted: Boolean = false
@@ -114,6 +116,7 @@ class AppLimitAccessibilityService : AccessibilityService() {
         appLimitRepository = AppLimitRepository(applicationContext, database)
 
         serviceScope.launch {
+            BusinessDay.updateCachedStartHour(preferences.getDayBoundaryHourOnce())
             AppText.setLanguage(preferences.getSelectedAppLanguageOnce(), this@AppLimitAccessibilityService)
         }
 
@@ -242,34 +245,11 @@ class AppLimitAccessibilityService : AccessibilityService() {
         }
         lastBlockedPackage = packageName
         lastBlockElapsedRealtime = blockNow
-        fastBlockCache[packageName] = Pair(result, blockNow)
         recordBlockEvent(packageName, result)
-        
-        try {
-            val encourageGroupsInfo = mutableListOf<EncourageGroupCache>()
-            val encourageGroups = database.appGroupDao().getAllGroupsSync().filter { it.type == GroupType.ENCOURAGE }
-            for (g in encourageGroups) {
-                val pkgs = database.crossRefDao().getPackageNamesForGroupSync(g.id)
-                if (pkgs.isEmpty()) continue
-                
-                var usage = 0L
-                for (p in pkgs) {
-                    usage += usageRepository.getUsageInPeriod(p, com.rrrrz.tinyvow.data.db.LimitPeriod.DAILY, GroupType.ENCOURAGE)
-                }
-                encourageGroupsInfo.add(EncourageGroupCache(
-                    groupName = g.name,
-                    limitMinutes = g.limitMinutes,
-                    pointsPerMinute = g.pointsPerMinute,
-                    usageMs = usage,
-                    packages = pkgs
-                ))
-            }
-            encourageAppsCache = encourageGroupsInfo
-        } catch (e: Exception) {
-            if (BuildConfig.DEBUG) {
-                Log.e(TAG, "Failed to list ENCOURAGE apps", e)
-            }
-        }
+
+        val encourageGroupsForOverlay = loadEncourageGroupsForOverlay()
+        encourageAppsCache = encourageGroupsForOverlay
+        fastBlockCache[packageName] = Pair(result, blockNow)
         val hasEmergencyUnlock =
             database.rewardInventoryDao().sumQuantityByRewardType(RewardType.EMERGENCY_UNLOCK) > 0 &&
                 emergencyUnlockConsumedPackage != packageName
@@ -282,12 +262,41 @@ class AppLimitAccessibilityService : AccessibilityService() {
                     groupId = result.groupId,
                     groupName = result.groupName,
                     exceededMillis = result.exceededMillis,
-                    encourageGroups = encourageAppsCache,
+                    encourageGroups = encourageGroupsForOverlay,
                     canUseEmergencyUnlock = hasEmergencyUnlock,
                 )
             }
         }
     }
+
+    private suspend fun loadEncourageGroupsForOverlay(): List<EncourageGroupCache> =
+        try {
+            database.appGroupDao()
+                .getAllGroupsSync()
+                .filter { it.type == GroupType.ENCOURAGE && it.encourageMetric == EncourageMetric.APP_USAGE }
+                .mapNotNull { group ->
+                    val packages = database.crossRefDao().getPackageNamesForGroupSync(group.id)
+                    if (packages.isEmpty()) {
+                        null
+                    } else {
+                        val usage = packages.sumOf { packageName ->
+                            usageRepository.getUsageInPeriod(packageName, group.limitPeriod, GroupType.ENCOURAGE)
+                        }
+                        EncourageGroupCache(
+                            groupName = group.name,
+                            limitMinutes = group.limitMinutes,
+                            pointsPerMinute = group.pointsPerMinute,
+                            usageMs = usage,
+                            packages = packages,
+                        )
+                    }
+                }
+        } catch (e: Exception) {
+            if (BuildConfig.DEBUG) {
+                Log.e(TAG, "Failed to list ENCOURAGE apps", e)
+            }
+            encourageAppsCache
+        }
 
     private suspend fun recordBlockEvent(
         packageName: String,
@@ -350,6 +359,13 @@ class AppLimitAccessibilityService : AccessibilityService() {
             packageName = packageName.takeUnless { isOwnPackage },
             now = now,
         )
+
+        serviceScope.launch(Dispatchers.IO) {
+            offlineFocusRepository.handleForegroundPackageForFocus(
+                packageName = packageName,
+                ownPackageName = this@AppLimitAccessibilityService.packageName,
+            )
+        }
 
         // 只跳过 Tiny Vow 的限额检查；上一个应用已在上面结算
         if (isOwnPackage) {
@@ -489,9 +505,9 @@ class AppLimitAccessibilityService : AccessibilityService() {
         return parseRewardPayload(effect.payloadJson).pointsMultiplier.coerceAtLeast(1.0)
     }
 
-    private fun getStartOfDay(millis: Long): Long {
+    private suspend fun getStartOfDay(millis: Long): Long {
         val zoneId = ZoneId.systemDefault()
-        val dayStartHour = BusinessDay.cachedStartHour()
+        val dayStartHour = preferences.getDayBoundaryHourOnce()
         val businessDate = ArchiveDateUtils.localDateAt(millis, zoneId, dayStartHour)
         return ArchiveDateUtils.startOfDayMillis(businessDate, zoneId, dayStartHour)
     }

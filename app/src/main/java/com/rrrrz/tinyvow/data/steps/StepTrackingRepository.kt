@@ -174,6 +174,7 @@ class StepTrackingRepository(
 
     companion object {
         const val DEFAULT_POINTS_PER_STEP = 0.001
+        const val DEFAULT_REWARD_THRESHOLD = 8000
         private const val GLOBAL_STEP_POINT_SOURCE_ID = "home_steps"
     }
 }

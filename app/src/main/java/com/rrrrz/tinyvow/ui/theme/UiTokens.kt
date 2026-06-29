@@ -33,20 +33,20 @@ import androidx.compose.ui.window.DialogProperties
 
 object TinyVowSpacing {
     val PageHorizontal = 16.dp
-    val PageTop = 10.dp
-    val SectionGap = 14.dp
-    val CardGap = 12.dp
-    val CardHorizontal = 16.dp
-    val CardVertical = 16.dp
+    val PageTop = 14.dp
+    val SectionGap = 18.dp
+    val CardGap = 14.dp
+    val CardHorizontal = 18.dp
+    val CardVertical = 18.dp
     val CompactCardHorizontal = 12.dp
     val CompactCardVertical = 12.dp
 }
 
 object TinyVowRadius {
-    val FeaturedCard = 28.dp
+    val FeaturedCard = 24.dp
     val Card = 24.dp
-    val ItemCard = 18.dp
-    val Control = 14.dp
+    val ItemCard = 24.dp
+    val Control = 16.dp
     val Pill = 999.dp
 }
 
@@ -59,14 +59,14 @@ object TinyVowElevation {
 
 @Composable
 fun tinyVowCardBorder(alpha: Float = 0.28f): BorderStroke =
-    BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = alpha))
+    BorderStroke(1.dp, LocalThemeColors.current.borderSoft.copy(alpha = alpha.coerceAtLeast(0.20f)))
 
 @Composable
 fun TinyVowCard(
     modifier: Modifier = Modifier,
     shape: Shape = RoundedCornerShape(TinyVowRadius.Card),
     color: Color = MaterialTheme.colorScheme.surface,
-    borderAlpha: Float = 0.28f,
+    borderAlpha: Float = 0.54f,
     shadowElevation: Dp = TinyVowElevation.Card,
     tonalElevation: Dp = TinyVowElevation.Flat,
     content: @Composable () -> Unit,
@@ -101,12 +101,12 @@ fun TinyVowButton(
     val themeColors = LocalThemeColors.current
     val selectedContainer = MaterialTheme.colorScheme.primaryContainer
     val selectedContent = MaterialTheme.colorScheme.primary
-    val neutralContainer = MaterialTheme.colorScheme.surface
+    val neutralContainer = themeColors.surfaceSoft
     val neutralContent = MaterialTheme.colorScheme.onSurfaceVariant
-    val primaryContainer = themeColors.baseContainer
-    val primaryContent = themeColors.base
-    val dangerContainer = MaterialTheme.colorScheme.errorContainer
-    val dangerContent = MaterialTheme.colorScheme.error
+    val primaryContainer = themeColors.base
+    val primaryContent = themeColors.onBase
+    val dangerContainer = themeColors.restraintContainer
+    val dangerContent = themeColors.restraint
     val disabledContainer = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.42f)
     val disabledContent = themeColors.inkMuted.copy(alpha = 0.58f)
 
@@ -135,7 +135,7 @@ fun TinyVowButton(
 
     Surface(
         modifier = modifier.defaultMinSize(minHeight = 44.dp),
-        shape = RoundedCornerShape(16.dp),
+        shape = RoundedCornerShape(TinyVowRadius.Control),
         color = containerColor,
         contentColor = contentColor,
         border = border,
@@ -169,7 +169,7 @@ fun TinyVowAlertDialog(
     icon: (@Composable () -> Unit)? = null,
     title: (@Composable () -> Unit)? = null,
     text: (@Composable () -> Unit)? = null,
-    shape: Shape = RoundedCornerShape(TinyVowRadius.FeaturedCard),
+    shape: Shape = RoundedCornerShape(TinyVowRadius.Card),
     containerColor: Color? = null,
     iconContentColor: Color? = null,
     titleContentColor: Color? = null,

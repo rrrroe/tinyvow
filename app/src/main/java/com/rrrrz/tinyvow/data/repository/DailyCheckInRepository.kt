@@ -6,7 +6,6 @@ import com.rrrrz.tinyvow.data.db.AppDatabase
 import com.rrrrz.tinyvow.data.db.DailyArchiveEntity
 import com.rrrrz.tinyvow.data.db.DailyCheckInEntity
 import com.rrrrz.tinyvow.data.db.DailyGroupArchiveEntity
-import com.rrrrz.tinyvow.data.db.GroupType
 import com.rrrrz.tinyvow.data.db.RedemptionEntity
 import com.rrrrz.tinyvow.data.db.RewardInventoryEntity
 import com.rrrrz.tinyvow.data.time.BusinessDay
@@ -41,6 +40,13 @@ data class DailyCheckInDayState(
     val encourageCompleted: Boolean,
     val hasArchivedSignals: Boolean,
     val isToday: Boolean,
+    val activityControlProgress: Float = 0f,
+    val activityEncourageProgress: Float = 0f,
+    val activityGrowthProgress: Float = 0f,
+    val activityControlAvailable: Boolean = false,
+    val activityEncourageAvailable: Boolean = false,
+    val activityGrowthAvailable: Boolean = false,
+    val activityRingsCompleted: Boolean = false,
 )
 
 sealed interface DailyCheckInResult {
@@ -179,23 +185,48 @@ internal fun buildDailyCheckInMonthState(
     bufferCardCount: Int,
 ): DailyCheckInMonthState {
     val checkInDates = checkIns.mapTo(mutableSetOf()) { it.checkInDate }
-    val archiveDates = archives.mapTo(mutableSetOf()) { it.archiveDate }
+    val archivesByDate = archives.associateBy { it.archiveDate }
     val groupByDate = groupArchives.groupBy { it.archiveDate }
     val days =
         (1..month.atEndOfMonth().dayOfMonth).map { day ->
             val date = month.atDay(day)
             val dateKey = date.toString()
+            val archive = archivesByDate[dateKey]
             val groups = groupByDate[dateKey].orEmpty()
-            val controlGroups = groups.filter { it.groupType == GroupType.CONTROL }
-            val encourageGroups = groups.filter { it.groupType == GroupType.ENCOURAGE }
             val showArchivedBadges = date.isBefore(today)
+            val activityRings =
+                if (showArchivedBadges) {
+                    archive?.toActivityRingProgressSnapshot()
+                        ?: buildActivityRingProgressSnapshot(
+                            groupSnapshots = groups,
+                            pointsEarned = archive?.pointsEarned ?: groups.sumOf { it.earnedPoints },
+                        )
+                } else {
+                    ActivityRingProgressSnapshot(
+                        controlProgress = 0.0,
+                        encourageProgress = 0.0,
+                        growthProgress = 0.0,
+                        controlAvailable = false,
+                        encourageAvailable = false,
+                        growthAvailable = false,
+                        growthTargetPoints = 0.0,
+                    )
+                }
             DailyCheckInDayState(
                 date = date,
                 checkedIn = dateKey in checkInDates,
-                allControlKept = showArchivedBadges && controlGroups.isNotEmpty() && controlGroups.all { it.completed },
-                encourageCompleted = showArchivedBadges && encourageGroups.any { it.completed },
-                hasArchivedSignals = showArchivedBadges && (dateKey in archiveDates || groups.isNotEmpty()),
+                allControlKept = showArchivedBadges && activityRings.controlAvailable && activityRings.controlProgress >= 1.0,
+                encourageCompleted =
+                    showArchivedBadges && activityRings.encourageAvailable && activityRings.encourageProgress >= 1.0,
+                hasArchivedSignals = showArchivedBadges && (archive != null || groups.isNotEmpty()),
                 isToday = date == today,
+                activityControlProgress = activityRings.controlProgress.toFloat(),
+                activityEncourageProgress = activityRings.encourageProgress.toFloat(),
+                activityGrowthProgress = activityRings.growthProgress.toFloat(),
+                activityControlAvailable = activityRings.controlAvailable,
+                activityEncourageAvailable = activityRings.encourageAvailable,
+                activityGrowthAvailable = activityRings.growthAvailable,
+                activityRingsCompleted = showArchivedBadges && activityRings.ringsCompleted,
             )
         }
     return DailyCheckInMonthState(
@@ -205,5 +236,23 @@ internal fun buildDailyCheckInMonthState(
         bufferCardCount = bufferCardCount,
         allControlKeptDays = days.count { it.allControlKept },
         encourageCompletedDays = days.count { it.encourageCompleted },
+    )
+}
+
+private fun DailyArchiveEntity.toActivityRingProgressSnapshot(): ActivityRingProgressSnapshot? {
+    val hasStoredActivityRings =
+        activityControlAvailable ||
+            activityEncourageAvailable ||
+            activityGrowthAvailable ||
+            activityGrowthTargetPoints > 0.0
+    if (!hasStoredActivityRings) return null
+    return ActivityRingProgressSnapshot(
+        controlProgress = activityControlProgress,
+        encourageProgress = activityEncourageProgress,
+        growthProgress = activityGrowthProgress,
+        controlAvailable = activityControlAvailable,
+        encourageAvailable = activityEncourageAvailable,
+        growthAvailable = activityGrowthAvailable,
+        growthTargetPoints = activityGrowthTargetPoints,
     )
 }

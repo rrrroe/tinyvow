@@ -278,6 +278,35 @@ internal data class DailyFocusSectionData(
     val encouragePointsNet: Double = 0.0,
 )
 
+internal data class OfflineFocusSectionData(
+    val totalMillis: Long,
+    val completedCount: Int,
+    val pointsAwarded: Double,
+    val dayStartMillis: Long,
+    val dayEndMillis: Long,
+    val sessions: List<OfflineFocusTimelineItem>,
+    val categories: List<OfflineFocusCategoryBreakdown>,
+)
+
+internal data class OfflineFocusTimelineItem(
+    val categoryName: String,
+    val iconKey: String,
+    val colorArgb: Int,
+    val startMillis: Long,
+    val endMillis: Long,
+    val durationMillis: Long,
+    val pointsAwarded: Double,
+)
+
+internal data class OfflineFocusCategoryBreakdown(
+    val categoryName: String,
+    val iconKey: String,
+    val colorArgb: Int,
+    val totalMillis: Long,
+    val completedCount: Int,
+    val pointsAwarded: Double,
+)
+
 internal data class DailyModeSummary(
     val title: String,
     val description: String,
@@ -476,6 +505,7 @@ internal data class PeriodReportData(
     val tab: ReportTab,
     val hero: PeriodHeroData,
     val trend: TrendSectionData,
+    val offlineFocus: OfflineFocusSectionData,
     val heatmap: PeriodHeatmapData? = null,
     val appFocus: AppFocusSectionData,
     val windowFocus: WindowFocusSectionData,
@@ -573,6 +603,7 @@ internal data class DailyReportUiState(
     val animateValues: Boolean = true,
     val heroState: SectionState<HeroSectionData> = SectionState.Loading,
     val dailyFocusState: SectionState<DailyFocusSectionData> = SectionState.Loading,
+    val offlineFocusState: SectionState<OfflineFocusSectionData> = SectionState.Loading,
     val windowFocusState: SectionState<WindowFocusSectionData> = SectionState.Loading,
     val heatmapState: SectionState<HeatmapSectionData> = SectionState.Loading,
     val yearDualScopeState: SectionState<YearDualScopeSectionData> = SectionState.Loading,

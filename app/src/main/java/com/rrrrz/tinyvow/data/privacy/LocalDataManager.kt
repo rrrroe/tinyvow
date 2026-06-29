@@ -146,14 +146,16 @@ class LocalDataManager(
         collectDataStoreFiles().forEach { file ->
             sources += BackupSource("datastore/${file.name}", file)
         }
-        val rewardIconsDir = File(context.filesDir, "reward_icons")
-        if (rewardIconsDir.isDirectory) {
-            rewardIconsDir.walkTopDown()
-                .filter { it.isFile }
-                .forEach { file ->
-                    val relative = file.relativeTo(rewardIconsDir).invariantSeparatorsPath
-                    sources += BackupSource("reward_icons/$relative", file)
-                }
+        listOf("reward_icons", "focus_icons").forEach { directoryName ->
+            val iconDir = File(context.filesDir, directoryName)
+            if (iconDir.isDirectory) {
+                iconDir.walkTopDown()
+                    .filter { it.isFile }
+                    .forEach { file ->
+                        val relative = file.relativeTo(iconDir).invariantSeparatorsPath
+                        sources += BackupSource("$directoryName/$relative", file)
+                    }
+            }
         }
         return sources
     }
@@ -195,6 +197,7 @@ class LocalDataManager(
         restoreDatabaseFiles(unzipRoot)
         restoreDataStoreFiles(unzipRoot)
         restoreRewardIcons(unzipRoot)
+        restoreFocusIcons(unzipRoot)
     }
 
     private fun restoreDatabaseFiles(unzipRoot: File) {
@@ -227,9 +230,20 @@ class LocalDataManager(
     }
 
     private fun restoreRewardIcons(unzipRoot: File) {
-        val targetDir = File(context.filesDir, "reward_icons")
+        restoreManagedFileDirectory(unzipRoot, "reward_icons")
+    }
+
+    private fun restoreFocusIcons(unzipRoot: File) {
+        restoreManagedFileDirectory(unzipRoot, "focus_icons")
+    }
+
+    private fun restoreManagedFileDirectory(
+        unzipRoot: File,
+        directoryName: String,
+    ) {
+        val targetDir = File(context.filesDir, directoryName)
         targetDir.deleteRecursively()
-        val sourceDir = File(unzipRoot, "reward_icons")
+        val sourceDir = File(unzipRoot, directoryName)
         if (!sourceDir.isDirectory) return
         sourceDir.walkTopDown().forEach { source ->
             val relative = source.relativeTo(sourceDir).invariantSeparatorsPath
@@ -316,6 +330,11 @@ class LocalDataManager(
             LocalDataTable("special_app_configs", "Local special app data-source settings without API keys."),
             LocalDataTable("special_app_usage_snapshots", "Local cached special app WeRead reading durations and phone foreground durations."),
             LocalDataTable("special_app_point_credits", "Local counters preventing duplicate special app point credits."),
+            LocalDataTable("media_app_configs", "Local podcast, music, and audiobook app playback monitoring settings."),
+            LocalDataTable("media_app_playback_days", "Local trusted background playback durations and untrusted gaps for monitored media apps."),
+            LocalDataTable("media_app_playback_segments", "Local trusted playback intervals used to merge media playback with foreground usage without double counting."),
+            LocalDataTable("offline_focus_categories", "Local focus types, colors, icons, point rates, sort order, and archive state."),
+            LocalDataTable("offline_focus_sessions", "Local focus timer sessions, mode, duration snapshots, and awarded points."),
             LocalDataTable("protection_events", "Local Super Mode and guarded-setting change history."),
             LocalDataTable("daily_checkins", "Local daily check-in records and granted buffer item references."),
         )
@@ -323,7 +342,7 @@ class LocalDataManager(
         private val localDataStores = listOf(
             LocalDataStore(
                 "managed_app_preferences",
-                "DataStore preferences for points, theme, language, permission prompts, profile, app color choices, debug Pro, Super Mode, and encrypted special app key metadata.",
+                "DataStore preferences for points, theme, language, permission prompts, profile, app color choices, focus defaults, debug Pro, Super Mode, and encrypted special app key metadata.",
             ) { context -> dataStoreFile(context, "managed_app_preferences") },
             LocalDataStore(
                 "auth_preferences",
@@ -337,6 +356,10 @@ class LocalDataManager(
                 "reward_icons",
                 "Imported custom reward icon files managed inside Tiny Vow app storage.",
             ) { context -> File(context.filesDir, "reward_icons") },
+            LocalDataStore(
+                "focus_icons",
+                "Imported custom focus type icon files managed inside Tiny Vow app storage.",
+            ) { context -> File(context.filesDir, "focus_icons") },
         )
     }
 }

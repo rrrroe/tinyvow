@@ -3,13 +3,14 @@ package com.rrrrz.tinyvow.data.usage
 import android.content.Context
 import com.rrrrz.tinyvow.data.db.GroupType
 import com.rrrrz.tinyvow.data.db.LimitPeriod
+import com.rrrrz.tinyvow.data.media.MediaAppPlaybackRepository
 import com.rrrrz.tinyvow.data.special.SpecialAppUsageRepository
-import com.rrrrz.tinyvow.data.special.WEREAD_PACKAGE_NAME
 import com.rrrrz.tinyvow.data.time.BusinessDay
 import java.time.ZoneId
 
 interface SpecialUsageOverride {
     suspend fun isReplacementEnabled(groupType: GroupType?): Boolean
+    suspend fun replacementPackageNames(groupType: GroupType?): Set<String> = emptySet()
     suspend fun replacementUsageMillis(
         packageName: String,
         startMillis: Long,
@@ -22,10 +23,12 @@ interface SpecialUsageOverride {
 class MergedUsageRepository(
     private val baseRepository: UsageRepository,
     private val specialRepository: SpecialUsageOverride,
+    private val mediaRepository: SpecialUsageOverride? = null,
 ) : UsageRepository {
     constructor(context: Context) : this(
         baseRepository = UsageStatsUsageRepository(context),
         specialRepository = SpecialAppUsageRepository(context),
+        mediaRepository = MediaAppPlaybackRepository(context),
     )
 
     override suspend fun getTodayUsageMillis(packageName: String): Long =
@@ -45,20 +48,8 @@ class MergedUsageRepository(
 
     override suspend fun getUsageStatsInPeriod(period: LimitPeriod, groupType: GroupType?): Map<String, Long> {
         val base = baseRepository.getUsageStatsInPeriod(period).toMutableMap()
-        if (specialRepository.isReplacementEnabled(groupType)) {
-            val bounds = usagePeriodBounds(period)
-            val replacement =
-                specialRepository.replacementUsageMillis(
-                    packageName = WEREAD_PACKAGE_NAME,
-                    startMillis = bounds.startMillis,
-                    endMillis = bounds.endMillis,
-                    groupType = groupType,
-                )
-            if (replacement != null) {
-                base[WEREAD_PACKAGE_NAME] = replacement
-            }
-        }
-        return base
+        val bounds = usagePeriodBounds(period)
+        return applyOverrides(base, bounds.startMillis, bounds.endMillis, groupType)
     }
 
     override suspend fun getYesterdayUsageMillis(packageName: String): Long {
@@ -89,19 +80,7 @@ class MergedUsageRepository(
         groupType: GroupType?,
     ): Map<String, Long> {
         val base = baseRepository.getUsageStats(startMillis, endMillis).toMutableMap()
-        if (specialRepository.isReplacementEnabled(groupType)) {
-            val replacement =
-                specialRepository.replacementUsageMillis(
-                    packageName = WEREAD_PACKAGE_NAME,
-                    startMillis = startMillis,
-                    endMillis = endMillis,
-                    groupType = groupType,
-                )
-            if (replacement != null) {
-                base[WEREAD_PACKAGE_NAME] = replacement
-            }
-        }
-        return base
+        return applyOverrides(base, startMillis, endMillis, groupType)
     }
 
     override suspend fun getUsageSessions(startMillis: Long, endMillis: Long): List<AppSession> =
@@ -109,4 +88,28 @@ class MergedUsageRepository(
 
     override suspend fun getAppOpenCount(startMillis: Long, endMillis: Long): Map<String, Int> =
         baseRepository.getAppOpenCount(startMillis, endMillis)
+
+    private suspend fun applyOverrides(
+        base: MutableMap<String, Long>,
+        startMillis: Long,
+        endMillis: Long,
+        groupType: GroupType?,
+    ): Map<String, Long> {
+        for (override in listOfNotNull(specialRepository, mediaRepository)) {
+            if (!override.isReplacementEnabled(groupType)) continue
+            override.replacementPackageNames(groupType).forEach { packageName ->
+                val replacement =
+                    override.replacementUsageMillis(
+                        packageName = packageName,
+                        startMillis = startMillis,
+                        endMillis = endMillis,
+                        groupType = groupType,
+                    )
+                if (replacement != null) {
+                    base[packageName] = replacement
+                }
+            }
+        }
+        return base
+    }
 }

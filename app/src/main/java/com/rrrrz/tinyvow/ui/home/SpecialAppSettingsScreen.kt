@@ -27,6 +27,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -58,6 +59,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.rrrrz.tinyvow.data.db.SpecialAppUsagePreference
+import com.rrrrz.tinyvow.data.media.MediaAppPlaybackRepository
 import com.rrrrz.tinyvow.data.special.SpecialAppUsageRepository
 import com.rrrrz.tinyvow.data.special.WeReadApiCheckResult
 import com.rrrrz.tinyvow.data.special.WeReadApiException
@@ -65,6 +67,7 @@ import com.rrrrz.tinyvow.data.special.WeReadHistoryDay
 import com.rrrrz.tinyvow.data.special.WeReadHistoryRefreshSummary
 import com.rrrrz.tinyvow.data.special.WeReadSettingsState
 import com.rrrrz.tinyvow.data.special.WeReadSyncSummary
+import com.rrrrz.tinyvow.data.time.BusinessDay
 import com.rrrrz.tinyvow.i18n.AppText
 import com.rrrrz.tinyvow.ui.theme.LocalThemeColors
 import com.rrrrz.tinyvow.ui.theme.TinyVowButton
@@ -74,6 +77,7 @@ import com.rrrrz.tinyvow.ui.theme.TinyVowSpacing
 import java.text.DateFormat
 import java.time.LocalDate
 import java.time.YearMonth
+import java.time.ZoneId
 import java.util.Date
 import kotlinx.coroutines.launch
 
@@ -84,15 +88,21 @@ private const val WEREAD_SKILLS_URL = "https://weread.qq.com/r/weread-skills"
 fun SpecialAppsScreen(
     onBack: () -> Unit,
     onOpenWeRead: () -> Unit,
+    onOpenMediaApps: () -> Unit,
     onOpenAppColors: () -> Unit,
+    isProActive: Boolean,
+    onOpenProMembership: () -> Unit,
 ) {
     val themeColors = LocalThemeColors.current
     val context = LocalContext.current
     val repository = remember(context) { SpecialAppUsageRepository(context) }
+    val mediaRepository = remember(context) { MediaAppPlaybackRepository(context) }
     var state by remember { mutableStateOf<WeReadSettingsState?>(null) }
+    var mediaAppCount by remember { mutableStateOf(0) }
 
     LaunchedEffect(Unit) {
         state = repository.buildSettingsState()
+        mediaAppCount = mediaRepository.getConfigs().count { it.enabled }
     }
 
     Scaffold(
@@ -162,7 +172,22 @@ fun SpecialAppsScreen(
                     AppText.t("special_app_status_not_configured")
                 },
                 active = state?.hasApiKey == true,
-                onClick = onOpenWeRead,
+                showProBadge = true,
+                onClick = { if (isProActive) onOpenWeRead() else onOpenProMembership() },
+            )
+
+            SpecialAppListItem(
+                icon = Icons.Default.Headphones,
+                title = AppText.t("media_app_settings_title"),
+                subtitle = AppText.t("media_app_settings_list_subtitle"),
+                status = if (mediaAppCount > 0) {
+                    AppText.t("media_app_status_configured_count", mediaAppCount)
+                } else {
+                    AppText.t("special_app_status_not_configured")
+                },
+                active = mediaAppCount > 0,
+                showProBadge = true,
+                onClick = { if (isProActive) onOpenMediaApps() else onOpenProMembership() },
             )
 
             SpecialAppListItem(
@@ -199,10 +224,11 @@ fun SpecialAppSettingsScreen(
     var message by remember { mutableStateOf<String?>(null) }
     var testResult by remember { mutableStateOf<WeReadApiCheckResult?>(null) }
     var syncSummary by remember { mutableStateOf<WeReadSyncSummary?>(null) }
-    var targetDateInput by remember { mutableStateOf(LocalDate.now().toString()) }
-    var historyMonth by remember { mutableStateOf(YearMonth.now()) }
+    val initialBusinessDate = remember { currentSpecialAppBusinessDate() }
+    var targetDateInput by remember { mutableStateOf(initialBusinessDate.toString()) }
+    var historyMonth by remember { mutableStateOf(YearMonth.from(initialBusinessDate)) }
     var historyDays by remember { mutableStateOf<List<WeReadHistoryDay>>(emptyList()) }
-    var selectedHistoryDate by remember { mutableStateOf(LocalDate.now()) }
+    var selectedHistoryDate by remember { mutableStateOf(initialBusinessDate) }
     var isHistoryBusy by remember { mutableStateOf(false) }
     var historyMessage by remember { mutableStateOf<String?>(null) }
     var showAdvanced by remember { mutableStateOf(false) }
@@ -401,7 +427,7 @@ fun SpecialAppSettingsScreen(
                             scope.launch {
                                 isBusy = true
                                 savePendingApiKeyIfNeeded()
-                                testResult = repository.testWeReadApi(LocalDate.now()).fold(
+                                testResult = repository.testWeReadApi(currentSpecialAppBusinessDate()).fold(
                                     onSuccess = { result ->
                                         message = if (result.hasUsableDailyBuckets) {
                                             AppText.t("special_app_test_success")
@@ -676,6 +702,7 @@ private fun SpecialAppListItem(
     subtitle: String,
     status: String,
     active: Boolean,
+    showProBadge: Boolean = false,
     onClick: () -> Unit,
 ) {
     Surface(
@@ -718,6 +745,9 @@ private fun SpecialAppListItem(
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
                     )
+                    if (showProBadge) {
+                        ProMemberBadge()
+                    }
                     StatusPill(text = status, active = active)
                 }
                 Text(
@@ -1099,7 +1129,7 @@ private fun AdvancedWeReadTools(
             )
             OutlinedButton(
                 onClick = { onHistoryMonthChange(historyMonth.plusMonths(1)) },
-                enabled = !isHistoryBusy && historyMonth < YearMonth.now(),
+                enabled = !isHistoryBusy && historyMonth < YearMonth.from(currentSpecialAppBusinessDate()),
                 modifier = Modifier.weight(1f),
             ) {
                 Text(AppText.t("stats_next_month"))
@@ -1421,6 +1451,9 @@ private fun formatStoredWeReadError(error: String): String =
 
 private fun parseSpecialAppDate(value: String): LocalDate? =
     runCatching { LocalDate.parse(value.trim()) }.getOrNull()
+
+private fun currentSpecialAppBusinessDate(): LocalDate =
+    BusinessDay.today(ZoneId.systemDefault(), BusinessDay.cachedStartHour())
 
 private fun formatHistorySummary(summary: WeReadHistoryRefreshSummary): String =
     AppText.t(

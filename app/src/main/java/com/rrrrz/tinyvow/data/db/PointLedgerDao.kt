@@ -17,6 +17,9 @@ interface PointLedgerDao {
     @Query("DELETE FROM point_ledger WHERE id = :entryId")
     suspend fun deleteById(entryId: String)
 
+    @Query("SELECT * FROM point_ledger WHERE source_ref_id = :sourceRefId LIMIT 1")
+    suspend fun getBySourceRefId(sourceRefId: String): PointLedgerEntity?
+
     @Query(
         """
         SELECT COALESCE(SUM(delta_points), 0)
@@ -25,6 +28,24 @@ interface PointLedgerDao {
         """
     )
     suspend fun sumEarnedByDate(date: String): Double
+
+    @Query(
+        """
+        SELECT COALESCE(SUM(delta_points), 0)
+        FROM point_ledger
+        WHERE ledger_date = :date AND delta_points > 0
+        """
+    )
+    fun observeEarnedByDate(date: String): Flow<Double>
+
+    @Query(
+        """
+        SELECT COALESCE(SUM(delta_points), 0)
+        FROM point_ledger
+        WHERE ledger_date = :date AND entry_type = 'OFFLINE_FOCUS' AND delta_points > 0
+        """
+    )
+    suspend fun sumOfflineFocusEarnedByDate(date: String): Double
 
     @Query(
         """

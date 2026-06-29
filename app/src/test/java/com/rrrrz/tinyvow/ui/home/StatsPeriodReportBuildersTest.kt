@@ -35,6 +35,7 @@ class StatsPeriodReportBuildersTest {
                 snapshots = snapshots,
                 topApps = listOf(AppDisplayItem("pkg.reader", "Reader", 3 * HOUR)),
                 windowFocus = fakeWindowFocus(),
+                offlineFocus = emptyOfflineFocus(),
                 behavior = null,
                 comparison = null,
             )
@@ -92,6 +93,7 @@ class StatsPeriodReportBuildersTest {
                 snapshots = snapshots,
                 topApps = listOf(AppDisplayItem("pkg.video", "Video", 2 * HOUR)),
                 windowFocus = fakeWindowFocus(),
+                offlineFocus = emptyOfflineFocus(),
                 behavior = null,
                 comparison = null,
             )
@@ -172,6 +174,17 @@ class StatsPeriodReportBuildersTest {
             control = fakeModeSummary("control"),
             encourage = fakeModeSummary("encourage"),
             highlights = emptyList(),
+        )
+
+    private fun emptyOfflineFocus(): OfflineFocusSectionData =
+        OfflineFocusSectionData(
+            totalMillis = 0L,
+            completedCount = 0,
+            pointsAwarded = 0.0,
+            dayStartMillis = 0L,
+            dayEndMillis = 0L,
+            sessions = emptyList(),
+            categories = emptyList(),
         )
 
     private fun fakeModeSummary(title: String): DailyModeSummary =

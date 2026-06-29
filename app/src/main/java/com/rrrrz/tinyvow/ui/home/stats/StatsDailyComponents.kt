@@ -2659,19 +2659,43 @@ private fun BehaviorMapScatter(
                         .height(286.dp),
             ) {
                 val chartHeight = 286.dp
-                val left = 18.dp
+                val left = 12.dp
                 val right = 8.dp
                 val top = 14.dp
                 val bottom = 38.dp
                 val plotWidth = (maxWidth - left - right).coerceAtLeast(1.dp)
                 val plotHeight = (chartHeight - top - bottom).coerceAtLeast(1.dp)
+                val usageSamples = data.points.map { it.usageMillis.toDouble() }
+                val openSamples = data.points.map { it.openCount.toDouble() }
+                val thresholdXRatio = 0.5f
+                val thresholdYRatio = 0.5f
+                val thresholdX = left + plotWidth * thresholdXRatio
+                val thresholdY = top + plotHeight * (1f - thresholdYRatio)
                 Canvas(modifier = Modifier.fillMaxSize()) {
                     val leftPx = left.toPx()
                     val rightPx = size.width - right.toPx()
                     val topPx = top.toPx()
                     val bottomPx = size.height - bottom.toPx()
+                    val thresholdXPx = thresholdX.toPx()
+                    val thresholdYPx = thresholdY.toPx()
+                    val crossLineColor = axisColor.copy(alpha = 0.34f)
+                    val crossLineEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 9f), 0f)
                     drawLine(axisColor, Offset(leftPx, topPx), Offset(leftPx, bottomPx), strokeWidth = 2.4f)
                     drawLine(axisColor, Offset(leftPx, bottomPx), Offset(rightPx, bottomPx), strokeWidth = 2.4f)
+                    drawLine(
+                        color = crossLineColor,
+                        start = Offset(thresholdXPx, topPx),
+                        end = Offset(thresholdXPx, bottomPx),
+                        strokeWidth = 1.8f,
+                        pathEffect = crossLineEffect,
+                    )
+                    drawLine(
+                        color = crossLineColor,
+                        start = Offset(leftPx, thresholdYPx),
+                        end = Offset(rightPx, thresholdYPx),
+                        strokeWidth = 1.8f,
+                        pathEffect = crossLineEffect,
+                    )
                     drawCircle(axisColor, radius = 5f, center = Offset(leftPx, topPx))
                     drawCircle(axisColor, radius = 5f, center = Offset(rightPx, bottomPx))
                 }
@@ -2696,19 +2720,48 @@ private fun BehaviorMapScatter(
                     text = data.maxOpenCount.toString(),
                     modifier = Modifier.offset(x = left + 4.dp, y = top - 9.dp),
                 )
+                Box(
+                    modifier =
+                        Modifier
+                            .offset(x = left, y = top - 8.dp)
+                            .width(plotWidth * 0.5f),
+                    contentAlignment = Alignment.TopEnd,
+                ) {
+                    BehaviorMapCornerTag(text = AppText.t("stats_behavior_map_matrix_high_freq_low_time"))
+                }
+                Box(
+                    modifier =
+                        Modifier
+                            .offset(x = thresholdX, y = top - 8.dp)
+                            .width(plotWidth * 0.5f),
+                    contentAlignment = Alignment.TopEnd,
+                ) {
+                    BehaviorMapCornerTag(text = AppText.t("stats_behavior_map_matrix_high_freq_high_time"))
+                }
+                BehaviorMapCornerTag(
+                    text = AppText.t("stats_behavior_map_matrix_low_freq_high_time"),
+                    modifier = Modifier.align(Alignment.BottomEnd).offset(x = -right - 7.dp, y = -bottom - 8.dp),
+                )
 
                 data.points.forEach { point ->
                     val radius = behaviorMapIconRadius(point.attentionWeight)
                     val size = radius * 2f
                     val nodeSize = behaviorMapNodeSize(size)
+                    val shadowMargin = behaviorMapIconShadowMargin(size)
                     val selected = selectedPoint?.packageName == point.packageName
                     val dimmed = point.role !in activeLegendRoles
-                    val xRatio = (point.usageMillis.toFloat() / data.maxDurationMillis.toFloat()).coerceIn(0f, 1f)
-                    val yRatio = (point.openCount.toFloat() / data.maxOpenCount.toFloat()).coerceIn(0f, 1f)
+                    val xRatio = behaviorMapBalancedRatio(
+                        value = point.usageMillis.toDouble(),
+                        samples = usageSamples,
+                    )
+                    val yRatio = behaviorMapBalancedRatio(
+                        value = point.openCount.toDouble(),
+                        samples = openSamples,
+                    )
                     val jitterX = if (point.isHighlighted) 0.dp else behaviorMapJitter(point.packageName, salt = 0)
                     val jitterY = if (point.isHighlighted) 0.dp else behaviorMapJitter(point.packageName, salt = 11)
-                    val x = left + plotWidth * xRatio + jitterX
-                    val y = top + plotHeight * (1f - yRatio) - nodeSize + jitterY
+                    val centerX = left + plotWidth * xRatio + jitterX
+                    val centerY = top + plotHeight * (1f - yRatio) + jitterY
                     val z =
                         when {
                             selected -> 10_000f
@@ -2722,7 +2775,10 @@ private fun BehaviorMapScatter(
                         dimmed = dimmed,
                         modifier =
                             Modifier
-                                .offset(x = x, y = y)
+                                .offset(
+                                    x = centerX - nodeSize / 2f - shadowMargin,
+                                    y = centerY - nodeSize / 2f - shadowMargin,
+                                )
                                 .zIndex(z),
                         onClick = { onSelectPoint(point) },
                     )
@@ -2739,9 +2795,34 @@ private fun BehaviorMapScatter(
 private fun behaviorMapIconRadius(weight: Float): Dp {
     val normalized = weight.coerceIn(0f, 1f)
     val logScaled = kotlin.math.ln(1f + normalized * 15f) / kotlin.math.ln(16f)
-    val radius = 3f + logScaled * 29f
+    val radius = 5f + logScaled * 13f
     return radius.dp
 }
+
+private fun behaviorMapBalancedRatio(
+    value: Double,
+    samples: List<Double>,
+): Float {
+    val sortedSamples =
+        samples
+            .filter { it >= 0.0 }
+            .sorted()
+    if (sortedSamples.isEmpty()) return 0.5f
+    if (sortedSamples.size == 1) return 0.5f
+
+    val belowCount = sortedSamples.count { it < value }
+    val equalCount = sortedSamples.count { it == value }.coerceAtLeast(1)
+    val percentile = (belowCount + (equalCount - 1) * 0.5) / (sortedSamples.size - 1).toDouble()
+    val balancedRatio =
+        if (percentile <= BEHAVIOR_MAP_CENTER_PERCENTILE) {
+            0.08 + percentile / BEHAVIOR_MAP_CENTER_PERCENTILE * 0.42
+        } else {
+            0.5 + (percentile - BEHAVIOR_MAP_CENTER_PERCENTILE) / (1.0 - BEHAVIOR_MAP_CENTER_PERCENTILE) * 0.42
+        }
+    return balancedRatio.toFloat().coerceIn(0.08f, 0.92f)
+}
+
+private const val BEHAVIOR_MAP_CENTER_PERCENTILE = 2.0 / 3.0
 
 @Composable
 private fun BehaviorMapAxisLabel(
@@ -2773,6 +2854,29 @@ private fun BehaviorMapTickLabel(text: String, modifier: Modifier = Modifier) {
     )
 }
 
+@Composable
+private fun BehaviorMapCornerTag(
+    text: String,
+    modifier: Modifier = Modifier,
+) {
+    val baseColor = LocalThemeColors.current.base
+    Surface(
+        modifier = modifier.zIndex(80f),
+        shape = RoundedCornerShape(4.dp),
+        color = baseColor.copy(alpha = 0.10f),
+        border = BorderStroke(1.dp, baseColor.copy(alpha = 0.18f)),
+    ) {
+        Text(
+            text = text,
+            modifier = Modifier.padding(horizontal = 5.dp, vertical = 3.dp),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.88f),
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
 private fun behaviorMapNodeSize(iconSize: Dp): Dp {
     val ringStroke = behaviorMapRingStroke(iconSize)
     val ringSize = iconSize + ringStroke * 4f
@@ -2781,6 +2885,9 @@ private fun behaviorMapNodeSize(iconSize: Dp): Dp {
 
 private fun behaviorMapRingStroke(iconSize: Dp): Dp =
     (iconSize * 0.045f).coerceIn(0.72.dp, 1.92.dp)
+
+private fun behaviorMapIconShadowMargin(iconSize: Dp): Dp =
+    (iconSize * 0.18f).coerceIn(3.dp, 8.dp)
 
 private fun behaviorMapJitter(packageName: String, salt: Int): Dp {
     val bucket = ((packageName.hashCode() xor salt) and Int.MAX_VALUE) % 9
@@ -2802,33 +2909,33 @@ private fun BehaviorMapPointNode(
     val iconSize = size
     val ringStroke = behaviorMapRingStroke(size)
     val ringSize = size + ringStroke * 4f
+    val outerRingWidth = ringStroke * 1.2f
+    val shadowPlateSize = size + outerRingWidth * 2f
+    val shadowMargin = behaviorMapIconShadowMargin(size)
+    val nodeSize = behaviorMapNodeSize(size) + shadowMargin * 2f
     val iconColorFilter = if (dimmed) behaviorMapDisabledColorFilter() else null
     Box(
         modifier =
             modifier
-                .size(maxOf(ringSize, 24.dp))
+                .size(nodeSize)
                 .graphicsLayer { alpha = if (dimmed) 0.10f else 1f }
                 .clickable(onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
-        if (isGrouped) {
-            Canvas(modifier = Modifier.size(ringSize)) {
-                val strokePx = ringStroke.toPx()
-                val iconRadius = iconSize.toPx() / 2f
-                val center = Offset(this.size.width / 2f, this.size.height / 2f)
-                drawCircle(
-                    color = roleColor,
-                    radius = iconRadius + strokePx * 1.5f,
-                    center = center,
-                    style = Stroke(width = strokePx),
-                )
-                drawCircle(
-                    color = Color.White.copy(alpha = 0.96f),
-                    radius = iconRadius + strokePx * 0.5f,
-                    center = center,
-                    style = Stroke(width = strokePx),
-                )
-            }
+        Canvas(modifier = Modifier.fillMaxSize()) {
+            drawBehaviorMapIconShadow(plateSize = shadowPlateSize, selected = selected)
+        }
+        Canvas(modifier = Modifier.size(ringSize)) {
+            val outerRingWidthPx = outerRingWidth.toPx()
+            val iconRadius = iconSize.toPx() / 2f
+            val center = Offset(this.size.width / 2f, this.size.height / 2f)
+            val outerRingColor = if (isGrouped) roleColor else Color.White.copy(alpha = 0.98f)
+            drawCircle(
+                color = outerRingColor,
+                radius = iconRadius + outerRingWidthPx / 2f,
+                center = center,
+                style = Stroke(width = outerRingWidthPx),
+            )
         }
         BehaviorMapAppIcon(
             pkg = point.packageName,
@@ -2838,6 +2945,83 @@ private fun BehaviorMapPointNode(
             colorFilter = iconColorFilter,
         )
     }
+}
+
+private fun DrawScope.drawBehaviorMapIconShadow(
+    plateSize: Dp,
+    selected: Boolean,
+) {
+    val plateRadius = plateSize.toPx() / 2f
+    if (plateRadius <= 0f) return
+
+    val center = Offset(size.width / 2f, size.height / 2f)
+    val lift = if (selected) 1.14f else 1f
+    val shadowScale = (plateRadius / 20.dp.toPx()).coerceIn(0.70f, 1f)
+    val shadowWidth = 1.35.dp.toPx() * shadowScale
+    val shadowFeather = 2.15.dp.toPx() * shadowScale
+    val edgeShadowRadius = plateRadius + shadowFeather
+    val darkStop = (plateRadius / edgeShadowRadius).coerceIn(0f, 1f)
+    val innerStop = ((plateRadius - shadowWidth) / edgeShadowRadius).coerceIn(0f, darkStop)
+    val outerStop = ((plateRadius + shadowWidth) / edgeShadowRadius).coerceIn(darkStop, 1f)
+    val ambientCenter = center + Offset(0.65.dp.toPx(), 1.05.dp.toPx())
+    val contactCenter = center + Offset(1.10.dp.toPx(), 1.55.dp.toPx())
+
+    drawCircle(
+        brush =
+            Brush.radialGradient(
+                colorStops =
+                    arrayOf(
+                        0f to Color.Transparent,
+                        innerStop to Color.Transparent,
+                        darkStop to Color.Black.copy(alpha = 0.30f * lift),
+                        outerStop to Color.Black.copy(alpha = 0.12f * lift),
+                        1.00f to Color.Transparent,
+                    ),
+                center = center,
+                radius = edgeShadowRadius,
+            ),
+        radius = edgeShadowRadius,
+        center = center,
+    )
+
+    drawOval(
+        brush =
+            Brush.radialGradient(
+                colors =
+                    listOf(
+                        Color.Black.copy(alpha = 0.11f * lift),
+                        Color.Black.copy(alpha = 0.05f * lift),
+                        Color.Transparent,
+                    ),
+                center = ambientCenter,
+                radius = plateRadius * 0.74f,
+            ),
+        topLeft = Offset(ambientCenter.x - plateRadius * 0.70f, ambientCenter.y - plateRadius * 0.26f),
+        size =
+            Size(
+                width = plateRadius * 1.40f,
+                height = plateRadius * 0.52f,
+            ),
+    )
+    drawOval(
+        brush =
+            Brush.radialGradient(
+                colors =
+                    listOf(
+                        Color.Black.copy(alpha = 0.15f * lift),
+                        Color.Black.copy(alpha = 0.06f * lift),
+                        Color.Transparent,
+                    ),
+                center = contactCenter,
+                radius = plateRadius * 0.52f,
+            ),
+        topLeft = Offset(contactCenter.x - plateRadius * 0.50f, contactCenter.y - plateRadius * 0.18f),
+        size =
+            Size(
+                width = plateRadius,
+                height = plateRadius * 0.36f,
+            ),
+    )
 }
 
 @Composable
@@ -3081,11 +3265,16 @@ private fun BehaviorMapMatrixCard(
     modifier: Modifier = Modifier,
 ) {
     val roleColor = behaviorMapRoleColor(role)
+    val containerColor = behaviorMapMatrixContainerColor(role)
+    val emptyColor = MaterialTheme.colorScheme.outlineVariant
+    val cardColor = if (point == null) emptyColor.copy(alpha = 0.16f) else containerColor.copy(alpha = 0.28f)
+    val borderColor = if (point == null) emptyColor.copy(alpha = 0.40f) else roleColor
+    val borderWidth = if (point == null) 1.dp else 2.dp
     Surface(
         modifier = modifier.aspectRatio(1f),
         shape = RoundedCornerShape(12.dp),
-        color = roleColor.copy(alpha = if (point == null) 0.06f else 0.11f),
-        border = BorderStroke(1.dp, roleColor.copy(alpha = if (point == null) 0.16f else 0.28f)),
+        color = cardColor,
+        border = BorderStroke(borderWidth, borderColor),
     ) {
         Column(
             modifier =
@@ -3109,7 +3298,7 @@ private fun BehaviorMapMatrixCard(
                     modifier =
                         Modifier
                             .size(34.dp)
-                            .border(1.4.dp, roleColor.copy(alpha = 0.62f), CircleShape),
+                            .border(1.4.dp, emptyColor.copy(alpha = 0.48f), CircleShape),
                 )
             } else {
                 AppIconCircle(
@@ -3237,8 +3426,18 @@ private fun behaviorMapRoleColor(role: BehaviorMapRole): Color =
     when (role) {
         BehaviorMapRole.CONTROL -> Color(0xFFE95A3B)
         BehaviorMapRole.ENCOURAGE -> Color(0xFF2FBF71)
-        BehaviorMapRole.UNGROUPED -> MaterialTheme.colorScheme.outline.copy(alpha = 0.72f)
+        BehaviorMapRole.UNGROUPED -> LocalThemeColors.current.base
     }
+
+@Composable
+private fun behaviorMapMatrixContainerColor(role: BehaviorMapRole): Color {
+    val themeColors = LocalThemeColors.current
+    return when (role) {
+        BehaviorMapRole.CONTROL -> themeColors.controlContainer
+        BehaviorMapRole.ENCOURAGE -> themeColors.encourageContainer
+        BehaviorMapRole.UNGROUPED -> themeColors.baseContainer
+    }
+}
 
 @Composable
 private fun behaviorMapInsightColor(tone: BehaviorMapInsightTone): Color =

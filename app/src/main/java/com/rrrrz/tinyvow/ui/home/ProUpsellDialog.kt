@@ -17,11 +17,12 @@ enum class ProUpsellSource {
     GROUP_APPS,
     CUSTOM_REWARD,
     CUSTOM_THEME,
-    MEMBER_THEME,
     ADVANCED_REPORT,
     NOTIFICATION_CUSTOMIZATION,
     DAY_BOUNDARY_CUSTOMIZATION,
     STEP_POINTS,
+    FOCUS_MODE,
+    RING_SETTINGS,
 }
 
 @Composable
@@ -77,10 +78,11 @@ private fun proUpsellMessage(source: ProUpsellSource): String =
             ProUpsellSource.GROUP_APPS -> "pro_upsell_group_apps"
             ProUpsellSource.CUSTOM_REWARD -> "pro_upsell_custom_reward"
             ProUpsellSource.CUSTOM_THEME -> "pro_upsell_custom_theme"
-            ProUpsellSource.MEMBER_THEME -> "pro_upsell_member_theme"
             ProUpsellSource.ADVANCED_REPORT -> "pro_upsell_advanced_report"
             ProUpsellSource.NOTIFICATION_CUSTOMIZATION -> "pro_upsell_notification_customization"
             ProUpsellSource.DAY_BOUNDARY_CUSTOMIZATION -> "pro_upsell_day_boundary_customization"
             ProUpsellSource.STEP_POINTS -> "pro_upsell_step_points"
+            ProUpsellSource.FOCUS_MODE -> "pro_upsell_focus_mode"
+            ProUpsellSource.RING_SETTINGS -> "pro_upsell_ring_settings"
         },
     )

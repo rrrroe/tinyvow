@@ -20,7 +20,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -38,10 +37,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.rrrrz.tinyvow.data.pro.ProFeatureGate
 import com.rrrrz.tinyvow.i18n.AppText
-import com.rrrrz.tinyvow.ui.theme.DailyRandomThemeId
-import com.rrrrz.tinyvow.ui.theme.MemberThemePresets
 import com.rrrrz.tinyvow.ui.theme.LocalThemeColors
 import com.rrrrz.tinyvow.ui.theme.ThemePresets
 import com.rrrrz.tinyvow.ui.theme.ThemeSeed
@@ -49,8 +45,8 @@ import com.rrrrz.tinyvow.ui.theme.TinyVowCard
 import com.rrrrz.tinyvow.ui.theme.TinyVowElevation
 import com.rrrrz.tinyvow.ui.theme.TinyVowRadius
 import com.rrrrz.tinyvow.ui.theme.TinyVowSpacing
-import com.rrrrz.tinyvow.ui.theme.dailyRandomThemeSeed
 import com.rrrrz.tinyvow.ui.theme.localizedName
+import com.rrrrz.tinyvow.ui.theme.resolveThemeSeed
 import com.rrrrz.tinyvow.ui.theme.selectedThemeDisplayName
 import com.rrrrz.tinyvow.ui.theme.themeTokensFromSeed
 
@@ -67,9 +63,9 @@ fun ThemeSettingsScreen(
     onShowProUpsell: (ProUpsellSource) -> Unit,
     onBack: () -> Unit,
 ) {
-    val allThemes = ThemePresets + MemberThemePresets
+    val allThemes = ThemePresets
     val themeColors = LocalThemeColors.current
-    val todayRandomTheme = dailyRandomThemeSeed()
+    val effectiveSelectedThemeId = resolveThemeSeed(selectedThemeId, customThemes).id
     val currentThemeName = selectedThemeDisplayName(selectedThemeId, customThemes)
 
     Scaffold(
@@ -136,97 +132,14 @@ fun ThemeSettingsScreen(
                     }
                 }
             }
-            item {
-                DailyRandomThemeCard(
-                    todayTheme = todayRandomTheme,
-                    selected = selectedThemeId == DailyRandomThemeId,
-                    onClick = { onSelectTheme(DailyRandomThemeId) },
-                )
-            }
             items(allThemes, key = { it.id }) { theme ->
-                val locked = !ProFeatureGate.canSelectTheme(isProActive, theme.id)
                 ThemeStyleCard(
                     theme = theme,
-                    selected = selectedThemeId == theme.id,
-                    locked = locked,
-                    onClick = {
-                        if (locked) {
-                            onShowProUpsell(ProUpsellSource.MEMBER_THEME)
-                        } else {
-                            onSelectTheme(theme.id)
-                        }
-                    },
+                    selected = effectiveSelectedThemeId == theme.id,
+                    locked = false,
+                    onClick = { onSelectTheme(theme.id) },
                 )
             }
-        }
-    }
-}
-
-@Composable
-private fun DailyRandomThemeCard(
-    todayTheme: ThemeSeed,
-    selected: Boolean,
-    onClick: () -> Unit,
-) {
-    val tokens = themeTokensFromSeed(todayTheme)
-    val borderColor = if (selected) tokens.base else tokens.colorScheme.outlineVariant
-
-    TinyVowCard(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick),
-        shape = RoundedCornerShape(TinyVowRadius.Card),
-        color = tokens.colorScheme.surface,
-        borderAlpha = 0f,
-        shadowElevation = if (selected) TinyVowElevation.SelectedCard else TinyVowElevation.Card,
-    ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(TinyVowRadius.Card))
-                .border(
-                    BorderStroke(1.dp, borderColor.copy(alpha = if (selected) 0.72f else 0.28f)),
-                    RoundedCornerShape(TinyVowRadius.Card),
-                )
-                .background(tokens.colorScheme.background.copy(alpha = 0.36f))
-                .padding(TinyVowSpacing.CardHorizontal),
-            verticalArrangement = Arrangement.spacedBy(TinyVowSpacing.CardGap),
-        ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                ThemeMark(theme = todayTheme, selected = selected, locked = false)
-                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    Text(
-                        text = AppText.t("theme_random_daily_name"),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        color = tokens.inkStrong,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Text(
-                        text = AppText.t("theme_random_daily_description"),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = tokens.inkMuted,
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                    Text(
-                        text = AppText.t("theme_random_daily_current", todayTheme.localizedName()),
-                        style = MaterialTheme.typography.labelSmall,
-                        color = tokens.base,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-                if (selected) {
-                    Icon(Icons.Default.Check, contentDescription = null, tint = tokens.base)
-                }
-            }
-
-            ThemeRoleSwatches(theme = todayTheme)
         }
     }
 }
@@ -284,9 +197,7 @@ private fun ThemeStyleCard(
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
-                if (locked) {
-                    Icon(Icons.Default.Lock, contentDescription = AppText.t("theme_member_unlock_hint"), tint = tokens.base)
-                } else if (selected) {
+                if (selected) {
                     Icon(Icons.Default.Check, contentDescription = null, tint = tokens.base)
                 }
             }

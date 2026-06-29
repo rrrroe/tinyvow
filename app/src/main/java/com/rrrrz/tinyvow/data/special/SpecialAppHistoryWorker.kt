@@ -6,6 +6,8 @@ import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
 import androidx.work.WorkerParameters
+import com.rrrrz.tinyvow.data.settings.ManagedAppPreferences
+import com.rrrrz.tinyvow.data.time.BusinessDay
 import java.util.concurrent.TimeUnit
 
 class SpecialAppHistoryWorker(
@@ -13,6 +15,7 @@ class SpecialAppHistoryWorker(
     workerParams: WorkerParameters,
 ) : CoroutineWorker(appContext, workerParams) {
     override suspend fun doWork(): Result {
+        BusinessDay.updateCachedStartHour(ManagedAppPreferences(applicationContext).getDayBoundaryHourOnce())
         val repository = SpecialAppUsageRepository(applicationContext)
         val config = repository.getWeReadConfig()
         if (!config.syncEnabled) return Result.success()

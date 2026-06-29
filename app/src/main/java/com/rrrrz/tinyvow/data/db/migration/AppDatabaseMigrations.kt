@@ -955,6 +955,196 @@ object AppDatabaseMigrations {
             }
         }
 
+    val MIGRATION_25_26 =
+        object : Migration(25, 26) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `daily_archives` ADD COLUMN `activity_control_progress` REAL NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE `daily_archives` ADD COLUMN `activity_encourage_progress` REAL NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE `daily_archives` ADD COLUMN `activity_growth_progress` REAL NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE `daily_archives` ADD COLUMN `activity_control_available` INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE `daily_archives` ADD COLUMN `activity_encourage_available` INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE `daily_archives` ADD COLUMN `activity_growth_available` INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE `daily_archives` ADD COLUMN `activity_growth_target_points` REAL NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE `daily_archives` ADD COLUMN `activity_rings_completed` INTEGER NOT NULL DEFAULT 0")
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `media_app_configs` (
+                        `package_name` TEXT NOT NULL,
+                        `app_label_snapshot` TEXT NOT NULL,
+                        `enabled` INTEGER NOT NULL,
+                        `created_at` INTEGER NOT NULL,
+                        `updated_at` INTEGER NOT NULL,
+                        PRIMARY KEY(`package_name`)
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `media_app_playback_days` (
+                        `package_name` TEXT NOT NULL,
+                        `playback_date` TEXT NOT NULL,
+                        `trusted_playback_millis` INTEGER NOT NULL,
+                        `untrusted_gap_millis` INTEGER NOT NULL,
+                        `is_playing` INTEGER NOT NULL,
+                        `active_started_at` INTEGER,
+                        `last_confirmed_at` INTEGER,
+                        `last_status` TEXT NOT NULL,
+                        `updated_at` INTEGER NOT NULL,
+                        PRIMARY KEY(`package_name`, `playback_date`)
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_media_app_playback_days_playback_date` ON `media_app_playback_days` (`playback_date`)"
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_media_app_playback_days_package_name` ON `media_app_playback_days` (`package_name`)"
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_media_app_playback_days_package_name_playback_date` ON `media_app_playback_days` (`package_name`, `playback_date`)"
+                )
+            }
+        }
+
+    val MIGRATION_26_27 =
+        object : Migration(26, 27) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `offline_focus_categories` (
+                        `id` TEXT NOT NULL,
+                        `name` TEXT NOT NULL,
+                        `icon_key` TEXT NOT NULL,
+                        `color_argb` INTEGER NOT NULL,
+                        `sort_order` INTEGER NOT NULL,
+                        `is_built_in` INTEGER NOT NULL,
+                        `is_archived` INTEGER NOT NULL,
+                        `created_at` INTEGER NOT NULL,
+                        `updated_at` INTEGER NOT NULL,
+                        PRIMARY KEY(`id`)
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_offline_focus_categories_sort_order` ON `offline_focus_categories` (`sort_order`)"
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_offline_focus_categories_is_archived_sort_order` ON `offline_focus_categories` (`is_archived`, `sort_order`)"
+                )
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `offline_focus_sessions` (
+                        `id` TEXT NOT NULL,
+                        `category_id` TEXT NOT NULL,
+                        `category_name_snapshot` TEXT NOT NULL,
+                        `category_icon_key_snapshot` TEXT NOT NULL,
+                        `category_color_argb_snapshot` INTEGER NOT NULL,
+                        `planned_duration_millis` INTEGER NOT NULL,
+                        `actual_duration_millis` INTEGER NOT NULL,
+                        `status` TEXT NOT NULL,
+                        `started_at` INTEGER NOT NULL,
+                        `paused_at` INTEGER,
+                        `resumed_at` INTEGER,
+                        `completed_at` INTEGER,
+                        `abandoned_at` INTEGER,
+                        `points_awarded` REAL NOT NULL,
+                        `settled_ledger_id` TEXT,
+                        `created_at` INTEGER NOT NULL,
+                        `updated_at` INTEGER NOT NULL,
+                        PRIMARY KEY(`id`)
+                    )
+                    """.trimIndent()
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_offline_focus_sessions_category_id` ON `offline_focus_sessions` (`category_id`)"
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_offline_focus_sessions_started_at` ON `offline_focus_sessions` (`started_at`)"
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_offline_focus_sessions_completed_at` ON `offline_focus_sessions` (`completed_at`)"
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_offline_focus_sessions_status_started_at` ON `offline_focus_sessions` (`status`, `started_at`)"
+                )
+                db.execSQL(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS `index_offline_focus_sessions_settled_ledger_id` ON `offline_focus_sessions` (`settled_ledger_id`)"
+                )
+            }
+        }
+
+    val MIGRATION_27_28 =
+        object : Migration(27, 28) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `offline_focus_categories` ADD COLUMN `custom_icon_path` TEXT")
+                db.execSQL("ALTER TABLE `offline_focus_categories` ADD COLUMN `points_per_minute` REAL NOT NULL DEFAULT 1.0")
+                db.execSQL("ALTER TABLE `offline_focus_categories` ADD COLUMN `is_deleted` INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE `offline_focus_sessions` ADD COLUMN `category_custom_icon_path_snapshot` TEXT")
+                db.execSQL("ALTER TABLE `offline_focus_sessions` ADD COLUMN `points_per_minute_snapshot` REAL NOT NULL DEFAULT 1.0")
+                db.execSQL("ALTER TABLE `offline_focus_sessions` ADD COLUMN `focus_mode` TEXT NOT NULL DEFAULT 'NORMAL'")
+                db.execSQL("ALTER TABLE `offline_focus_sessions` ADD COLUMN `pause_reason` TEXT")
+                db.execSQL("ALTER TABLE `offline_focus_sessions` ADD COLUMN `abandoned_reason` TEXT")
+                db.execSQL("ALTER TABLE `offline_focus_sessions` ADD COLUMN `violation_started_at` INTEGER")
+                db.execSQL("ALTER TABLE `offline_focus_sessions` ADD COLUMN `violation_package_name` TEXT")
+                db.execSQL(
+                    """
+                    UPDATE `offline_focus_categories`
+                    SET `icon_key` = 'focus_icon_reading',
+                        `color_argb` = -40607
+                    WHERE `id` = 'offline_focus_reading' AND `is_built_in` = 1
+                    """.trimIndent(),
+                )
+                db.execSQL(
+                    """
+                    INSERT OR IGNORE INTO `offline_focus_categories`
+                    (`id`, `name`, `icon_key`, `custom_icon_path`, `color_argb`, `points_per_minute`, `sort_order`, `is_built_in`, `is_archived`, `is_deleted`, `created_at`, `updated_at`)
+                    VALUES ('offline_focus_fitness', 'Fitness', 'focus_icon_fitness', NULL, -13248400, 1.0, 1, 1, 0, 0, strftime('%s','now') * 1000, strftime('%s','now') * 1000)
+                    """.trimIndent(),
+                )
+                db.execSQL(
+                    """
+                    UPDATE `offline_focus_categories`
+                    SET `is_archived` = 1,
+                        `is_deleted` = 1,
+                        `updated_at` = strftime('%s','now') * 1000
+                    WHERE `is_built_in` = 1
+                        AND `id` NOT IN ('offline_focus_reading', 'offline_focus_fitness')
+                    """.trimIndent(),
+                )
+            }
+        }
+
+    val MIGRATION_28_29 =
+        object : Migration(28, 29) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `media_app_playback_segments` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `package_name` TEXT NOT NULL,
+                        `playback_date` TEXT NOT NULL,
+                        `start_millis` INTEGER NOT NULL,
+                        `end_millis` INTEGER NOT NULL,
+                        `created_at` INTEGER NOT NULL,
+                        `updated_at` INTEGER NOT NULL
+                    )
+                    """.trimIndent(),
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_media_app_playback_segments_package_name` ON `media_app_playback_segments` (`package_name`)"
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_media_app_playback_segments_playback_date` ON `media_app_playback_segments` (`playback_date`)"
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_media_app_playback_segments_package_name_start_millis` ON `media_app_playback_segments` (`package_name`, `start_millis`)"
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_media_app_playback_segments_package_name_end_millis` ON `media_app_playback_segments` (`package_name`, `end_millis`)"
+                )
+            }
+        }
+
     val ALL: Array<Migration> = arrayOf(
         MIGRATION_9_10,
         MIGRATION_10_11,
@@ -972,5 +1162,9 @@ object AppDatabaseMigrations {
         MIGRATION_22_23,
         MIGRATION_23_24,
         MIGRATION_24_25,
+        MIGRATION_25_26,
+        MIGRATION_26_27,
+        MIGRATION_27_28,
+        MIGRATION_28_29,
     )
 }

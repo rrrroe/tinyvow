@@ -31,6 +31,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.HelpOutline
@@ -44,6 +45,7 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Language
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Palette
@@ -52,10 +54,13 @@ import androidx.compose.material.icons.filled.Science
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Storage
+import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material.icons.filled.VerifiedUser
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -99,6 +104,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -111,6 +117,12 @@ import com.rrrrz.tinyvow.data.billing.SubscriptionOffer
 import com.rrrrz.tinyvow.data.pro.ProFeatureGate
 import com.rrrrz.tinyvow.data.repository.DailyCheckInDayState
 import com.rrrrz.tinyvow.data.repository.DailyCheckInMonthState
+import com.rrrrz.tinyvow.data.settings.HomeActivityRingColorPreference
+import com.rrrrz.tinyvow.data.settings.HomeActivityRingColorPreferences
+import com.rrrrz.tinyvow.data.settings.HomeActivityRingColorSource
+import com.rrrrz.tinyvow.data.settings.HomeActivityRingMetric
+import com.rrrrz.tinyvow.data.settings.HomeActivityRingPreferences
+import com.rrrrz.tinyvow.data.settings.HomeActivityRingSlot
 import com.rrrrz.tinyvow.data.time.BusinessDay
 import com.rrrrz.tinyvow.data.supermode.SuperModeStatus
 import com.rrrrz.tinyvow.i18n.AppLanguage
@@ -131,10 +143,9 @@ import java.time.LocalDate
 import java.time.YearMonth
 import java.time.ZoneId
 import java.time.temporal.ChronoUnit
-import kotlin.math.cos
+import java.util.Locale
 import kotlin.math.min
 import kotlin.math.roundToLong
-import kotlin.math.sin
 
 @Composable
 fun MeScreen(
@@ -191,8 +202,10 @@ fun MeScreen(
     onNavigateToHistory: () -> Unit,
     onNavigateToCheckInOverview: () -> Unit,
     onNavigateToThemeSettings: () -> Unit,
+    onNavigateToAppearanceSettings: () -> Unit,
     onNavigateToLanguageSettings: () -> Unit,
     onNavigateToDayBoundarySettings: () -> Unit,
+    onNavigateToOfflineFocusSettings: () -> Unit,
     onNavigateToHelpFeedback: () -> Unit,
     onNavigateToContactUs: () -> Unit,
     onNavigateToSpecialAppSettings: () -> Unit,
@@ -265,15 +278,7 @@ fun MeScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(220.dp)
-                .background(
-                    Brush.verticalGradient(
-                        colors = listOf(
-                            themeColors.base,
-                            lerp(themeColors.base, themeColors.encourage, 0.22f),
-                            themeColors.base.copy(alpha = 0.88f),
-                        )
-                    )
-                )
+                .background(themeColors.base)
                 .padding(24.dp)
         ) {
             Column(
@@ -458,6 +463,13 @@ fun MeScreen(
                     title = AppText.t("special_app_settings_title"),
                     onClick = onNavigateToSpecialAppSettings,
                 )
+                SettingsDivider()
+                MeMenuItem(
+                    icon = Icons.Default.Timer,
+                    title = AppText.t("offline_focus_settings_title"),
+                    trailingText = AppText.t("offline_focus_settings_badge"),
+                    onClick = onNavigateToOfflineFocusSettings,
+                )
             }
 
             MeMenuSection(title = AppText.t("me_preferences_section")) {
@@ -466,6 +478,12 @@ fun MeScreen(
                     title = AppText.t("me_theme_management"),
                     trailingText = currentThemeName,
                     onClick = onNavigateToThemeSettings,
+                )
+                SettingsDivider()
+                MeMenuItem(
+                    icon = Icons.Default.Settings,
+                    title = AppText.t("appearance_settings_title"),
+                    onClick = onNavigateToAppearanceSettings,
                 )
                 SettingsDivider()
                 MeMenuItem(
@@ -582,6 +600,437 @@ private fun AppLanguage.displayName(): String =
     }
 
 @Composable
+fun AppearanceSettingsScreen(
+    isProActive: Boolean,
+    onBack: () -> Unit,
+    onOpenRingSettings: () -> Unit,
+    onShowProUpsell: (ProUpsellSource) -> Unit,
+) {
+    MeDetailPageScaffold(
+        title = AppText.t("appearance_settings_title"),
+        description = AppText.t("appearance_settings_description"),
+        onBack = onBack,
+    ) {
+        MeSettingsCard {
+            MeMenuItem(
+                icon = Icons.Default.Settings,
+                title = AppText.t("ring_settings_title"),
+                trailingContent = {
+                    ProMemberBadge()
+                },
+                onClick = {
+                    if (isProActive) {
+                        onOpenRingSettings()
+                    } else {
+                        onShowProUpsell(ProUpsellSource.RING_SETTINGS)
+                    }
+                },
+            )
+        }
+    }
+}
+
+@Composable
+fun RingSettingsScreen(
+    ringPreferences: HomeActivityRingPreferences,
+    ringColorPreferences: HomeActivityRingColorPreferences,
+    stepRewardThreshold: Int,
+    stepPointsPerStep: Double,
+    offlineFocusDailyTargetMinutes: Int,
+    onBack: () -> Unit,
+    onSelectRingMetric: (HomeActivityRingSlot, HomeActivityRingMetric) -> Unit,
+    onSelectRingMetricColor: (HomeActivityRingMetric, HomeActivityRingColorSource, Int?) -> Unit,
+    onSaveStepSettings: (Int, Double) -> Unit,
+    onSaveOfflineFocusDailyTarget: (Int) -> Unit,
+) {
+    var stepThresholdText by remember(stepRewardThreshold) { mutableStateOf(stepRewardThreshold.toString()) }
+    var stepRateText by remember(stepPointsPerStep) { mutableStateOf(formatPreferenceDecimal(stepPointsPerStep)) }
+    var focusTargetText by remember(offlineFocusDailyTargetMinutes) { mutableStateOf(offlineFocusDailyTargetMinutes.toString()) }
+    val parsedStepThreshold = stepThresholdText.toIntOrNull()?.coerceAtLeast(0)
+    val parsedStepRate = stepRateText.toDoubleOrNull()?.coerceAtLeast(0.0)
+    val parsedFocusTarget = focusTargetText.toIntOrNull()?.coerceAtLeast(0)
+
+    MeDetailPageScaffold(
+        title = AppText.t("ring_settings_title"),
+        description = AppText.t("ring_settings_description"),
+        onBack = onBack,
+    ) {
+        MeSettingsCard(title = AppText.t("ring_settings_layout_section")) {
+            RingSlotSelector(
+                title = AppText.t("ring_settings_outer_ring"),
+                selected = ringPreferences.outer,
+                onSelect = { onSelectRingMetric(HomeActivityRingSlot.OUTER, it) },
+            )
+            SettingsDivider()
+            RingSlotSelector(
+                title = AppText.t("ring_settings_middle_ring"),
+                selected = ringPreferences.middle,
+                onSelect = { onSelectRingMetric(HomeActivityRingSlot.MIDDLE, it) },
+            )
+            SettingsDivider()
+            RingSlotSelector(
+                title = AppText.t("ring_settings_inner_ring"),
+                selected = ringPreferences.inner,
+                onSelect = { onSelectRingMetric(HomeActivityRingSlot.INNER, it) },
+            )
+        }
+
+        MeSettingsCard(title = AppText.t("ring_settings_metric_section")) {
+            RingMetricColorSelector(
+                metric = HomeActivityRingMetric.CONTROL,
+                title = ringMetricLabel(HomeActivityRingMetric.CONTROL),
+                body = AppText.t("ring_settings_control_explanation"),
+                preference = ringColorPreferences.control,
+                onSelectColor = onSelectRingMetricColor,
+            )
+            SettingsDivider()
+            RingMetricColorSelector(
+                metric = HomeActivityRingMetric.ENCOURAGE,
+                title = ringMetricLabel(HomeActivityRingMetric.ENCOURAGE),
+                body = AppText.t("ring_settings_encourage_explanation"),
+                preference = ringColorPreferences.encourage,
+                onSelectColor = onSelectRingMetricColor,
+            )
+            SettingsDivider()
+            RingMetricColorSelector(
+                metric = HomeActivityRingMetric.GROWTH,
+                title = ringMetricLabel(HomeActivityRingMetric.GROWTH),
+                body = AppText.t("ring_settings_growth_explanation"),
+                preference = ringColorPreferences.growth,
+                onSelectColor = onSelectRingMetricColor,
+            )
+            SettingsDivider()
+            RingMetricColorSelector(
+                metric = HomeActivityRingMetric.STEPS,
+                title = ringMetricLabel(HomeActivityRingMetric.STEPS),
+                body = AppText.t("ring_settings_steps_explanation"),
+                preference = ringColorPreferences.steps,
+                onSelectColor = onSelectRingMetricColor,
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                OutlinedTextField(
+                    value = stepThresholdText,
+                    onValueChange = { stepThresholdText = sanitizePreferenceIntegerInput(it) },
+                    label = { Text(AppText.t("home_step_points_reward_threshold_label")) },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.weight(1f),
+                )
+                OutlinedTextField(
+                    value = stepRateText,
+                    onValueChange = { stepRateText = sanitizePreferenceDecimalInput(it) },
+                    label = { Text(AppText.t("home_step_points_rate_label")) },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                    modifier = Modifier.weight(1f),
+                )
+            }
+            TinyVowButton(
+                text = AppText.t("ring_settings_save_steps"),
+                onClick = {
+                    if (parsedStepThreshold != null && parsedStepRate != null) {
+                        onSaveStepSettings(parsedStepThreshold, parsedStepRate)
+                    }
+                },
+                enabled = parsedStepThreshold != null && parsedStepRate != null,
+                tone = TinyVowButtonTone.Primary,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            SettingsDivider()
+            RingMetricColorSelector(
+                metric = HomeActivityRingMetric.FOCUS,
+                title = ringMetricLabel(HomeActivityRingMetric.FOCUS),
+                body = AppText.t("ring_settings_focus_explanation"),
+                preference = ringColorPreferences.focus,
+                onSelectColor = onSelectRingMetricColor,
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                OutlinedTextField(
+                    value = focusTargetText,
+                    onValueChange = { focusTargetText = sanitizePreferenceIntegerInput(it) },
+                    label = { Text(AppText.t("ring_settings_focus_daily_target_label")) },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    modifier = Modifier.weight(1f),
+                )
+                TinyVowButton(
+                    text = AppText.t("ring_settings_save_focus"),
+                    onClick = {
+                        parsedFocusTarget?.let(onSaveOfflineFocusDailyTarget)
+                    },
+                    enabled = parsedFocusTarget != null,
+                    tone = TinyVowButtonTone.Primary,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun RingSlotSelector(
+    title: String,
+    selected: HomeActivityRingMetric,
+    onSelect: (HomeActivityRingMetric) -> Unit,
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                color = LocalThemeColors.current.inkStrong,
+            )
+            Text(
+                text = ringMetricShortDescription(selected),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        Box {
+            OutlinedButton(onClick = { expanded = true }) {
+                Text(ringMetricLabel(selected))
+                Icon(
+                    imageVector = Icons.Default.KeyboardArrowDown,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+            DropdownMenu(
+                expanded = expanded,
+                onDismissRequest = { expanded = false },
+            ) {
+                HomeActivityRingMetric.entries.forEach { metric ->
+                    DropdownMenuItem(
+                        text = { Text(ringMetricLabel(metric)) },
+                        onClick = {
+                            expanded = false
+                            onSelect(metric)
+                        },
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun RingMetricColorSelector(
+    metric: HomeActivityRingMetric,
+    title: String,
+    body: String,
+    preference: HomeActivityRingColorPreference,
+    onSelectColor: (HomeActivityRingMetric, HomeActivityRingColorSource, Int?) -> Unit,
+) {
+    val themeColors = LocalThemeColors.current
+    var customColorText by remember(metric, preference.customArgb) {
+        mutableStateOf(formatRingCustomColor(preference.customArgb))
+    }
+    val parsedCustomColor = parseRingCustomColor(customColorText)
+    val selectedColor =
+        when (preference.source) {
+            HomeActivityRingColorSource.CONTROL -> themeColors.control
+            HomeActivityRingColorSource.ENCOURAGE -> themeColors.encourage
+            HomeActivityRingColorSource.THEME -> themeColors.base
+            HomeActivityRingColorSource.CUSTOM -> Color(preference.customArgb ?: DEFAULT_RING_CUSTOM_COLOR)
+        }
+    var expanded by remember { mutableStateOf(false) }
+
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = themeColors.inkStrong,
+                )
+                Text(
+                    text = body,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Box {
+                OutlinedButton(onClick = { expanded = true }) {
+                    RingColorSwatch(color = selectedColor)
+                    Spacer(Modifier.width(8.dp))
+                    Text(ringColorSourceLabel(preference.source))
+                    Icon(
+                        imageVector = Icons.Default.KeyboardArrowDown,
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp),
+                    )
+                }
+                DropdownMenu(
+                    expanded = expanded,
+                    onDismissRequest = { expanded = false },
+                ) {
+                    HomeActivityRingColorSource.entries.forEach { source ->
+                        val sourceColor =
+                            when (source) {
+                                HomeActivityRingColorSource.CONTROL -> themeColors.control
+                                HomeActivityRingColorSource.ENCOURAGE -> themeColors.encourage
+                                HomeActivityRingColorSource.THEME -> themeColors.base
+                                HomeActivityRingColorSource.CUSTOM -> Color(parsedCustomColor ?: preference.customArgb ?: DEFAULT_RING_CUSTOM_COLOR)
+                            }
+                        val enabled = source != HomeActivityRingColorSource.CUSTOM || parsedCustomColor != null
+                        DropdownMenuItem(
+                            text = { Text(ringColorSourceLabel(source)) },
+                            leadingIcon = { RingColorSwatch(color = sourceColor) },
+                            enabled = enabled,
+                            onClick = {
+                                expanded = false
+                                onSelectColor(
+                                    metric,
+                                    source,
+                                    if (source == HomeActivityRingColorSource.CUSTOM) parsedCustomColor else preference.customArgb,
+                                )
+                            },
+                        )
+                    }
+                }
+            }
+        }
+        if (preference.source == HomeActivityRingColorSource.CUSTOM) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                OutlinedTextField(
+                    value = customColorText,
+                    onValueChange = { customColorText = sanitizeRingCustomColorInput(it) },
+                    label = { Text(AppText.t("ring_settings_custom_color_label")) },
+                    singleLine = true,
+                    isError = parsedCustomColor == null,
+                    modifier = Modifier.weight(1f),
+                )
+                TinyVowButton(
+                    text = AppText.t("ring_settings_save_color"),
+                    onClick = {
+                        parsedCustomColor?.let {
+                            onSelectColor(metric, HomeActivityRingColorSource.CUSTOM, it)
+                        }
+                    },
+                    enabled = parsedCustomColor != null,
+                    tone = TinyVowButtonTone.Neutral,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun RingColorSwatch(
+    color: Color,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier.size(16.dp),
+        shape = CircleShape,
+        color = color,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+        content = {},
+    )
+}
+
+private fun ringMetricLabel(metric: HomeActivityRingMetric): String =
+    AppText.t(
+        when (metric) {
+            HomeActivityRingMetric.CONTROL -> "home_activity_ring_control_label"
+            HomeActivityRingMetric.ENCOURAGE -> "home_activity_ring_encourage_label"
+            HomeActivityRingMetric.GROWTH -> "home_activity_ring_growth_label"
+            HomeActivityRingMetric.STEPS -> "home_activity_ring_steps_label"
+            HomeActivityRingMetric.FOCUS -> "home_activity_ring_focus_label"
+        },
+    )
+
+private fun ringMetricShortDescription(metric: HomeActivityRingMetric): String =
+    AppText.t(
+        when (metric) {
+            HomeActivityRingMetric.CONTROL -> "ring_settings_control_short"
+            HomeActivityRingMetric.ENCOURAGE -> "ring_settings_encourage_short"
+            HomeActivityRingMetric.GROWTH -> "ring_settings_growth_short"
+            HomeActivityRingMetric.STEPS -> "ring_settings_steps_short"
+            HomeActivityRingMetric.FOCUS -> "ring_settings_focus_short"
+        },
+    )
+
+private fun ringColorSourceLabel(source: HomeActivityRingColorSource): String =
+    AppText.t(
+        when (source) {
+            HomeActivityRingColorSource.CONTROL -> "ring_settings_color_control"
+            HomeActivityRingColorSource.ENCOURAGE -> "ring_settings_color_encourage"
+            HomeActivityRingColorSource.THEME -> "ring_settings_color_theme"
+            HomeActivityRingColorSource.CUSTOM -> "ring_settings_color_custom"
+        },
+    )
+
+private fun sanitizePreferenceIntegerInput(value: String): String =
+    buildString {
+        value.forEach { char ->
+            if (char.isDigit()) append(char)
+        }
+    }.take(6)
+
+private fun sanitizePreferenceDecimalInput(value: String): String {
+    val builder = StringBuilder()
+    var seenDot = false
+    value.forEach { char ->
+        when {
+            char.isDigit() -> builder.append(char)
+            char == '.' && !seenDot -> {
+                builder.append(char)
+                seenDot = true
+            }
+        }
+    }
+    return builder.toString().take(10)
+}
+
+private fun formatPreferenceDecimal(value: Double): String =
+    java.math.BigDecimal.valueOf(value.coerceAtLeast(0.0)).stripTrailingZeros().toPlainString()
+
+private fun sanitizeRingCustomColorInput(value: String): String {
+    val raw = value.trim().removePrefix("#")
+    val hex = raw
+        .uppercase(Locale.US)
+        .filter { it in '0'..'9' || it in 'A'..'F' }
+        .take(6)
+    return "#$hex"
+}
+
+private fun parseRingCustomColor(value: String): Int? {
+    val hex = value.trim().removePrefix("#")
+    if (hex.length != 6) return null
+    return runCatching {
+        (0xFF000000L or hex.toLong(16)).toInt()
+    }.getOrNull()
+}
+
+private fun formatRingCustomColor(argb: Int?): String =
+    String.format(Locale.US, "#%06X", (argb ?: DEFAULT_RING_CUSTOM_COLOR) and 0x00FFFFFF)
+
+private const val DEFAULT_RING_CUSTOM_COLOR: Int = 0xFF6B8EF2.toInt()
+
+@Composable
 private fun SettingsDivider() {
     HorizontalDivider(
         modifier = Modifier.padding(horizontal = 16.dp),
@@ -622,7 +1071,7 @@ private fun ProfileAvatar(
 }
 
 @Composable
-private fun ProMemberBadge() {
+fun ProMemberBadge() {
     Surface(
         shape = RoundedCornerShape(10.dp),
         color = ProBadgeGold,
@@ -1495,7 +1944,7 @@ private fun MeDetailPageScaffold(
 
 @Composable
 private fun MeSettingsCard(
-    title: String,
+    title: String? = null,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val themeColors = LocalThemeColors.current
@@ -1513,12 +1962,14 @@ private fun MeSettingsCard(
             ),
             verticalArrangement = Arrangement.spacedBy(TinyVowSpacing.CardGap),
         ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = themeColors.inkStrong,
-            )
+            title?.takeIf { it.isNotBlank() }?.let {
+                Text(
+                    text = it,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = themeColors.inkStrong,
+                )
+            }
             content()
         }
     }
@@ -2038,11 +2489,6 @@ private fun proComparisonRows(): List<Triple<String, String, String>> {
             proLimits.customThemeLimit.toString(),
         ),
         Triple(
-            AppText.t("pro_compare_member_themes"),
-            AppText.t("pro_compare_not_included"),
-            AppText.t("pro_compare_included"),
-        ),
-        Triple(
             AppText.t("pro_compare_advanced_reports"),
             AppText.t("pro_compare_basic_reports"),
             AppText.t("pro_compare_full_reports"),
@@ -2451,28 +2897,54 @@ private fun CheckInSelectorChip(
 
 @Composable
 private fun CheckInLegend() {
-    val themeColors = LocalThemeColors.current
-    Row(
+    LazyRow(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        CheckInLegendItem(label = AppText.t("checkin_badge_signed")) {
-            CheckInSignedSwatch()
+        item {
+            CheckInLegendItem(label = AppText.t("checkin_badge_signed")) {
+                CheckInSignedSwatch()
+            }
         }
-        CheckInLegendItem(label = AppText.t("checkin_badge_encourage")) {
-            CheckInStatusRing(
-                controlCompleted = false,
-                encourageCompleted = true,
-                markSize = 18.dp,
-            )
+        item {
+            CheckInLegendItem(label = AppText.t("checkin_badge_control")) {
+                CheckInStatusRing(
+                    controlProgress = 1f,
+                    encourageProgress = 0f,
+                    growthProgress = 0f,
+                    controlAvailable = true,
+                    encourageAvailable = false,
+                    growthAvailable = false,
+                    markSize = 24.dp,
+                )
+            }
         }
-        CheckInLegendItem(label = AppText.t("checkin_badge_control")) {
-            CheckInStatusRing(
-                controlCompleted = true,
-                encourageCompleted = false,
-                markSize = 18.dp,
-            )
+        item {
+            CheckInLegendItem(label = AppText.t("checkin_badge_encourage")) {
+                CheckInStatusRing(
+                    controlProgress = 0f,
+                    encourageProgress = 1f,
+                    growthProgress = 0f,
+                    controlAvailable = false,
+                    encourageAvailable = true,
+                    growthAvailable = false,
+                    markSize = 24.dp,
+                )
+            }
+        }
+        item {
+            CheckInLegendItem(label = AppText.t("checkin_badge_growth")) {
+                CheckInStatusRing(
+                    controlProgress = 0f,
+                    encourageProgress = 0f,
+                    growthProgress = 1f,
+                    controlAvailable = false,
+                    encourageAvailable = false,
+                    growthAvailable = true,
+                    markSize = 24.dp,
+                )
+            }
         }
     }
 }
@@ -2497,9 +2969,16 @@ private fun CheckInLegendItem(
 
 @Composable
 private fun CheckInCalendar(state: DailyCheckInMonthState) {
+    var selectedDay by remember { mutableStateOf<DailyCheckInDayState?>(null) }
     val firstOffset = state.month.atDay(1).dayOfWeek.value - 1
     val cells: List<DailyCheckInDayState?> = List(firstOffset) { null } + state.days
     val rows = cells.chunked(7)
+    selectedDay?.let { day ->
+        CheckInRingDetailDialog(
+            day = day,
+            onDismiss = { selectedDay = null },
+        )
+    }
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(modifier = Modifier.fillMaxWidth()) {
             checkInWeekdayLabels().forEach { label ->
@@ -2521,6 +3000,7 @@ private fun CheckInCalendar(state: DailyCheckInMonthState) {
                     CheckInDayCell(
                         day = row.getOrNull(index),
                         modifier = Modifier.weight(1f),
+                        onClick = { selectedDay = it },
                     )
                 }
             }
@@ -2529,50 +3009,191 @@ private fun CheckInCalendar(state: DailyCheckInMonthState) {
 }
 
 @Composable
-private fun CheckInDayCell(day: DailyCheckInDayState?, modifier: Modifier = Modifier) {
+private fun CheckInDayCell(
+    day: DailyCheckInDayState?,
+    modifier: Modifier = Modifier,
+    onClick: (DailyCheckInDayState) -> Unit,
+) {
     val themeColors = LocalThemeColors.current
     val checkedIn = day?.checkedIn == true
-    Surface(
-        modifier = modifier.aspectRatio(1f),
-        shape = RoundedCornerShape(18.dp),
-        color =
-            if (checkedIn) {
-                lerp(MaterialTheme.colorScheme.surface, themeColors.base, 0.14f).copy(alpha = 0.96f)
-            } else if (day?.isToday == true) {
-                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.36f)
-            } else {
-                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.24f)
-            },
-        border =
-            if (day?.isToday == true) {
-                BorderStroke(1.dp, themeColors.base.copy(alpha = 0.62f))
-            } else if (checkedIn) {
-                BorderStroke(1.dp, themeColors.base.copy(alpha = 0.18f))
-            } else {
-                BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.16f))
-            },
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(3.dp),
     ) {
-        if (day != null) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(5.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                CheckInStatusRing(
-                    controlCompleted = day.allControlKept,
-                    encourageCompleted = day.encourageCompleted,
-                    markSize = 34.dp,
-                )
-                Text(
-                    text = day.date.dayOfMonth.toString(),
-                    style = MaterialTheme.typography.labelMedium,
-                    fontWeight = if (day.isToday) FontWeight.Bold else FontWeight.Medium,
-                    color = if (day.hasArchivedSignals || day.checkedIn || day.isToday) themeColors.inkStrong else themeColors.inkMuted.copy(alpha = 0.54f),
-                )
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .aspectRatio(1f)
+                .clickable(enabled = day != null) {
+                    day?.let(onClick)
+                },
+            shape = RoundedCornerShape(18.dp),
+            color =
+                if (checkedIn) {
+                    lerp(MaterialTheme.colorScheme.surface, themeColors.base, 0.14f).copy(alpha = 0.96f)
+                } else if (day?.isToday == true) {
+                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.36f)
+                } else {
+                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.24f)
+                },
+            border =
+                if (day?.isToday == true) {
+                    BorderStroke(1.dp, themeColors.base.copy(alpha = 0.62f))
+                } else if (checkedIn) {
+                    BorderStroke(1.dp, themeColors.base.copy(alpha = 0.18f))
+                } else {
+                    BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.16f))
+                },
+        ) {
+            if (day != null) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(5.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    CheckInStatusRing(
+                        controlProgress = day.activityControlProgress,
+                        encourageProgress = day.activityEncourageProgress,
+                        growthProgress = day.activityGrowthProgress,
+                        controlAvailable = day.activityControlAvailable,
+                        encourageAvailable = day.activityEncourageAvailable,
+                        growthAvailable = day.activityGrowthAvailable,
+                        markSize = 34.dp,
+                    )
+                }
             }
         }
+        Text(
+            text = day?.date?.dayOfMonth?.toString().orEmpty(),
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = if (day?.isToday == true) FontWeight.Bold else FontWeight.Medium,
+            color =
+                if (day?.hasArchivedSignals == true || day?.checkedIn == true || day?.isToday == true) {
+                    themeColors.inkStrong
+                } else {
+                    themeColors.inkMuted.copy(alpha = 0.54f)
+                },
+            minLines = 1,
+            maxLines = 1,
+        )
     }
+}
+
+@Composable
+private fun CheckInRingDetailDialog(
+    day: DailyCheckInDayState,
+    onDismiss: () -> Unit,
+) {
+    val themeColors = LocalThemeColors.current
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = AppText.t("checkin_day_detail_title", day.date.monthValue, day.date.dayOfMonth),
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.Bold,
+            )
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center,
+                ) {
+                    CheckInStatusRing(
+                        controlProgress = day.activityControlProgress,
+                        encourageProgress = day.activityEncourageProgress,
+                        growthProgress = day.activityGrowthProgress,
+                        controlAvailable = day.activityControlAvailable,
+                        encourageAvailable = day.activityEncourageAvailable,
+                        growthAvailable = day.activityGrowthAvailable,
+                        markSize = 72.dp,
+                    )
+                }
+                if (!day.hasArchivedSignals) {
+                    Text(
+                        text = AppText.t("checkin_day_detail_no_archive"),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = themeColors.inkMuted,
+                    )
+                } else {
+                    CheckInRingDetailRow(
+                        label = AppText.t("checkin_badge_control"),
+                        progress = day.activityControlProgress,
+                        available = day.activityControlAvailable,
+                        color = themeColors.control,
+                    )
+                    CheckInRingDetailRow(
+                        label = AppText.t("checkin_badge_encourage"),
+                        progress = day.activityEncourageProgress,
+                        available = day.activityEncourageAvailable,
+                        color = themeColors.encourage,
+                    )
+                    CheckInRingDetailRow(
+                        label = AppText.t("checkin_badge_growth"),
+                        progress = day.activityGrowthProgress,
+                        available = day.activityGrowthAvailable,
+                        color = themeColors.base,
+                    )
+                    if (day.activityRingsCompleted) {
+                        Text(
+                            text = AppText.t("checkin_day_detail_all_closed"),
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.SemiBold,
+                            color = themeColors.base,
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) {
+                Text(AppText.t("checkin_day_detail_close"))
+            }
+        },
+    )
+}
+
+@Composable
+private fun CheckInRingDetailRow(
+    label: String,
+    progress: Float,
+    available: Boolean,
+    color: Color,
+) {
+    val themeColors = LocalThemeColors.current
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Surface(
+            modifier = Modifier.size(8.dp),
+            shape = CircleShape,
+            color = color,
+        ) {}
+        Text(
+            text = label,
+            modifier = Modifier.weight(1f),
+            style = MaterialTheme.typography.bodyMedium,
+            color = themeColors.ink,
+        )
+        Text(
+            text = formatCheckInRingProgress(progress, available),
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = if (available) themeColors.inkStrong else themeColors.inkFaint,
+        )
+    }
+}
+
+private fun formatCheckInRingProgress(progress: Float, available: Boolean): String {
+    if (!available) return AppText.t("home_activity_ring_empty_value")
+    return NumberFormat.getPercentInstance()
+        .apply { maximumFractionDigits = 0 }
+        .format(progress.coerceAtLeast(0f).toDouble())
 }
 
 @Composable
@@ -2588,63 +3209,62 @@ private fun CheckInSignedSwatch() {
 
 @Composable
 private fun CheckInStatusRing(
-    controlCompleted: Boolean,
-    encourageCompleted: Boolean,
+    controlProgress: Float,
+    encourageProgress: Float,
+    growthProgress: Float,
+    controlAvailable: Boolean,
+    encourageAvailable: Boolean,
+    growthAvailable: Boolean,
     markSize: Dp = 30.dp,
 ) {
     val themeColors = LocalThemeColors.current
     Canvas(
         modifier = Modifier.size(markSize),
     ) {
-        val outerRadius = min(size.width, size.height) / 2f - 1.dp.toPx()
-        if (outerRadius <= 0f) return@Canvas
+        val shortestSide = min(size.width, size.height)
+        val strokeWidth = (shortestSide * 0.12f).coerceAtLeast(1.4.dp.toPx())
+        val ringGap = 1.dp.toPx()
+        val outerInset = strokeWidth / 2f + 1.dp.toPx()
+        val maxInset = outerInset + (strokeWidth + ringGap) * 2f
+        if (shortestSide <= maxInset * 2f) return@Canvas
 
         val center = Offset(size.width / 2f, size.height / 2f)
-        val strokeWidth = (outerRadius - 2.dp.toPx()).coerceAtLeast(1.dp.toPx()) * 0.5f
-        val arcRadius = outerRadius - strokeWidth / 2f
-        val topLeft = Offset(center.x - arcRadius, center.y - arcRadius)
-        val arcSize = Size(arcRadius * 2f, arcRadius * 2f)
         val style = Stroke(width = strokeWidth, cap = StrokeCap.Round)
-        val controlColor = themeColors.control
-        val encourageColor = themeColors.encourage
 
-        fun pointAt(angleDegrees: Float): Offset {
-            val radians = Math.toRadians(angleDegrees.toDouble())
-            return Offset(
-                x = center.x + cos(radians).toFloat() * arcRadius,
-                y = center.y + sin(radians).toFloat() * arcRadius,
-            )
-        }
-
-        if (controlCompleted) {
+        fun drawRing(
+            progress: Float,
+            color: Color,
+            available: Boolean,
+            inset: Float,
+        ) {
+            if (!available) return
+            val diameter = shortestSide - inset * 2f
+            if (diameter <= 0f) return
+            val topLeft = Offset(center.x - diameter / 2f, center.y - diameter / 2f)
+            val arcSize = Size(diameter, diameter)
             drawArc(
-                color = controlColor,
-                startAngle = 45f,
-                sweepAngle = 180f,
+                color = color.copy(alpha = 0.18f),
+                startAngle = -90f,
+                sweepAngle = 360f,
+                useCenter = false,
+                topLeft = topLeft,
+                size = arcSize,
+                style = style,
+            )
+            drawArc(
+                color = color,
+                startAngle = -90f,
+                sweepAngle = progress.coerceIn(0f, 1f) * 360f,
                 useCenter = false,
                 topLeft = topLeft,
                 size = arcSize,
                 style = style,
             )
         }
-        if (encourageCompleted) {
-            drawArc(
-                color = encourageColor,
-                startAngle = 225f,
-                sweepAngle = 180f,
-                useCenter = false,
-                topLeft = topLeft,
-                size = arcSize,
-                style = style,
-            )
-        }
-        if (controlCompleted && encourageCompleted) {
-            drawCircle(
-                color = controlColor,
-                radius = strokeWidth / 2f,
-                center = pointAt(45f),
-            )
-        }
+
+        drawRing(controlProgress, themeColors.control, controlAvailable, outerInset)
+        drawRing(encourageProgress, themeColors.encourage, encourageAvailable, outerInset + strokeWidth + ringGap)
+        drawRing(growthProgress, themeColors.base, growthAvailable, outerInset + (strokeWidth + ringGap) * 2f)
     }
 }
 
@@ -2776,6 +3396,7 @@ fun MeMenuItem(
     onClick: () -> Unit,
     color: Color = MaterialTheme.colorScheme.onSurface,
     trailingText: String? = null,
+    trailingContent: (@Composable () -> Unit)? = null,
 ) {
     val themeColors = LocalThemeColors.current
     Row(
@@ -2808,6 +3429,10 @@ fun MeMenuItem(
                 color = themeColors.inkFaint,
                 maxLines = 1,
             )
+            Spacer(Modifier.width(8.dp))
+        }
+        trailingContent?.let {
+            it()
             Spacer(Modifier.width(8.dp))
         }
         Icon(
