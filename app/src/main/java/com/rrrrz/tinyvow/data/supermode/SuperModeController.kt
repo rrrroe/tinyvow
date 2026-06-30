@@ -174,7 +174,7 @@ object SuperModePolicy {
                 ?.plus(IDLE_TIMEOUT_MILLIS)
         val isSessionValid = expiresAt?.let { it > nowMillis } ?: false
         val isActive = isEnabled && storedState.isActive && isAvailableNow && isSessionValid
-        val remainingMillis = if (isActive) maxOf(0L, expiresAt!! - nowMillis) else 0L
+        val remainingMillis = if (isActive && expiresAt != null) maxOf(0L, expiresAt - nowMillis) else 0L
         return SuperModeStatus(
             isConfigured = isConfigured,
             isEnabled = isEnabled,

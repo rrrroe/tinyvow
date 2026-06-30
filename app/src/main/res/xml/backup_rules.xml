@@ -14,5 +14,8 @@
         path="reward_icons/" />
     <exclude
         domain="file"
+        path="focus_icons/" />
+    <exclude
+        domain="file"
         path="weread_api_key_pending_restore" />
 </full-backup-content>

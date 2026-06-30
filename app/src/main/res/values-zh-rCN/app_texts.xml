@@ -973,7 +973,7 @@
     <string name="lab_focus_history_save">保存专注记录</string>
     <string name="lab_focus_history_invalid">有字段格式不正确，必填毫秒字段和数值字段需要是数字。</string>
     <string name="lab_home_activity_rings_test">首页三圆环测试</string>
-    <string name="lab_home_activity_rings_test_description">用可编辑百分比预览首页同一个圆环组件，包含超过 100% 时的端点重叠。</string>
+    <string name="lab_home_activity_rings_test_description">用可编辑百分比预览首页同一个圆环组件，包含超过 100%% 时的端点重叠。</string>
     <string name="lab_home_activity_rings_value">约定 %1$d%% · 投入 %2$d%% · 成长 %3$d%%</string>
     <string name="lab_xiaoyuzhou_monitor_title">小宇宙播放监听</string>
     <string name="lab_xiaoyuzhou_monitor_description">实验性本机监听模块。通过 Android 通知监听权限和 MediaSession 状态，测试这台手机上是否能检测小宇宙的播放、暂停、后台播放和息屏播放。</string>
@@ -1035,7 +1035,7 @@
     <string name="welcome_intro_encourage_title">投入更好的时间</string>
     <string name="welcome_intro_encourage_body">记录阅读、学习或专注应用，把有价值的分钟变成积分。</string>
     <string name="welcome_intro_rewards_title">用积分兑换奖励</string>
-    <string name="welcome_intro_rewards_body">用赚到的积分兑换加时包、通行券，也可以设置自己的线下奖励。</string>
+    <string name="welcome_intro_rewards_body">用赚到的积分兑换加时包、本周期免提醒卡，也可以设置自己的线下奖励。</string>
     <string name="welcome_intro_reports_title">回看你的节奏</string>
     <string name="welcome_intro_reports_body">通过日报、趋势和历史记录，看见习惯在一天天发生什么变化。</string>
     <string name="welcome_intro_local_first_note">Tiny Vow 默认本地优先。你的约定、历史、积分、奖励和主题会保存在本机，除非你主动导出或清除。</string>
@@ -1060,7 +1060,7 @@
     <string name="welcome_intro_page_encourage_point_goal">达成目标时，会给你一个小奖励。</string>
     <string name="welcome_intro_page_encourage_point_special">像微信读书这样的应用，也可以按阅读时长记录。</string>
     <string name="welcome_intro_page_rewards_title">把改变做成一个能坚持下去的闭环</string>
-    <string name="welcome_intro_page_rewards_body">光靠忍耐很难走远。你可以用积分兑换加时包、通行券，或者给自己定一个真实生活里的小奖励。</string>
+    <string name="welcome_intro_page_rewards_body">光靠忍耐很难走远。你可以用积分兑换加时包、本周期免提醒卡，或者给自己定一个真实生活里的小奖励。</string>
     <string name="welcome_intro_page_rewards_point_inventory">积分可以兑换内置奖励。</string>
     <string name="welcome_intro_page_rewards_point_custom">也可以创建属于自己的线下奖励。</string>
     <string name="welcome_intro_page_rewards_point_reports">战报会帮你回头看看：时间去了哪里，你又拿回了多少。</string>
@@ -1232,6 +1232,9 @@
     <string name="redeem_config_builtin_subtitle">%1$d PT</string>
     <string name="redeem_config_custom_subtitle">%1$d PT</string>
     <string name="redeem_action_redeem">立即兑换 · %1$s PT</string>
+    <string name="redeem_points_balance_value">%1$.1f PT</string>
+    <string name="redeem_points_cost_value">%1$d PT</string>
+    <string name="redeem_points_spent_value">-%1$d PT</string>
     <string name="redeem_archive_custom_reward">归档</string>
     <string name="redeem_archive_custom_reward_confirmation">确认归档“%1$s”？归档后它将不再出现在商城里。</string>
     <string name="redeem_archived_reward">已归档奖励</string>
@@ -1412,13 +1415,13 @@
     <string name="home_activity_ring_detail_steps_target">步数 / 目标</string>
     <string name="home_activity_ring_detail_focus_target">专注 / 目标</string>
     <string name="home_activity_ring_detail_groups">计入分组</string>
-    <string name="home_activity_ring_detail_period_pass">周期通行证</string>
+    <string name="home_activity_ring_detail_period_pass">本周期免提醒</string>
     <string name="home_activity_ring_detail_group_count">%1$d 个分组</string>
     <string name="home_activity_ring_detail_duration_pair">%1$s / %2$s</string>
     <string name="home_activity_ring_detail_points_pair">%1$s / %2$s 分</string>
     <string name="home_activity_ring_detail_steps_pair">%1$s / %2$s 步</string>
     <string name="home_activity_ring_detail_no_data">创建对应分组后，这个圆环会开始记录。</string>
-    <string name="home_activity_ring_control_formula">约定只看约定组基础限额；加时卡、紧急解锁和周期通行证都不计入。20:00 前，约定 = 朝 20:00 闭环的时间进度 × 守约健康度。当前用量不超过此刻按节奏可用额度时，守约健康度为 100%；如果提前用多了，就按“按节奏可用 ÷ 实际用量”降低。20:00 后，如果用量仍在基础限额内，圆环闭合；超出后按“基础限额 ÷ 实际用量”显示。多个分组取平均。</string>
+    <string name="home_activity_ring_control_formula">约定只看约定组基础限额；加时卡、临时缓冲和本周期免提醒都不计入。20:00 前，约定 = 朝 20:00 闭环的时间进度 × 守约健康度。当前用量不超过此刻按节奏可用额度时，守约健康度为 100%；如果提前用多了，就按“按节奏可用 ÷ 实际用量”降低。20:00 后，如果用量仍在基础限额内，圆环闭合；超出后按“基础限额 ÷ 实际用量”显示。多个分组取平均。</string>
     <string name="home_activity_ring_encourage_formula">投入 = 每个投入组的本周期用量 ÷ 目标时长，再按分组取平均。</string>
     <string name="home_activity_ring_growth_formula">成长 = 今日已获得积分 ÷ 完成今日投入目标对应的目标积分。</string>
     <string name="home_activity_ring_steps_formula">步数 = 今日本机步数 ÷ 圆环设置里的奖励门槛。</string>
@@ -1603,7 +1606,7 @@
     <string name="stats_remaining_value_2">剩余 %1$s</string>
     <string name="stats_remaining_short">剩余</string>
     <string name="stats_report_poster_preview">战报海报预览</string>
-    <string name="stats_reward_pass_used">已使用通行</string>
+    <string name="stats_reward_pass_used">已用免提醒</string>
     <string name="stats_sat">六</string>
     <string name="stats_share">占比</string>
     <string name="stats_share_preview">分享预览</string>
@@ -1820,6 +1823,9 @@
     <string name="group_loading_app_list">正在加载应用列表…</string>
     <string name="group_monthly_limit_label">每月</string>
     <string name="group_name_placeholder">约定名称（如：游戏、视频）</string>
+    <string name="group_edit_name_required">先填写约定名称，右上角的保存按钮才会生效。</string>
+    <string name="group_edit_limit_required">目标/限额需要填写 1 到 1440 之间的分钟数。</string>
+    <string name="group_edit_points_required">每分钟积分需要填写数字，例如 0.1。</string>
     <string name="group_points_value">%1$s分</string>
     <string name="group_record_days_label">记录天数</string>
     <string name="group_target_limit_label">目标/限额</string>
@@ -1975,6 +1981,8 @@
     <string name="pro_group_app_limit_status">已选择 %1$d / %2$d 个应用</string>
     <string name="pro_report_locked_title">Pro 战报洞察</string>
     <string name="pro_report_locked_subtitle">开启趋势、热力图、对比、行为分析，以及完整周/月/年窗口。</string>
+    <string name="pro_locked_preview_title">Pro 解锁完整视图</string>
+    <string name="pro_locked_preview_subtitle">当前仅预览。升级后可查看细节、交互和分享本模块。</string>
     <string name="pro_report_preview_label_1">趋势</string>
     <string name="pro_report_preview_label_2">热力</string>
     <string name="pro_report_preview_label_3">排行</string>
@@ -2104,7 +2112,7 @@
     <string name="stats_yearly_scatter_description">每个月都是一个点，快速看出高使用但还能收住的月份，和真正失控的月份。</string>
     <string name="stats_yearly_top_apps_total">全年总量 %1$s</string>
     <string name="ledger_redeemed_time_add">购买加时道具</string>
-    <string name="ledger_redeemed_period_pass">购买周期自由卡</string>
+    <string name="ledger_redeemed_period_pass">购买本周期免提醒卡</string>
     <string name="ledger_redeemed_emergency_unlock">购买临时缓冲卡</string>
     <string name="ledger_redeemed_streak_shield">购买连胜保护卡</string>
     <string name="ledger_redeemed_double_points_day">购买当日双倍积分卡</string>
@@ -2149,26 +2157,26 @@
     <string name="redeem_error_double_points_already_active">这条投入今天已有双倍积分。</string>
     <string name="redeem_error_already_completed">这个周期已完成。</string>
     <string name="redeem_effect_pending_time_add">%1$s 将增加 %2$d 分钟。</string>
-    <string name="redeem_effect_pending_period_pass">%1$s 本周期将暂停提醒。</string>
+    <string name="redeem_effect_pending_period_pass">%1$s 本周期将不再弹出超额提醒，但仍会记录用量。</string>
     <string name="redeem_effect_pending_double_points_day">%1$s 今天积分将翻倍。</string>
     <string name="redeem_effect_undo">撤销</string>
     <string name="redeem_effect_confirmed">道具效果已确认。</string>
     <string name="redeem_effect_canceled">已撤销这次使用。</string>
     <string name="redeem_use_success_time_add">%1$s 已增加 %2$d 分钟。</string>
-    <string name="redeem_use_success_period_pass">%1$s 本周期已暂停提醒。</string>
+    <string name="redeem_use_success_period_pass">%1$s 本周期已免超额提醒，用量仍会继续记录。</string>
     <string name="redeem_use_success_double_points_day">%1$s 今天积分翻倍。</string>
     <string name="redeem_use_success_emergency_unlock">%1$s 已获得 %2$d 分钟临时缓冲。</string>
     <string name="redeem_rule_bind_control_group">用在 1 条约定。</string>
-    <string name="redeem_rule_current_period_manual_use">这个周期内暂停提醒。</string>
+    <string name="redeem_rule_current_period_manual_use">本周期不弹出超额提醒，统计仍照常记录。</string>
     <string name="redeem_rule_overlay_use_only">出现守约提醒时可用 1 次。</string>
     <string name="redeem_rule_review_then_confirm">可抵消 1 次连胜断裂。</string>
     <string name="redeem_rule_double_points_day">让 1 条投入今天收获翻倍。</string>
     <string name="redeem_rule_keep_in_inventory">买完先放进道具。</string>
     <string name="redeem_use_rule_time_add">给 1 条%1$s约定加时。</string>
-    <string name="redeem_use_rule_period_pass">让 1 条%1$s约定暂停提醒。</string>
+    <string name="redeem_use_rule_period_pass">让 1 条%1$s约定本周期免超额提醒。</string>
     <string name="redeem_use_rule_double_points_day">让 1 条投入今天收获翻倍。</string>
     <string name="redeem_history_purchase_time_add">已买 +%1$d 分钟</string>
-    <string name="redeem_history_purchase_period_pass">已买自由卡</string>
+    <string name="redeem_history_purchase_period_pass">已买本周期免提醒卡</string>
     <string name="redeem_history_purchase_emergency_unlock">已买临时缓冲 %1$d 分钟</string>
     <string name="redeem_history_streak_shield">连胜保护卡</string>
     <string name="redeem_history_purchase_double_points_day">已买当日双倍积分</string>
@@ -2176,7 +2184,7 @@
     <string name="redeem_use_history_empty">还没有任何道具被使用。</string>
     <string name="redeem_use_history_used">已使用</string>
     <string name="redeem_use_history_time_add">%1$s +%2$d 分钟</string>
-    <string name="redeem_use_history_period_pass">%1$s 当前周期自由卡</string>
+    <string name="redeem_use_history_period_pass">%1$s 当前周期免提醒</string>
     <string name="redeem_use_history_emergency_unlock">%1$s 已缓冲 %2$d 分钟</string>
     <string name="redeem_use_history_streak_shield_control">已抵消一次守约断连胜。</string>
     <string name="redeem_use_history_streak_shield_encourage">已抵消一次收获断连胜。</string>
@@ -2186,7 +2194,7 @@
     <string name="redeem_effects_active_count">%1$d 个生效中</string>
     <string name="redeem_effects_active_empty">当前没有正在生效的道具。</string>
     <string name="redeem_effects_active_time_add">%1$s +%2$d 分钟</string>
-    <string name="redeem_effects_active_period_pass">%1$s 本周期自由卡</string>
+    <string name="redeem_effects_active_period_pass">%1$s 本周期免提醒</string>
     <string name="redeem_effects_active_emergency_unlock">%1$s 临时缓冲 %2$d 分钟</string>
     <string name="redeem_effects_active_double_points">%1$s %2$s 倍积分</string>
     <string name="redeem_effects_active_streak_shield">连胜保护待命</string>
@@ -2208,8 +2216,8 @@
     <string name="reward_time_add_30_description">给 1 条约定加时。</string>
     <string name="reward_time_add_60_title">额外 60 分钟</string>
     <string name="reward_time_add_60_description">给 1 条约定加时。</string>
-    <string name="reward_period_pass_title">本周期缓冲卡</string>
-    <string name="reward_period_pass_description">让 1 条约定这个周期暂停提醒。</string>
+    <string name="reward_period_pass_title">本周期免提醒卡</string>
+    <string name="reward_period_pass_description">让 1 条约定本周期不再弹出超额提醒，用量和统计仍照常记录。</string>
     <string name="reward_emergency_unlock_10_title">临时缓冲 10 分钟</string>
     <string name="reward_emergency_unlock_10_description">守约提醒出现时，可再给自己 10 分钟缓冲。</string>
     <string name="reward_streak_shield_control_title">保住守约连胜</string>
@@ -2221,7 +2229,7 @@
     <string name="generic_ok">知道了</string>
     <string name="settings_title">设置</string>
     <string name="super_mode_title">超我模式</string>
-    <string name="super_mode_sheet_summary">只有足够清醒的你，才能从这里通过。敏感编辑和与时间有关的购买，都需要先进入超我模式。</string>
+    <string name="super_mode_sheet_summary">超我模式不是新的阻断规则。它只给“改规则”和“购买绕过限额的道具”加一道本机密码，避免冲动时把约定改松。</string>
     <string name="super_mode_setup_short">开启超我模式</string>
     <string name="super_mode_enter_short">进入超我模式</string>
     <string name="super_mode_active_short">超我模式已开启</string>
@@ -2230,7 +2238,7 @@
     <string name="super_mode_current_time_label">当前本地时间</string>
     <string name="super_mode_window_label">每日可操作窗口</string>
     <string name="super_mode_auto_exit_label">自动退出</string>
-    <string name="super_mode_auto_exit_summary">空闲 5 分钟、切到后台或超出允许时间都会退出</string>
+    <string name="super_mode_auto_exit_summary">进入后 5 分钟无操作、切到后台或超出允许时间都会退出</string>
     <string name="super_mode_recovery_question_label">恢复问题</string>
     <string name="super_mode_recovery_answer_label">恢复答案</string>
     <string name="super_mode_configure_action">配置超我模式</string>
@@ -2241,12 +2249,12 @@
     <string name="super_mode_edit_window_action">修改允许时间</string>
     <string name="super_mode_reset_with_recovery_action">用恢复答案重置</string>
     <string name="super_mode_disable_action">关闭超我模式</string>
-    <string name="super_mode_protection_toggle_label">保护开关</string>
-    <string name="super_mode_protection_toggle_summary">控制是否对敏感操作启用这层保护。配置完成后默认关闭。</string>
+    <string name="super_mode_protection_toggle_label">保护关键操作</string>
+    <string name="super_mode_protection_toggle_summary">开启后，修改/删除约定、修改超我模式和购买加时类道具前，都需要先在允许时间内输入密码。</string>
     <string name="super_mode_window_pro_only">仅 Pro 可自定义允许进入时间。</string>
     <string name="super_mode_edit_credentials_title">更新超我模式凭证</string>
     <string name="super_mode_configure_title">配置超我模式</string>
-    <string name="super_mode_credentials_hint">请设置一个你在足够清醒时才会输入的密码，再准备一个用于本地重置的恢复问题。</string>
+    <string name="super_mode_credentials_hint">设置一个只用于本机关键操作的密码，并准备恢复问题。它不是登录密码，不会上传。</string>
     <string name="super_mode_password_label">密码</string>
     <string name="super_mode_password_confirm_label">确认密码</string>
     <string name="super_mode_password_too_short">密码至少需要 4 个字符。</string>
@@ -2254,9 +2262,9 @@
     <string name="super_mode_fill_all_required">请先填完所有必填项。</string>
     <string name="super_mode_enter_title">输入超我模式密码</string>
     <string name="super_mode_enter_hint">请输入你预设的超我模式密码。</string>
-    <string name="super_mode_enter_for_action">请输入超我模式密码后继续：%1$s</string>
-    <string name="super_mode_enter_for_settings">请输入超我模式密码，开启本次短会话。</string>
-    <string name="super_mode_enter_from_home">请输入超我模式密码，开启一个短时会话。</string>
+    <string name="super_mode_enter_for_action">这项操作受超我模式保护：%1$s。输入密码后会开启 5 分钟短会话。</string>
+    <string name="super_mode_enter_for_settings">输入超我模式密码，开启 5 分钟短会话后再修改关键设置。</string>
+    <string name="super_mode_enter_from_home">输入超我模式密码，临时解锁受保护的关键操作。</string>
     <string name="super_mode_enter_to_edit_credentials">请先进入超我模式，再修改密码或恢复问题。</string>
     <string name="super_mode_enter_to_edit_window">请先进入超我模式，再修改允许时间。</string>
     <string name="super_mode_enter_to_disable">请先进入超我模式，再关闭这层保护。</string>
@@ -2264,7 +2272,7 @@
     <string name="super_mode_exit_success">已退出超我模式。</string>
     <string name="super_mode_password_incorrect">密码不正确，请重试。</string>
     <string name="super_mode_unavailable_title">当前不能进入超我模式</string>
-    <string name="super_mode_unavailable_body">只有在允许的本地时间窗口内，才能进入超我模式。</string>
+    <string name="super_mode_unavailable_body">现在不在每日可操作窗口内。等到允许时间后，才能输入密码修改关键设置或购买加时类道具。</string>
     <string name="super_mode_current_time_value">当前时间：%1$s</string>
     <string name="super_mode_allowed_window_value">允许时间：%1$s</string>
     <string name="super_mode_setup_required_title">你还没有配置超我模式</string>
@@ -2275,7 +2283,7 @@
     <string name="super_mode_recovery_answer_incorrect">恢复答案不正确。</string>
     <string name="super_mode_reset_success">超我模式已重置。如需继续保护，请重新配置。</string>
     <string name="super_mode_window_dialog_title">修改允许进入时间</string>
-    <string name="super_mode_window_dialog_body">只有在这段本地时间内才能进入超我模式并修改关键设置。当前版本暂不支持跨午夜时间窗。</string>
+    <string name="super_mode_window_dialog_body">只有在这段本地时间内才能输入密码进入超我模式，用来防止深夜或冲动时改规则。当前版本暂不支持跨午夜时间窗。</string>
     <string name="super_mode_window_start_label">开始时间</string>
     <string name="super_mode_window_end_label">结束时间</string>
     <string name="super_mode_hour_label">小时</string>
@@ -2301,13 +2309,13 @@
     <string name="super_mode_action_edit_custom_reward">修改自定义兑换奖励</string>
     <string name="super_mode_action_edit_reward_price">修改兑换价格</string>
     <string name="super_mode_action_purchase_time_add">购买加时包</string>
-    <string name="super_mode_action_purchase_period_pass">购买自由卡</string>
+    <string name="super_mode_action_purchase_period_pass">购买本周期免提醒卡</string>
     <string name="super_mode_action_purchase_emergency_unlock">购买临时缓冲卡</string>
     <string name="super_mode_info_title">超我模式</string>
-    <string name="super_mode_info_body">超我模式会给关键设置加一层本地保护。只有在每日可操作窗口内进入短会话，才能继续修改约定、关闭保护或购买影响限额的道具。</string>
+    <string name="super_mode_info_body">超我模式不会改变 App 限额，也不会替代无障碍提醒。它只保护会改变约定规则的操作：先在允许时间内输入本机密码，才可以继续。</string>
     <string name="super_mode_short_session_label">短会话</string>
     <string name="super_mode_short_session_inactive">未进入</string>
-    <string name="super_mode_info_protected_actions">保护范围：修改或删除约定、修改超我模式、关闭保护，以及购买加时包、自由卡、临时缓冲卡。</string>
+    <string name="super_mode_info_protected_actions">保护范围：修改或删除约定、修改或关闭超我模式，以及购买加时包、本周期免提醒卡、临时缓冲卡。</string>
     <string name="super_mode_info_open_settings">去设置</string>
     <string name="history_tag_key_setting_changes">关键设置变更 %1$d</string>
     <string name="history_key_setting_changes">关键变更</string>
@@ -2503,6 +2511,13 @@
     <string name="offline_focus_timeline">专注轨迹条</string>
     <string name="offline_focus_rhythm_title">专注节奏</string>
     <string name="offline_focus_rhythm_subtitle">把一天里的专注段落排成一条时间带，看见认真发生的位置。</string>
+    <string name="offline_focus_marks_title">专注刻痕</string>
+    <string name="offline_focus_marks_subtitle">每个方块，都是一天里发生过专注的 5 分钟。</string>
+    <string name="offline_focus_rhythm_longest_focus">最长专注</string>
+    <string name="offline_focus_rhythm_active_hours">活跃时段</string>
+    <string name="offline_focus_rhythm_active_hours_value">%1$d 小时</string>
+    <string name="offline_focus_rhythm_category_count">涉及类型</string>
+    <string name="offline_focus_rhythm_category_count_value">%1$d 类</string>
     <string name="offline_focus_category_breakdown">分类统计</string>
     <string name="offline_focus_category_minutes_format">%1$s %2$d 分钟</string>
     <string name="offline_focus_notification_channel_name">专注计时</string>

@@ -59,6 +59,7 @@ import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.Insights
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.NightsStay
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.RocketLaunch
@@ -87,6 +88,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.CornerRadius
@@ -700,10 +702,11 @@ private fun ReportPageContent(
     val defaultDayModules =
         buildList {
             add(SharePosterModule.BEHAVIOR)
+            add(SharePosterModule.TIME_TIDE)
             add(SharePosterModule.FOCUS)
             if (offlineFocusEnabled) add(SharePosterModule.OFFLINE)
             add(SharePosterModule.RHYTHM)
-            if (isProActive) add(SharePosterModule.INSIGHTS)
+            add(SharePosterModule.INSIGHTS)
         }
 
     Column(
@@ -714,47 +717,64 @@ private fun ReportPageContent(
             LockedAdvancedReportCard(onClick = { onShowProUpsell(ProUpsellSource.ADVANCED_REPORT) })
         } else if (isDayReport) {
             (shareModules ?: defaultDayModules).forEach { module ->
-                when (module) {
-                    SharePosterModule.BEHAVIOR -> {
-                        DailyBehaviorProfileCard(
-                            heroState = state.heroState,
-                            focusState = state.dailyFocusState,
-                            behaviorState = state.behaviorState,
-                        )
-                    }
-                    SharePosterModule.TIME_TIDE -> DailyTimeTideCard(
-                        timeTideState = state.timeTideState,
-                        animateValues = state.animateValues,
-                    )
-                    SharePosterModule.FOCUS -> {
-                        DailyFocusCard(
-                            focusState = state.dailyFocusState,
-                            compactLayout = false,
+                val moduleContent: @Composable () -> Unit = {
+                    when (module) {
+                        SharePosterModule.BEHAVIOR -> {
+                            DailyBehaviorProfileCard(
+                                heroState = state.heroState,
+                                focusState = state.dailyFocusState,
+                                behaviorState = state.behaviorState,
+                            )
+                        }
+                        SharePosterModule.TIME_TIDE -> DailyTimeTideCard(
+                            timeTideState = state.timeTideState,
                             animateValues = state.animateValues,
-                            screenEnterReplayToken = screenEnterReplayToken,
                         )
-                    }
-                    SharePosterModule.OFFLINE -> {
-                        OfflineFocusDailyCard(state = state.offlineFocusState)
-                    }
-                    SharePosterModule.APPS -> Unit
-                    SharePosterModule.RHYTHM -> DailyRhythmCard(
-                        timelineState = state.timelineState,
-                        focusState = state.dailyFocusState,
-                    )
-                    SharePosterModule.INSIGHTS -> {
-                        if (isProActive) {
+                        SharePosterModule.FOCUS -> {
+                            DailyFocusCard(
+                                focusState = state.dailyFocusState,
+                                compactLayout = false,
+                                animateValues = state.animateValues,
+                                screenEnterReplayToken = screenEnterReplayToken,
+                            )
+                        }
+                        SharePosterModule.OFFLINE -> {
+                            OfflineFocusDailyCard(state = state.offlineFocusState)
+                        }
+                        SharePosterModule.APPS -> Unit
+                        SharePosterModule.RHYTHM -> DailyRhythmCard(
+                            timelineState = state.timelineState,
+                            focusState = state.dailyFocusState,
+                        )
+                        SharePosterModule.INSIGHTS -> {
                             DailyInsightCard(behaviorMapState = state.behaviorMapState)
                         }
+                        SharePosterModule.OVERVIEW,
+                        SharePosterModule.TREND,
+                        SharePosterModule.HEATMAP,
+                        SharePosterModule.STRUCTURE -> Unit
                     }
-                    SharePosterModule.OVERVIEW,
-                    SharePosterModule.TREND,
-                    SharePosterModule.HEATMAP,
-                    SharePosterModule.STRUCTURE -> Unit
+                }
+                if (shareModules == null && !isProActive && module.isLockedDailyPreviewModule()) {
+                    ProLockedDailyPreview(onClick = { onShowProUpsell(ProUpsellSource.ADVANCED_REPORT) }) {
+                        moduleContent()
+                    }
+                } else {
+                    moduleContent()
                 }
             }
             if (shareModules == null && offlineFocusEnabled) {
-                OfflineFocusPomodoroRhythmCard(state = state.offlineFocusState)
+                if (isProActive) {
+                    OfflineFocusPomodoroRhythmCard(state = state.offlineFocusState)
+                    OfflineFocusMarksCard(state = state.offlineFocusState)
+                } else {
+                    ProLockedDailyPreview(onClick = { onShowProUpsell(ProUpsellSource.ADVANCED_REPORT) }) {
+                        OfflineFocusPomodoroRhythmCard(state = state.offlineFocusState)
+                    }
+                    ProLockedDailyPreview(onClick = { onShowProUpsell(ProUpsellSource.ADVANCED_REPORT) }) {
+                        OfflineFocusMarksCard(state = state.offlineFocusState)
+                    }
+                }
             }
         } else {
             if (shareModules == null) {
@@ -772,6 +792,161 @@ private fun ReportPageContent(
         }
     }
 }
+
+@Composable
+private fun ProLockedDailyPreview(
+    onClick: () -> Unit,
+    content: @Composable () -> Unit,
+) {
+    val shape = RoundedCornerShape(26.dp)
+    val themeColors = LocalThemeColors.current
+    Box(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .clip(shape)
+                .clickable(onClick = onClick),
+    ) {
+        Box(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .blur(1.25.dp)
+                    .graphicsLayer { alpha = 0.92f },
+        ) {
+            content()
+        }
+        Canvas(
+            modifier =
+                Modifier
+                    .matchParentSize()
+        ) {
+            drawRoundRect(
+                brush =
+                    Brush.verticalGradient(
+                        listOf(
+                            Color.Transparent,
+                            themeColors.baseContainer.copy(alpha = 0.16f),
+                            Color.Black.copy(alpha = 0.10f),
+                        ),
+                    ),
+                cornerRadius = CornerRadius(26.dp.toPx(), 26.dp.toPx()),
+            )
+            val lineColor = themeColors.base.copy(alpha = 0.16f)
+            val step = 34.dp.toPx()
+            val stroke = 1.2.dp.toPx()
+            var startX = -size.height
+            while (startX < size.width) {
+                drawLine(
+                    color = lineColor,
+                    start = Offset(startX, size.height),
+                    end = Offset(startX + size.height, 0f),
+                    strokeWidth = stroke,
+                )
+                startX += step
+            }
+        }
+        Row(
+            modifier =
+                Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(14.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Surface(
+                shape = RoundedCornerShape(999.dp),
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.84f),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.20f)),
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Lock,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(14.dp),
+                    )
+                    Text(
+                        text = AppText.t("pro_report_preview_value"),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.primary,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+            }
+        }
+        Surface(
+            modifier =
+                Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .padding(14.dp),
+            shape = RoundedCornerShape(18.dp),
+            color = MaterialTheme.colorScheme.surface.copy(alpha = 0.82f),
+            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.36f)),
+            shadowElevation = 0.dp,
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Surface(
+                    modifier = Modifier.size(34.dp),
+                    shape = CircleShape,
+                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.13f),
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.Default.Insights,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(18.dp),
+                        )
+                    }
+                }
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    Text(
+                        text = AppText.t("pro_locked_preview_title"),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        text = AppText.t("pro_locked_preview_subtitle"),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
+        }
+    }
+}
+
+private fun SharePosterModule.isLockedDailyPreviewModule(): Boolean =
+    when (this) {
+        SharePosterModule.BEHAVIOR,
+        SharePosterModule.FOCUS -> false
+        SharePosterModule.TIME_TIDE,
+        SharePosterModule.OFFLINE,
+        SharePosterModule.APPS,
+        SharePosterModule.RHYTHM,
+        SharePosterModule.INSIGHTS,
+        SharePosterModule.OVERVIEW,
+        SharePosterModule.TREND,
+        SharePosterModule.HEATMAP,
+        SharePosterModule.STRUCTURE -> true
+    }
 
 @Composable
 private fun PeriodShareReportContent(
@@ -2564,11 +2739,11 @@ private fun availableSharePosterModules(
             if (state.dailyFocusState is SectionState.Ready) {
                 add(SharePosterModule.FOCUS)
             }
-            if (offlineFocusEnabled && state.offlineFocusState is SectionState.Ready) {
+            if (isProActive && offlineFocusEnabled && state.offlineFocusState is SectionState.Ready) {
                 add(SharePosterModule.OFFLINE)
             }
             val timeline = (state.timelineState as? SectionState.Ready)?.data
-            if (timeline != null && (timeline.buckets.isNotEmpty() || timeline.periodUsage.any { it.deviceMillis > 0L })) {
+            if (isProActive && timeline != null && (timeline.buckets.isNotEmpty() || timeline.periodUsage.any { it.deviceMillis > 0L })) {
                 add(SharePosterModule.RHYTHM)
             }
             val behaviorMap = (state.behaviorMapState as? SectionState.Ready)?.data
@@ -2613,11 +2788,27 @@ private fun ReportTab.sharePosterStorageKey(): String = name.lowercase(Locale.US
 private fun restoredSharePosterModules(
     moduleIds: List<String>,
     availableModules: List<SharePosterModule>,
+    selectedTab: ReportTab,
 ): List<SharePosterModule> {
     return moduleIds
         .mapNotNull { id -> availableModules.firstOrNull { it.name == id } }
         .distinct()
-        .ifEmpty { availableModules.take(3) }
+        .ifEmpty { defaultSharePosterModules(availableModules, selectedTab) }
+}
+
+private fun defaultSharePosterModules(
+    availableModules: List<SharePosterModule>,
+    selectedTab: ReportTab,
+): List<SharePosterModule> {
+    if (selectedTab != ReportTab.DAY) return availableModules.take(3)
+    val preferred =
+        listOf(
+            SharePosterModule.BEHAVIOR,
+            SharePosterModule.FOCUS,
+            SharePosterModule.INSIGHTS,
+        )
+    return (preferred.filter { it in availableModules } + availableModules.filterNot { it in preferred })
+        .take(3)
 }
 
 private fun SharePosterModule.labelKey(selectedTab: ReportTab): String =
@@ -2682,11 +2873,11 @@ private fun ReportPageSharePreviewDialog(
         }
     }
     var selectedModules by remember(state.selectedTab, state.selectedArchiveDate, state.selectedWeekStart, state.selectedMonth, state.selectedYear, isProActive, offlineFocusEnabled) {
-        mutableStateOf(availableModules.take(2))
+        mutableStateOf(defaultSharePosterModules(availableModules, state.selectedTab))
     }
     LaunchedEffect(availableModules, restoredModuleIds) {
         restoredModuleIds?.let { moduleIds ->
-            selectedModules = restoredSharePosterModules(moduleIds, availableModules)
+            selectedModules = restoredSharePosterModules(moduleIds, availableModules, state.selectedTab)
         }
     }
     var isSharing by remember { mutableStateOf(false) }

@@ -90,6 +90,7 @@ import androidx.compose.material3.SnackbarHostState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -122,6 +123,7 @@ import androidx.compose.ui.window.Popup
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import androidx.core.content.FileProvider
 import com.rrrrz.tinyvow.BuildConfig
 import com.rrrrz.tinyvow.R
@@ -194,7 +196,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.Flow
 import androidx.compose.animation.*
 import androidx.compose.foundation.BorderStroke
 import java.time.Instant
@@ -855,9 +857,7 @@ fun HomeRoute(
         lifecycle = lifecycle,
     )
     
-    val loadedGroupsWithApps by appLimitRepository.getAllGroupsWithApps()
-        .map<List<AppGroupWithApps>, List<AppGroupWithApps>?> { it }
-        .collectAsStateWithLifecycle(initialValue = null, lifecycle = lifecycle)
+    val loadedGroupsWithApps by collectNullableAsStateWithLifecycle(appLimitRepository.getAllGroupsWithApps(), lifecycle)
     val groupsWithAppsLoaded = loadedGroupsWithApps != null
     val groupsWithApps = loadedGroupsWithApps.orEmpty()
     val userPoints by preferences.userPoints.collectAsStateWithLifecycle(initialValue = 0.0, lifecycle = lifecycle)
@@ -925,35 +925,28 @@ fun HomeRoute(
     val allRewardEffects by database.activeRewardEffectDao().observeAll().collectAsStateWithLifecycle(initialValue = emptyList(), lifecycle = lifecycle)
     val activeBonusTimes by database.bonusTimeDao().observeActive(currentTimeMillis)
         .collectAsStateWithLifecycle(initialValue = emptyList(), lifecycle = lifecycle)
-    val homeOverviewGroupsWithAppsLoaded by appLimitRepository.getAllGroupsWithApps()
-        .map<List<AppGroupWithApps>, List<AppGroupWithApps>?> { it }
-        .collectAsStateWithLifecycle(initialValue = null, lifecycle = lifecycle)
-    val homeOverviewUserPointsLoaded by preferences.userPoints
-        .map<Double, Double?> { it }
-        .collectAsStateWithLifecycle(initialValue = null, lifecycle = lifecycle)
-    val homeOverviewTodayPointsLoaded by preferences.todayPoints
-        .map<Double, Double?> { it }
-        .collectAsStateWithLifecycle(initialValue = null, lifecycle = lifecycle)
-    val homeOverviewTodayEarnedPointsLoaded by database.pointLedgerDao().observeEarnedByDate(businessToday.toString())
-        .map<Double, Double?> { it }
-        .collectAsStateWithLifecycle(initialValue = null, lifecycle = lifecycle)
-    val homeOverviewAchievementProgressLoaded by appLimitRepository.observeAchievementProgress()
-        .map<AchievementProgress, AchievementProgress?> { it }
-        .collectAsStateWithLifecycle(initialValue = null, lifecycle = lifecycle)
-    val homeOverviewAllRewardEffectsLoaded by database.activeRewardEffectDao().observeAll()
-        .map<List<ActiveRewardEffectEntity>, List<ActiveRewardEffectEntity>?> { it }
-        .collectAsStateWithLifecycle(initialValue = null, lifecycle = lifecycle)
+    val homeOverviewGroupsWithAppsLoaded by collectNullableAsStateWithLifecycle(appLimitRepository.getAllGroupsWithApps(), lifecycle)
+    val homeOverviewUserPointsLoaded by collectNullableAsStateWithLifecycle(preferences.userPoints, lifecycle)
+    val homeOverviewTodayPointsLoaded by collectNullableAsStateWithLifecycle(preferences.todayPoints, lifecycle)
+    val homeOverviewTodayEarnedPointsLoaded by collectNullableAsStateWithLifecycle(
+        database.pointLedgerDao().observeEarnedByDate(businessToday.toString()),
+        lifecycle,
+    )
+    val homeOverviewAchievementProgressLoaded by collectNullableAsStateWithLifecycle(
+        appLimitRepository.observeAchievementProgress(),
+        lifecycle,
+    )
+    val homeOverviewAllRewardEffectsLoaded by collectNullableAsStateWithLifecycle(database.activeRewardEffectDao().observeAll(), lifecycle)
     val historicalArchivesLoaded by
-        dailyArchiveRepository.getRecentArchives(limit = 3650)
-            .map<List<com.rrrrz.tinyvow.data.db.DailyArchiveEntity>, List<com.rrrrz.tinyvow.data.db.DailyArchiveEntity>?> { it }
-            .collectAsStateWithLifecycle(initialValue = null, lifecycle = lifecycle)
+        collectNullableAsStateWithLifecycle(dailyArchiveRepository.getRecentArchives(limit = 3650), lifecycle)
     val historicalArchives = historicalArchivesLoaded.orEmpty()
-    val homeOverviewRecentGroupArchivesLoaded by
+    val homeOverviewRecentGroupArchivesLoaded by collectNullableAsStateWithLifecycle(
         dailyArchiveRepository.getGroupArchivesByRange(
             businessToday.minusDays(7).toString(),
             businessToday.minusDays(1).toString(),
-        ).map<List<DailyGroupArchiveEntity>, List<DailyGroupArchiveEntity>?> { it }
-            .collectAsStateWithLifecycle(initialValue = null, lifecycle = lifecycle)
+        ),
+        lifecycle,
+    )
     val homeOverviewInputsReady =
         homeOverviewGroupsWithAppsLoaded != null &&
             homeOverviewUserPointsLoaded != null &&
@@ -3361,7 +3354,7 @@ fun AchievementNotificationBanner(achievement: AchievementEntity) {
                 .wrapContentHeight()
                 .clip(RoundedCornerShape(20.dp))
         ) {
-            // 鍏夋辰鎵厜鏁堟灉
+            // Achievement shine sweep effect.
             Canvas(modifier = Modifier.matchParentSize()) {
                 if (achievement.tier >= AchievementTier.GOLD) {
                     drawRect(
@@ -10250,6 +10243,17 @@ private fun HomeScreenPreviewDenied() {
         )
     }
 }
+
+@Composable
+private fun <T> collectNullableAsStateWithLifecycle(
+    flow: Flow<T>,
+    lifecycle: Lifecycle,
+): State<T?> =
+    produceState<T?>(initialValue = null, flow, lifecycle) {
+        lifecycle.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            flow.collect { value = it }
+        }
+    }
 
 @Preview(showBackground = true)
 @Composable

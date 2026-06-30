@@ -4,6 +4,8 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.Manifest
+import android.annotation.SuppressLint
+import android.app.Notification
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -70,15 +72,7 @@ class TinyVowNotifier(
             .setAutoCancel(true)
             .build()
 
-        if (
-            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-            ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) !=
-            PackageManager.PERMISSION_GRANTED
-        ) {
-            return
-        }
-
-        NotificationManagerCompat.from(context).notify(packageName.hashCode(), notification)
+        postNotification(packageName.hashCode(), notification)
     }
 
     fun notifyControlRemaining(
@@ -102,7 +96,7 @@ class TinyVowNotifier(
             .setAutoCancel(true)
             .build()
         if (!canPostNotifications()) return
-        NotificationManagerCompat.from(context).notify(groupId.hashCode(), notification)
+        postNotification(groupId.hashCode(), notification)
     }
 
     fun notifyEncourageIncomplete(
@@ -147,7 +141,7 @@ class TinyVowNotifier(
             .setAutoCancel(true)
             .build()
         if (!canPostNotifications()) return
-        NotificationManagerCompat.from(context).notify(ENCOURAGE_INCOMPLETE_NOTIFICATION_ID, notification)
+        postNotification(ENCOURAGE_INCOMPLETE_NOTIFICATION_ID, notification)
     }
 
     fun notifyEncourageCompleted(
@@ -172,7 +166,7 @@ class TinyVowNotifier(
             .setAutoCancel(true)
             .build()
         if (!canPostNotifications()) return
-        NotificationManagerCompat.from(context).notify(ENCOURAGE_COMPLETED_NOTIFICATION_BASE_ID + groupId.hashCode(), notification)
+        postNotification(ENCOURAGE_COMPLETED_NOTIFICATION_BASE_ID + groupId.hashCode(), notification)
     }
 
     private fun randomEncourageProgressText(
@@ -199,6 +193,14 @@ class TinyVowNotifier(
         Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
             ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) ==
             PackageManager.PERMISSION_GRANTED
+
+    @SuppressLint("MissingPermission")
+    private fun postNotification(id: Int, notification: Notification) {
+        if (!canPostNotifications()) return
+        runCatching {
+            NotificationManagerCompat.from(context).notify(id, notification)
+        }
+    }
 
     companion object {
         const val CHANNEL_ID = "daily_limit_alerts"

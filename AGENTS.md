@@ -6,7 +6,7 @@
 
 - Tiny Vow 是一个本地优先的 Android 应用，用“约定 + 鼓励”管理手机使用。
 - 当前是单模块项目：`:app`，包名和 namespace 都是 `com.rrrrz.tinyvow`。
-- 技术栈：Kotlin、Jetpack Compose、Material 3、Room、DataStore Preferences、WorkManager、AccessibilityService、UsageStats、Play Billing、Credential Manager / Google ID。
+- 技术栈：Kotlin、Jetpack Compose、Material 3、Room、DataStore Preferences、WorkManager、AccessibilityService、UsageStats、NotificationListenerService / MediaSession、步数传感器、Foreground Service、Play Billing、Credential Manager / Google ID。
 - 构建配置：`compileSdk 36.1`、`targetSdk 36`、`minSdk 26`、Java 11、Kotlin `2.2.10`、AGP `9.1.0`。
 - 入口：`MainActivity` 挂载 Compose UI，`TinyVowApplication` 初始化 `AppText`。
 - 应用数据默认保存在本机；隐私导出/清理在 `data/privacy`，不要无意引入自动上传或远端依赖。
@@ -17,7 +17,12 @@
 
 - `CONTROL` 分组：按日/周/月限额统计使用量，超额后软阻断。
 - `ENCOURAGE` 分组：按使用时长累计积分，并支持目标达成奖励。
+- 鼓励指标：`ENCOURAGE` 分组当前支持 App 使用时长和本机步数两种指标。
 - 特殊应用设置：当前支持微信读书双源时长，分别缓存微信读书阅读时长和本机前台时长，并按用户配置决定替换口径。
+- 媒体应用设置：通过通知监听 + MediaSession 记录用户启用的播客/音乐/有声书后台播放时长，并与前台 session 合并去重。
+- 离线专注：本地专注计时、分类、普通/严格模式、白名单和专注积分。
+- 每日签到：本地签到记录，并发放内置临时缓冲卡到库存。
+- 超我模式：用本机密码保护修改约定、删除约定、修改超我设置和购买绕过限额类道具等关键操作。
 - 使用情况访问权限：读取应用用量和使用周期统计。
 - 无障碍服务：监听前台窗口变化，显示全屏阻断 overlay，并承担一部分积分结算。
 - 奖励/库存/使用/成就：Room 持久化，积分通过 ledger 记录来源。
@@ -32,15 +37,15 @@
 
 - `TinyVowApplication` 调用 `AppText.attach(...)`，让服务、Worker、通知等非 Compose 代码也能读取应用文案。
 - `MainActivity` 开启 edge-to-edge，创建通知渠道，监听主题和语言偏好，并挂载 `HomeRoute`。
-- `ManagedAppPreferences` 通过 DataStore Preferences 保存积分、今日积分、主题、语言、权限 disclosure 状态、权限提示 dismissed 状态、旧单 App 限额兼容字段等全局状态。
+- `ManagedAppPreferences` 通过 DataStore Preferences 保存积分、今日积分、主题、语言、业务日分割点、用户资料、权限 disclosure 状态、权限提示 dismissed 状态、提醒设置、App 颜色偏好、首页圆环偏好、离线专注默认项、超我模式状态、旧单 App 限额兼容字段等全局状态。
 - 主题通过 `resolveThemeSeed(...)` 选择预设或自定义三色主题；阻断 overlay 和统计分享图也要跟随当前主题。
 - 语言通过 `AppText.localizedContext(...)` 注入 `LocalContext`，同时用 `AppText.setLanguage(...)` 更新全局文案上下文。
 
 ### 分组模型
 
-- `AppGroupEntity` 是主模型，核心字段包括 `type`、`limitPeriod`、`limitMinutes`、`pointsPerMinute`、`lastBonusAt`、`sortOrder`。
+- `AppGroupEntity` 是主模型，核心字段包括 `type`、`limitPeriod`、`limitMinutes`、`pointsPerMinute`、`encourageMetric`、`stepTarget`、`pointsPerStep`、`lastBonusAt`、`sortOrder`。
 - `GroupAppCrossRef` 表示分组与 App 包名关系。
-- `CONTROL` 分组把 `limitMinutes` 视为限额；`ENCOURAGE` 分组把 `limitMinutes` 视为目标时长。
+- `CONTROL` 分组把 `limitMinutes` 视为限额；`ENCOURAGE` 分组在 `APP_USAGE` 指标下把 `limitMinutes` 视为目标时长，在 `STEPS` 指标下使用 `stepTarget` 和 `pointsPerStep`。
 - 分组和关联关系使用软删除；历史记录和归档可能引用旧分组、旧名称、旧 App 关系，不要物理删除后强行抹掉历史。
 - 同一个 App 可以属于多个分组。分组明细按分组视角分别展示贡献；设备总用量、周/月/年总览和 Top Apps 聚合要按 package 去重。
 
@@ -63,6 +68,7 @@
 
 - Tiny Vow 的“应用使用时长”主口径是 `UsageStatsManager.queryEvents(...)` 中的前台 Activity session：用 `ACTIVITY_RESUMED` 与 `ACTIVITY_PAUSED` / `ACTIVITY_STOPPED` 合成 session，再按统计窗口裁剪后聚合。
 - 不要把 `queryAndAggregateUsageStats(...).totalTimeInForeground` 作为首页、限额、积分、归档的主使用时长来源。该累计 bucket 在不同厂商系统上可能和系统界面不一致；已在 MIUI / Android 16 上出现同一窗口系统界面 33 分钟、`totalTimeInForeground` 返回 93 分钟的偏差。
+- `InstalledAppRepository` 里允许用 `queryAndAggregateUsageStats` 做应用选择列表的最近使用排序和补充包名发现；它不能反向进入首页、限额、积分、归档、统计主口径。
 - `queryAndAggregateUsageStats` 看似官方，但受厂商 bucket、后台播放、跨日裁剪、多 Activity、悬浮窗/画中画策略影响，不适合作为 Tiny Vow 的统一前台用量口径。
 - 前台 session 口径更符合 Tiny Vow 的业务语义：用户实际看到 App 在前台多久、能按自定义日分割点精确裁剪、首页/阻断/归档/统计内部一致。
 - 事件 session 仍有厂商边界：部分系统可能延迟 `PAUSED` / `STOPPED`，画中画、悬浮窗、后台播放是否计入也可能和系统设置页不同。当前约定是只统计前台 Activity session，不统计纯后台播放。
@@ -79,8 +85,10 @@
 - 奖励与兑换逻辑在 `AppLimitRepository`。购买时先检查奖励有效性、每日限制、库存、积分余额；购买成功写兑换历史、积分 ledger，并进入 `RewardInventoryEntity`。
 - 当前内置奖励类型是 `TIME_ADD`、`PERIOD_PASS`、`EMERGENCY_UNLOCK`、`STREAK_SHIELD`、`DOUBLE_POINTS_DAY`；`CUSTOM` 只用于用户自定义兑换。
 - `TIME_ADD`、`PERIOD_PASS`、`DOUBLE_POINTS_DAY` 从库存页使用并写 `ActiveRewardEffectEntity`；`TIME_ADD` / `PERIOD_PASS` 只能用于 `CONTROL` 分组，双倍积分用于 `ENCOURAGE` 分组。
+- `PERIOD_PASS` 的产品语义是“本周期免超额提醒”：跳过阻断/提醒，但用量和统计仍照常记录；文案不要写成“删除记录”“不计入统计”。
 - `EMERGENCY_UNLOCK` 只能先购买进库存，再在阻断 overlay 消耗；消耗后创建短时 `ActiveRewardEffectEntity`，避免直接绕开积分/历史记录。
 - `STREAK_SHIELD` 用于归档后待处理的断连胜项，待处理记录在 `StreakShieldPendingEntity`，处理结果和奖励使用记录要保留历史。
+- 每日签到由 `DailyCheckInRepository` 写 `DailyCheckInEntity`，并把内置临时缓冲卡发到库存；不要绕过库存直接发一次性效果。
 - 旧 `BonusTimeEntity` / `bonus_times` 仍用于兼容加时包和历史数据；新增效果优先走 `active_reward_effects`。
 - 自定义奖励支持预设图标、导入文件、单 emoji；导入文件由 `RewardIconStorage` 管理，替换或删除时要清理不再引用的文件。
 - 内置奖励通过 `builtinKey` 做本地化，数据库旧标题只作兜底；自定义奖励标题和描述是用户数据，不自动翻译。
@@ -137,16 +145,49 @@
   - 成就里的 `control_days` / `encourage_days` / streak 仍只依赖归档结果，不直接看实时快照。
   - 兑换和双倍积分判断依赖当前分组有效时长；如果改双源口径，需同步检查 `AppLimitRepository` 和 `AppLimitAccessibilityService`。
 
+### 媒体播放补充口径
+
+- 媒体应用补充口径由 `MediaAppPlaybackRepository` 和 `MediaAppPlaybackListenerService` 维护，适用于用户手动启用的播客、音乐、有声书等 App。
+- 通知监听权限只用于读取启用 App 的通知可见性和 MediaSession 播放状态，不读取通知正文做业务数据，不扩展到无关 App。
+- `media_app_playback_days` 保存当天累计可信后台播放时长、非可信断连空档和当前播放状态；`media_app_playback_segments` 保存可信播放区间，用于和 UsageStats 前台 session 合并去重。
+- 可信补记窗口由 `MediaAppPlaybackAccountant.TRUSTED_RECONNECT_WINDOW_MILLIS` 控制，当前是 30 分钟；监听断开过久不能直接把整段后台时间算成可信播放。
+- `MergedUsageRepository` 会按 override 顺序把微信读书特殊口径和媒体播放补充口径合入同一张使用量 map。新增补充口径时必须考虑不同 override 之间的覆盖顺序和设备总量去重。
+- 媒体播放只补充“可被 MediaSession/通知状态确认的后台播放时间”；不要把所有后台进程存活时间、通知常驻时间或缓存时间算作使用。
+
+### 步数、离线专注与签到
+
+- 步数由 `StepTrackingRepository` 通过 `TYPE_STEP_COUNTER` 记录，Android 10+ 需要 `ACTIVITY_RECOGNITION` 权限；没有传感器或权限时 UI 必须显示可理解的不可用状态。
+- 步数鼓励积分通过 `step_point_credits` 防重复入账，按业务日记录；不要按每次传感器事件直接累计积分。
+- 离线专注由 `OfflineFocusRepository`、`OfflineFocusTimerService`、`offline_focus_categories` 和 `offline_focus_sessions` 维护，分类支持内置图标和用户导入图标。
+- 离线专注普通模式遇到非白名单 App 会暂停，严格模式遇到非白名单 App 会放弃；这条链路依赖无障碍服务回调当前前台 App。
+- 离线专注前台服务通知必须保持本地化，并使用低打扰通知渠道；修改服务时要验证开始、暂停、恢复、提前完成、放弃和锁屏策略。
+- 专注分类使用软归档/删除语义，历史 session 的分类名、图标、颜色、积分倍率快照是历史事实，不要迁移覆盖。
+- 每日签到是本地行为记录；签到发放的缓冲卡应进入库存并保留 `daily_checkins` 历史。
+
+### 超我模式
+
+- 超我模式不是新的限额或阻断规则，只是关键操作前的本机密码保护层；不要让它替代 Usage Access / Accessibility 主链路。
+- 密码和恢复答案只保存 salted hash，不上传、不写入 Room 明文字段、不出现在隐私报告明细中。
+- 默认允许窗口是 06:00-10:00；PRO 用户可自定义窗口，但不支持跨午夜窗口。
+- 进入超我模式后短会话默认 5 分钟有效；切后台、超时、离开允许窗口都应退出。
+- 受保护操作集中通过 `GuardedAction` 和统一 guard 入口处理，新增“修改规则/绕过限额”类能力时先判断是否需要接入超我模式。
+- `ProtectionEventEntity` 记录关键设置变更和被拦截行为，属于本地历史；文案使用 key + args，本地化显示时不要把历史 target label 当内置文案翻译。
+
 ## 目录和模块
 
 - `app/src/main/java/com/rrrrz/tinyvow/MainActivity.kt`：应用入口、主题、语言 context 注入。
 - `app/src/main/java/com/rrrrz/tinyvow/TinyVowApplication.kt`：Application 初始化。
-- `data/db`：Room entity、dao、migration，当前数据库版本是 `21`，schema 导出到 `app/schemas`。
+- `data/db`：Room entity、dao、migration，当前数据库版本是 `29`，schema 导出到 `app/schemas`。
 - `data/repository`：分组、奖励、积分、每日归档等主要业务仓库。
 - `data/activation`：国内版本地激活码、到期解析、时间回拨检测和激活 DataStore。
 - `data/billing`：Google Play Billing、Noop 仓库和统一 `ProEntitlementState`。
+- `data/media`：媒体应用后台播放监听、可信播放区间合并和 Usage override。
+- `data/steps`：本机步数传感器读取和步数积分。
+- `data/supermode`：超我模式密码、窗口、短会话和受保护操作模型。
 - `domain/limit`：限额评估策略，尤其是 `GroupLimitEnforcer`。
 - `service/block`：无障碍软阻断服务和 overlay。
+- `service/media`：通知监听服务和 MediaSession 播放状态监听。
+- `service/offline`：离线专注前台计时服务。
 - `data/usage`：UsageStats 权限与用量读取。
 - `data/settings/ManagedAppPreferences.kt`：DataStore 偏好，包含积分、主题、权限引导状态、语言等。
 - `data/notification`、`data/reminder`：通知渠道和提醒 Worker。
@@ -195,7 +236,7 @@
 
 ## Room 和数据迁移
 
-- 数据库定义在 `AppDatabase`，当前 `version = 21`，`exportSchema = true`。
+- 数据库定义在 `AppDatabase`，当前 `version = 29`，`exportSchema = true`。
 - 改 entity/dao/schema 时必须：
   - 增加数据库版本号。
   - 添加从上一版本到新版本的 `Migration`。
@@ -204,7 +245,7 @@
   - 尽量保留旧数据，尤其是用户分组、积分、兑换历史、归档、主题相关字段。
 - 软删除语义已经用于分组和分组-App 关系，不要改成物理删除，除非明确处理所有历史引用。
 - `PointLedgerEntity` 用于解释积分变化，新增积分来源时同步考虑 ledger entry type、message key、参数 JSON 和本地化文案。
-- 奖励库存、主动使用效果、连胜保护待处理、奖励使用历史分别在 `reward_inventory`、`active_reward_effects`、`streak_shield_pending`、`reward_use_history`。新增表或字段时同步隐私导出清单和迁移测试。
+- 奖励库存、主动使用效果、连胜保护待处理、奖励使用历史分别在 `reward_inventory`、`active_reward_effects`、`streak_shield_pending`、`reward_use_history`。步数、媒体播放、离线专注、超我模式和每日签到分别涉及 `step_days` / `step_point_credits`、`media_app_*`、`offline_focus_*`、`protection_events`、`daily_checkins`。新增表或字段时同步隐私导出清单和迁移测试。
 - 每日归档是统计页稳定数据源；改归档字段时同步更新 DAO、聚合逻辑、统计 UI 和测试。
 - 实时阻断和统计达标是两套语义：阻断页应在 `CONTROL` 分组一超过有效限额就弹出；统计/归档里允许 5 分钟裕度，超过 5 分钟才记为超额或未完成。
 - 加时包要并入有效限额；按日分组到当天结束，按周分组覆盖兑换日起 7 天窗口，按月分组到当月结束。
@@ -217,6 +258,9 @@
 - 无障碍服务只用于检测前台应用和显示超额阻断页，不要扩展到读取用户输入、采集屏幕内容或无关自动化。
 - Accessibility disclosure 必须先由用户确认。未确认时服务会移除 overlay，不执行阻断。
 - 通知权限用于本地限额提醒和阻断提示。拒绝通知不影响分组、统计和阻断主链路。
+- 通知监听权限只服务于用户启用的媒体应用后台播放补充统计；没有开启时，媒体补充口径应显示不可用或仅保留已有可信历史，不影响 UsageStats 主链路。
+- `ACTIVITY_RECOGNITION` 只用于本机步数；拒绝后不应影响 App 使用统计、阻断、奖励库存等主功能。
+- 离线专注计时使用前台服务和本地通知；通知被拒绝时要注意 Android 版本差异，不要把离线专注状态写成已完成。
 - `AppLimitAccessibilityService` 必须避免阻断 Tiny Vow 自身包名。
 - overlay 使用 `TYPE_ACCESSIBILITY_OVERLAY`，文案、按钮、contentDescription 仍要走资源或 `AppText`。
 - 热路径里已有 debounce、conflated channel、短缓存。改动阻断判断、缓存 TTL、overlay 移除时机前，要手动验证快速切换、返回桌面、返回 Tiny Vow、重复打开超额 app。
@@ -249,13 +293,14 @@
   - Room 数据库主文件和 `-wal` / `-shm`。
   - DataStore 文件：`managed_app_preferences`、`auth_preferences`、`activation_preferences`。
   - `files/reward_icons` 下的导入奖励图标文件。
+  - `files/focus_icons` 下的导入离线专注分类图标文件。
 - 可恢复备份不导出微信读书 Key 明文；`managed_app_preferences` 里可能带上旧的加密 Key 字段，但导入恢复不会恢复 Android Keystore 里的 `tinyvow_weread_api_key` 密钥材料。`backup_manifest.json` 会用 `requiresWeReadKeyReentry` 标记恢复后是否需要提示用户去特殊应用里重新填写 WeRead Key。
 - 导入备份会校验 `backup_manifest.json` 中的 `format`、`schemaVersion`、`packageName` 和 `appVersionCode`，恢复数据库 / DataStore / 奖励图标后立即重启应用；涉及这条链路的改动要手动验证“导入成功提示 + 重启 + 重启后状态恢复”。
 - 隐私导出表清单要覆盖当前 Room 本地数据，包括奖励库存、主动效果、连胜保护待处理、奖励使用历史和保护事件；新增本地表时同步 `LocalDataManager.localDataTables`。
 - 国内版账号是 `LocalAuthRepository.ensureLocalSession()` 生成的本地用户 ID；`LocalActivationSubscriptionRepository` 将激活码绑定到该 ID，并用 `activation_preferences` 记录激活状态、已用 codeId 和最后一次墙钟时间。
 - 账号删除、隐私说明相关改动要同步检查 `docs/account-delete.html`、`docs/privacy.html` 和应用内支持页文案。
-- 导出/清理本地数据时必须覆盖 Room 数据、`managed_app_preferences`、国内 `auth_preferences` / `activation_preferences`、奖励导入图标、分享缓存和 WeRead Key 的 Keystore 材料等用户能感知的本地状态；不要误删应用安装外部数据。
-- 不要把 Android Auto Backup / device transfer 当成本地备份恢复方案：Manifest 当前虽然开启了 `allowBackup`，但 `backup_rules.xml` / `data_extraction_rules.xml` 已排除数据库、DataStore、`share` 缓存、导入奖励图标和待恢复微信读书 Key 文件，核心恢复仍应以 `LocalDataManager` 的手动备份导入导出为准。
+- 导出/清理本地数据时必须覆盖 Room 数据、`managed_app_preferences`、国内 `auth_preferences` / `activation_preferences`、奖励导入图标、专注分类导入图标、分享缓存和 WeRead Key 的 Keystore 材料等用户能感知的本地状态；不要误删应用安装外部数据。
+- 不要把 Android Auto Backup / device transfer 当成本地备份恢复方案：Manifest 当前虽然开启了 `allowBackup`，但 `backup_rules.xml` / `data_extraction_rules.xml` 已排除数据库、DataStore、`share` 缓存、导入奖励图标、导入专注图标和待恢复微信读书 Key 文件，核心恢复仍应以 `LocalDataManager` 的手动备份导入导出为准。
 
 ## 测试和检查
 
@@ -306,6 +351,10 @@ adb shell monkey -p com.rrrrz.tinyvow.cn 1
 - ENCOURAGE 积分累计。
 - 奖励兑换和积分扣减。
 - 统计页归档/空状态。
+- 媒体播放补充统计和通知监听权限开关后返回刷新。
+- 步数权限、无传感器设备和步数积分去重。
+- 离线专注开始/暂停/恢复/完成/放弃，普通/严格模式和锁屏策略。
+- 超我模式允许时间、短会话超时、切后台退出和受保护操作拦截。
 - 主题和语言切换后重启。
 - 息屏、后台、厂商自启动/电池限制场景。
 
@@ -374,6 +423,12 @@ Get-Content -Raw -Encoding UTF8 AGENTS.md
 - `app/src/main/java/com/rrrrz/tinyvow/data/repository/DailyArchiveRepository.kt`
 - `app/src/main/java/com/rrrrz/tinyvow/data/repository/PointsRepository.kt`
 - `app/src/main/java/com/rrrrz/tinyvow/data/special/SpecialAppUsageRepository.kt`
+- `app/src/main/java/com/rrrrz/tinyvow/data/media/MediaAppPlaybackRepository.kt`
+- `app/src/main/java/com/rrrrz/tinyvow/data/media/MediaAppPlaybackAccountant.kt`
+- `app/src/main/java/com/rrrrz/tinyvow/data/repository/OfflineFocusRepository.kt`
+- `app/src/main/java/com/rrrrz/tinyvow/data/steps/StepTrackingRepository.kt`
+- `app/src/main/java/com/rrrrz/tinyvow/data/supermode/SuperModeController.kt`
+- `app/src/main/java/com/rrrrz/tinyvow/data/privacy/LocalDataManager.kt`
 - `app/src/main/java/com/rrrrz/tinyvow/data/settings/ManagedAppPreferences.kt`
 - `app/src/main/java/com/rrrrz/tinyvow/i18n/AppText.kt`
 - `app/src/main/java/com/rrrrz/tinyvow/ui/home/HomeScreen.kt`
@@ -381,6 +436,8 @@ Get-Content -Raw -Encoding UTF8 AGENTS.md
 - `app/src/main/res/values/app_texts.xml`
 - `app/src/main/res/values-zh-rCN/app_texts.xml`
 - `app/src/main/res/xml/accessibility_service_config.xml`
+- `app/src/main/res/xml/backup_rules.xml`
+- `app/src/main/res/xml/data_extraction_rules.xml`
 
 ## 渠道包规则
 

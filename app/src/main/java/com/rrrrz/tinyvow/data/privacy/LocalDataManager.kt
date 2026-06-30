@@ -7,6 +7,7 @@ import com.rrrrz.tinyvow.BuildConfig
 import com.rrrrz.tinyvow.data.activation.LocalActivationSubscriptionRepository
 import com.rrrrz.tinyvow.data.auth.LocalAuthRepository
 import com.rrrrz.tinyvow.data.db.AppDatabase
+import com.rrrrz.tinyvow.data.repository.FocusIconStorage
 import com.rrrrz.tinyvow.data.repository.RewardIconStorage
 import com.rrrrz.tinyvow.data.settings.ManagedAppPreferences
 import com.rrrrz.tinyvow.data.special.WeReadApiKeyStore
@@ -132,6 +133,7 @@ class LocalDataManager(
             LocalAuthRepository.clearStoredSession(context)
             LocalActivationSubscriptionRepository.clearStoredActivationData(context)
             RewardIconStorage.fromContext(context).clearAll()
+            FocusIconStorage.fromContext(context).clearAll()
             WeReadApiKeyStore.deleteStoredKeyMaterial()
             WeReadApiKeyStore.deletePendingRestoredKey(context)
             File(context.cacheDir, "share").deleteRecursively()
@@ -215,7 +217,7 @@ class LocalDataManager(
     }
 
     private fun restoreDataStoreFiles(unzipRoot: File) {
-        val targetDir = File(context.filesDir.parentFile, "datastore").apply { mkdirs() }
+        val targetDir = dataStoreDirectory(context).apply { mkdirs() }
         listOf(
             "managed_app_preferences.preferences_pb",
             "auth_preferences.preferences_pb",
@@ -289,8 +291,13 @@ class LocalDataManager(
         const val MAX_BACKUP_ENTRY_BYTES = 64L * 1024L * 1024L
         const val MAX_BACKUP_ZIP_ENTRIES = 5_000
 
+        fun dataStoreDirectory(context: Context): File = File(context.filesDir, "datastore")
+
         fun dataStoreFile(context: Context, name: String): File =
-            File(File(context.filesDir.parentFile, "datastore"), "$name.preferences_pb")
+            File(dataStoreDirectory(context), "$name.preferences_pb")
+
+        internal fun dataStoreFile(filesDir: File, name: String): File =
+            File(File(filesDir, "datastore"), "$name.preferences_pb")
 
         fun countFiles(file: File): Int =
             when {

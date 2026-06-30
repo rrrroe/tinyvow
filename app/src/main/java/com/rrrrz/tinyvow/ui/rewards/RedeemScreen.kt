@@ -515,9 +515,10 @@ fun RewardInventoryScreen(
         }
     }
 
-    if (useReward != null && useTargetType != null) {
-        val reward = useReward!!
-        val targetGroups = if (useTargetType == GroupType.CONTROL) controlGroups else encourageGroups
+    val selectedReward = useReward
+    val selectedTargetType = useTargetType
+    if (selectedReward != null && selectedTargetType != null) {
+        val targetGroups = if (selectedTargetType == GroupType.CONTROL) controlGroups else encourageGroups
         AlertDialog(
             onDismissRequest = {
                 useReward = null
@@ -532,9 +533,9 @@ fun RewardInventoryScreen(
                     targetGroups.forEach { group ->
                         TargetGroupRow(
                             group = group,
-                            reward = reward,
+                            reward = selectedReward,
                             onClick = {
-                                onUseReward(reward, group.group.id)
+                                onUseReward(selectedReward, group.group.id)
                                 useReward = null
                                 useTargetType = null
                             },
@@ -706,7 +707,7 @@ private fun CompactPointsSummaryCard(userPoints: Double) {
                     color = themeColors.inkMuted,
                 )
                 Text(
-                    text = "%.1f PT".format(userPoints),
+                    text = AppText.t("redeem_points_balance_value", userPoints),
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.SemiBold,
                     color = themeColors.base,
@@ -826,7 +827,7 @@ private fun StoreRewardItemCard(
                 )
             }
             RewardPricePill(
-                text = "${reward.pointCost} PT",
+                text = AppText.t("redeem_points_cost_value", reward.pointCost),
                 enabled = canPurchase,
                 onClick = onPurchase,
             )
@@ -1609,7 +1610,7 @@ private fun RedemptionHistoryItem(record: RedemptionHistoryEntity) {
         title = record.localizedRewardTitle(),
         timestamp = dateFormatter.format(Date(record.redeemedAt)),
         subtitle = subtitle,
-        trailing = "-${record.pointCost} PT",
+        trailing = AppText.t("redeem_points_spent_value", record.pointCost),
         trailingColor = MaterialTheme.colorScheme.error,
     )
 }

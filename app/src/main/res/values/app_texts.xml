@@ -973,7 +973,7 @@
     <string name="lab_focus_history_save">Save focus record</string>
     <string name="lab_focus_history_invalid">Some fields are invalid. Required millis and numeric fields must be numbers.</string>
     <string name="lab_home_activity_rings_test">Home three-ring test</string>
-    <string name="lab_home_activity_rings_test_description">Preview the exact home ring component with editable percentages, including over-100% cap overlap.</string>
+    <string name="lab_home_activity_rings_test_description">Preview the exact home ring component with editable percentages, including over-100%% cap overlap.</string>
     <string name="lab_home_activity_rings_value">Vow %1$d%% · Focus %2$d%% · Growth %3$d%%</string>
     <string name="lab_xiaoyuzhou_monitor_title">Xiaoyuzhou playback monitor</string>
     <string name="lab_xiaoyuzhou_monitor_description">Experimental local monitor for Xiaoyuzhou. It uses Android notification listener access and MediaSession status to test whether play, pause, background, and screen-off playback can be detected on this phone.</string>
@@ -1035,7 +1035,7 @@
     <string name="welcome_intro_encourage_title">Focus better time</string>
     <string name="welcome_intro_encourage_body">Track reading, learning, or focus apps and turn useful minutes into points.</string>
     <string name="welcome_intro_rewards_title">Trade points for rewards</string>
-    <string name="welcome_intro_rewards_body">Use earned points for time packs, passes, and custom offline rewards.</string>
+    <string name="welcome_intro_rewards_body">Use earned points for time packs, period reminder skips, and custom offline rewards.</string>
     <string name="welcome_intro_reports_title">Review your rhythm</string>
     <string name="welcome_intro_reports_body">Daily reports, trends, and history help you see what changed over time.</string>
     <string name="welcome_intro_local_first_note">Tiny Vow is local-first. Your vows, history, points, rewards, and themes stay on this device unless you choose to export or clear them.</string>
@@ -1060,7 +1060,7 @@
     <string name="welcome_intro_page_encourage_point_goal">Reaching a goal gives you a small reward.</string>
     <string name="welcome_intro_page_encourage_point_special">Apps like WeRead can record reading time when configured.</string>
     <string name="welcome_intro_page_rewards_title">Make change easier to keep</string>
-    <string name="welcome_intro_page_rewards_body">Willpower alone gets tired. You can spend points on time packs, passes, or a real-life reward you define for yourself.</string>
+    <string name="welcome_intro_page_rewards_body">Willpower alone gets tired. You can spend points on time packs, period reminder skips, or a real-life reward you define for yourself.</string>
     <string name="welcome_intro_page_rewards_point_inventory">Points can unlock built-in rewards.</string>
     <string name="welcome_intro_page_rewards_point_custom">You can also create your own offline treats.</string>
     <string name="welcome_intro_page_rewards_point_reports">Reports help you look back: where time went, and how much you took back.</string>
@@ -1232,6 +1232,9 @@
     <string name="redeem_config_builtin_subtitle">%1$d PT</string>
     <string name="redeem_config_custom_subtitle">%1$d PT</string>
     <string name="redeem_action_redeem">Redeem · %1$s PT</string>
+    <string name="redeem_points_balance_value">%1$.1f PT</string>
+    <string name="redeem_points_cost_value">%1$d PT</string>
+    <string name="redeem_points_spent_value">-%1$d PT</string>
     <string name="redeem_archive_custom_reward">Archive</string>
     <string name="redeem_archive_custom_reward_confirmation">Archive "%1$s"? It will no longer appear in the store.</string>
     <string name="redeem_archived_reward">Archived reward</string>
@@ -1413,12 +1416,12 @@
     <string name="home_activity_ring_detail_focus_target">Focus / target</string>
     <string name="home_activity_ring_detail_steps_pair">%1$s / %2$s steps</string>
     <string name="home_activity_ring_detail_groups">Groups counted</string>
-    <string name="home_activity_ring_detail_period_pass">Period pass</string>
+    <string name="home_activity_ring_detail_period_pass">Period reminder skip</string>
     <string name="home_activity_ring_detail_group_count">%1$d groups</string>
     <string name="home_activity_ring_detail_duration_pair">%1$s / %2$s</string>
     <string name="home_activity_ring_detail_points_pair">%1$s / %2$s pts</string>
     <string name="home_activity_ring_detail_no_data">Create a matching group to start this ring.</string>
-    <string name="home_activity_ring_control_formula">Vow uses only the vow group\'s base limit; extra-time cards, emergency unlocks, and period passes do not count. Before 20:00, Vow = progress toward the 20:00 close × vow health. Vow health stays at 100% while usage is no higher than the on-pace allowance; when usage runs ahead, it is reduced by on-pace usage ÷ actual usage. After 20:00, the ring is closed if usage stays within the base limit; over-limit usage becomes base limit ÷ actual usage. Multiple groups are averaged.</string>
+    <string name="home_activity_ring_control_formula">Vow uses only the vow group\'s base limit; extra-time cards, emergency buffers, and period reminder skips do not count. Before 20:00, Vow = progress toward the 20:00 close × vow health. Vow health stays at 100% while usage is no higher than the on-pace allowance; when usage runs ahead, it is reduced by on-pace usage ÷ actual usage. After 20:00, the ring is closed if usage stays within the base limit; over-limit usage becomes base limit ÷ actual usage. Multiple groups are averaged.</string>
     <string name="home_activity_ring_encourage_formula">Focus = each focus group\'s current-period usage ÷ its target time, averaged across groups.</string>
     <string name="home_activity_ring_growth_formula">Growth = points earned today ÷ the points expected from reaching today\'s focus targets.</string>
     <string name="home_activity_ring_steps_formula">Steps = today\'s local step count ÷ the reward threshold set in Ring settings.</string>
@@ -1603,7 +1606,7 @@
     <string name="stats_remaining_value_2">Remaining %1$s</string>
     <string name="stats_remaining_short">Left</string>
     <string name="stats_report_poster_preview">Report poster preview</string>
-    <string name="stats_reward_pass_used">Pass used</string>
+    <string name="stats_reward_pass_used">Reminder skip used</string>
     <string name="stats_sat">Sat</string>
     <string name="stats_share">Share</string>
     <string name="stats_share_preview">Share preview</string>
@@ -1820,6 +1823,9 @@
     <string name="group_loading_app_list">Loading app list...</string>
     <string name="group_monthly_limit_label">Monthly</string>
     <string name="group_name_placeholder">Vow name (for example: games, video)</string>
+    <string name="group_edit_name_required">Enter a vow name before the save checkmark becomes available.</string>
+    <string name="group_edit_limit_required">Goal / limit must be a minute value from 1 to 1440.</string>
+    <string name="group_edit_points_required">Points per minute must be a number, for example 0.1.</string>
     <string name="group_points_value">%1$s pts</string>
     <string name="group_record_days_label">Recorded days</string>
     <string name="group_target_limit_label">Goal / limit</string>
@@ -2041,6 +2047,8 @@
     <string name="pro_group_app_limit_status">Selected %1$d / %2$d apps</string>
     <string name="pro_report_locked_title">Pro report insights</string>
     <string name="pro_report_locked_subtitle">Open trends, heatmaps, comparisons, behavior analysis, and complete weekly/monthly/yearly windows.</string>
+    <string name="pro_locked_preview_title">Pro unlocks the full view</string>
+    <string name="pro_locked_preview_subtitle">Preview only. Upgrade to read, interact with, and share this module.</string>
     <string name="pro_report_preview_label_1">Trend</string>
     <string name="pro_report_preview_label_2">Heatmap</string>
     <string name="pro_report_preview_label_3">Ranking</string>
@@ -2104,7 +2112,7 @@
     <string name="pro_compare_fixed_window">Default window only</string>
     <string name="pro_compare_custom_window">Custom editable window</string>
     <string name="ledger_redeemed_time_add">Purchased extra time item</string>
-    <string name="ledger_redeemed_period_pass">Purchased period pass</string>
+    <string name="ledger_redeemed_period_pass">Purchased period reminder skip</string>
     <string name="ledger_redeemed_emergency_unlock">Purchased temporary buffer</string>
     <string name="ledger_redeemed_streak_shield">Purchased streak shield</string>
     <string name="ledger_redeemed_double_points_day">Purchased daily double points</string>
@@ -2149,26 +2157,26 @@
     <string name="redeem_error_double_points_already_active">This focus already has double points today.</string>
     <string name="redeem_error_already_completed">Already completed this period.</string>
     <string name="redeem_effect_pending_time_add">%1$s will gain +%2$d minutes.</string>
-    <string name="redeem_effect_pending_period_pass">%1$s reminders will pause for this period.</string>
+    <string name="redeem_effect_pending_period_pass">%1$s will skip over-limit reminders for this period, while usage is still recorded.</string>
     <string name="redeem_effect_pending_double_points_day">%1$s will earn double points today.</string>
     <string name="redeem_effect_undo">Undo</string>
     <string name="redeem_effect_confirmed">Item effect confirmed.</string>
     <string name="redeem_effect_canceled">Item use undone.</string>
     <string name="redeem_use_success_time_add">%1$s gained +%2$d minutes.</string>
-    <string name="redeem_use_success_period_pass">%1$s reminders are paused for this period.</string>
+    <string name="redeem_use_success_period_pass">%1$s will skip over-limit reminders this period. Usage is still recorded.</string>
     <string name="redeem_use_success_double_points_day">%1$s earns double points today.</string>
     <string name="redeem_use_success_emergency_unlock">%1$s received a %2$d-minute buffer.</string>
     <string name="redeem_rule_bind_control_group">Use on 1 vow.</string>
-    <string name="redeem_rule_current_period_manual_use">Pause reminders for 1 vow this period.</string>
+    <string name="redeem_rule_current_period_manual_use">Skip over-limit reminders this period; stats still record usage.</string>
     <string name="redeem_rule_overlay_use_only">Use once when a vow reminder appears.</string>
     <string name="redeem_rule_review_then_confirm">Offset 1 streak break.</string>
     <string name="redeem_rule_double_points_day">Double points for 1 focus today.</string>
     <string name="redeem_rule_keep_in_inventory">Keep it in your items.</string>
     <string name="redeem_use_rule_time_add">Add time for 1 %1$s vow.</string>
-    <string name="redeem_use_rule_period_pass">Pause reminders for 1 %1$s vow.</string>
+    <string name="redeem_use_rule_period_pass">Skip over-limit reminders for 1 %1$s vow this period.</string>
     <string name="redeem_use_rule_double_points_day">Double one focus item\'s gains today.</string>
     <string name="redeem_history_purchase_time_add">Bought +%1$d min</string>
-    <string name="redeem_history_purchase_period_pass">Bought free pass</string>
+    <string name="redeem_history_purchase_period_pass">Bought period reminder skip</string>
     <string name="redeem_history_purchase_emergency_unlock">Bought temporary buffer %1$d min</string>
     <string name="redeem_history_streak_shield">Streak shield item</string>
     <string name="redeem_history_purchase_double_points_day">Bought daily double points</string>
@@ -2176,7 +2184,7 @@
     <string name="redeem_use_history_empty">No item has been used yet.</string>
     <string name="redeem_use_history_used">Used</string>
     <string name="redeem_use_history_time_add">%1$s +%2$d min</string>
-    <string name="redeem_use_history_period_pass">%1$s current period free pass</string>
+    <string name="redeem_use_history_period_pass">%1$s period reminder skip</string>
     <string name="redeem_use_history_emergency_unlock">%1$s buffered for %2$d min</string>
     <string name="redeem_use_history_streak_shield_control">Saved a vow streak break.</string>
     <string name="redeem_use_history_streak_shield_encourage">Saved a gains streak break.</string>
@@ -2186,7 +2194,7 @@
     <string name="redeem_effects_active_count">%1$d active</string>
     <string name="redeem_effects_active_empty">No item effect is active.</string>
     <string name="redeem_effects_active_time_add">%1$s +%2$d min</string>
-    <string name="redeem_effects_active_period_pass">%1$s pass this period</string>
+    <string name="redeem_effects_active_period_pass">%1$s reminder skip this period</string>
     <string name="redeem_effects_active_emergency_unlock">%1$s temporary buffer %2$d min</string>
     <string name="redeem_effects_active_double_points">%1$s %2$sx points</string>
     <string name="redeem_effects_active_streak_shield">Streak shield ready</string>
@@ -2208,8 +2216,8 @@
     <string name="reward_time_add_30_description">Add time to 1 vow.</string>
     <string name="reward_time_add_60_title">Extra 60 minutes</string>
     <string name="reward_time_add_60_description">Add time to 1 vow.</string>
-    <string name="reward_period_pass_title">Period Buffer</string>
-    <string name="reward_period_pass_description">Pause reminders for 1 vow this period.</string>
+    <string name="reward_period_pass_title">Period Reminder Skip</string>
+    <string name="reward_period_pass_description">Skip over-limit reminders for 1 vow this period. Usage and stats are still recorded.</string>
     <string name="reward_emergency_unlock_10_title">Temporary buffer 10 min</string>
     <string name="reward_emergency_unlock_10_description">When a vow reminder appears, give yourself a 10-minute buffer.</string>
     <string name="reward_streak_shield_control_title">Save Vow Streak</string>
@@ -2221,7 +2229,7 @@
     <string name="generic_ok">OK</string>
     <string name="settings_title">Settings</string>
     <string name="super_mode_title">Super Mode</string>
-    <string name="super_mode_sheet_summary">Only the clear-headed version of you can pass through here. Sensitive edits and time-related purchases require Super Mode.</string>
+    <string name="super_mode_sheet_summary">Super Mode is not another blocking rule. It adds a local password only before rule changes and limit-bypassing purchases, so impulse does not quietly loosen your vows.</string>
     <string name="super_mode_setup_short">Set up Super Mode</string>
     <string name="super_mode_enter_short">Enter Super Mode</string>
     <string name="super_mode_active_short">Super Mode On</string>
@@ -2230,7 +2238,7 @@
     <string name="super_mode_current_time_label">Current local time</string>
     <string name="super_mode_window_label">Daily action window</string>
     <string name="super_mode_auto_exit_label">Auto exit</string>
-    <string name="super_mode_auto_exit_summary">5 minutes idle, app background, or outside the allowed window</string>
+    <string name="super_mode_auto_exit_summary">Exits after 5 idle minutes, app backgrounding, or leaving the allowed window</string>
     <string name="super_mode_recovery_question_label">Recovery question</string>
     <string name="super_mode_recovery_answer_label">Recovery answer</string>
     <string name="super_mode_configure_action">Configure Super Mode</string>
@@ -2241,12 +2249,12 @@
     <string name="super_mode_edit_window_action">Edit allowed window</string>
     <string name="super_mode_reset_with_recovery_action">Reset with recovery answer</string>
     <string name="super_mode_disable_action">Disable Super Mode</string>
-    <string name="super_mode_protection_toggle_label">Protection switch</string>
-    <string name="super_mode_protection_toggle_summary">Turn sensitive-action protection on or off. Default is off after setup.</string>
+    <string name="super_mode_protection_toggle_label">Protect key actions</string>
+    <string name="super_mode_protection_toggle_summary">When on, editing or deleting vows, changing Super Mode, and buying time-related items require the password during the allowed window.</string>
     <string name="super_mode_window_pro_only">Pro only: customize the allowed window.</string>
     <string name="super_mode_edit_credentials_title">Update Super Mode credentials</string>
     <string name="super_mode_configure_title">Configure Super Mode</string>
-    <string name="super_mode_credentials_hint">Create a password you set while fully awake, plus a recovery question for local reset.</string>
+    <string name="super_mode_credentials_hint">Create a password used only for key actions on this device, plus a recovery question. It is not a login password and is not uploaded.</string>
     <string name="super_mode_password_label">Password</string>
     <string name="super_mode_password_confirm_label">Confirm password</string>
     <string name="super_mode_password_too_short">Use at least 4 characters for the password.</string>
@@ -2254,9 +2262,9 @@
     <string name="super_mode_fill_all_required">Fill in every required field before saving.</string>
     <string name="super_mode_enter_title">Super Mode password</string>
     <string name="super_mode_enter_hint">Enter your preset Super Mode password.</string>
-    <string name="super_mode_enter_for_action">Enter your Super Mode password to continue: %1$s</string>
-    <string name="super_mode_enter_for_settings">Enter your Super Mode password to activate this session.</string>
-    <string name="super_mode_enter_from_home">Enter your Super Mode password to activate a short session.</string>
+    <string name="super_mode_enter_for_action">This action is protected by Super Mode: %1$s. Enter the password to start a 5-minute session.</string>
+    <string name="super_mode_enter_for_settings">Enter your Super Mode password to start a 5-minute session before changing key settings.</string>
+    <string name="super_mode_enter_from_home">Enter your Super Mode password to temporarily unlock protected key actions.</string>
     <string name="super_mode_enter_to_edit_credentials">Enter Super Mode to change the password or recovery question.</string>
     <string name="super_mode_enter_to_edit_window">Enter Super Mode to edit the allowed window.</string>
     <string name="super_mode_enter_to_disable">Enter Super Mode to disable this protection.</string>
@@ -2264,7 +2272,7 @@
     <string name="super_mode_exit_success">Super Mode has exited.</string>
     <string name="super_mode_password_incorrect">Password incorrect. Try again.</string>
     <string name="super_mode_unavailable_title">Super Mode is unavailable right now</string>
-    <string name="super_mode_unavailable_body">You can only enter Super Mode during the allowed local time window.</string>
+    <string name="super_mode_unavailable_body">This is outside your daily action window. Wait until the allowed time before entering the password to change key settings or buy time-related items.</string>
     <string name="super_mode_current_time_value">Current time: %1$s</string>
     <string name="super_mode_allowed_window_value">Allowed window: %1$s</string>
     <string name="super_mode_setup_required_title">Super Mode is not configured yet</string>
@@ -2275,7 +2283,7 @@
     <string name="super_mode_recovery_answer_incorrect">Recovery answer incorrect.</string>
     <string name="super_mode_reset_success">Super Mode has been reset. Configure it again to keep using protection.</string>
     <string name="super_mode_window_dialog_title">Edit allowed window</string>
-    <string name="super_mode_window_dialog_body">Super Mode can only be entered and key settings can only be changed between these two local times. Cross-midnight windows are not supported in this version.</string>
+    <string name="super_mode_window_dialog_body">You can enter the Super Mode password only during this local time window, which helps prevent late-night or impulsive rule changes. Cross-midnight windows are not supported in this version.</string>
     <string name="super_mode_window_start_label">Start time</string>
     <string name="super_mode_window_end_label">End time</string>
     <string name="super_mode_hour_label">Hour</string>
@@ -2301,13 +2309,13 @@
     <string name="super_mode_action_edit_custom_reward">edit a custom reward</string>
     <string name="super_mode_action_edit_reward_price">change a reward price</string>
     <string name="super_mode_action_purchase_time_add">buy extra time</string>
-    <string name="super_mode_action_purchase_period_pass">buy a free pass</string>
+    <string name="super_mode_action_purchase_period_pass">buy a period reminder skip</string>
     <string name="super_mode_action_purchase_emergency_unlock">buy a temporary buffer</string>
     <string name="super_mode_info_title">Super Mode</string>
-    <string name="super_mode_info_body">Super Mode adds local protection to key settings. During the daily action window, enter a short session to edit vows, disable protection, or buy limit-changing items.</string>
+    <string name="super_mode_info_body">Super Mode does not change app limits and does not replace accessibility reminders. It only protects actions that change your rules: enter the local password during the allowed window before continuing.</string>
     <string name="super_mode_short_session_label">Short session</string>
     <string name="super_mode_short_session_inactive">Not entered</string>
-    <string name="super_mode_info_protected_actions">Protected actions: edit or delete vows, change Super Mode, disable protection, and buy time packs, period passes, or emergency buffers.</string>
+    <string name="super_mode_info_protected_actions">Protected actions: edit or delete vows, change or disable Super Mode, and buy time packs, period reminder skips, or emergency buffers.</string>
     <string name="super_mode_info_open_settings">Open settings</string>
     <string name="history_tag_key_setting_changes">Key changes %1$d</string>
     <string name="history_key_setting_changes">Key changes</string>
@@ -2503,6 +2511,13 @@
     <string name="offline_focus_timeline">Focus timeline</string>
     <string name="offline_focus_rhythm_title">Focus rhythm</string>
     <string name="offline_focus_rhythm_subtitle">A day-long time band that shows where serious effort happened.</string>
+    <string name="offline_focus_marks_title">Focus Marks</string>
+    <string name="offline_focus_marks_subtitle">Each square is 5 minutes of focused effort during the day.</string>
+    <string name="offline_focus_rhythm_longest_focus">Longest focus</string>
+    <string name="offline_focus_rhythm_active_hours">Active hours</string>
+    <string name="offline_focus_rhythm_active_hours_value">%1$d h</string>
+    <string name="offline_focus_rhythm_category_count">Types</string>
+    <string name="offline_focus_rhythm_category_count_value">%1$d types</string>
     <string name="offline_focus_category_breakdown">Category breakdown</string>
     <string name="offline_focus_category_minutes_format">%1$s %2$d min</string>
     <string name="offline_focus_notification_channel_name">Focus timer</string>

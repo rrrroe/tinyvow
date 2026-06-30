@@ -57,6 +57,15 @@ class LocalBackupImportValidationTest {
     }
 
     @Test
+    fun dataStoreFile_matchesPreferencesDataStoreFilesDirectory() {
+        val filesDir = temp.newFolder("files")
+
+        val file = LocalDataManager.dataStoreFile(filesDir, "managed_app_preferences")
+
+        assertTrue(file.path.endsWith("files${File.separator}datastore${File.separator}managed_app_preferences.preferences_pb"))
+    }
+
+    @Test
     fun copyWithLimit_rejectsOversizedBackupFile() {
         assertIllegalArgument {
             copyWithLimit(

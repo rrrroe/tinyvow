@@ -1091,9 +1091,10 @@ private fun GroupEditDialog(
     var showDeleteConfirm by remember { mutableStateOf(false) }
     val appLimit = ProFeatureGate.limits(isProActive).appsPerGroupLimit
 
-    val canSaveBase = groupName.trim().isNotBlank() &&
-        (limitText.toIntOrNull()?.coerceIn(1, 1440) != null) &&
-        (forcedType != GroupType.ENCOURAGE || pointRateText.toDoubleOrNull() != null)
+    val nameInvalid = groupName.trim().isBlank()
+    val limitInvalid = limitText.toIntOrNull()?.let { it !in 1..1440 } ?: true
+    val pointRateInvalid = forcedType == GroupType.ENCOURAGE && pointRateText.toDoubleOrNull() == null
+    val canSaveBase = !nameInvalid && !limitInvalid && !pointRateInvalid
     val savedPackageCount = selectedPackages.size
     val appCountAllowed = ProFeatureGate.canSaveGroupApps(isProActive, savedPackageCount)
     val canSave = canSaveBase && appCountAllowed
@@ -1203,6 +1204,20 @@ private fun GroupEditDialog(
                     keyboardType = KeyboardType.Text,
                     textAlign = TextAlign.Start
                 )
+                val validationMessage = when {
+                    nameInvalid -> AppText.t("group_edit_name_required")
+                    limitInvalid -> AppText.t("group_edit_limit_required")
+                    pointRateInvalid -> AppText.t("group_edit_points_required")
+                    else -> null
+                }
+                if (validationMessage != null) {
+                    Text(
+                        text = validationMessage,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.padding(horizontal = 4.dp),
+                    )
+                }
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
