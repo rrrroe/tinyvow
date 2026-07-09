@@ -49,6 +49,8 @@ class ProFeatureGateTest {
         assertTrue(ProFeatureGate.canSelectTheme(true, "member_aurora_pro"))
         assertFalse(ProFeatureGate.canViewAdvancedReports(false))
         assertTrue(ProFeatureGate.canViewAdvancedReports(true))
+        assertFalse(ProFeatureGate.canUseLockScreenTimerApps(false))
+        assertTrue(ProFeatureGate.canUseLockScreenTimerApps(true))
     }
 
     @Test

@@ -33,7 +33,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -66,6 +65,7 @@ import com.rrrrz.tinyvow.service.media.XiaoyuzhouPlaybackMonitor
 import com.rrrrz.tinyvow.service.media.XiaoyuzhouPlaybackSnapshot
 import com.rrrrz.tinyvow.service.media.XiaoyuzhouPlaybackStatus
 import com.rrrrz.tinyvow.ui.theme.LocalThemeColors
+import com.rrrrz.tinyvow.ui.theme.TinyVowDetailScaffold
 import com.rrrrz.tinyvow.ui.theme.TinyVowSpacing
 import kotlinx.coroutines.delay
 import java.time.Instant
@@ -92,34 +92,14 @@ fun LaboratoryScreen(
     onBack: () -> Unit,
 ) {
     val themeColors = LocalThemeColors.current
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        text = AppText.t("lab_laboratory_debug_tools"),
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.SemiBold,
-                        color = themeColors.inkStrong,
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = AppText.t("group_back"))
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    scrolledContainerColor = MaterialTheme.colorScheme.surface,
-                ),
-            )
-        },
-    ) { padding ->
+    TinyVowDetailScaffold(
+        title = AppText.t("lab_laboratory_debug_tools"),
+        onBack = onBack,
+        navigationContentDescription = AppText.t("group_back"),
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(padding)
                 .padding(
                     horizontal = TinyVowSpacing.PageHorizontal,
                     vertical = TinyVowSpacing.PageTop,
@@ -753,32 +733,15 @@ fun OfflineFocusHistoryEditorScreen(
             ledgerOccurredAt = ledgerOccurredAt,
         )
 
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        text = AppText.t("lab_focus_history_editor_title"),
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.SemiBold,
-                        color = themeColors.inkStrong,
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = AppText.t("group_back"))
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.surface),
-            )
-        },
-    ) { padding ->
+    TinyVowDetailScaffold(
+        title = AppText.t("lab_focus_history_editor_title"),
+        onBack = onBack,
+        navigationContentDescription = AppText.t("group_back"),
+    ) {
         Column(
             modifier =
                 Modifier
                     .fillMaxSize()
-                    .padding(padding)
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = TinyVowSpacing.PageHorizontal, vertical = TinyVowSpacing.PageTop),
             verticalArrangement = Arrangement.spacedBy(14.dp),

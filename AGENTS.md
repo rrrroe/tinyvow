@@ -268,6 +268,7 @@
 
 ## Compose 和 UI 约束
 
+- UI 改动前先读根目录 `design.md`，再读 `ui/theme` 和目标页面源码；新增页面或大改页面必须遵守其中的设计方向、token、组件和页面级规则。
 - 现有主导航页：`HOME`、`STATS`、`REWARDS`、`ME`，二级页包含 `LABORATORY`、`HISTORY`、`THEME`、`HELP_FEEDBACK`、`CONTACT_US`。
 - 不新增落地页式 marketing 页面；直接完善实际功能页面。
 - 权限页和敏感权限 disclosure 要表达用途、当前状态、如何开启，不要只放按钮。
@@ -337,11 +338,13 @@
 .\gradlew.bat installDefaultDebug
 ```
 
-安装成功后默认立即启动应用，方便人工检查成果；日常国内 debug 包可运行：
+安装成功后默认立即启动应用，方便人工检查成果；日常国内 debug 包使用确定性启动命令：
 
 ```powershell
-adb shell monkey -p com.rrrrz.tinyvow.cn 1
+adb shell am start -n com.rrrrz.tinyvow.cn/com.rrrrz.tinyvow.MainActivity
 ```
+
+不要用 `adb shell monkey -p com.rrrrz.tinyvow.cn 1` 作为日常启动命令；部分设备上 Monkey 事件可能影响系统方向锁定/自动旋转状态。
 
 修改后进行编译测试，并安装应用，不需要自动实机测试，修改较大或风险较高时提醒人工真机验证，尤其是：
 
@@ -431,6 +434,7 @@ Get-Content -Raw -Encoding UTF8 AGENTS.md
 - `app/src/main/java/com/rrrrz/tinyvow/data/privacy/LocalDataManager.kt`
 - `app/src/main/java/com/rrrrz/tinyvow/data/settings/ManagedAppPreferences.kt`
 - `app/src/main/java/com/rrrrz/tinyvow/i18n/AppText.kt`
+- `design.md`
 - `app/src/main/java/com/rrrrz/tinyvow/ui/home/HomeScreen.kt`
 - `app/src/main/java/com/rrrrz/tinyvow/ui/home/StatsScreen.kt`
 - `app/src/main/res/values/app_texts.xml`
@@ -449,6 +453,7 @@ Get-Content -Raw -Encoding UTF8 AGENTS.md
 - 国内版启动时会确保存在本地账号，并在“我的 > Tiny Vow Pro”显示用户 ID 复制与激活码输入入口。
 - 日常 debug 默认使用国内版：优先运行 `:app:assembleChinaDebug` 或 `:app:installChinaDebug`。
 - 为方便记忆，也可以运行 `:app:assembleDefaultDebug` 或 `:app:installDefaultDebug`，这两个 alias 当前指向国内版。
+- 安装后如需启动国内 debug 包，使用 `adb shell am start -n com.rrrrz.tinyvow.cn/com.rrrrz.tinyvow.MainActivity`，不要用 Monkey 启动。
 - 不要把国内激活码、国内支付或外部购买入口显示在 `googlePlay` flavor 中。
 - 不要在 `china` flavor 中触发 Google 登录、Play Billing 购买、恢复购买或管理订阅流程。
 - 国内版 `SubscriptionRepository` 应使用 `LocalActivationSubscriptionRepository`；Google Play 版使用 `PlayBillingSubscriptionRepository`；其他禁用渠道才用 `NoopSubscriptionRepository`。

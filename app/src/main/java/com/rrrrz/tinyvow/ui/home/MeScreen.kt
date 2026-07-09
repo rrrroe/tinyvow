@@ -75,7 +75,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TimePicker
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberTimePickerState
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -131,8 +130,14 @@ import com.rrrrz.tinyvow.ui.theme.ThemeSeed
 import com.rrrrz.tinyvow.ui.theme.TinyVowButton
 import com.rrrrz.tinyvow.ui.theme.TinyVowButtonTone
 import com.rrrrz.tinyvow.ui.theme.TinyVowCard
+import com.rrrrz.tinyvow.ui.theme.TinyVowDetailScaffold
 import com.rrrrz.tinyvow.ui.theme.TinyVowElevation
+import com.rrrrz.tinyvow.ui.theme.TinyVowPageBackground
 import com.rrrrz.tinyvow.ui.theme.TinyVowRadius
+import com.rrrrz.tinyvow.ui.theme.TinyVowSectionHeader
+import com.rrrrz.tinyvow.ui.theme.TinyVowSettingsDivider
+import com.rrrrz.tinyvow.ui.theme.TinyVowSettingsGroup
+import com.rrrrz.tinyvow.ui.theme.TinyVowSettingsItem
 import com.rrrrz.tinyvow.ui.theme.TinyVowSpacing
 import com.rrrrz.tinyvow.ui.theme.selectedThemeDisplayName
 import java.text.DateFormat
@@ -201,6 +206,8 @@ fun MeScreen(
     onNavigateToLaboratory: () -> Unit,
     onNavigateToHistory: () -> Unit,
     onNavigateToCheckInOverview: () -> Unit,
+    onNavigateToSavedProgressStats: () -> Unit,
+    onNavigateToPointsProgressStats: () -> Unit,
     onNavigateToThemeSettings: () -> Unit,
     onNavigateToAppearanceSettings: () -> Unit,
     onNavigateToLanguageSettings: () -> Unit,
@@ -243,7 +250,6 @@ fun MeScreen(
     val isProMember = isProActive
     val appUsageDays = remember(context) { calculateInstalledDays(context) }
     val currentThemeName = selectedThemeDisplayName(selectedThemeId, customThemes)
-    val hasCustomDisplayName = !profileDisplayName.isNullOrBlank()
     val displayName =
         profileDisplayName
             ?: userSession?.displayName
@@ -255,11 +261,11 @@ fun MeScreen(
     val subtitle: String? =
         when {
             !userSession?.email.isNullOrBlank() -> userSession?.email.orEmpty()
-            isLocalActivationEnabled && !hasCustomDisplayName -> AppText.t("me_local_account_subtitle")
-            isLocalActivationEnabled -> null
+            isLocalActivationEnabled -> AppText.t("me_local_user")
             isGoogleSignInEnabled -> null
             else -> AppText.t("me_china_local_mode_subtitle")
         }
+    val showInlineProMark = isLocalActivationEnabled && userSession?.email.isNullOrBlank()
     val displayAppVersion = userFacingVersionName(appVersionName)
     LaunchedEffect(openBenefitsDialog) {
         if (openBenefitsDialog) {
@@ -268,12 +274,12 @@ fun MeScreen(
         }
     }
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-            .verticalScroll(rememberScrollState())
-    ) {
+    TinyVowPageBackground {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+        ) {
         Box(
             modifier = Modifier
                 .fillMaxWidth()
@@ -309,8 +315,8 @@ fun MeScreen(
                                 style = MaterialTheme.typography.titleLarge,
                                 color = themeColors.onBase,
                             )
-                            if (isProMember) {
-                                ProMemberBadge()
+                            if (showInlineProMark) {
+                                ProMemberBadge(isActive = isProMember)
                             }
                         }
                         subtitle?.takeIf { it.isNotBlank() }?.let {
@@ -380,6 +386,7 @@ fun MeScreen(
                         value = formatMetricNumber(totalSavedMinutes),
                         label = AppText.t("me_total_saved_minutes"),
                         color = themeColors.control,
+                        onClick = onNavigateToSavedProgressStats,
                     )
                     HorizontalDivider(
                         modifier = Modifier
@@ -391,6 +398,7 @@ fun MeScreen(
                         value = formatMetricNumber(totalEarnedPoints.roundToLong()),
                         label = AppText.t("me_total_earned_points"),
                         color = themeColors.encourage,
+                        onClick = onNavigateToPointsProgressStats,
                     )
                     HorizontalDivider(
                         modifier = Modifier
@@ -468,6 +476,9 @@ fun MeScreen(
                     icon = Icons.Default.Timer,
                     title = AppText.t("offline_focus_settings_title"),
                     trailingText = AppText.t("offline_focus_settings_badge"),
+                    titleTrailingContent = {
+                        ProMemberBadge(isActive = isProActive)
+                    },
                     onClick = onNavigateToOfflineFocusSettings,
                 )
             }
@@ -539,6 +550,7 @@ fun MeScreen(
                     )
                 }
             }
+        }
         }
     }
 
@@ -616,7 +628,7 @@ fun AppearanceSettingsScreen(
                 icon = Icons.Default.Settings,
                 title = AppText.t("ring_settings_title"),
                 trailingContent = {
-                    ProMemberBadge()
+                    ProMemberBadge(isActive = isProActive)
                 },
                 onClick = {
                     if (isProActive) {
@@ -1032,10 +1044,7 @@ private const val DEFAULT_RING_CUSTOM_COLOR: Int = 0xFF6B8EF2.toInt()
 
 @Composable
 private fun SettingsDivider() {
-    HorizontalDivider(
-        modifier = Modifier.padding(horizontal = 16.dp),
-        color = MaterialTheme.colorScheme.outlineVariant,
-    )
+    TinyVowSettingsDivider()
 }
 
 @Composable
@@ -1071,30 +1080,22 @@ private fun ProfileAvatar(
 }
 
 @Composable
-fun ProMemberBadge() {
-    Surface(
-        shape = RoundedCornerShape(10.dp),
-        color = ProBadgeGold,
-    ) {
-        Box(modifier = Modifier.padding(2.dp)) {
-            Surface(
-                shape = RoundedCornerShape(8.dp),
-                color = ProBadgeBackground,
-            ) {
-                Text(
-                    text = AppText.t("me_pro_badge"),
-                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-                    style = MaterialTheme.typography.labelMedium,
-                    color = ProBadgeGold,
-                    fontWeight = FontWeight.ExtraBold,
-                )
-            }
-        }
-    }
+fun ProMemberBadge(
+    isActive: Boolean = false,
+    modifier: Modifier = Modifier,
+) {
+    Image(
+        painter = painterResource(
+            if (isActive) {
+                R.drawable.tinyvow_pro_mark_gold
+            } else {
+                R.drawable.tinyvow_pro_mark_gray
+            },
+        ),
+        contentDescription = null,
+        modifier = modifier.size(20.dp),
+    )
 }
-
-private val ProBadgeBackground = Color(0xFF141414)
-private val ProBadgeGold = Color(0xFFE0B84F)
 
 @Composable
 private fun ProfileEditorDialog(
@@ -1605,11 +1606,7 @@ internal fun DayBoundarySettingsPage(
                                 )
                             }
                             if (!enabled) {
-                                Text(
-                                    text = AppText.t("me_pro_badge"),
-                                    style = MaterialTheme.typography.labelMedium,
-                                    color = LocalThemeColors.current.base,
-                                )
+                                ProMemberBadge(isActive = false)
                             }
                         }
                     }
@@ -1754,35 +1751,19 @@ private fun ReminderTimePickerDialog(
     )
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun LanguageSettingsScreen(
     selected: AppLanguage,
     onSelect: (AppLanguage) -> Unit,
     onBack: () -> Unit,
 ) {
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-        topBar = {
-            TopAppBar(
-                title = { Text(AppText.t("selected_language_title")) },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = AppText.t("group_back"))
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    scrolledContainerColor = MaterialTheme.colorScheme.surface,
-                ),
-            )
-        },
-    ) { innerPadding ->
+    TinyVowDetailScaffold(
+        title = AppText.t("selected_language_title"),
+        onBack = onBack,
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background)
-                .padding(innerPadding)
                 .verticalScroll(rememberScrollState())
                 .padding(
                     start = TinyVowSpacing.PageHorizontal,
@@ -1881,35 +1862,14 @@ private fun MeDetailPageScaffold(
     onBack: () -> Unit,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        text = title,
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.SemiBold,
-                        color = LocalThemeColors.current.inkStrong,
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = AppText.t("group_back"))
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    scrolledContainerColor = MaterialTheme.colorScheme.surface,
-                ),
-            )
-        },
-    ) { innerPadding ->
+    TinyVowDetailScaffold(
+        title = title,
+        onBack = onBack,
+        navigationContentDescription = AppText.t("group_back"),
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background)
-                .padding(innerPadding)
                 .verticalScroll(rememberScrollState())
                 .padding(
                     start = TinyVowSpacing.PageHorizontal,
@@ -1948,13 +1908,7 @@ private fun MeSettingsCard(
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val themeColors = LocalThemeColors.current
-    TinyVowCard(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(TinyVowRadius.Card),
-        color = MaterialTheme.colorScheme.surface,
-        borderAlpha = 0.26f,
-        shadowElevation = TinyVowElevation.Card,
-    ) {
+    TinyVowSettingsGroup {
         Column(
             modifier = Modifier.padding(
                 horizontal = TinyVowSpacing.CardHorizontal,
@@ -2029,10 +1983,16 @@ private fun SubscriptionStatusPanel(
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                Text(
-                    text = "Tiny Vow Pro",
-                    style = MaterialTheme.typography.titleMedium,
-                )
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(
+                        text = AppText.t("pro_membership_title"),
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    ProMemberBadge(isActive = isActive)
+                }
                 Text(
                     text = entitlementStatusText(entitlement),
                     style = MaterialTheme.typography.bodySmall,
@@ -2044,7 +2004,11 @@ private fun SubscriptionStatusPanel(
                 horizontalArrangement = Arrangement.spacedBy(10.dp),
             ) {
                 Text(
-                    text = subscriptionPriceSummary(offers, isActive),
+                    text = subscriptionPriceSummary(
+                        offers = offers,
+                        isActive = isActive,
+                        isLocalActivationEnabled = isLocalActivationEnabled,
+                    ),
                     style = MaterialTheme.typography.labelLarge,
                     color = if (isActive) LocalThemeColors.current.encourage else MaterialTheme.colorScheme.primary,
                 )
@@ -2115,9 +2079,14 @@ private fun SubscriptionStatusPanel(
     }
 }
 
-private fun subscriptionPriceSummary(offers: List<SubscriptionOffer>, isActive: Boolean): String =
+private fun subscriptionPriceSummary(
+    offers: List<SubscriptionOffer>,
+    isActive: Boolean,
+    isLocalActivationEnabled: Boolean,
+): String =
     when {
         isActive -> AppText.t("me_unlocked")
+        isLocalActivationEnabled -> AppText.t("pro_price_china_summary")
         offers.size > 1 -> AppText.t("me_subscription_options_count", offers.size)
         offers.size == 1 -> offers.first().price
         else -> AppText.t("me_loading")
@@ -2143,6 +2112,7 @@ private data class ProPricePlan(
 
 private const val PRO_PURCHASE_EMAIL = "rrrr.zhao@qq.com"
 private const val PRO_PURCHASE_WECHAT = "rourourenren222"
+private const val PRO_PURCHASE_XIAOHONGSHU = "rourourenren222"
 private const val PRO_COMPARE_FEATURE_WEIGHT = 0.72f
 private const val PRO_COMPARE_FREE_WEIGHT = 1.02f
 private const val PRO_COMPARE_PRO_WEIGHT = 1.26f
@@ -2215,7 +2185,14 @@ internal fun ProMembershipPage(
                 onClick = { showPurchaseContactDialog = true },
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text(if (isActive) AppText.t("pro_renew_membership") else AppText.t("pro_buy_membership"))
+                Text(
+                    when {
+                        isLocalActivationEnabled && isActive -> AppText.t("pro_renew_early_bird_membership")
+                        isLocalActivationEnabled -> AppText.t("pro_buy_early_bird_membership")
+                        isActive -> AppText.t("pro_renew_membership")
+                        else -> AppText.t("pro_buy_membership")
+                    },
+                )
             }
             if (showSubscriptionActions) {
                 TextButton(onClick = onRestorePurchases, modifier = Modifier.fillMaxWidth()) {
@@ -2332,6 +2309,14 @@ private fun ProPurchaseContactDialog(
                         copiedLabel = AppText.t("pro_purchase_wechat_label")
                     },
                 )
+                ProPurchaseContactRow(
+                    label = AppText.t("pro_purchase_xiaohongshu_label"),
+                    value = PRO_PURCHASE_XIAOHONGSHU,
+                    onCopy = {
+                        clipboard.setText(AnnotatedString(PRO_PURCHASE_XIAOHONGSHU))
+                        copiedLabel = AppText.t("pro_purchase_xiaohongshu_label")
+                    },
+                )
                 copiedLabel?.let { label ->
                     Text(
                         text = AppText.t("pro_purchase_contact_copied", label),
@@ -2393,15 +2378,20 @@ private fun proPricePlans(offers: List<SubscriptionOffer>, isLocalActivationEnab
     if (isLocalActivationEnabled) {
         return listOf(
             ProPricePlan(
+                title = AppText.t("pro_price_monthly"),
+                price = AppText.t("pro_price_china_monthly"),
+                note = AppText.t("pro_price_china_monthly_note"),
+            ),
+            ProPricePlan(
                 title = AppText.t("pro_price_yearly"),
                 price = AppText.t("pro_price_china_yearly"),
                 note = AppText.t("pro_price_china_yearly_note"),
                 highlighted = true,
             ),
             ProPricePlan(
-                title = AppText.t("pro_price_monthly"),
-                price = AppText.t("pro_price_china_monthly"),
-                note = AppText.t("pro_price_china_monthly_note"),
+                title = AppText.t("pro_price_lifetime"),
+                price = AppText.t("pro_price_china_lifetime"),
+                note = AppText.t("pro_price_china_lifetime_note"),
             ),
         )
     }
@@ -3016,68 +3006,63 @@ private fun CheckInDayCell(
 ) {
     val themeColors = LocalThemeColors.current
     val checkedIn = day?.checkedIn == true
-    Column(
-        modifier = modifier,
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(3.dp),
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .aspectRatio(1f)
+            .clickable(enabled = day != null) {
+                day?.let(onClick)
+            },
+        shape = RoundedCornerShape(18.dp),
+        color =
+            if (checkedIn) {
+                lerp(MaterialTheme.colorScheme.surface, themeColors.base, 0.14f).copy(alpha = 0.96f)
+            } else if (day?.isToday == true) {
+                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.36f)
+            } else {
+                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.24f)
+            },
+        border =
+            if (day?.isToday == true) {
+                BorderStroke(1.dp, themeColors.base.copy(alpha = 0.62f))
+            } else if (checkedIn) {
+                BorderStroke(1.dp, themeColors.base.copy(alpha = 0.18f))
+            } else {
+                BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.16f))
+            },
     ) {
-        Surface(
-            modifier = Modifier
-                .fillMaxWidth()
-                .aspectRatio(1f)
-                .clickable(enabled = day != null) {
-                    day?.let(onClick)
-                },
-            shape = RoundedCornerShape(18.dp),
-            color =
-                if (checkedIn) {
-                    lerp(MaterialTheme.colorScheme.surface, themeColors.base, 0.14f).copy(alpha = 0.96f)
-                } else if (day?.isToday == true) {
-                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.36f)
-                } else {
-                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.24f)
-                },
-            border =
-                if (day?.isToday == true) {
-                    BorderStroke(1.dp, themeColors.base.copy(alpha = 0.62f))
-                } else if (checkedIn) {
-                    BorderStroke(1.dp, themeColors.base.copy(alpha = 0.18f))
-                } else {
-                    BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.16f))
-                },
-        ) {
-            if (day != null) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(5.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    CheckInStatusRing(
-                        controlProgress = day.activityControlProgress,
-                        encourageProgress = day.activityEncourageProgress,
-                        growthProgress = day.activityGrowthProgress,
-                        controlAvailable = day.activityControlAvailable,
-                        encourageAvailable = day.activityEncourageAvailable,
-                        growthAvailable = day.activityGrowthAvailable,
-                        markSize = 34.dp,
-                    )
-                }
+        if (day != null) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(5.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                CheckInStatusRing(
+                    controlProgress = day.activityControlProgress,
+                    encourageProgress = day.activityEncourageProgress,
+                    growthProgress = day.activityGrowthProgress,
+                    controlAvailable = day.activityControlAvailable,
+                    encourageAvailable = day.activityEncourageAvailable,
+                    growthAvailable = day.activityGrowthAvailable,
+                    markSize = 34.dp,
+                )
+                Text(
+                    text = day.date.dayOfMonth.toString(),
+                    modifier = Modifier.align(Alignment.Center),
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Black,
+                    color =
+                        if (day.hasArchivedSignals || checkedIn || day.isToday) {
+                            themeColors.inkStrong.copy(alpha = 0.20f)
+                        } else {
+                            themeColors.inkMuted.copy(alpha = 0.13f)
+                        },
+                    minLines = 1,
+                    maxLines = 1,
+                )
             }
         }
-        Text(
-            text = day?.date?.dayOfMonth?.toString().orEmpty(),
-            style = MaterialTheme.typography.labelSmall,
-            fontWeight = if (day?.isToday == true) FontWeight.Bold else FontWeight.Medium,
-            color =
-                if (day?.hasArchivedSignals == true || day?.checkedIn == true || day?.isToday == true) {
-                    themeColors.inkStrong
-                } else {
-                    themeColors.inkMuted.copy(alpha = 0.54f)
-                },
-            minLines = 1,
-            maxLines = 1,
-        )
     }
 }
 
@@ -3337,18 +3322,9 @@ private fun formatReminderTime(minutes: Int): String =
 
 @Composable
 fun MeMenuSection(title: String, content: @Composable ColumnScope.() -> Unit) {
-    val themeColors = LocalThemeColors.current
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(
-            title,
-            modifier = Modifier.padding(start = 8.dp, bottom = 4.dp),
-            style = MaterialTheme.typography.labelMedium,
-            color = themeColors.inkFaint,
-        )
-        TinyVowCard(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(TinyVowRadius.Card),
-        ) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        TinyVowSectionHeader(title = title)
+        TinyVowSettingsGroup {
             Column(content = content)
         }
     }
@@ -3396,51 +3372,41 @@ fun MeMenuItem(
     onClick: () -> Unit,
     color: Color = MaterialTheme.colorScheme.onSurface,
     trailingText: String? = null,
+    titleTrailingContent: (@Composable () -> Unit)? = null,
     trailingContent: (@Composable () -> Unit)? = null,
 ) {
     val themeColors = LocalThemeColors.current
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Box(
-            modifier = Modifier
-                .size(36.dp)
-                .clip(RoundedCornerShape(10.dp))
-                .background(MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.70f)),
-            contentAlignment = Alignment.Center,
-        ) {
+    val resolvedIconColor = if (color == MaterialTheme.colorScheme.onSurface) themeColors.base else color
+    TinyVowSettingsItem(
+        icon = icon,
+        title = title,
+        iconContainerColor = resolvedIconColor.copy(alpha = 0.12f),
+        iconContentColor = resolvedIconColor,
+        onClick = onClick,
+        titleTrailing = titleTrailingContent?.let { content ->
+            { content() }
+        },
+        trailing = {
+            trailingText?.takeIf { it.isNotBlank() }?.let {
+                Text(
+                    text = it,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = themeColors.inkFaint,
+                    maxLines = 1,
+                )
+                Spacer(Modifier.width(8.dp))
+            }
+            trailingContent?.let {
+                it()
+                Spacer(Modifier.width(8.dp))
+            }
             Icon(
-                icon,
+                Icons.AutoMirrored.Filled.KeyboardArrowRight,
                 contentDescription = null,
-                modifier = Modifier.size(20.dp),
-                tint = if (color == MaterialTheme.colorScheme.onSurface) themeColors.base else color,
+                modifier = Modifier.size(18.dp),
+                tint = MaterialTheme.colorScheme.outlineVariant,
             )
-        }
-        Spacer(Modifier.width(14.dp))
-        Text(title, style = MaterialTheme.typography.bodyLarge, color = themeColors.ink, modifier = Modifier.weight(1f))
-        trailingText?.takeIf { it.isNotBlank() }?.let {
-            Text(
-                text = it,
-                style = MaterialTheme.typography.labelMedium,
-                color = themeColors.inkFaint,
-                maxLines = 1,
-            )
-            Spacer(Modifier.width(8.dp))
-        }
-        trailingContent?.let {
-            it()
-            Spacer(Modifier.width(8.dp))
-        }
-        Icon(
-            Icons.AutoMirrored.Filled.KeyboardArrowRight,
-            contentDescription = null,
-            modifier = Modifier.size(18.dp),
-            tint = MaterialTheme.colorScheme.outlineVariant,
-        )
-    }
+        },
+    )
 }
 

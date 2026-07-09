@@ -8,6 +8,8 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
+import android.app.KeyguardManager
+import android.os.PowerManager
 import android.os.SystemClock
 import android.util.Log
 import android.view.accessibility.AccessibilityEvent
@@ -18,7 +20,9 @@ import com.rrrrz.tinyvow.data.db.AppGroupEntity
 import com.rrrrz.tinyvow.data.db.BlockEventEntity
 import com.rrrrz.tinyvow.data.db.EncourageMetric
 import com.rrrrz.tinyvow.data.db.GroupType
+import com.rrrrz.tinyvow.data.db.LockScreenTimerAppStatus
 import com.rrrrz.tinyvow.data.db.RewardType
+import com.rrrrz.tinyvow.data.lockscreen.LockScreenTimerAppRepository
 import com.rrrrz.tinyvow.data.notification.TinyVowNotifier
 import com.rrrrz.tinyvow.data.reminder.ReminderPolicy
 import com.rrrrz.tinyvow.data.repository.AppLimitRepository
@@ -52,6 +56,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 
 class AppLimitAccessibilityService : AccessibilityService() {
@@ -62,6 +67,7 @@ class AppLimitAccessibilityService : AccessibilityService() {
     private val database by lazy { AppDatabase.getDatabase(applicationContext) }
     private val usageAccessStateChecker by lazy { UsageAccessStateChecker(applicationContext) }
     private val usageRepository by lazy { MergedUsageRepository(applicationContext) }
+    private val lockScreenTimerRepository by lazy { LockScreenTimerAppRepository(applicationContext, database) }
     private val specialAppUsageRepository by lazy { SpecialAppUsageRepository(applicationContext) }
     private val preferences by lazy { ManagedAppPreferences(applicationContext) }
     private val offlineFocusRepository by lazy { OfflineFocusRepository(applicationContext, database) }
@@ -89,6 +95,10 @@ class AppLimitAccessibilityService : AccessibilityService() {
     private var overlayPackageName: String? = null
     private var emergencyUnlockConsumedPackage: String? = null
     private var debugReceiverRegistered: Boolean = false
+    private var lockScreenReceiverRegistered: Boolean = false
+    @Volatile private var lastLockScreenTimerCandidatePackage: String? = null
+    @Volatile private var lastLockScreenTimerCandidateAtMillis: Long = 0L
+    @Volatile private var activeLockScreenTimerPackage: String? = null
     private val debugOverlayReceiver =
         object : BroadcastReceiver() {
             override fun onReceive(context: Context?, intent: Intent?) {
@@ -104,6 +114,19 @@ class AppLimitAccessibilityService : AccessibilityService() {
                         encourageGroups = emptyList(),
                         canUseEmergencyUnlock = false,
                     )
+                }
+            }
+        }
+    private val lockScreenStateReceiver =
+        object : BroadcastReceiver() {
+            override fun onReceive(context: Context?, intent: Intent?) {
+                when (intent?.action) {
+                    Intent.ACTION_SCREEN_ON,
+                    Intent.ACTION_SCREEN_OFF,
+                    Intent.ACTION_USER_PRESENT,
+                    -> serviceScope.launch(Dispatchers.IO) {
+                        syncLockScreenTimerState(foregroundPackageName = null)
+                    }
                 }
             }
         }
@@ -128,6 +151,7 @@ class AppLimitAccessibilityService : AccessibilityService() {
         startDisclosureWatcher()
         startServiceHeartbeat()
         registerDebugReceiverIfNeeded()
+        registerLockScreenReceiverIfNeeded()
     }
 
     private fun registerDebugReceiverIfNeeded() {
@@ -138,6 +162,17 @@ class AppLimitAccessibilityService : AccessibilityService() {
             Context.RECEIVER_NOT_EXPORTED,
         )
         debugReceiverRegistered = true
+    }
+
+    private fun registerLockScreenReceiverIfNeeded() {
+        if (lockScreenReceiverRegistered) return
+        val filter = IntentFilter().apply {
+            addAction(Intent.ACTION_SCREEN_ON)
+            addAction(Intent.ACTION_SCREEN_OFF)
+            addAction(Intent.ACTION_USER_PRESENT)
+        }
+        registerReceiver(lockScreenStateReceiver, filter, Context.RECEIVER_NOT_EXPORTED)
+        lockScreenReceiverRegistered = true
     }
 
     private fun startServiceHeartbeat() {
@@ -319,6 +354,93 @@ class AppLimitAccessibilityService : AccessibilityService() {
         )
     }
 
+    private fun handleLockScreenTimerForegroundPackage(packageName: String, isOwnPackage: Boolean) {
+        serviceScope.launch(Dispatchers.IO) {
+            val enabledTimerApp =
+                !isOwnPackage &&
+                    !isSystemLockScreenPackage(packageName) &&
+                    lockScreenTimerRepository.isPackageEnabled(packageName)
+            if (enabledTimerApp) {
+                lastLockScreenTimerCandidatePackage = packageName
+                lastLockScreenTimerCandidateAtMillis = System.currentTimeMillis()
+            }
+            syncLockScreenTimerState(foregroundPackageName = packageName.takeUnless { isOwnPackage })
+        }
+    }
+
+    private suspend fun syncLockScreenTimerState(foregroundPackageName: String?) {
+        val nowMillis = System.currentTimeMillis()
+        if (!isDeviceInteractive()) {
+            stopActiveLockScreenTimer(LockScreenTimerAppStatus.SCREEN_OFF, nowMillis)
+            return
+        }
+        if (!isDeviceLocked()) {
+            stopActiveLockScreenTimer(LockScreenTimerAppStatus.UNLOCKED, nowMillis)
+            return
+        }
+
+        val foregroundTimerPackage =
+            foregroundPackageName
+                ?.takeUnless { isSystemLockScreenPackage(it) }
+                ?.takeIf { lockScreenTimerRepository.isPackageEnabled(it) }
+        val recentCandidate =
+            lastLockScreenTimerCandidatePackage
+                ?.takeIf { nowMillis - lastLockScreenTimerCandidateAtMillis <= LOCK_SCREEN_TIMER_CANDIDATE_WINDOW_MS }
+                ?.takeIf { lockScreenTimerRepository.isPackageEnabled(it) }
+        val targetPackage =
+            foregroundTimerPackage
+                ?: activeLockScreenTimerPackage
+                ?: recentCandidate
+
+        if (targetPackage == null) {
+            stopActiveLockScreenTimer(LockScreenTimerAppStatus.IDLE, nowMillis)
+            return
+        }
+
+        val currentActive = activeLockScreenTimerPackage
+        if (currentActive == targetPackage) {
+            lockScreenTimerRepository.startLockScreenTimer(targetPackage, nowMillis)
+            return
+        }
+        if (currentActive != null) {
+            lockScreenTimerRepository.stopLockScreenTimer(
+                packageName = currentActive,
+                status = LockScreenTimerAppStatus.IDLE,
+                nowMillis = nowMillis,
+            )
+        }
+        activeLockScreenTimerPackage = targetPackage
+        lockScreenTimerRepository.startLockScreenTimer(targetPackage, nowMillis)
+    }
+
+    private suspend fun stopActiveLockScreenTimer(
+        status: LockScreenTimerAppStatus,
+        nowMillis: Long = System.currentTimeMillis(),
+    ) {
+        val packageName = activeLockScreenTimerPackage ?: return
+        lockScreenTimerRepository.stopLockScreenTimer(
+            packageName = packageName,
+            status = status,
+            nowMillis = nowMillis,
+        )
+        activeLockScreenTimerPackage = null
+    }
+
+    private fun isDeviceLocked(): Boolean =
+        runCatching {
+            getSystemService(KeyguardManager::class.java)?.isKeyguardLocked == true
+        }.getOrDefault(false)
+
+    private fun isDeviceInteractive(): Boolean =
+        runCatching {
+            getSystemService(PowerManager::class.java)?.isInteractive == true
+        }.getOrDefault(true)
+
+    private fun isSystemLockScreenPackage(packageName: String): Boolean =
+        packageName == "android" ||
+            packageName == "com.android.systemui" ||
+            packageName == "com.google.android.systemui"
+
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
         val packageName = event?.packageName?.toString() ?: return
         if (overlayPackageName != null && overlayPackageName != packageName) {
@@ -328,18 +450,37 @@ class AppLimitAccessibilityService : AccessibilityService() {
         // Tiny Vow 自身不赚积分，但需要触发上一个应用结算
         val isOwnPackage = packageName == this.packageName
 
-        // 只关注窗口切换事件
-        if (
-            event.eventType != AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED &&
-            event.eventType != AccessibilityEvent.TYPE_WINDOWS_CHANGED
-        ) return
+        val isWindowSwitchEvent =
+            event.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED ||
+                event.eventType == AccessibilityEvent.TYPE_WINDOWS_CHANGED
+        val isFocusForegroundEvent = event.eventType == AccessibilityEvent.TYPE_VIEW_FOCUSED
+
+        // 限额和积分只走窗口切换事件；专注恢复额外接收焦点事件兜底。
+        if (!isWindowSwitchEvent && !isFocusForegroundEvent) return
 
         if (!accessibilityDisclosureAccepted) {
             removeBlockOverlay()
             return
         }
 
+        if (isWindowSwitchEvent) {
+            handleLockScreenTimerForegroundPackage(packageName, isOwnPackage)
+        }
+
         val now = SystemClock.elapsedRealtime()
+
+        if (isDeviceInteractive() && !isDeviceLocked()) {
+            serviceScope.launch(Dispatchers.IO) {
+                offlineFocusRepository.handleForegroundPackageForFocus(
+                    packageName = packageName,
+                    ownPackageName = this@AppLimitAccessibilityService.packageName,
+                )
+            }
+        }
+
+        if (!isWindowSwitchEvent) {
+            return
+        }
 
         // 0. 零延迟（Fast-Path）阻断拦截，消除后台热启动时的白屏/闪透
         val fastBlock = fastBlockCache[packageName]
@@ -359,13 +500,6 @@ class AppLimitAccessibilityService : AccessibilityService() {
             packageName = packageName.takeUnless { isOwnPackage },
             now = now,
         )
-
-        serviceScope.launch(Dispatchers.IO) {
-            offlineFocusRepository.handleForegroundPackageForFocus(
-                packageName = packageName,
-                ownPackageName = this@AppLimitAccessibilityService.packageName,
-            )
-        }
 
         // 只跳过 Tiny Vow 的限额检查；上一个应用已在上面结算
         if (isOwnPackage) {
@@ -1020,9 +1154,18 @@ class AppLimitAccessibilityService : AccessibilityService() {
 
     override fun onDestroy() {
         removeBlockOverlay()
+        runCatching {
+            runBlocking(Dispatchers.IO) {
+                stopActiveLockScreenTimer(LockScreenTimerAppStatus.IDLE)
+            }
+        }
         if (debugReceiverRegistered) {
             runCatching { unregisterReceiver(debugOverlayReceiver) }
             debugReceiverRegistered = false
+        }
+        if (lockScreenReceiverRegistered) {
+            runCatching { unregisterReceiver(lockScreenStateReceiver) }
+            lockScreenReceiverRegistered = false
         }
         eventChannel.close()
         serviceScope.cancel()
@@ -1039,6 +1182,7 @@ class AppLimitAccessibilityService : AccessibilityService() {
         private const val POINTS_TICK_INTERVAL_MS = 60_000L
         private const val MIN_CREDIT_DURATION_MS = 1_000L
         private const val SERVICE_HEARTBEAT_INTERVAL_MS = 60_000L
+        private const val LOCK_SCREEN_TIMER_CANDIDATE_WINDOW_MS = 2L * 60L * 60_000L
         private const val DEBUG_OVERLAY_GROUP_ID = "debug-overlay-group"
         private const val DEBUG_OVERLAY_PACKAGE_NAME = "debug.overlay.package"
         private const val DEBUG_OVERLAY_EXCEEDED_MILLIS = 27L * 60_000L

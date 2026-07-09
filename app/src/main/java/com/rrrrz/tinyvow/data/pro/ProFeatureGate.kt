@@ -62,6 +62,8 @@ object ProFeatureGate {
 
     fun canViewAdvancedReports(isProActive: Boolean): Boolean = isProActive
 
+    fun canUseLockScreenTimerApps(isProActive: Boolean): Boolean = isProActive
+
     fun isMemberTheme(themeId: String): Boolean =
         themeId.startsWith(MEMBER_THEME_ID_PREFIX)
 

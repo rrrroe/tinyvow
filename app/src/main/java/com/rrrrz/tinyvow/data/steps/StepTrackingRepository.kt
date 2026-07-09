@@ -9,14 +9,20 @@ import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.os.Build
 import androidx.core.content.ContextCompat
+import androidx.room.withTransaction
 import com.rrrrz.tinyvow.data.db.AppDatabase
+import com.rrrrz.tinyvow.data.db.PointLedgerEntity
 import com.rrrrz.tinyvow.data.db.PointLedgerEntryType
+import com.rrrrz.tinyvow.data.db.STEP_DAY_SOURCE_HEALTH_CONNECT
+import com.rrrrz.tinyvow.data.db.STEP_DAY_SOURCE_SENSOR
 import com.rrrrz.tinyvow.data.db.StepDayEntity
 import com.rrrrz.tinyvow.data.db.StepPointCreditEntity
 import com.rrrrz.tinyvow.data.repository.ArchiveDateUtils
+import com.rrrrz.tinyvow.data.repository.AppLimitRepository
 import com.rrrrz.tinyvow.data.repository.PointsRepository
 import com.rrrrz.tinyvow.data.settings.ManagedAppPreferences
 import java.time.ZoneId
+import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -25,12 +31,14 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlin.math.abs
 
 data class TodayStepState(
     val date: String,
     val steps: Int,
     val available: Boolean,
     val permissionGranted: Boolean,
+    val source: String? = null,
 )
 
 class StepTrackingRepository(
@@ -42,6 +50,7 @@ class StepTrackingRepository(
     private val stepCounterSensor = sensorManager.getDefaultSensor(Sensor.TYPE_STEP_COUNTER)
     private val preferences = ManagedAppPreferences(appContext)
     private val pointsRepository = PointsRepository(appContext, database)
+    private val healthConnectStepDataSource = HealthConnectStepDataSource(appContext)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val mutex = Mutex()
     private var listener: SensorEventListener? = null
@@ -52,13 +61,19 @@ class StepTrackingRepository(
         Build.VERSION.SDK_INT < Build.VERSION_CODES.Q ||
             ContextCompat.checkSelfPermission(appContext, Manifest.permission.ACTIVITY_RECOGNITION) == PackageManager.PERMISSION_GRANTED
 
+    fun isHealthConnectAvailable(): Boolean = healthConnectStepDataSource.isAvailable()
+
+    suspend fun hasHealthConnectStepPermission(): Boolean =
+        healthConnectStepDataSource.hasReadStepsPermission()
+
     fun observeToday(date: String): Flow<TodayStepState> =
         database.stepDayDao().observeByDate(date).map { day ->
             TodayStepState(
                 date = date,
                 steps = day?.steps ?: 0,
-                available = hasStepCounter(),
+                available = hasStepCounter() || isHealthConnectAvailable(),
                 permissionGranted = hasActivityRecognitionPermission(),
+                source = day?.source,
             )
         }
 
@@ -75,8 +90,9 @@ class StepTrackingRepository(
 
                 override fun onAccuracyChanged(sensor: Sensor?, accuracy: Int) = Unit
             }
-        listener = newListener
-        sensorManager.registerListener(newListener, stepCounterSensor, SensorManager.SENSOR_DELAY_NORMAL)
+        if (sensorManager.registerListener(newListener, stepCounterSensor, SensorManager.SENSOR_DELAY_NORMAL)) {
+            listener = newListener
+        }
     }
 
     fun stop() {
@@ -93,35 +109,92 @@ class StepTrackingRepository(
         handleSensorSteps(sensorSteps, nowMillis)
     }
 
+    suspend fun refreshTodayFromHealthConnect(nowMillis: Long = System.currentTimeMillis()): Boolean {
+        val zoneId = ZoneId.systemDefault()
+        val dayStartHour = preferences.getDayBoundaryHourOnce()
+        val today = ArchiveDateUtils.localDateAt(nowMillis, zoneId, dayStartHour)
+        val date = ArchiveDateUtils.formatDate(today)
+        val startMillis = ArchiveDateUtils.startOfDayMillis(today, zoneId, dayStartHour)
+        val endMillis = ArchiveDateUtils.startOfDayMillis(today.plusDays(1), zoneId, dayStartHour)
+        val healthSteps =
+            healthConnectStepDataSource
+                .readSteps(startMillis, minOf(nowMillis, endMillis))
+                ?.coerceAtMost(Int.MAX_VALUE.toLong())
+                ?: return false
+        val existing = database.stepDayDao().getByDate(date)
+        if (healthSteps <= 0L && existing?.source != STEP_DAY_SOURCE_HEALTH_CONNECT) {
+            return false
+        }
+        database.stepDayDao().upsert(
+            StepDayEntity(
+                id = date,
+                stepDate = date,
+                steps = healthSteps.toInt(),
+                sensorBaseSteps = 0L,
+                lastSensorSteps = existing?.lastSensorSteps ?: 0L,
+                source = STEP_DAY_SOURCE_HEALTH_CONNECT,
+                updatedAt = nowMillis,
+            )
+        )
+        return true
+    }
+
     suspend fun creditTodayStepsIfEligible(
         steps: Int,
         date: String,
         pointsPerStep: Double,
         nowMillis: Long = System.currentTimeMillis(),
+        allowNewCredit: Boolean = true,
     ) {
-        if (steps <= 0 || pointsPerStep <= 0.0) return
+        if (pointsPerStep <= 0.0) return
         mutex.withLock {
+            val safeSteps = steps.coerceAtLeast(0)
             val credit = database.stepPointCreditDao().get(GLOBAL_STEP_POINT_SOURCE_ID, date)
-            val creditedSteps = credit?.creditedSteps ?: 0
-            val deltaSteps = (steps - creditedSteps).coerceAtLeast(0)
-            if (deltaSteps <= 0) return@withLock
-
-            pointsRepository.record(
-                deltaPoints = deltaSteps * pointsPerStep,
-                entryType = PointLedgerEntryType.USAGE_EARN,
-                occurredAt = nowMillis,
-                sourceRefId = "steps:$date:$steps",
-                note = "Home step earn",
-            )
-            database.stepPointCreditDao().upsert(
-                StepPointCreditEntity(
-                    id = "$GLOBAL_STEP_POINT_SOURCE_ID:$date",
-                    groupId = GLOBAL_STEP_POINT_SOURCE_ID,
-                    creditDate = date,
-                    creditedSteps = steps,
-                    updatedAt = nowMillis,
+            if (credit == null && !allowNewCredit) return@withLock
+            val stepEntries =
+                database.pointLedgerDao().getStepEarnEntriesByDate(
+                    date = date,
+                    sourceRefPrefix = stepSourceRefPrefix(date),
                 )
-            )
+            val creditedPoints = stepEntries.sumOf { it.deltaPoints }
+            val targetPoints = safeSteps * pointsPerStep
+            val balanceDelta = targetPoints - creditedPoints
+            if (abs(balanceDelta) <= POINT_EPSILON && credit?.creditedSteps == safeSteps) {
+                return@withLock
+            }
+
+            database.withTransaction {
+                stepEntries.forEach { entry ->
+                    database.pointLedgerDao().deleteById(entry.id)
+                }
+                if (targetPoints > POINT_EPSILON) {
+                    database.pointLedgerDao().insert(
+                        PointLedgerEntity(
+                            id = UUID.randomUUID().toString(),
+                            occurredAt = nowMillis,
+                            ledgerDate = date,
+                            entryType = PointLedgerEntryType.USAGE_EARN,
+                            deltaPoints = targetPoints,
+                            sourceRefId = "${stepSourceRefPrefix(date)}total",
+                            note = "Home step earn",
+                            createdAt = nowMillis,
+                        ),
+                    )
+                }
+                database.stepPointCreditDao().upsert(
+                    StepPointCreditEntity(
+                        id = "$GLOBAL_STEP_POINT_SOURCE_ID:$date",
+                        groupId = GLOBAL_STEP_POINT_SOURCE_ID,
+                        creditDate = date,
+                        creditedSteps = safeSteps,
+                        updatedAt = nowMillis,
+                    )
+                )
+            }
+            if (abs(balanceDelta) > POINT_EPSILON) {
+                pointsRepository.applyBalanceDelta(balanceDelta)
+                AppLimitRepository(context, database).checkAchievements()
+            }
         }
     }
 
@@ -132,42 +205,29 @@ class StepTrackingRepository(
             val today = ArchiveDateUtils.localDateAt(nowMillis, zoneId, dayStartHour)
             val date = ArchiveDateUtils.formatDate(today)
             val existing = database.stepDayDao().getByDate(date)
-            val previousBase = if (existing == null) {
-                database.stepDayDao().getLatestBefore(date)?.lastSensorSteps
-            } else {
-                null
+            if (existing?.source == STEP_DAY_SOURCE_HEALTH_CONNECT) {
+                return@withLock
             }
+            val previousBase =
+                if (existing == null) {
+                    database.stepDayDao()
+                        .getLatestBefore(date)
+                        ?.takeIf {
+                            it.stepDate == ArchiveDateUtils.formatDate(today.minusDays(1)) &&
+                                it.source == STEP_DAY_SOURCE_SENSOR
+                        }
+                        ?.lastSensorSteps
+                } else {
+                    null
+                }
             val updated =
-                when {
-                    existing == null -> {
-                        val baseSteps = previousBase?.takeIf { sensorSteps >= it } ?: sensorSteps
-                        StepDayEntity(
-                            id = date,
-                            stepDate = date,
-                            steps = (sensorSteps - baseSteps).coerceAtMost(Int.MAX_VALUE.toLong()).toInt(),
-                            sensorBaseSteps = baseSteps,
-                            lastSensorSteps = sensorSteps,
-                            updatedAt = nowMillis,
-                        )
-                    }
-
-                    sensorSteps < existing.lastSensorSteps ->
-                        StepDayEntity(
-                            id = date,
-                            stepDate = date,
-                            steps = 0,
-                            sensorBaseSteps = sensorSteps,
-                            lastSensorSteps = sensorSteps,
-                            updatedAt = nowMillis,
-                        )
-
-                    else ->
-                        existing.copy(
-                            steps = (sensorSteps - existing.sensorBaseSteps).coerceAtLeast(0L).coerceAtMost(Int.MAX_VALUE.toLong()).toInt(),
-                            lastSensorSteps = sensorSteps,
-                            updatedAt = nowMillis,
-                        )
-            }
+                StepDayAccumulator.fromSensorValue(
+                    date = date,
+                    sensorSteps = sensorSteps,
+                    previousLastSensorSteps = previousBase,
+                    existing = existing,
+                    nowMillis = nowMillis,
+                ).copy(source = STEP_DAY_SOURCE_SENSOR)
             database.stepDayDao().upsert(updated)
         }
     }
@@ -176,5 +236,8 @@ class StepTrackingRepository(
         const val DEFAULT_POINTS_PER_STEP = 0.001
         const val DEFAULT_REWARD_THRESHOLD = 8000
         private const val GLOBAL_STEP_POINT_SOURCE_ID = "home_steps"
+        private const val POINT_EPSILON = 0.0001
+
+        private fun stepSourceRefPrefix(date: String): String = "steps:$date:"
     }
 }

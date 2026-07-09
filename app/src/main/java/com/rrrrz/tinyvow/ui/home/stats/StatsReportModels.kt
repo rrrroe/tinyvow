@@ -286,11 +286,14 @@ internal data class OfflineFocusSectionData(
     val dayEndMillis: Long,
     val sessions: List<OfflineFocusTimelineItem>,
     val categories: List<OfflineFocusCategoryBreakdown>,
+    val interruptionCount: Int = 0,
+    val topInterruptionPackage: String? = null,
 )
 
 internal data class OfflineFocusTimelineItem(
     val categoryName: String,
     val iconKey: String,
+    val customIconPath: String? = null,
     val colorArgb: Int,
     val startMillis: Long,
     val endMillis: Long,
@@ -301,6 +304,7 @@ internal data class OfflineFocusTimelineItem(
 internal data class OfflineFocusCategoryBreakdown(
     val categoryName: String,
     val iconKey: String,
+    val customIconPath: String? = null,
     val colorArgb: Int,
     val totalMillis: Long,
     val completedCount: Int,

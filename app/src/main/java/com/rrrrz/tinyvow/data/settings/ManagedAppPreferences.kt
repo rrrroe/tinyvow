@@ -39,6 +39,11 @@ data class StoredAppColorSelection(
     val argb: Int,
 )
 
+data class OfflineFocusCategoryDefaults(
+    val durationMinutes: Int = ManagedAppPreferences.DEFAULT_OFFLINE_FOCUS_DURATION_MINUTES,
+    val mode: OfflineFocusMode = OfflineFocusMode.NORMAL,
+)
+
 enum class HomeActivityRingMetric {
     CONTROL,
     ENCOURAGE,
@@ -135,6 +140,9 @@ class ManagedAppPreferences(
         val appColorDefaultAlgorithm = stringPreferencesKey("app_color_default_algorithm")
         val appColorChoicesJson = stringPreferencesKey("app_color_choices_json")
         val dailyRhythmCellIconsEnabled = booleanPreferencesKey("daily_rhythm_cell_icons_enabled")
+        val dailyFocusMarksCellIconsEnabled = booleanPreferencesKey("daily_focus_marks_cell_icons_enabled")
+        val focusIconLibraryPaths = stringSetPreferencesKey("focus_icon_library_paths")
+        val rewardIconLibraryPaths = stringSetPreferencesKey("reward_icon_library_paths")
         val stepPointsPerStep = doublePreferencesKey("step_points_per_step")
         val stepPointsRewardThreshold = intPreferencesKey("step_points_reward_threshold")
         val homeActivityRingOuter = stringPreferencesKey("home_activity_ring_outer")
@@ -155,9 +163,15 @@ class ManagedAppPreferences(
         val offlineFocusDefaultCategoryId = stringPreferencesKey("offline_focus_default_category_id")
         val offlineFocusDefaultDurationMinutes = intPreferencesKey("offline_focus_default_duration_minutes")
         val offlineFocusDefaultMode = stringPreferencesKey("offline_focus_default_mode")
+        val offlineFocusCategoryDefaultsJson = stringPreferencesKey("offline_focus_category_defaults_json")
         val offlineFocusWhitelistPackages = stringSetPreferencesKey("offline_focus_whitelist_packages")
         val offlineFocusContinueOnLock = booleanPreferencesKey("offline_focus_continue_on_lock")
         val offlineFocusDailyPointCap = intPreferencesKey("offline_focus_daily_point_cap")
+        val offlineFocusRestReminderEnabled = booleanPreferencesKey("offline_focus_rest_reminder_enabled")
+        val offlineFocusRestReminderMinutes = intPreferencesKey("offline_focus_rest_reminder_minutes")
+        val offlineFocusRestReminderSoundEnabled = booleanPreferencesKey("offline_focus_rest_reminder_sound_enabled")
+        val offlineFocusRestReminderVibrationEnabled = booleanPreferencesKey("offline_focus_rest_reminder_vibration_enabled")
+        val offlineFocusRestReminderRingtoneUri = stringPreferencesKey("offline_focus_rest_reminder_ringtone_uri")
     }
 
     val selectedPackageName: Flow<String?> = context.managedAppDataStore.data.map { preferences ->
@@ -309,6 +323,18 @@ class ManagedAppPreferences(
         preferences[Keys.dailyRhythmCellIconsEnabled] ?: false
     }
 
+    val dailyFocusMarksCellIconsEnabled: Flow<Boolean> = context.managedAppDataStore.data.map { preferences ->
+        preferences[Keys.dailyFocusMarksCellIconsEnabled] ?: false
+    }
+
+    val focusIconLibraryPaths: Flow<List<String>> = context.managedAppDataStore.data.map { preferences ->
+        preferences[Keys.focusIconLibraryPaths].orEmpty().filter { it.isNotBlank() }.sorted()
+    }
+
+    val rewardIconLibraryPaths: Flow<List<String>> = context.managedAppDataStore.data.map { preferences ->
+        preferences[Keys.rewardIconLibraryPaths].orEmpty().filter { it.isNotBlank() }.sorted()
+    }
+
     val stepPointsPerStep: Flow<Double> = context.managedAppDataStore.data.map { preferences ->
         preferences[Keys.stepPointsPerStep] ?: StepTrackingRepository.DEFAULT_POINTS_PER_STEP
     }
@@ -375,6 +401,10 @@ class ManagedAppPreferences(
         parseOfflineFocusMode(preferences[Keys.offlineFocusDefaultMode])
     }
 
+    val offlineFocusCategoryDefaults: Flow<Map<String, OfflineFocusCategoryDefaults>> = context.managedAppDataStore.data.map { preferences ->
+        parseOfflineFocusCategoryDefaults(preferences[Keys.offlineFocusCategoryDefaultsJson])
+    }
+
     val offlineFocusWhitelistPackages: Flow<Set<String>> = context.managedAppDataStore.data.map { preferences ->
         preferences[Keys.offlineFocusWhitelistPackages].orEmpty()
     }
@@ -385,6 +415,26 @@ class ManagedAppPreferences(
 
     val offlineFocusDailyPointCap: Flow<Int> = context.managedAppDataStore.data.map { preferences ->
         normalizeOfflineFocusDailyPointCap(preferences[Keys.offlineFocusDailyPointCap])
+    }
+
+    val offlineFocusRestReminderEnabled: Flow<Boolean> = context.managedAppDataStore.data.map { preferences ->
+        preferences[Keys.offlineFocusRestReminderEnabled] ?: true
+    }
+
+    val offlineFocusRestReminderMinutes: Flow<Int> = context.managedAppDataStore.data.map { preferences ->
+        normalizeOfflineFocusRestReminderMinutes(preferences[Keys.offlineFocusRestReminderMinutes])
+    }
+
+    val offlineFocusRestReminderSoundEnabled: Flow<Boolean> = context.managedAppDataStore.data.map { preferences ->
+        preferences[Keys.offlineFocusRestReminderSoundEnabled] ?: true
+    }
+
+    val offlineFocusRestReminderVibrationEnabled: Flow<Boolean> = context.managedAppDataStore.data.map { preferences ->
+        preferences[Keys.offlineFocusRestReminderVibrationEnabled] ?: true
+    }
+
+    val offlineFocusRestReminderRingtoneUri: Flow<String?> = context.managedAppDataStore.data.map { preferences ->
+        preferences[Keys.offlineFocusRestReminderRingtoneUri]?.takeIf { it.isNotBlank() }
     }
 
     fun sharePosterModuleIds(tabKey: String): Flow<List<String>> =
@@ -830,6 +880,27 @@ class ManagedAppPreferences(
         }
     }
 
+    suspend fun setOfflineFocusCategoryDefaults(
+        categoryId: String,
+        durationMinutes: Int,
+        mode: OfflineFocusMode,
+    ) {
+        val normalizedId = categoryId.trim()
+        if (normalizedId.isBlank()) return
+        context.managedAppDataStore.edit { preferences ->
+            val current = parseOfflineFocusCategoryDefaults(preferences[Keys.offlineFocusCategoryDefaultsJson])
+            preferences[Keys.offlineFocusCategoryDefaultsJson] =
+                encodeOfflineFocusCategoryDefaults(
+                    current + (
+                        normalizedId to OfflineFocusCategoryDefaults(
+                            durationMinutes = normalizeOfflineFocusDuration(durationMinutes),
+                            mode = mode,
+                        )
+                    ),
+                )
+        }
+    }
+
     suspend fun setOfflineFocusWhitelistPackages(packages: Set<String>) {
         context.managedAppDataStore.edit { preferences ->
             preferences[Keys.offlineFocusWhitelistPackages] = packages.map { it.trim() }.filter { it.isNotBlank() }.toSet()
@@ -848,6 +919,41 @@ class ManagedAppPreferences(
         }
     }
 
+    suspend fun setOfflineFocusRestReminderEnabled(enabled: Boolean) {
+        context.managedAppDataStore.edit { preferences ->
+            preferences[Keys.offlineFocusRestReminderEnabled] = enabled
+        }
+    }
+
+    suspend fun setOfflineFocusRestReminderMinutes(minutes: Int) {
+        context.managedAppDataStore.edit { preferences ->
+            preferences[Keys.offlineFocusRestReminderMinutes] = normalizeOfflineFocusRestReminderMinutes(minutes)
+        }
+    }
+
+    suspend fun setOfflineFocusRestReminderSoundEnabled(enabled: Boolean) {
+        context.managedAppDataStore.edit { preferences ->
+            preferences[Keys.offlineFocusRestReminderSoundEnabled] = enabled
+        }
+    }
+
+    suspend fun setOfflineFocusRestReminderVibrationEnabled(enabled: Boolean) {
+        context.managedAppDataStore.edit { preferences ->
+            preferences[Keys.offlineFocusRestReminderVibrationEnabled] = enabled
+        }
+    }
+
+    suspend fun setOfflineFocusRestReminderRingtoneUri(uri: String?) {
+        context.managedAppDataStore.edit { preferences ->
+            val normalized = uri?.trim().orEmpty()
+            if (normalized.isBlank()) {
+                preferences.remove(Keys.offlineFocusRestReminderRingtoneUri)
+            } else {
+                preferences[Keys.offlineFocusRestReminderRingtoneUri] = normalized
+            }
+        }
+    }
+
     suspend fun setSharePosterModuleIds(
         tabKey: String,
         moduleIds: List<String>,
@@ -860,6 +966,28 @@ class ManagedAppPreferences(
     suspend fun setDailyRhythmCellIconsEnabled(enabled: Boolean) {
         context.managedAppDataStore.edit { preferences ->
             preferences[Keys.dailyRhythmCellIconsEnabled] = enabled
+        }
+    }
+
+    suspend fun setDailyFocusMarksCellIconsEnabled(enabled: Boolean) {
+        context.managedAppDataStore.edit { preferences ->
+            preferences[Keys.dailyFocusMarksCellIconsEnabled] = enabled
+        }
+    }
+
+    suspend fun addFocusIconLibraryPath(path: String) {
+        val normalized = path.trim()
+        if (normalized.isBlank()) return
+        context.managedAppDataStore.edit { preferences ->
+            preferences[Keys.focusIconLibraryPaths] = preferences[Keys.focusIconLibraryPaths].orEmpty() + normalized
+        }
+    }
+
+    suspend fun addRewardIconLibraryPath(path: String) {
+        val normalized = path.trim()
+        if (normalized.isBlank()) return
+        context.managedAppDataStore.edit { preferences ->
+            preferences[Keys.rewardIconLibraryPaths] = preferences[Keys.rewardIconLibraryPaths].orEmpty() + normalized
         }
     }
 
@@ -931,6 +1059,10 @@ class ManagedAppPreferences(
         return offlineFocusDefaultMode.first()
     }
 
+    suspend fun getOfflineFocusCategoryDefaultsOnce(): Map<String, OfflineFocusCategoryDefaults> {
+        return offlineFocusCategoryDefaults.first()
+    }
+
     suspend fun getOfflineFocusWhitelistPackagesOnce(): Set<String> {
         return offlineFocusWhitelistPackages.first()
     }
@@ -941,6 +1073,26 @@ class ManagedAppPreferences(
 
     suspend fun getOfflineFocusDailyPointCapOnce(): Int {
         return offlineFocusDailyPointCap.first()
+    }
+
+    suspend fun getOfflineFocusRestReminderEnabledOnce(): Boolean {
+        return offlineFocusRestReminderEnabled.first()
+    }
+
+    suspend fun getOfflineFocusRestReminderMinutesOnce(): Int {
+        return offlineFocusRestReminderMinutes.first()
+    }
+
+    suspend fun getOfflineFocusRestReminderSoundEnabledOnce(): Boolean {
+        return offlineFocusRestReminderSoundEnabled.first()
+    }
+
+    suspend fun getOfflineFocusRestReminderVibrationEnabledOnce(): Boolean {
+        return offlineFocusRestReminderVibrationEnabled.first()
+    }
+
+    suspend fun getOfflineFocusRestReminderRingtoneUriOnce(): String? {
+        return offlineFocusRestReminderRingtoneUri.first()
     }
 
     suspend fun getSharePosterModuleIdsOnce(tabKey: String): List<String> {
@@ -1143,6 +1295,44 @@ class ManagedAppPreferences(
             .toString()
     }
 
+    private fun parseOfflineFocusCategoryDefaults(json: String?): Map<String, OfflineFocusCategoryDefaults> {
+        if (json.isNullOrBlank()) return emptyMap()
+        return runCatching {
+            val root = JSONObject(json)
+            val keys = root.keys()
+            buildMap {
+                while (keys.hasNext()) {
+                    val categoryId = keys.next().takeIf { it.isNotBlank() } ?: continue
+                    val item = root.optJSONObject(categoryId) ?: continue
+                    put(
+                        categoryId,
+                        OfflineFocusCategoryDefaults(
+                            durationMinutes = normalizeOfflineFocusDuration(
+                                item.optInt("durationMinutes", DEFAULT_OFFLINE_FOCUS_DURATION_MINUTES),
+                            ),
+                            mode = parseOfflineFocusMode(item.optString("mode")),
+                        ),
+                    )
+                }
+            }
+        }.getOrDefault(emptyMap())
+    }
+
+    private fun encodeOfflineFocusCategoryDefaults(defaults: Map<String, OfflineFocusCategoryDefaults>): String {
+        val root = JSONObject()
+        defaults
+            .filterKeys { it.isNotBlank() }
+            .forEach { (categoryId, item) ->
+                root.put(
+                    categoryId,
+                    JSONObject()
+                        .put("durationMinutes", normalizeOfflineFocusDuration(item.durationMinutes))
+                        .put("mode", item.mode.name),
+                )
+            }
+        return root.toString()
+    }
+
     private fun normalizeOfflineFocusDuration(minutes: Int?): Int {
         val value = minutes ?: DEFAULT_OFFLINE_FOCUS_DURATION_MINUTES
         return value.coerceIn(MIN_OFFLINE_FOCUS_DURATION_MINUTES, MAX_OFFLINE_FOCUS_DURATION_MINUTES)
@@ -1151,6 +1341,11 @@ class ManagedAppPreferences(
     private fun normalizeOfflineFocusDailyPointCap(points: Int?): Int {
         val value = points ?: DEFAULT_OFFLINE_FOCUS_DAILY_POINT_CAP
         return value.coerceIn(MIN_OFFLINE_FOCUS_DAILY_POINT_CAP, MAX_OFFLINE_FOCUS_DAILY_POINT_CAP)
+    }
+
+    private fun normalizeOfflineFocusRestReminderMinutes(minutes: Int?): Int {
+        val value = minutes ?: DEFAULT_OFFLINE_FOCUS_REST_REMINDER_MINUTES
+        return value.coerceIn(MIN_OFFLINE_FOCUS_REST_REMINDER_MINUTES, MAX_OFFLINE_FOCUS_REST_REMINDER_MINUTES)
     }
 
     private fun normalizeStepPointsRewardThreshold(threshold: Int?): Int {
@@ -1224,6 +1419,9 @@ class ManagedAppPreferences(
         const val DEFAULT_OFFLINE_FOCUS_DAILY_POINT_CAP = 240
         const val MIN_OFFLINE_FOCUS_DAILY_POINT_CAP = 0
         const val MAX_OFFLINE_FOCUS_DAILY_POINT_CAP = 1440
+        const val DEFAULT_OFFLINE_FOCUS_REST_REMINDER_MINUTES = 5
+        const val MIN_OFFLINE_FOCUS_REST_REMINDER_MINUTES = 1
+        const val MAX_OFFLINE_FOCUS_REST_REMINDER_MINUTES = 60
         const val MIN_STEP_POINTS_REWARD_THRESHOLD = 0
         const val MAX_STEP_POINTS_REWARD_THRESHOLD = 100000
         const val DEFAULT_OFFLINE_FOCUS_DAILY_TARGET_MINUTES = 60

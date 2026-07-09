@@ -83,6 +83,9 @@ interface OfflineFocusSessionDao {
     @Query("SELECT * FROM offline_focus_sessions WHERE id = :id LIMIT 1")
     suspend fun getById(id: String): OfflineFocusSessionEntity?
 
+    @Query("SELECT * FROM offline_focus_sessions WHERE id = :id LIMIT 1")
+    fun observeById(id: String): Flow<OfflineFocusSessionEntity?>
+
     @Query("SELECT * FROM offline_focus_sessions WHERE settled_ledger_id = :ledgerId LIMIT 1")
     suspend fun getByLedgerId(ledgerId: String): OfflineFocusSessionEntity?
 

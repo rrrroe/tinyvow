@@ -26,7 +26,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -36,6 +35,8 @@ import com.rrrrz.tinyvow.ui.theme.LocalThemeColors
 import com.rrrrz.tinyvow.ui.theme.TinyVowButton
 import com.rrrrz.tinyvow.ui.theme.TinyVowButtonTone
 import com.rrrrz.tinyvow.ui.theme.TinyVowCard
+import com.rrrrz.tinyvow.ui.theme.TinyVowDetailScaffold
+import com.rrrrz.tinyvow.ui.theme.TinyVowPageBackground
 import com.rrrrz.tinyvow.ui.theme.TinyVowRadius
 import com.rrrrz.tinyvow.ui.theme.TinyVowSpacing
 
@@ -48,35 +49,14 @@ fun HelpFeedbackScreen(
     onSendFeedback: () -> Unit,
     onReplayTutorial: () -> Unit,
 ) {
-    val themeColors = LocalThemeColors.current
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        text = AppText.t("me_help_and_feedback"),
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.SemiBold,
-                        color = themeColors.inkStrong,
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = AppText.t("group_back"))
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    scrolledContainerColor = MaterialTheme.colorScheme.surface,
-                ),
-            )
-        },
-    ) { innerPadding ->
+    TinyVowDetailScaffold(
+        title = AppText.t("me_help_and_feedback"),
+        onBack = onBack,
+        navigationContentDescription = AppText.t("group_back"),
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
                 .verticalScroll(rememberScrollState())
                 .padding(
                     horizontal = TinyVowSpacing.PageHorizontal,
@@ -127,34 +107,14 @@ fun ContactUsScreen(
     onCopyEmail: () -> Unit,
 ) {
     val themeColors = LocalThemeColors.current
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        text = AppText.t("me_contact_us"),
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.SemiBold,
-                        color = themeColors.inkStrong,
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = AppText.t("group_back"))
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    scrolledContainerColor = MaterialTheme.colorScheme.surface,
-                ),
-            )
-        },
-    ) { innerPadding ->
+    TinyVowDetailScaffold(
+        title = AppText.t("me_contact_us"),
+        onBack = onBack,
+        navigationContentDescription = AppText.t("group_back"),
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
                 .verticalScroll(rememberScrollState())
                 .padding(
                     horizontal = TinyVowSpacing.PageHorizontal,

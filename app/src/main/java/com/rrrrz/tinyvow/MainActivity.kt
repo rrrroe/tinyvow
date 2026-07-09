@@ -1,5 +1,6 @@
 ﻿package com.rrrrz.tinyvow
 
+import android.content.Intent
 import android.os.Build
 import android.os.Bundle
 import android.view.WindowManager
@@ -26,6 +27,7 @@ import com.rrrrz.tinyvow.data.reminder.ReminderScheduler
 import com.rrrrz.tinyvow.data.time.BusinessDay
 import com.rrrrz.tinyvow.i18n.AppLanguage
 import com.rrrrz.tinyvow.i18n.AppText
+import com.rrrrz.tinyvow.service.offline.OfflineFocusTimerService
 import com.rrrrz.tinyvow.ui.theme.DefaultThemeSeed
 import com.rrrrz.tinyvow.ui.theme.resolveThemeSeed
 import kotlinx.coroutines.delay
@@ -34,8 +36,12 @@ import java.time.LocalDate
 import java.time.ZoneId
 
 class MainActivity : ComponentActivity() {
+    private val offlineFocusCompletionSessionId = mutableStateOf<String?>(null)
+    private val offlineFocusDetailRequestToken = mutableStateOf(0)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        updateOfflineFocusCompletionIntent(intent)
         AppText.attach(this)
         enableEdgeToEdge()
         requestHighestRefreshRate()
@@ -93,8 +99,42 @@ class MainActivity : ComponentActivity() {
                 TinyVowTheme(
                     themeSeed = themeSeed
                 ) {
-                    HomeRoute()
+                    HomeRoute(
+                        completedOfflineFocusSessionId = offlineFocusCompletionSessionId.value,
+                        offlineFocusDetailRequestToken = offlineFocusDetailRequestToken.value,
+                        onCompletedOfflineFocusConsumed = {
+                            offlineFocusCompletionSessionId.value = null
+                        },
+                    )
                 }
+            }
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        updateOfflineFocusCompletionIntent(intent)
+    }
+
+    override fun onUserInteraction() {
+        super.onUserInteraction()
+        if (offlineFocusCompletionSessionId.value != null) {
+            OfflineFocusTimerService.stopCompletionSignal(this)
+        }
+    }
+
+    private fun updateOfflineFocusCompletionIntent(intent: Intent?) {
+        when (intent?.action) {
+            ACTION_OFFLINE_FOCUS_COMPLETED -> {
+                offlineFocusCompletionSessionId.value = intent.getStringExtra(EXTRA_OFFLINE_FOCUS_SESSION_ID)
+            }
+            ACTION_OFFLINE_FOCUS_COMPLETED_CLICK -> {
+                OfflineFocusTimerService.stopCompletionSignal(this)
+                offlineFocusCompletionSessionId.value = intent.getStringExtra(EXTRA_OFFLINE_FOCUS_SESSION_ID)
+            }
+            ACTION_OFFLINE_FOCUS_ACTIVE -> {
+                offlineFocusDetailRequestToken.value += 1
             }
         }
     }
@@ -123,6 +163,13 @@ class MainActivity : ComponentActivity() {
                 preferredRefreshRate = bestMode.refreshRate
             }
         }
+    }
+
+    companion object {
+        const val ACTION_OFFLINE_FOCUS_COMPLETED = "com.rrrrz.tinyvow.offline_focus.COMPLETED"
+        const val ACTION_OFFLINE_FOCUS_COMPLETED_CLICK = "com.rrrrz.tinyvow.offline_focus.COMPLETED_CLICK"
+        const val ACTION_OFFLINE_FOCUS_ACTIVE = "com.rrrrz.tinyvow.offline_focus.ACTIVE"
+        const val EXTRA_OFFLINE_FOCUS_SESSION_ID = "offline_focus_session_id"
     }
 }
 

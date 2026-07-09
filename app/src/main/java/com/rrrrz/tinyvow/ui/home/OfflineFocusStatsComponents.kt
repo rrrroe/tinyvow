@@ -1,17 +1,22 @@
 package com.rrrrz.tinyvow.ui.home
 
+import android.graphics.BitmapFactory
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
@@ -23,19 +28,32 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import com.rrrrz.tinyvow.data.settings.ManagedAppPreferences
 import com.rrrrz.tinyvow.i18n.AppText
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import java.io.File
 import java.time.ZoneId
 import kotlin.math.roundToInt
 
@@ -96,6 +114,40 @@ internal fun OfflineFocusDailyCard(
                         value = data.completedCount.toString(),
                         modifier = Modifier.weight(1f),
                     )
+                }
+                if (data.interruptionCount > 0) {
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(18.dp),
+                        color = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.42f),
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(4.dp),
+                        ) {
+                            Text(
+                                text = AppText.t("offline_focus_interruptions_title"),
+                                style = MaterialTheme.typography.labelLarge,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                            )
+                            Text(
+                                text =
+                                    data.topInterruptionPackage?.let { packageName ->
+                                        AppText.t(
+                                            "offline_focus_interruptions_body_with_app",
+                                            data.interruptionCount,
+                                            packageName,
+                                        )
+                                    } ?: AppText.t(
+                                        "offline_focus_interruptions_body",
+                                        data.interruptionCount,
+                                    ),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
                 }
                 OfflineFocusTimelineBar(data = data)
                 if (data.sessions.isNotEmpty()) {
@@ -172,6 +224,10 @@ internal fun OfflineFocusPomodoroRhythmCard(
 internal fun OfflineFocusMarksCard(
     state: SectionState<OfflineFocusSectionData>,
 ) {
+    val context = LocalContext.current
+    val preferences = remember(context) { ManagedAppPreferences(context.applicationContext) }
+    val showCellIcons by preferences.dailyFocusMarksCellIconsEnabled.collectAsState(initial = false)
+    val scope = rememberCoroutineScope()
     when (state) {
         SectionState.Loading -> {
             ReportCard {
@@ -185,25 +241,129 @@ internal fun OfflineFocusMarksCard(
         }
         SectionState.Empty -> {
             ReportCard {
-                SectionHeader(
-                    icon = Icons.Default.Timeline,
-                    title = AppText.t("offline_focus_marks_title"),
-                    subtitle = AppText.t("offline_focus_daily_empty"),
+                OfflineFocusMarksHeader(
+                    showCellIcons = showCellIcons,
+                    onShowCellIconsChange = { enabled ->
+                        scope.launch(Dispatchers.IO) {
+                            preferences.setDailyFocusMarksCellIconsEnabled(enabled)
+                        }
+                    },
+                )
+                OfflineFocusRhythmProfileStrip(data = emptyOfflineFocusMarksData(), showCellIcons = showCellIcons)
+                Text(
+                    text = AppText.t("offline_focus_daily_empty"),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }
         is SectionState.Ready -> {
             val data = state.data
             ReportCard {
-                SectionHeader(
-                    icon = Icons.Default.Timeline,
-                    title = AppText.t("offline_focus_marks_title"),
-                    subtitle = AppText.t("offline_focus_marks_subtitle"),
-                    trailing = formatDuration(data.totalMillis),
+                OfflineFocusMarksHeader(
+                    showCellIcons = showCellIcons,
+                    onShowCellIconsChange = { enabled ->
+                        scope.launch(Dispatchers.IO) {
+                            preferences.setDailyFocusMarksCellIconsEnabled(enabled)
+                        }
+                    },
                 )
-                OfflineFocusRhythmProfileStrip(data = data)
+                OfflineFocusRhythmProfileStrip(data = data, showCellIcons = showCellIcons)
                 OfflineFocusRhythmInsightStrip(data = data)
             }
+        }
+    }
+}
+
+@Composable
+private fun OfflineFocusMarksHeader(
+    showCellIcons: Boolean,
+    onShowCellIconsChange: (Boolean) -> Unit,
+) {
+    val themeColors = com.rrrrz.tinyvow.ui.theme.LocalThemeColors.current
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            androidx.compose.material3.Icon(
+                imageVector = Icons.Default.Timeline,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.size(18.dp),
+            )
+            Text(
+                text = AppText.t("offline_focus_marks_title"),
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.titleLarge,
+                fontWeight = FontWeight.SemiBold,
+                color = themeColors.inkStrong,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            OfflineFocusMarksIconToggle(
+                checked = showCellIcons,
+                onCheckedChange = onShowCellIconsChange,
+            )
+        }
+        Text(
+            text = AppText.t("offline_focus_marks_subtitle"),
+            style = MaterialTheme.typography.bodySmall,
+            color = themeColors.inkMuted,
+        )
+    }
+}
+
+@Composable
+private fun OfflineFocusMarksIconToggle(
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    val trackColor =
+        if (checked) {
+            MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
+        } else {
+            MaterialTheme.colorScheme.surfaceContainerHighest
+        }
+    val thumbColor =
+        if (checked) {
+            MaterialTheme.colorScheme.primary
+        } else {
+            MaterialTheme.colorScheme.outline.copy(alpha = 0.72f)
+        }
+    Row(
+        modifier =
+            Modifier
+                .clip(RoundedCornerShape(12.dp))
+                .clickable { onCheckedChange(!checked) }
+                .padding(horizontal = 2.dp, vertical = 2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Text(
+            text = AppText.t("stats_rhythm_cell_icons"),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 2,
+            lineHeight = MaterialTheme.typography.labelSmall.fontSize,
+        )
+        Box(
+            modifier =
+                Modifier
+                    .size(width = 30.dp, height = 16.dp)
+                    .clip(RoundedCornerShape(8.dp))
+                    .background(trackColor)
+                    .padding(2.dp),
+            contentAlignment = if (checked) Alignment.CenterEnd else Alignment.CenterStart,
+        ) {
+            Box(
+                modifier =
+                    Modifier
+                        .size(12.dp)
+                        .clip(CircleShape)
+                        .background(thumbColor),
+            )
         }
     }
 }
@@ -300,7 +460,10 @@ private fun Int.minutesMillis(): Long = this * 60_000L
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun OfflineFocusRhythmProfileStrip(data: OfflineFocusSectionData) {
+private fun OfflineFocusRhythmProfileStrip(
+    data: OfflineFocusSectionData,
+    showCellIcons: Boolean,
+) {
     val cells = remember(data) { buildOfflineFocusRhythmCells(data) }
     Surface(
         shape = RoundedCornerShape(16.dp),
@@ -316,7 +479,9 @@ private fun OfflineFocusRhythmProfileStrip(data: OfflineFocusSectionData) {
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 OfflineFocusRhythmHeatGrid(
+                    data = data,
                     cells = cells,
+                    showCellIcons = showCellIcons,
                     modifier = Modifier.fillMaxWidth(),
                 )
                 OfflineFocusRhythmHourScale(modifier = Modifier.fillMaxWidth())
@@ -329,10 +494,12 @@ private fun OfflineFocusRhythmProfileStrip(data: OfflineFocusSectionData) {
                     OfflineFocusRhythmLegendPill(
                         color = Color(category.colorArgb),
                         label = "${category.categoryName} · ${formatDuration(category.totalMillis)}",
+                        iconKey = category.iconKey,
+                        customIconPath = category.customIconPath,
                     )
                 }
                 OfflineFocusRhythmLegendPill(
-                    color = Color.White,
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.32f),
                     label = AppText.t("stats_rhythm_legend_idle"),
                     borderColor = MaterialTheme.colorScheme.outlineVariant,
                 )
@@ -393,14 +560,30 @@ private fun OfflineFocusRhythmHourScale(
 
 @Composable
 private fun OfflineFocusRhythmHeatGrid(
+    data: OfflineFocusSectionData,
     cells: List<OfflineFocusRhythmCell>,
+    showCellIcons: Boolean,
     modifier: Modifier = Modifier,
 ) {
+    val sessionMarks = remember(data) { buildOfflineFocusRhythmSessionMarks(data) }
+    val emptyCellColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.32f)
     Layout(
         modifier = modifier,
         content = {
-            cells.forEach { cell ->
-                OfflineFocusRhythmCellBox(cell = cell)
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                drawOfflineFocusRhythmBaseGrid(
+                    cells = cells,
+                    sessionMarks = sessionMarks.takeUnless { showCellIcons }.orEmpty(),
+                    cellSize = size.width / 24f - ((OfflineFocusRhythmCellGap.toPx() * 23f) / 24f),
+                    gap = OfflineFocusRhythmCellGap.toPx(),
+                    emptyColor = emptyCellColor,
+                )
+            }
+            sessionMarks.forEach { mark ->
+                OfflineFocusRhythmEnergyBar(
+                    mark = mark,
+                    showIcon = showCellIcons,
+                )
             }
         },
     ) { measurables, constraints ->
@@ -410,17 +593,25 @@ private fun OfflineFocusRhythmHeatGrid(
         val width = cellSize * 24 + gapPx * 23
         val height = cellSize * 12 + gapPx * 11
         val placeables =
-            measurables.map { measurable ->
-                measurable.measure(androidx.compose.ui.unit.Constraints.fixed(cellSize, cellSize))
+            measurables.mapIndexed { index, measurable ->
+                if (index == 0) {
+                    measurable.measure(androidx.compose.ui.unit.Constraints.fixed(width, height))
+                } else {
+                    val mark = sessionMarks.getOrNull(index - 1)
+                    val markHeight =
+                        mark
+                            ?.let { offlineFocusRhythmMarkHeight(it, cellSize, gapPx) }
+                            ?: cellSize
+                    measurable.measure(androidx.compose.ui.unit.Constraints.fixed(cellSize, markHeight))
+                }
             }
         layout(width, height) {
-            placeables.forEachIndexed { index, placeable ->
-                val cell = cells.getOrNull(index)
-                val hour = cell?.hour ?: (index / 12)
-                val slot = cell?.slot ?: (index % 12)
+            placeables.firstOrNull()?.placeRelative(x = 0, y = 0)
+            placeables.drop(1).forEachIndexed { index, placeable ->
+                val mark = sessionMarks.getOrNull(index) ?: return@forEachIndexed
                 placeable.placeRelative(
-                    x = hour * (cellSize + gapPx),
-                    y = slot * (cellSize + gapPx),
+                    x = mark.hour * (cellSize + gapPx),
+                    y = mark.firstSlot * (cellSize + gapPx),
                 )
             }
         }
@@ -428,28 +619,122 @@ private fun OfflineFocusRhythmHeatGrid(
 }
 
 @Composable
-private fun OfflineFocusRhythmCellBox(cell: OfflineFocusRhythmCell) {
-    val fillColor =
-        if (cell.durationMillis <= 0L) {
-            Color.White
-        } else {
-            cell.color.copy(alpha = offlineFocusRhythmCellOpacity(cell.durationMillis))
+private fun OfflineFocusRhythmCellIcon(
+    iconKey: String?,
+    customIconPath: String?,
+    color: Color,
+    modifier: Modifier = Modifier,
+) {
+    val customBitmap =
+        remember(customIconPath) {
+            customIconPath
+                ?.takeIf { it.isNotBlank() }
+                ?.let { path -> runCatching { BitmapFactory.decodeFile(File(path).absolutePath) }.getOrNull() }
         }
+    val presetIconResource = remember(iconKey) { iconKey?.let(::focusPresetIconResource) }
+    val presetIcon = remember(iconKey) { iconKey?.let(::focusPresetIconVector) }
+    Box(
+        modifier =
+            modifier
+                .clip(RoundedCornerShape(2.dp))
+                .background(if (presetIconResource == null) Color.White else Color.Transparent),
+        contentAlignment = Alignment.Center,
+    ) {
+        when {
+            customBitmap != null -> {
+                Image(
+                    bitmap = customBitmap.asImageBitmap(),
+                    contentDescription = null,
+                    contentScale = ContentScale.Crop,
+                    modifier =
+                        Modifier
+                            .fillMaxSize()
+                            .clip(RoundedCornerShape(2.dp)),
+                )
+            }
+            presetIconResource != null -> {
+                Image(
+                    painter = painterResource(id = presetIconResource),
+                    contentDescription = null,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+            presetIcon != null -> {
+                androidx.compose.material3.Icon(
+                    imageVector = presetIcon,
+                    contentDescription = null,
+                    tint = color,
+                    modifier = Modifier.fillMaxSize(0.74f),
+                )
+            }
+            else -> {
+                androidx.compose.material3.Icon(
+                    imageVector = Icons.Default.Timer,
+                    contentDescription = null,
+                    tint = color,
+                    modifier = Modifier.fillMaxSize(0.70f),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun OfflineFocusRhythmEnergyBar(
+    mark: OfflineFocusRhythmSessionMark,
+    showIcon: Boolean,
+) {
     Box(
         modifier =
             Modifier
                 .fillMaxSize()
-                .clip(RoundedCornerShape(3.dp))
-                .background(fillColor),
-    )
+                .clip(RoundedCornerShape(4.dp))
+                .background(if (showIcon) mark.color.copy(alpha = 0.10f) else Color.Transparent)
+                .border(1.dp, mark.color.copy(alpha = if (showIcon) 0.34f else 0f), RoundedCornerShape(4.dp)),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (showIcon) {
+            BoxWithConstraints(
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .clipToBounds(),
+            ) {
+                val iconSize = maxWidth * OfflineFocusRhythmBarIconScale
+                val iconStep = iconSize * 0.78f
+                val count = ((maxHeight / iconStep).toInt() + 2).coerceAtLeast(1)
+                Column(
+                    modifier = Modifier.fillMaxSize(),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                ) {
+                    repeat(count) {
+                        OfflineFocusRhythmCellIcon(
+                            iconKey = mark.iconKey,
+                            customIconPath = mark.customIconPath,
+                            color = mark.color,
+                            modifier =
+                                Modifier
+                                    .size(iconSize)
+                                    .offset(y = if (it == 0) 0.dp else (-1).dp),
+                        )
+                    }
+                }
+            }
+        }
+    }
 }
 
 @Composable
 private fun OfflineFocusRhythmLegendPill(
     color: Color,
     label: String,
+    iconKey: String? = null,
+    customIconPath: String? = null,
     borderColor: Color? = null,
 ) {
+    val hasIcon = !iconKey.isNullOrBlank() || !customIconPath.isNullOrBlank()
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -459,11 +744,25 @@ private fun OfflineFocusRhythmLegendPill(
                 Modifier
                     .size(OfflineFocusRhythmLegendSwatchSize)
                     .clip(RoundedCornerShape(4.dp))
-                    .background(color)
+                    .background(if (hasIcon) Color.Transparent else color)
                     .then(
-                        borderColor?.let { Modifier.border(0.5.dp, it, RoundedCornerShape(4.dp)) } ?: Modifier,
+                        if (!hasIcon) {
+                            borderColor?.let { Modifier.border(0.5.dp, it, RoundedCornerShape(4.dp)) } ?: Modifier
+                        } else {
+                            Modifier
+                        },
                     ),
-        )
+            contentAlignment = Alignment.Center,
+        ) {
+            if (hasIcon) {
+                FocusTypeIcon(
+                    iconKey = iconKey.orEmpty(),
+                    customIconPath = customIconPath,
+                    color = color,
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+        }
         Text(
             text = label,
             style = MaterialTheme.typography.labelSmall,
@@ -526,14 +825,37 @@ private data class OfflineFocusRhythmCell(
     val hour: Int,
     val slot: Int,
     val categoryName: String?,
+    val iconKey: String?,
+    val customIconPath: String?,
     val color: Color,
     val durationMillis: Long,
+)
+
+private data class OfflineFocusRhythmSessionMark(
+    val hour: Int,
+    val firstSlot: Int,
+    val lastSlot: Int,
+    val categoryName: String,
+    val iconKey: String,
+    val customIconPath: String?,
+    val color: Color,
 )
 
 private data class OfflineFocusRhythmInsight(
     val label: String,
     val value: String,
 )
+
+private fun emptyOfflineFocusMarksData(): OfflineFocusSectionData =
+    OfflineFocusSectionData(
+        totalMillis = 0L,
+        completedCount = 0,
+        pointsAwarded = 0.0,
+        dayStartMillis = 0L,
+        dayEndMillis = 24L * 60L * 60_000L,
+        sessions = emptyList(),
+        categories = emptyList(),
+    )
 
 private fun buildOfflineFocusRhythmCells(data: OfflineFocusSectionData): List<OfflineFocusRhythmCell> =
     (0 until OFFLINE_FOCUS_RHYTHM_CELL_COUNT).map { sliceIndex ->
@@ -552,10 +874,87 @@ private fun buildOfflineFocusRhythmCells(data: OfflineFocusSectionData): List<Of
             hour = sliceIndex / 12,
             slot = sliceIndex % 12,
             categoryName = dominant?.first?.categoryName,
+            iconKey = dominant?.first?.iconKey,
+            customIconPath = dominant?.first?.customIconPath,
             color = dominant?.first?.let { Color(it.colorArgb) } ?: Color.White,
             durationMillis = dominant?.second ?: 0L,
         )
     }
+
+private fun buildOfflineFocusRhythmSessionMarks(data: OfflineFocusSectionData): List<OfflineFocusRhythmSessionMark> =
+    data.sessions.flatMap { session ->
+        val startMillis = session.startMillis.coerceIn(data.dayStartMillis, data.dayEndMillis)
+        val endMillis = session.endMillis.coerceIn(data.dayStartMillis, data.dayEndMillis)
+        if (endMillis <= startMillis) return@flatMap emptyList()
+        val firstHour = (((startMillis - data.dayStartMillis) / OfflineFocusRhythmHourMillis).toInt()).coerceIn(0, 23)
+        val lastHour = (((endMillis - 1L - data.dayStartMillis) / OfflineFocusRhythmHourMillis).toInt()).coerceIn(0, 23)
+        (firstHour..lastHour).mapNotNull { hour ->
+            val hourStart = data.dayStartMillis + hour * OfflineFocusRhythmHourMillis
+            val segmentStart = maxOf(startMillis, hourStart)
+            val segmentEnd = minOf(endMillis, hourStart + OfflineFocusRhythmHourMillis)
+            if (segmentEnd <= segmentStart) {
+                null
+            } else {
+                OfflineFocusRhythmSessionMark(
+                    hour = hour,
+                    firstSlot = (((segmentStart - hourStart) / OFFLINE_FOCUS_RHYTHM_CELL_MILLIS).toInt()).coerceIn(0, 11),
+                    lastSlot = (((segmentEnd - 1L - hourStart) / OFFLINE_FOCUS_RHYTHM_CELL_MILLIS).toInt()).coerceIn(0, 11),
+                    categoryName = session.categoryName,
+                    iconKey = session.iconKey,
+                    customIconPath = session.customIconPath,
+                    color = Color(session.colorArgb),
+                )
+            }
+        }
+    }
+
+private fun DrawScope.drawOfflineFocusRhythmBaseGrid(
+    cells: List<OfflineFocusRhythmCell>,
+    sessionMarks: List<OfflineFocusRhythmSessionMark>,
+    cellSize: Float,
+    gap: Float,
+    emptyColor: Color,
+) {
+    val corner = 3.dp.toPx()
+    cells.forEach { cell ->
+        drawRoundRect(
+            color = emptyColor,
+            topLeft = Offset(
+                x = cell.hour * (cellSize + gap),
+                y = cell.slot * (cellSize + gap),
+            ),
+            size = Size(cellSize, cellSize),
+            cornerRadius = CornerRadius(corner, corner),
+        )
+    }
+    sessionMarks.forEach { mark ->
+        val x = mark.hour * (cellSize + gap)
+        val y = mark.firstSlot * (cellSize + gap)
+        val height = offlineFocusRhythmMarkHeight(mark, cellSize.roundToInt(), gap.roundToInt())
+        drawRoundRect(
+            color = mark.color.copy(alpha = 0.88f),
+            topLeft = Offset(x, y),
+            size = Size(cellSize, height.toFloat()),
+            cornerRadius = CornerRadius(4.dp.toPx(), 4.dp.toPx()),
+        )
+        drawRoundRect(
+            color = mark.color.copy(alpha = 0.32f),
+            topLeft = Offset(x, y),
+            size = Size(cellSize, height.toFloat()),
+            cornerRadius = CornerRadius(4.dp.toPx(), 4.dp.toPx()),
+            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.dp.toPx()),
+        )
+    }
+}
+
+private fun offlineFocusRhythmMarkHeight(
+    mark: OfflineFocusRhythmSessionMark,
+    cellSize: Int,
+    gapPx: Int,
+): Int {
+    val slotCount = (mark.lastSlot - mark.firstSlot + 1).coerceAtLeast(1)
+    return cellSize * slotCount + gapPx * (slotCount - 1)
+}
 
 private fun buildOfflineFocusRhythmInsights(data: OfflineFocusSectionData): List<OfflineFocusRhythmInsight> =
     listOf(
@@ -593,7 +992,9 @@ private fun offlineFocusRhythmCellOpacity(durationMillis: Long): Float {
 }
 
 private val OfflineFocusRhythmCellGap = 3.dp
-private val OfflineFocusRhythmLegendSwatchSize = 16.dp
+private val OfflineFocusRhythmLegendSwatchSize = 20.dp
+private const val OfflineFocusRhythmBarIconScale = 0.82f
+private const val OfflineFocusRhythmHourMillis = 60L * 60_000L
 private const val OFFLINE_FOCUS_RHYTHM_CELL_COUNT = 288
 private const val OFFLINE_FOCUS_RHYTHM_CELL_MILLIS = 5L * 60_000L
 

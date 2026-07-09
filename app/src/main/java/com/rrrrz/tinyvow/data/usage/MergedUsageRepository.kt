@@ -3,6 +3,7 @@ package com.rrrrz.tinyvow.data.usage
 import android.content.Context
 import com.rrrrz.tinyvow.data.db.GroupType
 import com.rrrrz.tinyvow.data.db.LimitPeriod
+import com.rrrrz.tinyvow.data.lockscreen.LockScreenTimerAppRepository
 import com.rrrrz.tinyvow.data.media.MediaAppPlaybackRepository
 import com.rrrrz.tinyvow.data.special.SpecialAppUsageRepository
 import com.rrrrz.tinyvow.data.time.BusinessDay
@@ -24,11 +25,13 @@ class MergedUsageRepository(
     private val baseRepository: UsageRepository,
     private val specialRepository: SpecialUsageOverride,
     private val mediaRepository: SpecialUsageOverride? = null,
+    private val lockScreenTimerRepository: SpecialUsageOverride? = null,
 ) : UsageRepository {
     constructor(context: Context) : this(
         baseRepository = UsageStatsUsageRepository(context),
         specialRepository = SpecialAppUsageRepository(context),
         mediaRepository = MediaAppPlaybackRepository(context),
+        lockScreenTimerRepository = LockScreenTimerAppRepository(context),
     )
 
     override suspend fun getTodayUsageMillis(packageName: String): Long =
@@ -95,7 +98,7 @@ class MergedUsageRepository(
         endMillis: Long,
         groupType: GroupType?,
     ): Map<String, Long> {
-        for (override in listOfNotNull(specialRepository, mediaRepository)) {
+        for (override in listOfNotNull(specialRepository, mediaRepository, lockScreenTimerRepository)) {
             if (!override.isReplacementEnabled(groupType)) continue
             override.replacementPackageNames(groupType).forEach { packageName ->
                 val replacement =

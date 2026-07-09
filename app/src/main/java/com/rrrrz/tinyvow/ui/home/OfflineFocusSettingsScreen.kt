@@ -1,5 +1,6 @@
 package com.rrrrz.tinyvow.ui.home
 
+import android.graphics.BitmapFactory
 import android.graphics.drawable.Drawable
 import android.net.Uri
 import androidx.activity.compose.BackHandler
@@ -55,18 +56,21 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -77,15 +81,21 @@ import androidx.compose.ui.window.Dialog
 import coil.compose.AsyncImage
 import com.rrrrz.tinyvow.data.apps.ManagedApp
 import com.rrrrz.tinyvow.data.db.OfflineFocusMode
+import com.rrrrz.tinyvow.data.repository.FocusIconStorage
 import com.rrrrz.tinyvow.data.repository.OfflineFocusCategory
 import com.rrrrz.tinyvow.data.settings.ManagedAppPreferences
+import com.rrrrz.tinyvow.data.settings.OfflineFocusCategoryDefaults
 import com.rrrrz.tinyvow.i18n.AppText
 import com.rrrrz.tinyvow.ui.theme.TinyVowButton
 import com.rrrrz.tinyvow.ui.theme.TinyVowButtonTone
 import com.rrrrz.tinyvow.ui.theme.TinyVowCard
+import com.rrrrz.tinyvow.ui.theme.TinyVowDetailScaffold
+import com.rrrrz.tinyvow.ui.theme.TinyVowPageBackground
 import com.rrrrz.tinyvow.ui.theme.TinyVowRadius
+import com.rrrrz.tinyvow.ui.theme.TinyVowSettingsGroup
 import com.rrrrz.tinyvow.ui.theme.TinyVowSpacing
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.Locale
 
@@ -101,21 +111,30 @@ private enum class OfflineFocusSettingsPage {
 internal fun OfflineFocusSettingsScreen(
     categories: List<OfflineFocusCategory>,
     installedApps: List<ManagedApp>,
-    enabled: Boolean,
     defaultCategoryId: String?,
     defaultDurationMinutes: Int,
     defaultMode: OfflineFocusMode,
+    categoryDefaults: Map<String, OfflineFocusCategoryDefaults>,
     whitelistPackages: Set<String>,
     continueOnLock: Boolean,
     dailyPointCap: Int,
+    restReminderEnabled: Boolean,
+    restReminderMinutes: Int,
+    restReminderSoundEnabled: Boolean,
+    restReminderVibrationEnabled: Boolean,
+    restReminderRingtoneUri: String?,
     onBack: () -> Unit,
-    onSetEnabled: (Boolean) -> Unit,
     onSelectDefaultCategory: (String) -> Unit,
     onSelectDefaultDuration: (Int) -> Unit,
     onSelectDefaultMode: (OfflineFocusMode) -> Unit,
     onSetWhitelistPackages: (Set<String>) -> Unit,
     onSetContinueOnLock: (Boolean) -> Unit,
     onSetDailyPointCap: (Int) -> Unit,
+    onSetRestReminderEnabled: (Boolean) -> Unit,
+    onSetRestReminderMinutes: (Int) -> Unit,
+    onSetRestReminderSoundEnabled: (Boolean) -> Unit,
+    onSetRestReminderVibrationEnabled: (Boolean) -> Unit,
+    onSetRestReminderRingtoneUri: (String?) -> Unit,
     onUpsertCategory: (String?, String, String, String?, Int, Double) -> Unit,
     onImportCategoryIcon: (String, Uri) -> Unit,
     onMoveCategory: (String, Int) -> Unit,
@@ -128,6 +147,7 @@ internal fun OfflineFocusSettingsScreen(
     var showWhitelistAppDialog by remember { mutableStateOf(false) }
     var currentPage by remember { mutableStateOf(OfflineFocusSettingsPage.MAIN) }
     var pendingIconCategoryId by remember { mutableStateOf<String?>(null) }
+    var pendingDeleteCategory by remember { mutableStateOf<OfflineFocusCategory?>(null) }
     val iconPicker =
         rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
             val categoryId = pendingIconCategoryId
@@ -149,97 +169,93 @@ internal fun OfflineFocusSettingsScreen(
         currentPage = OfflineFocusSettingsPage.MAIN
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        when (currentPage) {
-                            OfflineFocusSettingsPage.MAIN -> AppText.t("offline_focus_settings_title")
-                            OfflineFocusSettingsPage.DEFAULTS -> AppText.t("offline_focus_settings_defaults")
-                            OfflineFocusSettingsPage.WHITELIST -> AppText.t("offline_focus_whitelist")
-                            OfflineFocusSettingsPage.CATEGORIES -> AppText.t("offline_focus_settings_categories")
-                        },
-                    )
-                },
-                navigationIcon = {
-                    IconButton(
-                        onClick = {
-                            if (currentPage == OfflineFocusSettingsPage.MAIN) {
-                                onBack()
-                            } else {
-                                currentPage = OfflineFocusSettingsPage.MAIN
-                            }
-                        },
-                    ) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = AppText.t("group_back"))
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(containerColor = MaterialTheme.colorScheme.background),
-            )
+    TinyVowDetailScaffold(
+        title = when (currentPage) {
+            OfflineFocusSettingsPage.MAIN -> AppText.t("offline_focus_settings_title")
+            OfflineFocusSettingsPage.DEFAULTS -> AppText.t("offline_focus_settings_defaults")
+            OfflineFocusSettingsPage.WHITELIST -> AppText.t("offline_focus_whitelist")
+            OfflineFocusSettingsPage.CATEGORIES -> AppText.t("offline_focus_settings_categories")
         },
-    ) { innerPadding ->
+        onBack = {
+            if (currentPage == OfflineFocusSettingsPage.MAIN) {
+                onBack()
+            } else {
+                currentPage = OfflineFocusSettingsPage.MAIN
+            }
+        },
+        navigationContentDescription = AppText.t("group_back"),
+    ) {
         Column(
             modifier =
                 Modifier
                     .fillMaxSize()
-                    .padding(innerPadding)
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = TinyVowSpacing.PageHorizontal, vertical = TinyVowSpacing.PageTop),
             verticalArrangement = Arrangement.spacedBy(TinyVowSpacing.SectionGap),
         ) {
-            when (currentPage) {
-                OfflineFocusSettingsPage.MAIN -> {
-                    FocusSettingsMainPage(
-                        enabled = enabled,
-                        continueOnLock = continueOnLock,
-                        capDraft = capDraft,
-                        onCapDraftChange = { capDraft = it },
-                        onSetEnabled = onSetEnabled,
-                        onSetContinueOnLock = onSetContinueOnLock,
-                        onSetDailyPointCap = onSetDailyPointCap,
-                        onOpenDefaults = { currentPage = OfflineFocusSettingsPage.DEFAULTS },
-                        onOpenWhitelist = { currentPage = OfflineFocusSettingsPage.WHITELIST },
-                        onOpenCategories = { currentPage = OfflineFocusSettingsPage.CATEGORIES },
-                    )
+                when (currentPage) {
+                    OfflineFocusSettingsPage.MAIN -> {
+                        FocusSettingsMainPage(
+                            continueOnLock = continueOnLock,
+                            restReminderEnabled = restReminderEnabled,
+                            restReminderMinutes = restReminderMinutes,
+                            restReminderSoundEnabled = restReminderSoundEnabled,
+                            restReminderVibrationEnabled = restReminderVibrationEnabled,
+                            restReminderRingtoneUri = restReminderRingtoneUri,
+                            capDraft = capDraft,
+                            onCapDraftChange = { capDraft = it },
+                            onSetContinueOnLock = onSetContinueOnLock,
+                            onSetRestReminderEnabled = onSetRestReminderEnabled,
+                            onSetRestReminderMinutes = onSetRestReminderMinutes,
+                            onSetRestReminderSoundEnabled = onSetRestReminderSoundEnabled,
+                            onSetRestReminderVibrationEnabled = onSetRestReminderVibrationEnabled,
+                            onSetRestReminderRingtoneUri = onSetRestReminderRingtoneUri,
+                            onSetDailyPointCap = onSetDailyPointCap,
+                            onOpenDefaults = { currentPage = OfflineFocusSettingsPage.DEFAULTS },
+                            onOpenWhitelist = { currentPage = OfflineFocusSettingsPage.WHITELIST },
+                            onOpenCategories = { currentPage = OfflineFocusSettingsPage.CATEGORIES },
+                        )
+                    }
+                    OfflineFocusSettingsPage.DEFAULTS -> {
+                        FocusDefaultsPage(
+                            activeCategories = activeCategories,
+                            defaultCategoryId = defaultCategoryId,
+                            defaultDurationMinutes = defaultDurationMinutes,
+                            defaultMode = defaultMode,
+                            categoryDefaults = categoryDefaults,
+                            onSelectDefaultCategory = onSelectDefaultCategory,
+                            onSelectDefaultDuration = onSelectDefaultDuration,
+                            onSelectDefaultMode = onSelectDefaultMode,
+                        )
+                    }
+                    OfflineFocusSettingsPage.WHITELIST -> {
+                        FocusWhitelistPage(
+                            installedApps = installedApps,
+                            whitelistPackages = whitelistPackages,
+                            onAddApp = { showWhitelistAppDialog = true },
+                            onRemoveApp = { packageName -> onSetWhitelistPackages(whitelistPackages - packageName) },
+                        )
+                    }
+                    OfflineFocusSettingsPage.CATEGORIES -> {
+                        FocusCategoriesPage(
+                            categories = categories,
+                            editingCategoryId = editingCategoryId,
+                            onAddCategory = {
+                                showNewCategoryEditor = true
+                                editingCategoryId = null
+                            },
+                            onEditCategory = { categoryId ->
+                                showNewCategoryEditor = false
+                                editingCategoryId = categoryId
+                            },
+                            onMoveCategory = onMoveCategory,
+                            onSetCategoryArchived = onSetCategoryArchived,
+                            onDeleteCategory = { categoryId ->
+                                pendingDeleteCategory = categories.firstOrNull { it.id == categoryId }
+                            },
+                        )
+                    }
                 }
-                OfflineFocusSettingsPage.DEFAULTS -> {
-                    FocusDefaultsPage(
-                        activeCategories = activeCategories,
-                        defaultCategoryId = defaultCategoryId,
-                        defaultDurationMinutes = defaultDurationMinutes,
-                        defaultMode = defaultMode,
-                        onSelectDefaultCategory = onSelectDefaultCategory,
-                        onSelectDefaultDuration = onSelectDefaultDuration,
-                        onSelectDefaultMode = onSelectDefaultMode,
-                    )
-                }
-                OfflineFocusSettingsPage.WHITELIST -> {
-                    FocusWhitelistPage(
-                        installedApps = installedApps,
-                        whitelistPackages = whitelistPackages,
-                        onAddApp = { showWhitelistAppDialog = true },
-                        onRemoveApp = { packageName -> onSetWhitelistPackages(whitelistPackages - packageName) },
-                    )
-                }
-                OfflineFocusSettingsPage.CATEGORIES -> {
-                    FocusCategoriesPage(
-                        categories = categories,
-                        editingCategoryId = editingCategoryId,
-                        onAddCategory = {
-                            showNewCategoryEditor = true
-                            editingCategoryId = null
-                        },
-                        onEditCategory = { categoryId ->
-                            showNewCategoryEditor = false
-                            editingCategoryId = categoryId
-                        },
-                        onMoveCategory = onMoveCategory,
-                        onSetCategoryArchived = onSetCategoryArchived,
-                        onDeleteCategory = onDeleteCategory,
-                    )
-                }
-            }
         }
     }
 
@@ -268,8 +284,7 @@ internal fun OfflineFocusSettingsScreen(
                 iconPicker.launch("image/*")
             },
             onDelete = { categoryId ->
-                onDeleteCategory(categoryId)
-                editingCategoryId = null
+                pendingDeleteCategory = categories.firstOrNull { it.id == categoryId }
             },
         )
     }
@@ -284,29 +299,62 @@ internal fun OfflineFocusSettingsScreen(
             },
         )
     }
+    pendingDeleteCategory?.let { category ->
+        AlertDialog(
+            onDismissRequest = { pendingDeleteCategory = null },
+            title = { Text(AppText.t("offline_focus_category_delete_confirm_title")) },
+            text = {
+                Text(
+                    AppText.t(
+                        "offline_focus_category_delete_confirm_body",
+                        category.name,
+                    ),
+                )
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        onDeleteCategory(category.id)
+                        if (editingCategoryId == category.id) {
+                            editingCategoryId = null
+                        }
+                        pendingDeleteCategory = null
+                    },
+                ) {
+                    Text(AppText.t("offline_focus_category_delete"))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingDeleteCategory = null }) {
+                    Text(AppText.t("group_cancel"))
+                }
+            },
+        )
+    }
 }
 
 @Composable
 private fun FocusSettingsMainPage(
-    enabled: Boolean,
     continueOnLock: Boolean,
+    restReminderEnabled: Boolean,
+    restReminderMinutes: Int,
+    restReminderSoundEnabled: Boolean,
+    restReminderVibrationEnabled: Boolean,
+    restReminderRingtoneUri: String?,
     capDraft: String,
     onCapDraftChange: (String) -> Unit,
-    onSetEnabled: (Boolean) -> Unit,
     onSetContinueOnLock: (Boolean) -> Unit,
+    onSetRestReminderEnabled: (Boolean) -> Unit,
+    onSetRestReminderMinutes: (Int) -> Unit,
+    onSetRestReminderSoundEnabled: (Boolean) -> Unit,
+    onSetRestReminderVibrationEnabled: (Boolean) -> Unit,
+    onSetRestReminderRingtoneUri: (String?) -> Unit,
     onSetDailyPointCap: (Int) -> Unit,
     onOpenDefaults: () -> Unit,
     onOpenWhitelist: () -> Unit,
     onOpenCategories: () -> Unit,
 ) {
-    FocusEnableCard(
-        title = AppText.t("offline_focus_enable"),
-        body = AppText.t("offline_focus_enable_desc"),
-        checked = enabled,
-        onCheckedChange = onSetEnabled,
-    )
     Column(
-        modifier = Modifier.alpha(if (enabled) 1f else 0.52f),
         verticalArrangement = Arrangement.spacedBy(TinyVowSpacing.SectionGap),
     ) {
         FocusSettingsCard(
@@ -340,6 +388,18 @@ private fun FocusSettingsMainPage(
                 modifier = Modifier.fillMaxWidth(),
             )
         }
+        FocusRestReminderSettingsCard(
+            enabled = restReminderEnabled,
+            restMinutes = restReminderMinutes,
+            soundEnabled = restReminderSoundEnabled,
+            vibrationEnabled = restReminderVibrationEnabled,
+            ringtoneUri = restReminderRingtoneUri,
+            onEnabledChange = onSetRestReminderEnabled,
+            onRestMinutesChange = onSetRestReminderMinutes,
+            onSoundEnabledChange = onSetRestReminderSoundEnabled,
+            onVibrationEnabledChange = onSetRestReminderVibrationEnabled,
+            onRingtoneUriChange = onSetRestReminderRingtoneUri,
+        )
         FocusSettingsNavRow(
             title = AppText.t("offline_focus_settings_defaults"),
             body = AppText.t("offline_focus_settings_defaults_desc"),
@@ -354,6 +414,183 @@ private fun FocusSettingsMainPage(
             title = AppText.t("offline_focus_settings_categories"),
             body = AppText.t("offline_focus_settings_categories_desc"),
             onClick = onOpenCategories,
+        )
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun FocusRestReminderSettingsCard(
+    enabled: Boolean,
+    restMinutes: Int,
+    soundEnabled: Boolean,
+    vibrationEnabled: Boolean,
+    ringtoneUri: String?,
+    onEnabledChange: (Boolean) -> Unit,
+    onRestMinutesChange: (Int) -> Unit,
+    onSoundEnabledChange: (Boolean) -> Unit,
+    onVibrationEnabledChange: (Boolean) -> Unit,
+    onRingtoneUriChange: (String?) -> Unit,
+) {
+    val context = LocalContext.current
+    var showRingtonePicker by remember { mutableStateOf(false) }
+    var restDraft by remember(restMinutes) { mutableStateOf(restMinutes.toString()) }
+    FocusSettingsCard(
+        title = AppText.t("offline_focus_rest_reminder_settings"),
+        body = AppText.t("offline_focus_rest_reminder_settings_desc"),
+    ) {
+        FocusSwitchRow(
+            title = AppText.t("offline_focus_rest_reminder_enable"),
+            body = AppText.t("offline_focus_rest_reminder_enable_desc"),
+            checked = enabled,
+            onCheckedChange = onEnabledChange,
+        )
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.28f))
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                text = AppText.t("offline_focus_rest_reminder_minutes"),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                listOf(5, 10, 20).forEach { minutes ->
+                    AssistChip(
+                        onClick = {
+                            restDraft = minutes.toString()
+                            onRestMinutesChange(minutes)
+                        },
+                        enabled = enabled,
+                        label = { Text(AppText.t("offline_focus_minutes_format", minutes)) },
+                        border =
+                            BorderStroke(
+                                1.dp,
+                                if (restMinutes == minutes) {
+                                    MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.outlineVariant
+                                },
+                            ),
+                    )
+                }
+            }
+            OutlinedTextField(
+                value = restDraft,
+                onValueChange = { value -> restDraft = value.filter { it.isDigit() }.take(2) },
+                enabled = enabled,
+                label = { Text(AppText.t("offline_focus_rest_reminder_custom_minutes")) },
+                supportingText = {
+                    Text(
+                        AppText.t(
+                            "offline_focus_duration_custom_desc",
+                            ManagedAppPreferences.MIN_OFFLINE_FOCUS_REST_REMINDER_MINUTES,
+                            ManagedAppPreferences.MAX_OFFLINE_FOCUS_REST_REMINDER_MINUTES,
+                        ),
+                    )
+                },
+                keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            TinyVowButton(
+                text = AppText.t("offline_focus_save_rest_minutes"),
+                onClick = {
+                    onRestMinutesChange(
+                        restDraft.toIntOrNull()
+                            ?: ManagedAppPreferences.DEFAULT_OFFLINE_FOCUS_REST_REMINDER_MINUTES,
+                    )
+                },
+                enabled = enabled,
+                tone = TinyVowButtonTone.Primary,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.28f))
+        FocusSwitchRow(
+            title = AppText.t("offline_focus_rest_reminder_sound"),
+            body = AppText.t("offline_focus_rest_reminder_sound_desc"),
+            checked = soundEnabled,
+            enabled = enabled,
+            onCheckedChange = onSoundEnabledChange,
+        )
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.28f))
+        FocusSwitchRow(
+            title = AppText.t("offline_focus_rest_reminder_vibration"),
+            body = AppText.t("offline_focus_rest_reminder_vibration_desc"),
+            checked = vibrationEnabled,
+            enabled = enabled,
+            onCheckedChange = onVibrationEnabledChange,
+        )
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.28f))
+        Surface(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .clickable(enabled = enabled && soundEnabled) {
+                        showRingtonePicker = true
+                    },
+            shape = RoundedCornerShape(14.dp),
+            color = MaterialTheme.colorScheme.surfaceContainerLow,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.32f)),
+        ) {
+            Row(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 11.dp),
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Timer,
+                    contentDescription = null,
+                    tint =
+                        if (enabled && soundEnabled) {
+                            MaterialTheme.colorScheme.primary
+                        } else {
+                            MaterialTheme.colorScheme.onSurfaceVariant
+                        },
+                    modifier = Modifier.size(22.dp),
+                )
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(3.dp),
+                ) {
+                    Text(
+                        text = AppText.t("offline_focus_rest_reminder_ringtone"),
+                        style = MaterialTheme.typography.titleSmall,
+                        color =
+                            if (enabled && soundEnabled) {
+                                MaterialTheme.colorScheme.onSurface
+                            } else {
+                                MaterialTheme.colorScheme.onSurfaceVariant
+                            },
+                    )
+                    Text(
+                        text = resolveRingtoneTitle(context, ringtoneUri),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
+    }
+
+    if (showRingtonePicker) {
+        OfflineFocusRestReminderRingtonePickerSheet(
+            currentRingtoneUri = ringtoneUri,
+            onDismiss = { showRingtonePicker = false },
+            onSelect = { uri ->
+                onRingtoneUriChange(uri)
+                showRingtonePicker = false
+            },
         )
     }
 }
@@ -394,10 +631,13 @@ private fun FocusDefaultsPage(
     defaultCategoryId: String?,
     defaultDurationMinutes: Int,
     defaultMode: OfflineFocusMode,
+    categoryDefaults: Map<String, OfflineFocusCategoryDefaults>,
     onSelectDefaultCategory: (String) -> Unit,
     onSelectDefaultDuration: (Int) -> Unit,
     onSelectDefaultMode: (OfflineFocusMode) -> Unit,
 ) {
+    var durationDraft by remember(defaultDurationMinutes) { mutableStateOf(defaultDurationMinutes.toString()) }
+    val selectedCategoryDefaults = defaultCategoryId?.let { categoryDefaults[it] }
     FocusSettingsCard(
         title = AppText.t("offline_focus_settings_defaults"),
         body = AppText.t("offline_focus_settings_defaults_desc"),
@@ -426,10 +666,27 @@ private fun FocusDefaultsPage(
             }
         }
         FocusLabel(AppText.t("offline_focus_duration"))
+        selectedCategoryDefaults?.let { defaults ->
+            Text(
+                text = AppText.t(
+                    "offline_focus_category_last_defaults",
+                    defaults.durationMinutes,
+                    when (defaults.mode) {
+                        OfflineFocusMode.NORMAL -> AppText.t("offline_focus_mode_normal")
+                        OfflineFocusMode.STRICT -> AppText.t("offline_focus_mode_strict")
+                    },
+                ),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             listOf(15, 25, 45, 60).forEach { minutes ->
                 AssistChip(
-                    onClick = { onSelectDefaultDuration(minutes) },
+                    onClick = {
+                        durationDraft = minutes.toString()
+                        onSelectDefaultDuration(minutes)
+                    },
                     label = { Text(AppText.t("offline_focus_minutes_format", minutes)) },
                     border = BorderStroke(
                         1.dp,
@@ -438,6 +695,33 @@ private fun FocusDefaultsPage(
                 )
             }
         }
+        OutlinedTextField(
+            value = durationDraft,
+            onValueChange = { value -> durationDraft = value.filter { it.isDigit() }.take(3) },
+            label = { Text(AppText.t("offline_focus_duration_custom")) },
+            supportingText = {
+                Text(
+                    AppText.t(
+                        "offline_focus_duration_custom_desc",
+                        ManagedAppPreferences.MIN_OFFLINE_FOCUS_DURATION_MINUTES,
+                        ManagedAppPreferences.MAX_OFFLINE_FOCUS_DURATION_MINUTES,
+                    ),
+                )
+            },
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        TinyVowButton(
+            text = AppText.t("offline_focus_save_custom_duration"),
+            onClick = {
+                onSelectDefaultDuration(
+                    durationDraft.toIntOrNull() ?: ManagedAppPreferences.DEFAULT_OFFLINE_FOCUS_DURATION_MINUTES,
+                )
+            },
+            tone = TinyVowButtonTone.Neutral,
+            modifier = Modifier.fillMaxWidth(),
+        )
         FocusLabel(AppText.t("offline_focus_mode"))
         FocusModeChips(selected = defaultMode, onSelect = onSelectDefaultMode)
     }
@@ -508,7 +792,7 @@ private fun FocusEnableCard(
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit,
 ) {
-    TinyVowCard(shape = RoundedCornerShape(TinyVowRadius.Card)) {
+    TinyVowSettingsGroup {
         Row(
             modifier = Modifier.padding(TinyVowSpacing.CardHorizontal),
             horizontalArrangement = Arrangement.spacedBy(12.dp),
@@ -529,7 +813,7 @@ private fun FocusSettingsCard(
     body: String,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    TinyVowCard(shape = RoundedCornerShape(TinyVowRadius.Card)) {
+    TinyVowSettingsGroup {
         Column(
             modifier = Modifier.padding(TinyVowSpacing.CardHorizontal),
             verticalArrangement = Arrangement.spacedBy(14.dp),
@@ -559,10 +843,14 @@ private fun FocusSwitchRow(
     title: String,
     body: String,
     checked: Boolean,
+    enabled: Boolean = true,
     onCheckedChange: (Boolean) -> Unit,
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .alpha(if (enabled) 1f else 0.52f),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -570,7 +858,7 @@ private fun FocusSwitchRow(
             Text(title, style = MaterialTheme.typography.titleSmall)
             Text(body, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        Switch(checked = checked, onCheckedChange = onCheckedChange)
+        Switch(checked = checked, onCheckedChange = onCheckedChange, enabled = enabled)
     }
 }
 
@@ -996,6 +1284,10 @@ internal fun OfflineCategoryEditor(
     onImportIcon: (String) -> Unit,
     onDelete: (String) -> Unit,
 ) {
+    val context = LocalContext.current
+    val preferences = remember(context) { ManagedAppPreferences(context.applicationContext) }
+    val coroutineScope = rememberCoroutineScope()
+    val importedIconPaths by preferences.focusIconLibraryPaths.collectAsState(initial = emptyList())
     var nameDraft by remember(category?.id, category?.name) {
         mutableStateOf(category?.name.orEmpty())
     }
@@ -1008,12 +1300,85 @@ internal fun OfflineCategoryEditor(
     var colorDraft by remember(category?.id, category?.colorArgb) {
         mutableStateOf(category?.colorArgb ?: offlineFocusSettingsPalette.first())
     }
-    var showCustomColorField by remember(category?.id) { mutableStateOf(false) }
     var customColorDraft by remember(category?.id, category?.colorArgb) {
         mutableStateOf(formatColorHex(category?.colorArgb ?: offlineFocusSettingsPalette.first()))
     }
+    var colorPickerState by remember(category?.id) { mutableStateOf<FocusCategoryColorPickerState?>(null) }
     var pointsDraft by remember(category?.id, category?.pointsPerMinute) {
         mutableStateOf(formatPointsRate(category?.pointsPerMinute ?: 1.0))
+    }
+    val importIconLauncher =
+        rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+            if (uri != null) {
+                coroutineScope.launch {
+                    runCatching {
+                        FocusIconStorage
+                            .fromContext(context.applicationContext)
+                            .importImage(context.contentResolver, uri)
+                    }.onSuccess { importedPath ->
+                        preferences.addFocusIconLibraryPath(importedPath)
+                        iconDraft = FocusPresetIconKeys.first()
+                        customIconPathDraft = importedPath
+                    }
+                }
+            }
+        }
+    colorPickerState?.let { picker ->
+        val customIconBitmap =
+            remember(customIconPathDraft) {
+                customIconPathDraft
+                    ?.takeIf { it.isNotBlank() }
+                    ?.let { path -> runCatching { BitmapFactory.decodeFile(path) }.getOrNull() }
+            }
+        SharedManualColorPickerDialog(
+            title = AppText.t("offline_focus_color_picker_title"),
+            selectedColor = picker.selectedColor,
+            hexValue = picker.hexValue,
+            selectedXRatio = picker.selectedXRatio,
+            selectedYRatio = picker.selectedYRatio,
+            source = picker.source,
+            iconBitmap = customIconBitmap?.asImageBitmap(),
+            iconSourceBitmap = customIconBitmap,
+            iconContent = {
+                FocusTypeIcon(
+                    iconKey = iconDraft,
+                    customIconPath = customIconPathDraft,
+                    color = picker.selectedColor ?: Color(colorDraft),
+                    modifier = Modifier.size(156.dp),
+                )
+            },
+            onSourceChange = { source ->
+                colorPickerState = colorPickerState?.copy(
+                    source = source,
+                    selectedXRatio = null,
+                    selectedYRatio = null,
+                )
+            },
+            onColorPicked = { color ->
+                colorPickerState = colorPickerState?.copy(
+                    selectedColor = color,
+                    hexValue = color.toPickerHexString(),
+                )
+            },
+            onTapPositionChanged = { xRatio, yRatio ->
+                colorPickerState = colorPickerState?.copy(
+                    selectedXRatio = xRatio,
+                    selectedYRatio = yRatio,
+                )
+            },
+            onHexChanged = { value ->
+                colorPickerState = colorPickerState?.copy(
+                    hexValue = value.take(7),
+                    selectedColor = parsePickerHexColor(value) ?: colorPickerState?.selectedColor,
+                )
+            },
+            onDismiss = { colorPickerState = null },
+            onConfirm = { color ->
+                colorDraft = color.toArgb()
+                customColorDraft = color.toPickerHexString()
+                colorPickerState = null
+            },
+        )
     }
     Surface(
         shape = RoundedCornerShape(18.dp),
@@ -1043,7 +1408,7 @@ internal fun OfflineCategoryEditor(
             FocusLabel(AppText.t("offline_focus_category_icon"))
             FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 FocusPresetIconKeys.forEach { iconKey ->
-                    val selected = iconDraft == iconKey
+                    val selected = customIconPathDraft == null && iconDraft == iconKey
                     FocusIconChoiceTile(
                         iconKey = iconKey,
                         color = Color(colorDraft),
@@ -1054,12 +1419,25 @@ internal fun OfflineCategoryEditor(
                         },
                     )
                 }
-                category?.let {
-                    FocusUploadIconTile(
+                val visibleImportedPaths =
+                    (importedIconPaths + listOfNotNull(category?.customIconPath))
+                        .filter { it.isNotBlank() }
+                        .distinct()
+                visibleImportedPaths.forEach { importedPath ->
+                    FocusImportedIconChoiceTile(
+                        path = importedPath,
                         color = Color(colorDraft),
-                        onClick = { onImportIcon(it.id) },
+                        selected = customIconPathDraft == importedPath,
+                        onClick = {
+                            iconDraft = FocusPresetIconKeys.first()
+                            customIconPathDraft = importedPath
+                        },
                     )
                 }
+                FocusUploadIconTile(
+                    color = Color(colorDraft),
+                    onClick = { importIconLauncher.launch("image/*") },
+                )
             }
             FocusLabel(AppText.t("offline_focus_category_color"))
             FlowRow(horizontalArrangement = Arrangement.spacedBy(7.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
@@ -1077,21 +1455,11 @@ internal fun OfflineCategoryEditor(
                     color = Color(colorDraft),
                     onClick = {
                         customColorDraft = formatColorHex(colorDraft)
-                        showCustomColorField = !showCustomColorField
+                        colorPickerState = FocusCategoryColorPickerState(
+                            selectedColor = Color(colorDraft),
+                            hexValue = customColorDraft,
+                        )
                     },
-                )
-            }
-            if (showCustomColorField) {
-                OutlinedTextField(
-                    value = customColorDraft,
-                    onValueChange = { value ->
-                        customColorDraft = value.take(7)
-                        parseColorHex(customColorDraft)?.let { colorDraft = it }
-                    },
-                    label = { Text(AppText.t("app_color_manual_hex_label")) },
-                    supportingText = { Text(AppText.t("app_color_manual_hex_hint")) },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
                 )
             }
             Row(
@@ -1179,6 +1547,34 @@ private fun FocusUploadIconTile(
 }
 
 @Composable
+private fun FocusImportedIconChoiceTile(
+    path: String,
+    color: Color,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    Surface(
+        modifier =
+            Modifier
+                .size(48.dp)
+                .clip(RoundedCornerShape(14.dp))
+                .clickable(onClick = onClick),
+        shape = RoundedCornerShape(14.dp),
+        color = if (selected) color.copy(alpha = 0.10f) else MaterialTheme.colorScheme.surface,
+        border = BorderStroke(1.dp, if (selected) color else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)),
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            FocusTypeIcon(
+                iconKey = FocusPresetIconKeys.first(),
+                customIconPath = path,
+                color = color,
+                modifier = Modifier.size(34.dp),
+            )
+        }
+    }
+}
+
+@Composable
 private fun FocusColorSwatch(
     color: Color,
     selected: Boolean,
@@ -1236,6 +1632,14 @@ private fun FocusCustomColorButton(
         }
     }
 }
+
+private data class FocusCategoryColorPickerState(
+    val selectedColor: Color?,
+    val hexValue: String,
+    val selectedXRatio: Float? = null,
+    val selectedYRatio: Float? = null,
+    val source: ManualColorPickerSource = ManualColorPickerSource.ICON,
+)
 
 private fun formatPointsRate(value: Double): String =
     if (value % 1.0 == 0.0) value.toInt().toString() else "%.2f".format(value).trimEnd('0').trimEnd('.')

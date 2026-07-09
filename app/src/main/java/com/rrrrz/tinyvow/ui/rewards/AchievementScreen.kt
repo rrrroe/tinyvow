@@ -33,6 +33,7 @@ import com.rrrrz.tinyvow.data.repository.AchievementProgress
 import com.rrrrz.tinyvow.ui.theme.LocalThemeColors
 import com.rrrrz.tinyvow.ui.theme.TinyVowCard
 import com.rrrrz.tinyvow.ui.theme.TinyVowElevation
+import com.rrrrz.tinyvow.ui.theme.TinyVowPageBackground
 import com.rrrrz.tinyvow.ui.theme.TinyVowRadius
 import com.rrrrz.tinyvow.ui.theme.TinyVowSpacing
 import kotlinx.coroutines.launch
@@ -140,11 +141,8 @@ fun AchievementScreen(
     val pagerState = rememberPagerState(pageCount = { themedTierTabs.size })
     val coroutineScope = rememberCoroutineScope()
 
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(MaterialTheme.colorScheme.background)
-    ) {
+    TinyVowPageBackground {
+        Column(modifier = Modifier.fillMaxSize()) {
         // ──── 等级 Tab 栏 ────
         ScrollableTabRow(
             selectedTabIndex = pagerState.currentPage,
@@ -208,6 +206,7 @@ fun AchievementScreen(
                 achievementProgress = achievementProgress
             )
         }
+    }
     }
 }
 

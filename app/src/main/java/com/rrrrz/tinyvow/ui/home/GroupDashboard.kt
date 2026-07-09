@@ -3,17 +3,11 @@ package com.rrrrz.tinyvow.ui.home
 import com.rrrrz.tinyvow.i18n.AppText
 
 import android.app.Activity
-import android.content.ClipData
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.Intent
-import android.graphics.Bitmap
-import android.graphics.Paint
-import android.graphics.RectF
 import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.Drawable
-import android.text.TextPaint
-import android.text.TextUtils
 import android.view.Window
 import android.view.WindowManager
 import androidx.compose.foundation.BorderStroke
@@ -32,6 +26,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -50,20 +45,23 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -72,10 +70,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 import androidx.compose.runtime.LaunchedEffect
 import kotlinx.coroutines.withContext
 import androidx.compose.ui.Alignment
@@ -83,6 +79,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
@@ -100,13 +97,13 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.DialogWindowProvider
 import androidx.compose.ui.zIndex
-import androidx.core.content.FileProvider
 import androidx.core.view.WindowCompat
 import coil.compose.AsyncImage
-import com.rrrrz.tinyvow.R
 import com.rrrrz.tinyvow.data.apps.ManagedApp
 import com.rrrrz.tinyvow.data.db.ActiveRewardEffectEntity
+import com.rrrrz.tinyvow.data.db.DailyAppArchiveEntity
 import com.rrrrz.tinyvow.data.db.DailyGroupArchiveEntity
+import com.rrrrz.tinyvow.data.db.EncourageMetric
 import com.rrrrz.tinyvow.data.db.GroupType
 import com.rrrrz.tinyvow.data.db.LimitPeriod
 import com.rrrrz.tinyvow.data.db.RewardType
@@ -116,16 +113,19 @@ import com.rrrrz.tinyvow.data.repository.parseRewardPayload
 import com.rrrrz.tinyvow.data.pro.ProFeatureGate
 import com.rrrrz.tinyvow.data.supermode.GuardedAction
 import com.rrrrz.tinyvow.data.time.BusinessDay
+import com.rrrrz.tinyvow.data.usage.AppSession
 import com.rrrrz.tinyvow.data.usage.MergedUsageRepository
 import com.rrrrz.tinyvow.ui.theme.LocalThemeColors
 import com.rrrrz.tinyvow.ui.theme.TinyVowButton
 import com.rrrrz.tinyvow.ui.theme.TinyVowButtonTone
 import com.rrrrz.tinyvow.ui.theme.TinyVowCard
+import com.rrrrz.tinyvow.ui.theme.TinyVowEmptyState
 import com.rrrrz.tinyvow.ui.theme.TinyVowElevation
+import com.rrrrz.tinyvow.ui.theme.TinyVowMetricTile
 import com.rrrrz.tinyvow.ui.theme.TinyVowRadius
+import com.rrrrz.tinyvow.ui.theme.TinyVowSectionHeader
 import com.rrrrz.tinyvow.ui.theme.TinyVowSpacing
-import java.io.File
-import java.io.FileOutputStream
+import com.rrrrz.tinyvow.ui.theme.TinyVowStatusPill
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.ZoneId
@@ -139,6 +139,11 @@ private val CompactFieldShape = RoundedCornerShape(16.dp)
 fun GroupDashboard(
     groupsWithApps: List<AppGroupWithApps>,
     usageMap: Map<String, Long>,
+    periodUsageMap: Map<String, Long> = emptyMap(),
+    todayAppUsageMap: Map<String, Long> = emptyMap(),
+    todayAppOpenCountMap: Map<String, Int> = emptyMap(),
+    todaySessions: List<AppSession> = emptyList(),
+    todayStepCount: Int = 0,
     activeRewardEffects: List<ActiveRewardEffectEntity>,
     appIconCache: Map<String, Drawable> = emptyMap(),
     onAppIconLoaded: (String, Drawable) -> Unit = { _, _ -> },
@@ -176,6 +181,24 @@ fun GroupDashboard(
     }
     val encourageGroups = remember(groupsWithApps) {
         groupsWithApps.filter { it.group.type == GroupType.ENCOURAGE }
+    }
+    val requestEditGroup: (AppGroupWithApps) -> Unit = { groupWithApps ->
+        val groupsForType =
+            if (groupWithApps.group.type == GroupType.CONTROL) {
+                controlGroups
+            } else {
+                encourageGroups
+            }
+        val index = groupsForType.indexOfFirst { it.group.id == groupWithApps.group.id }
+        if (ProFeatureGate.canEditGroup(isProActive, index)) {
+            onGuardAction(GuardedAction.EDIT_GROUP) {
+                editingGroup = groupWithApps
+                forcedType = groupWithApps.group.type
+                showDialog = true
+            }
+        } else {
+            onShowProUpsell(ProUpsellSource.GROUP_LIMIT)
+        }
     }
 
     LaunchedEffect(createGroupRequest) {
@@ -223,18 +246,7 @@ fun GroupDashboard(
                 },
                 onSort = { sortingType = GroupType.CONTROL },
                 onOpen = { detailGroup = it },
-                onEdit = {
-                    val index = controlGroups.indexOfFirst { group -> group.group.id == it.group.id }
-                    if (ProFeatureGate.canEditGroup(isProActive, index)) {
-                        onGuardAction(GuardedAction.EDIT_GROUP) {
-                            editingGroup = it
-                            forcedType = it.group.type
-                            showDialog = true
-                        }
-                    } else {
-                        onShowProUpsell(ProUpsellSource.GROUP_LIMIT)
-                    }
-                },
+                onEdit = requestEditGroup,
                 modifier = Modifier.weight(1f),
             )
 
@@ -257,18 +269,7 @@ fun GroupDashboard(
                 },
                 onSort = { sortingType = GroupType.ENCOURAGE },
                 onOpen = { detailGroup = it },
-                onEdit = {
-                    val index = encourageGroups.indexOfFirst { group -> group.group.id == it.group.id }
-                    if (ProFeatureGate.canEditGroup(isProActive, index)) {
-                        onGuardAction(GuardedAction.EDIT_GROUP) {
-                            editingGroup = it
-                            forcedType = it.group.type
-                            showDialog = true
-                        }
-                    } else {
-                        onShowProUpsell(ProUpsellSource.GROUP_LIMIT)
-                    }
-                },
+                onEdit = requestEditGroup,
                 modifier = Modifier.weight(1f),
             )
         }
@@ -328,9 +329,22 @@ fun GroupDashboard(
     }
 
     detailGroup?.let { group ->
-        GroupDetailDialog(
+        GroupDetailSheet(
             groupData = group,
             todayUsageMillis = usageMap[group.group.id] ?: 0L,
+            periodUsageMillis = periodUsageMap[group.group.id] ?: usageMap[group.group.id] ?: 0L,
+            todayAppUsageMap = todayAppUsageMap,
+            todayAppOpenCountMap = todayAppOpenCountMap,
+            todaySessions = todaySessions,
+            todayStepCount = todayStepCount,
+            activeEffects = activeRewardEffects.filter { it.targetGroupId == group.group.id },
+            installedApps = installedApps,
+            appIconCache = appIconCache,
+            onAppIconLoaded = onAppIconLoaded,
+            onEdit = {
+                detailGroup = null
+                requestEditGroup(it)
+            },
             archiveRepository = archiveRepository,
             onDismiss = { detailGroup = null },
         )
@@ -367,42 +381,29 @@ private fun SectionCard(
             ),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(1.dp),
-                ) {
-                    Text(
-                        text = title,
-                        style = MaterialTheme.typography.titleMedium,
-                        color = themeColors.inkStrong,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
-                Box(
-                    modifier = Modifier
-                        .size(30.dp)
-                        .clip(RoundedCornerShape(11.dp))
-                        .background(accent.copy(alpha = 0.13f))
-                        .combinedClickable(
-                            onClick = onAdd,
-                            onLongClick = onSort,
-                        ),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Add,
-                        contentDescription = AppText.t("group_add_group"),
-                        tint = accent,
-                        modifier = Modifier.size(17.dp),
-                    )
-                }
-            }
+            TinyVowSectionHeader(
+                title = title,
+                trailing = {
+                    Box(
+                        modifier = Modifier
+                            .size(30.dp)
+                            .clip(RoundedCornerShape(11.dp))
+                            .background(accent.copy(alpha = 0.13f))
+                            .combinedClickable(
+                                onClick = onAdd,
+                                onLongClick = onSort,
+                            ),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Add,
+                            contentDescription = AppText.t("group_add_group"),
+                            tint = accent,
+                            modifier = Modifier.size(17.dp),
+                        )
+                    }
+                },
+            )
 
             if (groups.isEmpty()) {
                 Text(
@@ -765,16 +766,68 @@ private fun GroupSortDialog(
     )
 }
 
+private enum class GroupDetailTab {
+    OVERVIEW,
+    APPS,
+    RHYTHM,
+    HISTORY,
+}
+
+private enum class GroupDetailAppScope {
+    TODAY,
+    PERIOD,
+    HISTORY,
+}
+
+private data class GroupDetailAppRow(
+    val packageName: String,
+    val appName: String,
+    val usageMillis: Long,
+    val openCount: Int = 0,
+    val sessionCount: Int = 0,
+    val longestSessionMillis: Long = 0L,
+    val activeDays: Int = 0,
+    val earnedPoints: Double = 0.0,
+)
+
+private data class GroupDetailDayRow(
+    val date: LocalDate,
+    val usageMillis: Long,
+)
+
+private data class GroupDetailArchiveSummary(
+    val archivedDays: Int,
+    val completedDays: Int,
+    val totalUsageMillis: Long,
+    val blockEvents: Int,
+    val exceededDays: Int,
+    val totalEarnedPoints: Double,
+    val averageRemainingMillis: Long,
+    val averageExceededMillis: Long,
+)
+
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun GroupDetailDialog(
+private fun GroupDetailSheet(
     groupData: AppGroupWithApps,
     todayUsageMillis: Long,
+    periodUsageMillis: Long,
+    todayAppUsageMap: Map<String, Long>,
+    todayAppOpenCountMap: Map<String, Int>,
+    todaySessions: List<AppSession>,
+    todayStepCount: Int,
+    activeEffects: List<ActiveRewardEffectEntity>,
+    installedApps: List<ManagedApp>,
+    appIconCache: Map<String, Drawable>,
+    onAppIconLoaded: (String, Drawable) -> Unit,
+    onEdit: (AppGroupWithApps) -> Unit,
     archiveRepository: DailyArchiveRepository?,
     onDismiss: () -> Unit,
 ) {
     val context = LocalContext.current
     val lifecycle = LocalLifecycleOwner.current.lifecycle
     val themeColors = LocalThemeColors.current
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val zoneId = remember { ZoneId.systemDefault() }
     val dayStartHour = BusinessDay.cachedStartHour()
     val today = remember(dayStartHour) { BusinessDay.today(zoneId, dayStartHour) }
@@ -790,161 +843,720 @@ private fun GroupDetailDialog(
     val groupHistory = remember(historyItems, groupData.group.id) {
         historyItems.filter { it.groupId == groupData.group.id }.sortedByDescending { it.archiveDate }
     }
-    var selectedTab by remember { mutableIntStateOf(0) }
-    var weekUsageByDay by remember(groupData.group.id) { mutableStateOf<List<Pair<LocalDate, Long>>>(emptyList()) }
-    val shareBackground = MaterialTheme.colorScheme.background.toArgb()
-    val shareSurface = MaterialTheme.colorScheme.surface.toArgb()
-    val shareTextColor = MaterialTheme.colorScheme.onSurface.toArgb()
-    val shareMutedColor = MaterialTheme.colorScheme.onSurfaceVariant.toArgb()
-    val shareAccent = if (groupData.group.type == GroupType.CONTROL) {
-        themeColors.control.toArgb()
-    } else {
-        themeColors.encourage.toArgb()
+    val appHistoryItems by (
+        archiveRepository
+            ?.getAppArchivesByGroupAndRange(groupData.group.id, historyFrom, historyTo)
+            ?.collectAsStateWithLifecycle(initialValue = emptyList(), lifecycle = lifecycle)
+            ?: remember { mutableStateOf(emptyList<DailyAppArchiveEntity>()) }
+    )
+    var selectedTab by remember { mutableStateOf(GroupDetailTab.OVERVIEW) }
+    var selectedAppScope by remember { mutableStateOf(GroupDetailAppScope.TODAY) }
+    var weekUsageByDay by remember(groupData.group.id) { mutableStateOf<List<GroupDetailDayRow>>(emptyList()) }
+    var periodAppRows by remember(groupData.group.id) { mutableStateOf<List<GroupDetailAppRow>>(emptyList()) }
+    val appNameByPackage = remember(installedApps) {
+        installedApps.associate { it.packageName to it.appName }
     }
+    val isAppUsageGroup = remember(groupData.group.type, groupData.group.encourageMetric) {
+        groupData.group.type == GroupType.CONTROL || groupData.group.encourageMetric == EncourageMetric.APP_USAGE
+    }
+    val accent = if (groupData.group.type == GroupType.CONTROL) themeColors.control else themeColors.encourage
+    val rewardSummary = remember(activeEffects, groupData.group.type) {
+        groupActiveRewardSummary(activeEffects, groupData.group.type)
+    }
+    val effectiveTargetMillis = remember(groupData.group, rewardSummary) {
+        groupDetailTargetMillis(groupData, rewardSummary)
+    }
+    val statusLabel = groupDetailStatusLabel(
+        groupData = groupData,
+        usageMillis = periodUsageMillis,
+        targetMillis = effectiveTargetMillis,
+        todayStepCount = todayStepCount,
+    )
+    val progress = groupDetailProgress(
+        groupData = groupData,
+        usageMillis = periodUsageMillis,
+        targetMillis = effectiveTargetMillis,
+        todayStepCount = todayStepCount,
+    )
+    val todayAppRows = remember(groupData.packageNames, todayAppUsageMap, todayAppOpenCountMap, todaySessions, appNameByPackage) {
+        buildCurrentAppRows(
+            packageNames = groupData.packageNames,
+            usageMap = todayAppUsageMap,
+            openCountMap = todayAppOpenCountMap,
+            sessions = todaySessions,
+            appNameByPackage = appNameByPackage,
+            includeZeroUsage = true,
+        )
+    }
+    val historyAppRows = remember(appHistoryItems, appNameByPackage) {
+        buildHistoryAppRows(appHistoryItems, appNameByPackage)
+    }
+    val archiveSummary = remember(groupHistory) { buildGroupArchiveSummary(groupHistory) }
 
     LaunchedEffect(groupData.group.id, groupData.packageNames, today, dayStartHour) {
         weekUsageByDay = withContext(Dispatchers.IO) {
-            val result = mutableListOf<Pair<LocalDate, Long>>()
+            val result = mutableListOf<GroupDetailDayRow>()
             val usageRepository = MergedUsageRepository(context)
             var date = weekStart
             while (!date.isAfter(today)) {
                 val start = BusinessDay.startOfDayMillis(date, zoneId, dayStartHour)
                 val end = BusinessDay.nextDayStartMillis(date, zoneId, dayStartHour)
                 val usage = usageRepository.getUsageStats(start, end, groupData.group.type)
-                result += date to groupData.packageNames.sumOf { usage[it] ?: 0L }
+                result += GroupDetailDayRow(
+                    date = date,
+                    usageMillis = groupData.packageNames.sumOf { usage[it] ?: 0L },
+                )
                 date = date.plusDays(1)
             }
             result
         }
     }
 
-    AlertDialog(
+    LaunchedEffect(groupData.group.id, groupData.packageNames, groupData.group.limitPeriod, groupData.group.type, today, dayStartHour, appNameByPackage) {
+        periodAppRows = withContext(Dispatchers.IO) {
+            val usageRepository = MergedUsageRepository(context)
+            val start = groupDetailPeriodStartMillis(groupData.group.limitPeriod, today, zoneId, dayStartHour)
+            val now = System.currentTimeMillis()
+            val usage = usageRepository.getUsageStats(start, now, groupData.group.type)
+            val opens = usageRepository.getAppOpenCount(start, now)
+            val sessions = usageRepository.getUsageSessions(start, now)
+            buildCurrentAppRows(
+                packageNames = groupData.packageNames,
+                usageMap = usage,
+                openCountMap = opens,
+                sessions = sessions,
+                appNameByPackage = appNameByPackage,
+                includeZeroUsage = true,
+            )
+        }
+    }
+
+    ModalBottomSheet(
         onDismissRequest = onDismiss,
-        title = {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
+        sheetState = sheetState,
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .navigationBarsPadding()
+                .imePadding()
+                .padding(horizontal = TinyVowSpacing.PageHorizontal),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            GroupDetailHeader(
+                groupData = groupData,
+                periodLabel = groupDetailPeriodLabel(groupData.group.limitPeriod),
+                accent = accent,
+                onEdit = { onEdit(groupData) },
+                onDismiss = onDismiss,
+            )
+            GroupDetailSummaryCard(
+                groupData = groupData,
+                todayUsageMillis = todayUsageMillis,
+                periodUsageMillis = periodUsageMillis,
+                todayStepCount = todayStepCount,
+                targetMillis = effectiveTargetMillis,
+                progress = progress,
+                statusLabel = statusLabel,
+                accent = accent,
+            )
+            GroupDetailTabRow(
+                selectedTab = selectedTab,
+                onSelect = { selectedTab = it },
+            )
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 560.dp),
+                contentPadding = PaddingValues(bottom = 24.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Text(
-                    text = groupData.group.name,
-                    modifier = Modifier.weight(1f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                IconButton(
-                    onClick = {
-                        shareGroupDetailBitmap(
-                            context = context,
-                            groupData = groupData,
-                            tabLabel = listOf(AppText.t("group_today"), AppText.t("group_this_week"), AppText.t("group_history"))[selectedTab],
-                            todayUsageMillis = todayUsageMillis,
-                            weekUsageMillis = weekUsageByDay.sumOf { it.second },
-                            historyItems = groupHistory,
-                            background = shareBackground,
-                            surface = shareSurface,
-                            accent = shareAccent,
-                            textColor = shareTextColor,
-                            mutedColor = shareMutedColor,
-                        )
-                    },
-                    modifier = Modifier.size(36.dp),
-                ) {
-                    Icon(Icons.Default.Share, contentDescription = AppText.t("group_share"))
-                }
-                IconButton(onClick = onDismiss, modifier = Modifier.size(36.dp)) {
-                    Icon(Icons.Default.Close, contentDescription = AppText.t("group_close"))
-                }
-            }
-        },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf(AppText.t("group_today"), AppText.t("group_this_week"), AppText.t("group_history")).forEachIndexed { index, label ->
-                        Surface(
-                            onClick = { selectedTab = index },
-                            shape = RoundedCornerShape(999.dp),
-                            color = if (selectedTab == index) {
-                                MaterialTheme.colorScheme.primaryContainer
+                when (selectedTab) {
+                    GroupDetailTab.OVERVIEW -> {
+                        item {
+                            GroupOverviewPanel(
+                                groupData = groupData,
+                                todayUsageMillis = todayUsageMillis,
+                                periodUsageMillis = periodUsageMillis,
+                                todayStepCount = todayStepCount,
+                                targetMillis = effectiveTargetMillis,
+                                activeEffects = activeEffects,
+                                appRows = todayAppRows,
+                                isAppUsageGroup = isAppUsageGroup,
+                                accent = accent,
+                            )
+                        }
+                    }
+                    GroupDetailTab.APPS -> {
+                        item {
+                            GroupAppScopeRow(
+                                selectedScope = selectedAppScope,
+                                onSelect = { selectedAppScope = it },
+                                enabled = isAppUsageGroup,
+                            )
+                        }
+                        if (!isAppUsageGroup) {
+                            item {
+                                TinyVowEmptyState(
+                                    title = AppText.t("group_detail_steps_no_app_title"),
+                                    body = AppText.t("group_detail_steps_no_app_body"),
+                                )
+                            }
+                        } else {
+                            val rows = when (selectedAppScope) {
+                                GroupDetailAppScope.TODAY -> todayAppRows
+                                GroupDetailAppScope.PERIOD -> periodAppRows
+                                GroupDetailAppScope.HISTORY -> historyAppRows
+                            }
+                            if (rows.isEmpty()) {
+                                item {
+                                    TinyVowEmptyState(
+                                        title = AppText.t("group_detail_no_app_data_title"),
+                                        body = AppText.t("group_detail_no_app_data_body"),
+                                    )
+                                }
                             } else {
-                                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.45f)
-                            },
-                        ) {
-                            Text(
-                                text = label,
-                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
-                                style = MaterialTheme.typography.labelLarge,
-                                fontWeight = if (selectedTab == index) FontWeight.Medium else FontWeight.Normal,
-                                color = if (selectedTab == index) {
-                                    MaterialTheme.colorScheme.onPrimaryContainer
-                                } else {
-                                    MaterialTheme.colorScheme.onSurfaceVariant
-                                },
+                                items(rows, key = { "${selectedAppScope.name}-${it.packageName}" }) { row ->
+                                    GroupDetailAppRowItem(
+                                        row = row,
+                                        totalUsageMillis = rows.sumOf { it.usageMillis },
+                                        scope = selectedAppScope,
+                                        accent = accent,
+                                        icon = appIconCache[row.packageName],
+                                        onIconLoaded = onAppIconLoaded,
+                                    )
+                                }
+                            }
+                        }
+                    }
+                    GroupDetailTab.RHYTHM -> {
+                        item {
+                            GroupRhythmPanel(
+                                groupData = groupData,
+                                usageByDay = weekUsageByDay,
+                                periodUsageMillis = periodUsageMillis,
+                                targetMillis = effectiveTargetMillis,
+                                accent = accent,
+                            )
+                        }
+                    }
+                    GroupDetailTab.HISTORY -> {
+                        item {
+                            GroupHistoryPanel(
+                                groupData = groupData,
+                                items = groupHistory,
+                                summary = archiveSummary,
+                                targetMillis = effectiveTargetMillis,
+                                accent = accent,
                             )
                         }
                     }
                 }
-
-                when (selectedTab) {
-                    0 -> GroupTodayPanel(groupData, todayUsageMillis)
-                    1 -> GroupWeekPanel(groupData, weekUsageByDay)
-                    else -> GroupHistoryPanel(groupData, groupHistory)
-                }
             }
-        },
-        confirmButton = {},
-    )
+        }
+    }
 }
 
 @Composable
-private fun GroupTodayPanel(
+private fun GroupDetailHeader(
     groupData: AppGroupWithApps,
-    usageMillis: Long,
+    periodLabel: String,
+    accent: Color,
+    onEdit: () -> Unit,
+    onDismiss: () -> Unit,
 ) {
-    val targetMillis = groupData.group.limitMinutes * 60_000L
-    val delta = targetMillis - usageMillis
-    val completed = if (groupData.group.type == GroupType.CONTROL) delta >= 0L else usageMillis >= targetMillis
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        DetailMetricGrid(
-            items = listOf(
-                AppText.t("group_today_usage") to formatUsageDuration(usageMillis),
-                AppText.t("group_target_limit_label") to AppText.t("group_value_min", groupData.group.limitMinutes),
-                AppText.t("group_app_count_label") to AppText.t("group_app_count_value", groupData.packageNames.size),
-                AppText.t("group_status") to if (completed) AppText.t("group_completed") else if (groupData.group.type == GroupType.CONTROL) AppText.t("group_over_by") else AppText.t("group_label_2"),
+    val themeColors = LocalThemeColors.current
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                TinyVowStatusPill(
+                    text = if (groupData.group.type == GroupType.CONTROL) AppText.t("group_commitment") else AppText.t("group_small_encouragement"),
+                    color = accent,
+                    containerColor = accent.copy(alpha = 0.12f),
+                )
+                Text(
+                    text = periodLabel,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = themeColors.inkMuted,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+            Text(
+                text = groupData.group.name,
+                style = MaterialTheme.typography.titleLarge,
+                color = themeColors.inkStrong,
+                fontWeight = FontWeight.Bold,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
+        IconButton(onClick = onEdit, modifier = Modifier.size(40.dp)) {
+            Icon(
+                imageVector = Icons.Default.Edit,
+                contentDescription = AppText.t("group_edit_title"),
+                tint = accent,
+            )
+        }
+        IconButton(onClick = onDismiss, modifier = Modifier.size(40.dp)) {
+            Icon(Icons.Default.Close, contentDescription = AppText.t("group_close"))
+        }
+    }
+}
+
+@Composable
+private fun GroupDetailSummaryCard(
+    groupData: AppGroupWithApps,
+    todayUsageMillis: Long,
+    periodUsageMillis: Long,
+    todayStepCount: Int,
+    targetMillis: Long,
+    progress: Float,
+    statusLabel: String,
+    accent: Color,
+) {
+    val themeColors = LocalThemeColors.current
+    val isStepGroup = groupData.group.type == GroupType.ENCOURAGE && groupData.group.encourageMetric == EncourageMetric.STEPS
+    val primaryValue =
+        if (isStepGroup) {
+            AppText.t("group_step_count_value", todayStepCount)
+        } else {
+            formatUsageDuration(periodUsageMillis)
+        }
+    val targetValue =
+        if (isStepGroup) {
+            AppText.t("group_step_count_value", groupData.group.stepTarget)
+        } else {
+            formatUsageDuration(targetMillis)
+        }
+    TinyVowCard(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(TinyVowRadius.Card),
+        borderAlpha = 0.36f,
+        shadowElevation = TinyVowElevation.Card,
+    ) {
+        Column(
+            modifier = Modifier.padding(
+                horizontal = TinyVowSpacing.CardHorizontal,
+                vertical = TinyVowSpacing.CardVertical,
             ),
-        )
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.Bottom,
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        text = AppText.t("group_detail_current_period"),
+                        style = MaterialTheme.typography.labelMedium,
+                        color = themeColors.inkMuted,
+                    )
+                    Text(
+                        text = primaryValue,
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = accent,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+                TinyVowStatusPill(
+                    text = statusLabel,
+                    color = accent,
+                    containerColor = accent.copy(alpha = 0.12f),
+                )
+            }
+            LinearProgressIndicator(
+                progress = { progress.coerceIn(0f, 1f) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(10.dp)
+                    .clip(CircleShape),
+                color = accent,
+                trackColor = accent.copy(alpha = 0.14f),
+            )
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                TinyVowMetricTile(
+                    label = if (isStepGroup) AppText.t("group_step_target_label") else AppText.t("group_target_limit_label"),
+                    value = targetValue,
+                    color = accent,
+                    modifier = Modifier.weight(1f),
+                )
+                TinyVowMetricTile(
+                    label = AppText.t("group_today_usage"),
+                    value = if (isStepGroup) AppText.t("group_step_count_value", todayStepCount) else formatUsageDuration(todayUsageMillis),
+                    color = accent,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun GroupDetailTabRow(
+    selectedTab: GroupDetailTab,
+    onSelect: (GroupDetailTab) -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        GroupDetailTab.entries.forEach { tab ->
+            GroupDetailChip(
+                text = when (tab) {
+                    GroupDetailTab.OVERVIEW -> AppText.t("group_detail_overview")
+                    GroupDetailTab.APPS -> AppText.t("group_detail_apps")
+                    GroupDetailTab.RHYTHM -> AppText.t("group_detail_rhythm")
+                    GroupDetailTab.HISTORY -> AppText.t("group_detail_history")
+                },
+                selected = selectedTab == tab,
+                onClick = { onSelect(tab) },
+                modifier = Modifier.weight(1f),
+            )
+        }
+    }
+}
+
+@Composable
+private fun GroupAppScopeRow(
+    selectedScope: GroupDetailAppScope,
+    onSelect: (GroupDetailAppScope) -> Unit,
+    enabled: Boolean,
+) {
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        GroupDetailAppScope.entries.forEach { scope ->
+            GroupDetailChip(
+                text = when (scope) {
+                    GroupDetailAppScope.TODAY -> AppText.t("group_today")
+                    GroupDetailAppScope.PERIOD -> AppText.t("group_detail_current_period")
+                    GroupDetailAppScope.HISTORY -> AppText.t("group_detail_last_30_days")
+                },
+                selected = selectedScope == scope,
+                enabled = enabled,
+                onClick = { onSelect(scope) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun GroupDetailChip(
+    text: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+) {
+    val themeColors = LocalThemeColors.current
+    Surface(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = modifier,
+        shape = RoundedCornerShape(TinyVowRadius.Pill),
+        color = if (selected) MaterialTheme.colorScheme.primaryContainer else themeColors.surfaceSoft,
+        contentColor = if (selected) MaterialTheme.colorScheme.onPrimaryContainer else themeColors.inkMuted,
+        border = BorderStroke(1.dp, themeColors.borderSoft.copy(alpha = 0.36f)),
+    ) {
         Text(
-            text = if (delta >= 0L) AppText.t("group_remaining_value", formatUsageDuration(delta)) else AppText.t("group_over_by_value", formatUsageDuration(-delta)),
-            style = MaterialTheme.typography.bodyMedium,
-            color = if (delta >= 0L) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error,
-            fontWeight = FontWeight.Medium,
+            text = text,
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+            textAlign = TextAlign.Center,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
     }
 }
 
 @Composable
-private fun GroupWeekPanel(
+private fun GroupOverviewPanel(
     groupData: AppGroupWithApps,
-    usageByDay: List<Pair<LocalDate, Long>>,
+    todayUsageMillis: Long,
+    periodUsageMillis: Long,
+    todayStepCount: Int,
+    targetMillis: Long,
+    activeEffects: List<ActiveRewardEffectEntity>,
+    appRows: List<GroupDetailAppRow>,
+    isAppUsageGroup: Boolean,
+    accent: Color,
 ) {
-    val totalUsage = usageByDay.sumOf { it.second }
-    val targetMillis = groupData.group.limitMinutes * 60_000L
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    val isStepGroup = groupData.group.type == GroupType.ENCOURAGE && groupData.group.encourageMetric == EncourageMetric.STEPS
+    val estimatedPoints =
+        if (isStepGroup) {
+            todayStepCount * groupData.group.pointsPerStep
+        } else if (groupData.group.type == GroupType.ENCOURAGE) {
+            periodUsageMillis / 60_000.0 * groupData.group.pointsPerMinute
+        } else {
+            0.0
+        }
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        DetailMetricGrid(
+            items = buildList {
+                add(AppText.t("group_today_usage") to if (isStepGroup) AppText.t("group_step_count_value", todayStepCount) else formatUsageDuration(todayUsageMillis))
+                add(AppText.t("group_detail_current_period") to if (isStepGroup) AppText.t("group_step_count_value", todayStepCount) else formatUsageDuration(periodUsageMillis))
+                add((if (isStepGroup) AppText.t("group_step_target_label") else AppText.t("group_target_limit_label")) to if (isStepGroup) AppText.t("group_step_count_value", groupData.group.stepTarget) else formatUsageDuration(targetMillis))
+                add(AppText.t("group_status") to groupDetailStatusLabel(groupData, periodUsageMillis, targetMillis, todayStepCount))
+                if (groupData.group.type == GroupType.ENCOURAGE) {
+                    add(AppText.t("group_points") to AppText.t("group_points_value", trimTrailingZero(estimatedPoints)))
+                }
+            },
+            accent = accent,
+        )
+        ActiveEffectsPanel(activeEffects = activeEffects, groupType = groupData.group.type, accent = accent)
+        if (isAppUsageGroup) {
+            MemberPreviewPanel(groupData = groupData, appRows = appRows, accent = accent)
+        } else {
+            StepRulePanel(groupData = groupData, todayStepCount = todayStepCount, accent = accent)
+        }
+    }
+}
+
+@Composable
+private fun ActiveEffectsPanel(
+    activeEffects: List<ActiveRewardEffectEntity>,
+    groupType: GroupType,
+    accent: Color,
+) {
+    val labels = groupActiveRewardLabels(groupActiveRewardSummary(activeEffects, groupType), groupType)
+    TinyVowCard(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(TinyVowRadius.ItemCard),
+        color = LocalThemeColors.current.surfaceSoft,
+        borderAlpha = 0.30f,
+        shadowElevation = TinyVowElevation.Flat,
+    ) {
+        Column(
+            modifier = Modifier.padding(TinyVowSpacing.CompactCardHorizontal),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                text = AppText.t("group_detail_active_effects"),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                color = LocalThemeColors.current.inkStrong,
+            )
+            if (labels.isEmpty()) {
+                Text(
+                    text = AppText.t("group_detail_no_active_effects"),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = LocalThemeColors.current.inkMuted,
+                )
+            } else {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    labels.forEach { label ->
+                        GroupEffectPill(text = label, accent = accent)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MemberPreviewPanel(
+    groupData: AppGroupWithApps,
+    appRows: List<GroupDetailAppRow>,
+    accent: Color,
+) {
+    val preview = appRows.take(3)
+    TinyVowCard(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(TinyVowRadius.ItemCard),
+        borderAlpha = 0.30f,
+        shadowElevation = TinyVowElevation.Flat,
+    ) {
+        Column(
+            modifier = Modifier.padding(TinyVowSpacing.CompactCardHorizontal),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Text(
+                text = AppText.t("group_detail_members", groupData.packageNames.size),
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                color = LocalThemeColors.current.inkStrong,
+            )
+            if (preview.isEmpty()) {
+                Text(
+                    text = AppText.t("group_detail_no_members"),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = LocalThemeColors.current.inkMuted,
+                )
+            } else {
+                preview.forEach { row ->
+                    DetailProgressRow(
+                        label = row.appName,
+                        value = formatUsageDuration(row.usageMillis),
+                        progress = row.usageMillis.toFloat() / appRows.sumOf { it.usageMillis }.coerceAtLeast(1L).toFloat(),
+                        accent = accent,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun StepRulePanel(
+    groupData: AppGroupWithApps,
+    todayStepCount: Int,
+    accent: Color,
+) {
+    val remaining = (groupData.group.stepTarget - todayStepCount).coerceAtLeast(0)
+    DetailMetricGrid(
+        items = listOf(
+            AppText.t("group_step_today_steps") to AppText.t("group_step_count_value", todayStepCount),
+            AppText.t("group_step_target_label") to AppText.t("group_step_count_value", groupData.group.stepTarget),
+            AppText.t("group_step_remaining_value", remaining) to AppText.t("group_points_value", trimTrailingZero(todayStepCount * groupData.group.pointsPerStep)),
+        ),
+        accent = accent,
+    )
+}
+
+@Composable
+private fun GroupDetailAppRowItem(
+    row: GroupDetailAppRow,
+    totalUsageMillis: Long,
+    scope: GroupDetailAppScope,
+    accent: Color,
+    icon: Drawable?,
+    onIconLoaded: (String, Drawable) -> Unit,
+) {
+    val context = LocalContext.current
+    val themeColors = LocalThemeColors.current
+    LaunchedEffect(row.packageName, icon) {
+        if (icon != null) return@LaunchedEffect
+        val loadedIcon = withContext(Dispatchers.IO) {
+            AppVisualCache.getIcon(context, row.packageName)
+        }
+        if (loadedIcon != null) {
+            onIconLoaded(row.packageName, loadedIcon)
+        }
+    }
+    TinyVowCard(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(TinyVowRadius.ItemCard),
+        borderAlpha = 0.30f,
+        shadowElevation = TinyVowElevation.Flat,
+    ) {
+        Row(
+            modifier = Modifier.padding(TinyVowSpacing.CompactCardHorizontal),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Surface(
+                modifier = Modifier.size(42.dp),
+                shape = RoundedCornerShape(12.dp),
+                color = themeColors.surfaceSoft,
+            ) {
+                if (icon != null) {
+                    AsyncImage(
+                        model = icon,
+                        contentDescription = null,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .clip(RoundedCornerShape(12.dp)),
+                    )
+                }
+            }
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = row.appName,
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = themeColors.inkStrong,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        text = formatUsageDuration(row.usageMillis),
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = accent,
+                        maxLines = 1,
+                    )
+                }
+                LinearProgressIndicator(
+                    progress = { row.usageMillis.toFloat() / totalUsageMillis.coerceAtLeast(1L).toFloat() },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(6.dp)
+                        .clip(CircleShape),
+                    color = accent,
+                    trackColor = accent.copy(alpha = 0.12f),
+                )
+                Text(
+                    text = groupDetailAppMeta(row, totalUsageMillis, scope),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = themeColors.inkMuted,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun GroupRhythmPanel(
+    groupData: AppGroupWithApps,
+    usageByDay: List<GroupDetailDayRow>,
+    periodUsageMillis: Long,
+    targetMillis: Long,
+    accent: Color,
+) {
+    val totalUsage = usageByDay.sumOf { it.usageMillis }
+    val activeDays = usageByDay.count { it.usageMillis > 0L }
+    val average = if (usageByDay.isNotEmpty()) totalUsage / usageByDay.size else 0L
+    val best = usageByDay.maxByOrNull { it.usageMillis }
+    val completedDays = usageByDay.count { day ->
+        if (groupData.group.type == GroupType.CONTROL) day.usageMillis <= targetMillis else day.usageMillis >= targetMillis
+    }
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         DetailMetricGrid(
             items = listOf(
                 AppText.t("group_week_total_label") to formatUsageDuration(totalUsage),
-                AppText.t("group_configured_target") to AppText.t("group_value_min", groupData.group.limitMinutes),
-                AppText.t("group_record_days_label") to AppText.t("group_value_days_5", usageByDay.size),
-                AppText.t("group_label_3") to "${((totalUsage.toFloat() / targetMillis.coerceAtLeast(1).toFloat()) * 100).toInt()}%",
+                AppText.t("group_detail_daily_average") to formatUsageDuration(average),
+                AppText.t("group_detail_best_day") to (best?.let { "${it.date.monthValue}/${it.date.dayOfMonth} · ${formatUsageDuration(it.usageMillis)}" } ?: AppText.t("stats_none")),
+                AppText.t("group_complete") to AppText.t("group_value_days_4", completedDays),
+                AppText.t("group_detail_current_period") to formatUsageDuration(periodUsageMillis),
+                AppText.t("stats_active_days") to AppText.t("group_value_days_5", activeDays),
             ),
+            accent = accent,
         )
-        usageByDay.forEach { (date, usage) ->
-            DetailProgressRow(
-                label = "${date.monthValue}/${date.dayOfMonth}",
-                value = formatUsageDuration(usage),
-                progress = usage.toFloat() / targetMillis.coerceAtLeast(1).toFloat(),
+        if (usageByDay.isEmpty()) {
+            TinyVowEmptyState(
+                title = AppText.t("group_detail_no_rhythm_title"),
+                body = AppText.t("group_detail_no_rhythm_body"),
             )
+        } else {
+            usageByDay.forEach { item ->
+                DetailProgressRow(
+                    label = "${item.date.monthValue}/${item.date.dayOfMonth}",
+                    value = formatUsageDuration(item.usageMillis),
+                    progress = item.usageMillis.toFloat() / targetMillis.coerceAtLeast(1L).toFloat(),
+                    accent = accent,
+                )
+            }
         }
     }
 }
@@ -953,27 +1565,41 @@ private fun GroupWeekPanel(
 private fun GroupHistoryPanel(
     groupData: AppGroupWithApps,
     items: List<DailyGroupArchiveEntity>,
+    summary: GroupDetailArchiveSummary,
+    targetMillis: Long,
+    accent: Color,
 ) {
-    val completedCount = items.count { it.completed }
-    val totalUsage = items.sumOf { it.dailyUsageMillis }
-    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         DetailMetricGrid(
-            items = listOf(
-                AppText.t("group_last_30_days") to AppText.t("group_value_days", items.size),
-                AppText.t("group_complete") to AppText.t("group_value_days_4", completedCount),
-                AppText.t("group_total_usage") to formatUsageDuration(totalUsage),
-                if (groupData.group.type == GroupType.ENCOURAGE) AppText.t("group_points") to AppText.t("group_points_value", trimTrailingZero(items.sumOf { it.earnedPoints })) else AppText.t("group_blocks") to AppText.t("group_value_times", items.sumOf { it.blockEventCount }),
-            ),
+            items = buildList {
+                add(AppText.t("group_last_30_days") to AppText.t("group_value_days", summary.archivedDays))
+                add(AppText.t("group_complete") to AppText.t("group_value_days_4", summary.completedDays))
+                add(AppText.t("group_total_usage") to formatUsageDuration(summary.totalUsageMillis))
+                if (groupData.group.type == GroupType.ENCOURAGE) {
+                    add(AppText.t("group_points") to AppText.t("group_points_value", trimTrailingZero(summary.totalEarnedPoints)))
+                    add(AppText.t("group_detail_average_investment") to formatUsageDuration(if (summary.archivedDays > 0) summary.totalUsageMillis / summary.archivedDays else 0L))
+                } else {
+                    add(AppText.t("group_blocks") to AppText.t("group_value_times", summary.blockEvents))
+                    add(AppText.t("group_detail_exceeded_days") to AppText.t("group_value_days_5", summary.exceededDays))
+                    add(AppText.t("group_detail_average_remaining") to formatUsageDuration(summary.averageRemainingMillis))
+                    add(AppText.t("group_detail_average_over") to formatUsageDuration(summary.averageExceededMillis))
+                }
+            },
+            accent = accent,
         )
         if (items.isEmpty()) {
-            Text(AppText.t("group_no_archived_history_yet"), color = MaterialTheme.colorScheme.onSurfaceVariant)
+            TinyVowEmptyState(
+                title = AppText.t("group_no_archived_history_yet"),
+                body = AppText.t("group_detail_no_history_body"),
+            )
         } else {
-            items.take(8).forEach { item ->
+            items.take(10).forEach { item ->
                 DetailProgressRow(
                     label = item.archiveDate.substring(5),
-                    value = formatUsageDuration(item.dailyUsageMillis),
+                    value = "${formatUsageDuration(item.dailyUsageMillis)} · ${if (item.completed) AppText.t("group_completed") else AppText.t("group_status_incomplete")}",
                     progress = item.periodUsageMillisAtClose.toFloat() /
-                        item.effectiveLimitMillisAtClose.coerceAtLeast(1).toFloat(),
+                        item.effectiveLimitMillisAtClose.coerceAtLeast(targetMillis).coerceAtLeast(1L).toFloat(),
+                    accent = accent,
                 )
             }
         }
@@ -981,30 +1607,20 @@ private fun GroupHistoryPanel(
 }
 
 @Composable
-private fun DetailMetricGrid(items: List<Pair<String, String>>) {
+private fun DetailMetricGrid(
+    items: List<Pair<String, String>>,
+    accent: Color,
+) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         items.chunked(2).forEach { rowItems ->
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 rowItems.forEach { (label, value) ->
-                    Surface(
+                    TinyVowMetricTile(
+                        label = label,
+                        value = value,
+                        color = accent,
                         modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(14.dp),
-                        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.38f),
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 9.dp),
-                            verticalArrangement = Arrangement.spacedBy(3.dp),
-                        ) {
-                            Text(label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text(
-                                value,
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.SemiBold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis,
-                            )
-                        }
-                    }
+                    )
                 }
                 if (rowItems.size == 1) {
                     Spacer(modifier = Modifier.weight(1f))
@@ -1019,25 +1635,195 @@ private fun DetailProgressRow(
     label: String,
     value: String,
     progress: Float,
+    accent: Color,
 ) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Text(label, modifier = Modifier.width(44.dp), style = MaterialTheme.typography.labelMedium)
+        Text(
+            text = label,
+            modifier = Modifier.width(72.dp),
+            style = MaterialTheme.typography.labelMedium,
+            color = LocalThemeColors.current.ink,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
         LinearProgressIndicator(
             progress = { progress.coerceIn(0f, 1f) },
-            modifier = Modifier.weight(1f).height(8.dp).clip(CircleShape),
+            modifier = Modifier
+                .weight(1f)
+                .height(8.dp)
+                .clip(CircleShape),
+            color = accent,
+            trackColor = accent.copy(alpha = 0.12f),
         )
         Text(
-            value,
-            modifier = Modifier.width(58.dp),
+            text = value,
+            modifier = Modifier.width(116.dp),
             style = MaterialTheme.typography.labelSmall,
+            color = LocalThemeColors.current.inkMuted,
             textAlign = TextAlign.End,
             maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
         )
     }
 }
+
+private fun buildCurrentAppRows(
+    packageNames: List<String>,
+    usageMap: Map<String, Long>,
+    openCountMap: Map<String, Int>,
+    sessions: List<AppSession>,
+    appNameByPackage: Map<String, String>,
+    includeZeroUsage: Boolean,
+): List<GroupDetailAppRow> {
+    val packageSet = packageNames.toSet()
+    val sessionsByPackage = sessions
+        .filter { it.packageName in packageSet && it.endTime > it.startTime }
+        .groupBy { it.packageName }
+    return packageNames
+        .mapNotNull { packageName ->
+            val usageMillis = usageMap[packageName] ?: 0L
+            if (!includeZeroUsage && usageMillis <= 0L) return@mapNotNull null
+            val appSessions = sessionsByPackage[packageName].orEmpty()
+            GroupDetailAppRow(
+                packageName = packageName,
+                appName = appNameByPackage[packageName] ?: packageName,
+                usageMillis = usageMillis,
+                openCount = openCountMap[packageName] ?: 0,
+                sessionCount = appSessions.size,
+                longestSessionMillis = appSessions.maxOfOrNull { it.endTime - it.startTime } ?: 0L,
+            )
+        }
+        .sortedWith(
+            compareByDescending<GroupDetailAppRow> { it.usageMillis }
+                .thenByDescending { it.openCount }
+                .thenBy { it.appName },
+        )
+}
+
+private fun buildHistoryAppRows(
+    items: List<DailyAppArchiveEntity>,
+    appNameByPackage: Map<String, String>,
+): List<GroupDetailAppRow> =
+    items
+        .groupBy { it.packageName }
+        .map { (packageName, rows) ->
+            GroupDetailAppRow(
+                packageName = packageName,
+                appName = rows.maxByOrNull { it.updatedAt }?.appLabel ?: appNameByPackage[packageName] ?: packageName,
+                usageMillis = rows.sumOf { it.dailyUsageMillis },
+                openCount = rows.sumOf { it.openCount },
+                sessionCount = rows.sumOf { it.sessionCount },
+                longestSessionMillis = rows.maxOfOrNull { it.longestSessionMillis } ?: 0L,
+                activeDays = rows.count { it.dailyUsageMillis > 0L },
+                earnedPoints = rows.sumOf { it.earnedPoints },
+            )
+        }
+        .sortedWith(
+            compareByDescending<GroupDetailAppRow> { it.usageMillis }
+                .thenByDescending { it.openCount }
+                .thenBy { it.appName },
+        )
+
+private fun buildGroupArchiveSummary(items: List<DailyGroupArchiveEntity>): GroupDetailArchiveSummary {
+    val archivedDays = items.size
+    return GroupDetailArchiveSummary(
+        archivedDays = archivedDays,
+        completedDays = items.count { it.completed },
+        totalUsageMillis = items.sumOf { it.dailyUsageMillis },
+        blockEvents = items.sumOf { it.blockEventCount },
+        exceededDays = items.count { it.exceededMillisAtClose > 0L },
+        totalEarnedPoints = items.sumOf { it.earnedPoints },
+        averageRemainingMillis = if (archivedDays > 0) items.sumOf { it.remainingMillisAtClose.coerceAtLeast(0L) } / archivedDays else 0L,
+        averageExceededMillis = if (archivedDays > 0) items.sumOf { it.exceededMillisAtClose.coerceAtLeast(0L) } / archivedDays else 0L,
+    )
+}
+
+private fun groupDetailAppMeta(
+    row: GroupDetailAppRow,
+    totalUsageMillis: Long,
+    scope: GroupDetailAppScope,
+): String {
+    val share = if (totalUsageMillis > 0L) {
+        ((row.usageMillis.toFloat() / totalUsageMillis.toFloat()) * 100).toInt()
+    } else {
+        0
+    }
+    val base = AppText.t("group_detail_app_meta", share, row.openCount, formatUsageDuration(row.longestSessionMillis))
+    return if (scope == GroupDetailAppScope.HISTORY) {
+        val pointsPart =
+            if (row.earnedPoints > 0.0) {
+                " · ${AppText.t("group_points_value", trimTrailingZero(row.earnedPoints))}"
+            } else {
+                ""
+            }
+        "$base · ${AppText.t("stats_active_days")}: ${AppText.t("group_value_days_5", row.activeDays)}$pointsPart"
+    } else {
+        "$base · ${AppText.t("group_detail_sessions", row.sessionCount)}"
+    }
+}
+
+private fun groupDetailTargetMillis(
+    groupData: AppGroupWithApps,
+    rewardSummary: GroupActiveRewardSummary,
+): Long =
+    if (groupData.group.type == GroupType.CONTROL) {
+        (groupData.group.limitMinutes + rewardSummary.extraMinutes).coerceAtLeast(1) * 60_000L
+    } else {
+        groupData.group.limitMinutes.coerceAtLeast(1) * 60_000L
+    }
+
+private fun groupDetailStatusLabel(
+    groupData: AppGroupWithApps,
+    usageMillis: Long,
+    targetMillis: Long,
+    todayStepCount: Int,
+): String {
+    if (groupData.group.type == GroupType.ENCOURAGE && groupData.group.encourageMetric == EncourageMetric.STEPS) {
+        return if (todayStepCount >= groupData.group.stepTarget) AppText.t("group_completed") else AppText.t("group_label_2")
+    }
+    return when {
+        groupData.group.type == GroupType.CONTROL && usageMillis <= targetMillis -> AppText.t("group_status_safe")
+        groupData.group.type == GroupType.CONTROL -> AppText.t("group_over_by")
+        usageMillis >= targetMillis -> AppText.t("group_completed")
+        else -> AppText.t("group_label_2")
+    }
+}
+
+private fun groupDetailProgress(
+    groupData: AppGroupWithApps,
+    usageMillis: Long,
+    targetMillis: Long,
+    todayStepCount: Int,
+): Float =
+    if (groupData.group.type == GroupType.ENCOURAGE && groupData.group.encourageMetric == EncourageMetric.STEPS) {
+        todayStepCount.toFloat() / groupData.group.stepTarget.coerceAtLeast(1).toFloat()
+    } else {
+        usageMillis.toFloat() / targetMillis.coerceAtLeast(1L).toFloat()
+    }
+
+private fun groupDetailPeriodStartMillis(
+    period: LimitPeriod,
+    today: LocalDate,
+    zoneId: ZoneId,
+    dayStartHour: Int,
+): Long {
+    val startDate = when (period) {
+        LimitPeriod.DAILY -> today
+        LimitPeriod.WEEKLY -> today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
+        LimitPeriod.MONTHLY -> today.withDayOfMonth(1)
+    }
+    return BusinessDay.startOfDayMillis(startDate, zoneId, dayStartHour)
+}
+
+private fun groupDetailPeriodLabel(period: LimitPeriod): String =
+    when (period) {
+        LimitPeriod.DAILY -> AppText.t("group_daily_short")
+        LimitPeriod.WEEKLY -> AppText.t("group_weekly_short")
+        LimitPeriod.MONTHLY -> AppText.t("group_monthly_short")
+    }
 
 @Composable
 private fun GroupEditDialog(
@@ -1053,6 +1839,9 @@ private fun GroupEditDialog(
     onDelete: () -> Unit
 ) {
     val context = LocalContext.current
+    val themeColors = LocalThemeColors.current
+    val editAccent = if (forcedType == GroupType.CONTROL) themeColors.control else themeColors.encourage
+    val editBackground = editAccent.copy(alpha = 0.06f).compositeOver(MaterialTheme.colorScheme.background)
     val homePackage = remember(context) {
         val intent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_HOME)
         runCatching {
@@ -1127,12 +1916,12 @@ private fun GroupEditDialog(
             decorFitsSystemWindows = false
         )
     ) {
-        SyncDialogSystemBars()
+        SyncDialogSystemBars(backgroundColor = editBackground)
 
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background)
+                .background(editBackground)
         ) {
             Column(
                 modifier = Modifier
@@ -1151,7 +1940,7 @@ private fun GroupEditDialog(
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = AppText.t("group_back"),
-                            tint = MaterialTheme.colorScheme.primary
+                            tint = editAccent
                         )
                     }
                     Spacer(modifier = Modifier.weight(1f))
@@ -1160,7 +1949,7 @@ private fun GroupEditDialog(
                             Icon(
                                 imageVector = Icons.Default.Delete,
                                 contentDescription = AppText.t("group_delete"),
-                                tint = MaterialTheme.colorScheme.primary
+                                tint = editAccent
                             )
                         }
                     }
@@ -1191,7 +1980,7 @@ private fun GroupEditDialog(
                         Icon(
                             imageVector = Icons.Default.Check,
                             contentDescription = AppText.t("group_save"),
-                            tint = if (canSaveBase) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
+                            tint = if (canSaveBase) editAccent else MaterialTheme.colorScheme.outline
                         )
                     }
                 }
@@ -1202,7 +1991,8 @@ private fun GroupEditDialog(
                     placeholder = AppText.t("group_name_placeholder"),
                     modifier = Modifier.fillMaxWidth(),
                     keyboardType = KeyboardType.Text,
-                    textAlign = TextAlign.Start
+                    textAlign = TextAlign.Start,
+                    accent = editAccent,
                 )
                 val validationMessage = when {
                     nameInvalid -> AppText.t("group_edit_name_required")
@@ -1231,7 +2021,8 @@ private fun GroupEditDialog(
                         period = selectedPeriod,
                         groupType = forcedType,
                         onPeriodChange = { selectedPeriod = it },
-                        modifier = Modifier.weight(periodFieldWeight)
+                        modifier = Modifier.weight(periodFieldWeight),
+                        accent = editAccent,
                     )
                     UnifiedInputField(
                         value = limitText,
@@ -1240,7 +2031,8 @@ private fun GroupEditDialog(
                         suffix = AppText.t("group_minutes"),
                         modifier = Modifier.weight(targetFieldWeight),
                         keyboardType = KeyboardType.Number,
-                        textAlign = TextAlign.End
+                        textAlign = TextAlign.End,
+                        accent = editAccent,
                     )
                     if (forcedType == GroupType.ENCOURAGE) {
                         UnifiedInputField(
@@ -1251,7 +2043,8 @@ private fun GroupEditDialog(
                             suffix = AppText.t("group_pts"),
                             modifier = Modifier.weight(pointsFieldWeight),
                             keyboardType = KeyboardType.Decimal,
-                            textAlign = TextAlign.End
+                            textAlign = TextAlign.End,
+                            accent = editAccent,
                         )
                     }
                 }
@@ -1265,15 +2058,17 @@ private fun GroupEditDialog(
                         text = if (showOnlyUsedInSevenDays) AppText.t("group_active_last_7_days") else AppText.t("group_all_apps"),
                         selected = showOnlyUsedInSevenDays,
                         onClick = { showOnlyUsedInSevenDays = !showOnlyUsedInSevenDays },
+                        accent = editAccent,
                     )
                     SearchField(
                         value = searchQuery,
                         onValueChange = { searchQuery = it },
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.weight(1f),
+                        accent = editAccent,
                     )
                 }
 
-                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f))
+                HorizontalDivider(color = editAccent.copy(alpha = 0.24f))
                 Text(
                     text = AppText.t("pro_group_app_limit_status", selectedPackages.size, appLimit),
                     style = MaterialTheme.typography.bodySmall,
@@ -1298,6 +2093,7 @@ private fun GroupEditDialog(
                             checked = app.packageName in selectedPackages,
                             icon = appIconCache[app.packageName],
                             onIconLoaded = onAppIconLoaded,
+                            accent = editAccent,
                             onCheckedChange = { checked ->
                                 selectedPackages = if (checked) {
                                     if (selectedPackages.size >= appLimit) {
@@ -1350,9 +2146,10 @@ private fun UnifiedInputField(
     prefix: String? = null,
     suffix: String? = null,
     keyboardType: KeyboardType,
-    textAlign: TextAlign
+    textAlign: TextAlign,
+    accent: Color = LocalThemeColors.current.base,
 ) {
-    FieldContainer(modifier = modifier) {
+    FieldContainer(modifier = modifier, accent = accent) {
         if (prefix != null) {
             Text(
                 text = prefix,
@@ -1372,7 +2169,7 @@ private fun UnifiedInputField(
                     textAlign = textAlign
                 )
             ),
-            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+            cursorBrush = SolidColor(accent),
             decorationBox = { innerTextField ->
                 Box(modifier = Modifier.fillMaxWidth()) {
                     if (value.isBlank()) {
@@ -1402,13 +2199,14 @@ private fun UnifiedInputField(
 private fun SearchField(
     value: String,
     onValueChange: (String) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    accent: Color = LocalThemeColors.current.base,
 ) {
-    FieldContainer(modifier = modifier) {
+    FieldContainer(modifier = modifier, accent = accent) {
         Icon(
             imageVector = Icons.Default.Search,
             contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant
+            tint = accent
         )
         BasicTextField(
             value = value,
@@ -1419,7 +2217,7 @@ private fun SearchField(
             textStyle = MaterialTheme.typography.titleSmall.merge(
                 TextStyle(color = MaterialTheme.colorScheme.onSurface)
             ),
-            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+            cursorBrush = SolidColor(accent),
             decorationBox = { innerTextField ->
                 Box(modifier = Modifier.fillMaxWidth()) {
                     if (value.isBlank()) {
@@ -1442,23 +2240,24 @@ private fun FieldContainer(
     selected: Boolean = false,
     onClick: (() -> Unit)? = null,
     fillWidth: Boolean = true,
+    accent: Color = LocalThemeColors.current.base,
     content: @Composable RowScope.() -> Unit
 ) {
     val containerColor =
         if (selected) {
-            MaterialTheme.colorScheme.primaryContainer
+            accent.copy(alpha = 0.14f)
         } else {
             MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
         }
     val border =
         if (selected) {
-            BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.28f))
+            BorderStroke(1.dp, accent.copy(alpha = 0.34f))
         } else {
             BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
         }
     val contentColor =
         if (selected) {
-            MaterialTheme.colorScheme.onPrimaryContainer
+            accent
         } else {
             MaterialTheme.colorScheme.onSurfaceVariant
         }
@@ -1503,19 +2302,21 @@ private fun CompactFilterButton(
     selected: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
+    accent: Color = LocalThemeColors.current.base,
 ) {
     FieldContainer(
         modifier = modifier,
         selected = selected,
         onClick = onClick,
         fillWidth = false,
+        accent = accent,
     ) {
         Text(
             text = text,
             style = MaterialTheme.typography.labelLarge,
             fontWeight = FontWeight.SemiBold,
             color = if (selected) {
-                MaterialTheme.colorScheme.onPrimaryContainer
+                accent
             } else {
                 MaterialTheme.colorScheme.onSurfaceVariant
             },
@@ -1531,6 +2332,7 @@ private fun AppSelectionItem(
     checked: Boolean,
     icon: Drawable?,
     onIconLoaded: (String, Drawable) -> Unit,
+    accent: Color,
     onCheckedChange: (Boolean) -> Unit
 ) {
     val context = LocalContext.current
@@ -1549,6 +2351,7 @@ private fun AppSelectionItem(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(20.dp))
+            .background(if (checked) accent.copy(alpha = 0.08f) else Color.Transparent)
             .clickable { onCheckedChange(!checked) }
             .padding(vertical = 4.dp, horizontal = 8.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -1557,7 +2360,7 @@ private fun AppSelectionItem(
         Surface(
             modifier = Modifier.size(52.dp),
             shape = RoundedCornerShape(16.dp),
-            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+            color = if (checked) accent.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
         ) {
             if (icon != null) {
                 AsyncImage(
@@ -1588,7 +2391,7 @@ private fun AppSelectionItem(
             checked = checked,
             onCheckedChange = null, // Controlled by Row click
             colors = androidx.compose.material3.CheckboxDefaults.colors(
-                checkedColor = MaterialTheme.colorScheme.primary,
+                checkedColor = accent,
                 uncheckedColor = MaterialTheme.colorScheme.outline
             )
         )
@@ -1600,7 +2403,8 @@ private fun CompactPeriodSelector(
     period: LimitPeriod,
     groupType: GroupType,
     onPeriodChange: (LimitPeriod) -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    accent: Color = LocalThemeColors.current.base,
 ) {
     var expanded by remember { mutableStateOf(false) }
     val label = when (period) {
@@ -1613,6 +2417,7 @@ private fun CompactPeriodSelector(
         FieldContainer(
             modifier = Modifier.fillMaxWidth(),
             onClick = { expanded = true },
+            accent = accent,
         ) {
             Text(
                 text = label,
@@ -1625,7 +2430,7 @@ private fun CompactPeriodSelector(
             Icon(
                 imageVector = Icons.Default.KeyboardArrowDown,
                 contentDescription = null,
-                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                tint = accent
             )
         }
 
@@ -1652,9 +2457,10 @@ private fun CompactPeriodSelector(
 }
 
 @Composable
-private fun SyncDialogSystemBars() {
+private fun SyncDialogSystemBars(
+    backgroundColor: Color = MaterialTheme.colorScheme.background,
+) {
     val view = LocalView.current
-    val backgroundColor = MaterialTheme.colorScheme.background
     val backgroundArgb = backgroundColor.toArgb()
     val lightIcons = backgroundColor.luminance() > 0.5f
     val dialogWindow = remember(view) { (view.parent as? DialogWindowProvider)?.window }
@@ -1730,150 +2536,6 @@ private fun formatUsageDuration(durationMillis: Long): String {
         hours > 0 -> AppText.t("duration_value_h", hours)
         else -> AppText.t("duration_value_min", minutes)
     }
-}
-
-private fun shareGroupDetailBitmap(
-    context: Context,
-    groupData: AppGroupWithApps,
-    tabLabel: String,
-    todayUsageMillis: Long,
-    weekUsageMillis: Long,
-    historyItems: List<DailyGroupArchiveEntity>,
-    background: Int,
-    surface: Int,
-    accent: Int,
-    textColor: Int,
-    mutedColor: Int,
-) {
-    val bitmap = renderGroupDetailBitmap(
-        groupName = groupData.group.name,
-        typeLabel = if (groupData.group.type == GroupType.CONTROL) AppText.t("group_commitment") else AppText.t("group_small_encouragement"),
-        tabLabel = tabLabel,
-        todayUsage = formatUsageDuration(todayUsageMillis),
-        weekUsage = formatUsageDuration(weekUsageMillis),
-        historyDays = historyItems.size,
-        completedDays = historyItems.count { it.completed },
-        packageCount = groupData.packageNames.size,
-        background = background,
-        surface = surface,
-        accent = accent,
-        textColor = textColor,
-        mutedColor = mutedColor,
-        limitText = AppText.t("group_value_minutes", groupData.group.limitMinutes),
-    )
-    val shareDir = File(context.cacheDir, "share").apply { mkdirs() }
-    val file = File(shareDir, "tinyvow-group-${System.currentTimeMillis()}.png")
-    FileOutputStream(file).use { output ->
-        bitmap.compress(Bitmap.CompressFormat.PNG, 100, output)
-    }
-    val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
-    val intent = Intent(Intent.ACTION_SEND).apply {
-        type = "image/png"
-        putExtra(Intent.EXTRA_STREAM, uri)
-        putExtra(Intent.EXTRA_TITLE, AppText.t("group_tiny_vow_group_data"))
-        clipData = ClipData.newUri(context.contentResolver, AppText.t("group_tiny_vow_group_data"), uri)
-        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-    }
-    context.startActivity(Intent.createChooser(intent, AppText.t("group_share_group_data")))
-}
-
-private fun renderGroupDetailBitmap(
-    groupName: String,
-    typeLabel: String,
-    tabLabel: String,
-    todayUsage: String,
-    weekUsage: String,
-    historyDays: Int,
-    completedDays: Int,
-    packageCount: Int,
-    background: Int,
-    surface: Int,
-    accent: Int,
-    textColor: Int,
-    mutedColor: Int,
-    limitText: String,
-): Bitmap {
-    val width = 1080
-    val height = 1440
-    val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
-    val canvas = android.graphics.Canvas(bitmap)
-    val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = background }
-    val cardPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = surface }
-    val primary = accent
-    val muted = mutedColor
-    val titlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = textColor
-        textSize = 58f
-        typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.BOLD)
-    }
-    val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = muted
-        textSize = 30f
-    }
-    val valuePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = primary
-        textSize = 62f
-        typeface = android.graphics.Typeface.create("sans-serif-black", android.graphics.Typeface.BOLD)
-    }
-    canvas.drawRect(0f, 0f, width.toFloat(), height.toFloat(), bgPaint)
-    canvas.drawRoundRect(RectF(58f, 70f, width - 58f, height - 70f), 54f, 54f, cardPaint)
-    canvas.drawText("Tiny Vow · $typeLabel", 110f, 155f, labelPaint)
-    drawBitmapEllipsizedText(canvas, groupName, 110f, 240f, width - 220f, titlePaint)
-    canvas.drawRoundRect(
-        RectF(110f, 300f, 360f, 366f),
-        33f,
-        33f,
-        Paint(Paint.ANTI_ALIAS_FLAG).apply { color = android.graphics.Color.argb(32, 91, 139, 153) },
-    )
-    canvas.drawText(tabLabel, 188f, 344f, Paint(labelPaint).apply {
-        color = primary
-        textSize = 34f
-        typeface = android.graphics.Typeface.create("sans-serif-medium", android.graphics.Typeface.BOLD)
-    })
-
-    val metrics = listOf(
-        AppText.t("group_today_usage") to todayUsage,
-        AppText.t("group_week_total_label") to weekUsage,
-        AppText.t("group_target_limit_label") to limitText,
-        AppText.t("group_app_count_label") to AppText.t("group_app_count_value", packageCount),
-        AppText.t("group_history_days_label") to AppText.t("group_value_days_2", historyDays),
-        AppText.t("group_completed_days_label") to AppText.t("group_value_days_3", completedDays),
-    )
-    metrics.forEachIndexed { index, metric ->
-        val row = index / 2
-        val col = index % 2
-        val left = 110f + col * 430f
-        val top = 430f + row * 210f
-        canvas.drawRoundRect(
-            RectF(left, top, left + 380f, top + 162f),
-            34f,
-            34f,
-        Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = android.graphics.Color.argb(
-                32,
-                android.graphics.Color.red(primary),
-                android.graphics.Color.green(primary),
-                android.graphics.Color.blue(primary),
-            )
-        },
-        )
-        canvas.drawText(metric.first, left + 32f, top + 52f, labelPaint)
-        drawBitmapEllipsizedText(canvas, metric.second, left + 32f, top + 120f, 316f, valuePaint)
-    }
-    canvas.drawText(AppText.t("group_label"), 110f, height - 142f, Paint(labelPaint).apply { textSize = 34f })
-    return bitmap
-}
-
-private fun drawBitmapEllipsizedText(
-    canvas: android.graphics.Canvas,
-    text: String,
-    x: Float,
-    y: Float,
-    maxWidth: Float,
-    paint: Paint,
-) {
-    val output = TextUtils.ellipsize(text, TextPaint(paint), maxWidth, TextUtils.TruncateAt.END).toString()
-    canvas.drawText(output, x, y, paint)
 }
 
 private fun sanitizeDecimalInput(value: String): String {

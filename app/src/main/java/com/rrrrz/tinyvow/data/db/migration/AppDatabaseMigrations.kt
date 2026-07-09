@@ -1145,6 +1145,79 @@ object AppDatabaseMigrations {
             }
         }
 
+    val MIGRATION_29_30 =
+        object : Migration(29, 30) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `lock_screen_timer_app_configs` (
+                        `package_name` TEXT NOT NULL,
+                        `app_label_snapshot` TEXT NOT NULL,
+                        `enabled` INTEGER NOT NULL,
+                        `created_at` INTEGER NOT NULL,
+                        `updated_at` INTEGER NOT NULL,
+                        PRIMARY KEY(`package_name`)
+                    )
+                    """.trimIndent(),
+                )
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `lock_screen_timer_app_days` (
+                        `package_name` TEXT NOT NULL,
+                        `timer_date` TEXT NOT NULL,
+                        `trusted_lock_millis` INTEGER NOT NULL,
+                        `is_active` INTEGER NOT NULL,
+                        `active_started_at` INTEGER,
+                        `last_status` TEXT NOT NULL,
+                        `updated_at` INTEGER NOT NULL,
+                        PRIMARY KEY(`package_name`, `timer_date`)
+                    )
+                    """.trimIndent(),
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_lock_screen_timer_app_days_timer_date` ON `lock_screen_timer_app_days` (`timer_date`)"
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_lock_screen_timer_app_days_package_name` ON `lock_screen_timer_app_days` (`package_name`)"
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_lock_screen_timer_app_days_package_name_timer_date` ON `lock_screen_timer_app_days` (`package_name`, `timer_date`)"
+                )
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `lock_screen_timer_app_segments` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `package_name` TEXT NOT NULL,
+                        `timer_date` TEXT NOT NULL,
+                        `start_millis` INTEGER NOT NULL,
+                        `end_millis` INTEGER NOT NULL,
+                        `created_at` INTEGER NOT NULL,
+                        `updated_at` INTEGER NOT NULL
+                    )
+                    """.trimIndent(),
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_lock_screen_timer_app_segments_package_name` ON `lock_screen_timer_app_segments` (`package_name`)"
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_lock_screen_timer_app_segments_timer_date` ON `lock_screen_timer_app_segments` (`timer_date`)"
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_lock_screen_timer_app_segments_package_name_start_millis` ON `lock_screen_timer_app_segments` (`package_name`, `start_millis`)"
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_lock_screen_timer_app_segments_package_name_end_millis` ON `lock_screen_timer_app_segments` (`package_name`, `end_millis`)"
+                )
+            }
+        }
+
+    val MIGRATION_30_31 =
+        object : Migration(30, 31) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `step_days` ADD COLUMN `source` TEXT NOT NULL DEFAULT 'SENSOR'")
+            }
+        }
+
     val ALL: Array<Migration> = arrayOf(
         MIGRATION_9_10,
         MIGRATION_10_11,
@@ -1166,5 +1239,7 @@ object AppDatabaseMigrations {
         MIGRATION_26_27,
         MIGRATION_27_28,
         MIGRATION_28_29,
+        MIGRATION_29_30,
+        MIGRATION_30_31,
     )
 }

@@ -18,6 +18,15 @@ internal fun calculateTargetBonusPoints(
     return max(targetMinutes, 0) * pointsPerMinute
 }
 
+internal fun calculateEncourageTargetPoints(
+    targetMinutes: Int,
+    pointsPerMinute: Double,
+): Double =
+    calculateUsageEarnedPoints(
+        usageMillis = max(targetMinutes, 0) * 60_000L,
+        pointsPerMinute = pointsPerMinute,
+    ) + calculateTargetBonusPoints(targetMinutes, pointsPerMinute)
+
 internal fun calculateEncourageEarnedPoints(
     usageMillis: Long,
     targetMinutes: Int,

@@ -1167,15 +1167,9 @@ class AppLimitRepository(
         existing: RedemptionEntity?,
         updated: RedemptionEntity,
     ) {
-        val previousPath = existing?.takeIf { it.iconSource == RewardIconSource.IMPORTED_FILE }?.iconValue
-        val nextPath = updated.takeIf { it.iconSource == RewardIconSource.IMPORTED_FILE }?.iconValue
-        if (previousPath.isNullOrBlank() || previousPath == nextPath) return
-        deleteImportedIconIfUnreferenced(previousPath, excludeRewardId = updated.id)
     }
 
     private suspend fun cleanupArchivedImportedIcon(reward: RedemptionEntity?) {
-        val importedPath = reward?.takeIf { it.iconSource == RewardIconSource.IMPORTED_FILE }?.iconValue ?: return
-        deleteImportedIconIfUnreferenced(importedPath, excludeRewardId = reward.id)
     }
 
     private suspend fun deleteImportedIconIfUnreferenced(

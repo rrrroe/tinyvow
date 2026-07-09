@@ -25,6 +25,16 @@ class EncouragePointsCalculatorTest {
     }
 
     @Test
+    fun calculateEncourageTargetPoints_includesUsagePointsAndOneTimeBonus() {
+        val points = calculateEncourageTargetPoints(
+            targetMinutes = 30,
+            pointsPerMinute = 1.5,
+        )
+
+        assertEquals(90.0, points, 0.0001)
+    }
+
+    @Test
     fun calculateEncourageEarnedPoints_addsTargetBonusOnceWhenReached() {
         val points = calculateEncourageEarnedPoints(
             usageMillis = 20L * 60L * 1000L,

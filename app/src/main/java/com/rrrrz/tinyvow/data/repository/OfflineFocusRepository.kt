@@ -1,7 +1,9 @@
 package com.rrrrz.tinyvow.data.repository
 
 import android.content.Context
+import android.content.Intent
 import android.net.Uri
+import android.provider.Settings
 import androidx.room.withTransaction
 import com.rrrrz.tinyvow.data.db.AppDatabase
 import com.rrrrz.tinyvow.data.db.OfflineFocusCategoryEntity
@@ -120,6 +122,9 @@ class OfflineFocusRepository(
     private val sessionDao = database.offlineFocusSessionDao()
     private val pointLedgerDao = database.pointLedgerDao()
     private val zoneId = ZoneId.systemDefault()
+    private var cachedHomeLauncherPackages: Set<String>? = null
+    private var cachedInputMethodPackages: Set<String>? = null
+    private var cachedInputMethodPackagesAtMillis: Long = 0L
 
     fun observeCategories(includeArchived: Boolean = false): Flow<List<OfflineFocusCategory>> =
         categoryDao.observeAll(includeArchived).map { entities ->
@@ -129,12 +134,15 @@ class OfflineFocusRepository(
     fun observeActiveSession(): Flow<OfflineFocusSession?> =
         sessionDao.observeActiveSession().map { it?.let(::toSession) }
 
+    fun observeSession(sessionId: String): Flow<OfflineFocusSession?> =
+        sessionDao.observeById(sessionId).map { it?.let(::toSession) }
+
     fun observeSummaryForDay(
         dayStartMillis: Long,
         dayEndMillis: Long,
     ): Flow<OfflineFocusTodaySummary> =
         sessionDao.observeSessionsOverlapping(dayStartMillis, dayEndMillis).map { sessions ->
-            buildSummary(sessions)
+            buildSummary(sessions, dayStartMillis, dayEndMillis)
         }
 
     suspend fun getSummaryForDay(
@@ -142,7 +150,7 @@ class OfflineFocusRepository(
         dayEndMillis: Long,
     ): OfflineFocusTodaySummary =
         withContext(Dispatchers.IO) {
-            buildSummary(sessionDao.getSessionsOverlapping(dayStartMillis, dayEndMillis))
+            buildSummary(sessionDao.getSessionsOverlapping(dayStartMillis, dayEndMillis), dayStartMillis, dayEndMillis)
         }
 
     suspend fun ensureBuiltInCategories() {
@@ -154,12 +162,12 @@ class OfflineFocusRepository(
                         id = definition.id,
                         name = definition.fallbackName,
                         iconKey = definition.iconKey,
+                        customIconPath = null,
                         colorArgb = definition.colorArgb,
+                        pointsPerMinute = 1.0,
                         sortOrder = definition.sortOrder,
                         isBuiltIn = true,
                         isArchived = false,
-                        customIconPath = null,
-                        pointsPerMinute = 1.0,
                         isDeleted = false,
                         createdAt = now,
                         updatedAt = now,
@@ -174,11 +182,11 @@ class OfflineFocusRepository(
         durationMinutes: Int,
         focusMode: OfflineFocusMode = OfflineFocusMode.NORMAL,
         nowMillis: Long = System.currentTimeMillis(),
-    ): OfflineFocusSession {
+    ): OfflineFocusSession? {
         return withContext(Dispatchers.IO) {
             ensureBuiltInCategories()
             sessionDao.getActiveSession()?.let(::toSession)?.let { return@withContext it }
-            val category = resolveCategory(categoryId)
+            val category = resolveCategory(categoryId) ?: return@withContext null
             val normalizedMinutes =
                 durationMinutes.coerceIn(
                     ManagedAppPreferences.MIN_OFFLINE_FOCUS_DURATION_MINUTES,
@@ -205,6 +213,7 @@ class OfflineFocusRepository(
             sessionDao.insert(session)
             preferences.setOfflineFocusDefaultCategoryId(category.id)
             preferences.setOfflineFocusDefaultDurationMinutes(normalizedMinutes)
+            preferences.setOfflineFocusCategoryDefaults(category.id, normalizedMinutes, focusMode)
             toSession(session)
         }
     }
@@ -307,10 +316,138 @@ class OfflineFocusRepository(
             sessionDao.getActiveSession()?.let(::toSession)
         }
 
-    suspend fun getDefaultCategory(): OfflineFocusCategory {
+    suspend fun getSessionOnce(sessionId: String): OfflineFocusSession? =
+        withContext(Dispatchers.IO) {
+            sessionDao.getById(sessionId)?.let(::toSession)
+        }
+
+    suspend fun adjustCompletedSessionEndEarlier(
+        sessionId: String,
+        minutesEarlier: Int,
+    ): OfflineFocusSession? {
+        return withContext(Dispatchers.IO) {
+            val dayBoundaryHour = preferences.getDayBoundaryHourOnce()
+            val dailyCap = preferences.getOfflineFocusDailyPointCapOnce().toDouble()
+            val result =
+                database.withTransaction {
+                    val current = sessionDao.getById(sessionId) ?: return@withTransaction null
+                    val isBelowThresholdAbandoned =
+                        current.status == OfflineFocusSessionStatus.ABANDONED &&
+                            current.abandonedReason == OfflineFocusAbandonReason.BELOW_THRESHOLD
+                    if (
+                        current.status != OfflineFocusSessionStatus.COMPLETED &&
+                        current.status != OfflineFocusSessionStatus.SETTLED &&
+                        !isBelowThresholdAbandoned
+                    ) {
+                        return@withTransaction OfflineFocusFinishResult(
+                            session = current,
+                            insertedLedger = false,
+                            awardedPoints = 0.0,
+                        )
+                    }
+                    val endAt = current.completedAt ?: current.abandonedAt ?: return@withTransaction OfflineFocusFinishResult(
+                        session = current,
+                        insertedLedger = false,
+                        awardedPoints = 0.0,
+                    )
+                    val maxEarlierMinutes =
+                        (((endAt - current.startedAt).coerceAtLeast(0L) / MINUTE_MILLIS) - 1L)
+                            .coerceAtLeast(0L)
+                            .coerceAtMost(60L)
+                            .toInt()
+                    val normalizedMinutes = minutesEarlier.coerceIn(0, maxEarlierMinutes)
+                    val adjustedEndAt = endAt - normalizedMinutes * MINUTE_MILLIS
+                    val adjustedActualMillis =
+                        (adjustedEndAt - current.startedAt)
+                            .coerceIn(MINUTE_MILLIS, current.plannedDurationMillis.coerceAtLeast(MINUTE_MILLIS))
+                    if (isBelowThresholdAbandoned) {
+                        val adjusted =
+                            current.copy(
+                                actualDurationMillis = adjustedActualMillis,
+                                abandonedAt = adjustedEndAt,
+                                pointsAwarded = 0.0,
+                                updatedAt = System.currentTimeMillis(),
+                            )
+                        sessionDao.update(adjusted)
+                        return@withTransaction OfflineFocusFinishResult(
+                            session = adjusted,
+                            insertedLedger = false,
+                            awardedPoints = 0.0,
+                        )
+                    }
+                    val sourceRefId = sourceRefId(sessionId)
+                    val existingLedger = pointLedgerDao.getBySourceRefId(sourceRefId)
+                    val ledgerId = existingLedger?.id ?: UUID.randomUUID().toString()
+                    val ledgerDate =
+                        ArchiveDateUtils.formatDate(
+                            BusinessDay.dateAt(adjustedEndAt, zoneId, dayBoundaryHour),
+                        )
+                    val alreadyAwarded =
+                        pointLedgerDao.sumOfflineFocusEarnedByDateExcludingEntry(
+                            date = ledgerDate,
+                            excludedEntryId = existingLedger?.id.orEmpty(),
+                        )
+                    val rawPoints =
+                        ((adjustedActualMillis / MINUTE_MILLIS).toDouble() * current.pointsPerMinuteSnapshot)
+                            .coerceAtLeast(0.0)
+                    val adjustedPoints =
+                        rawPoints.coerceAtMost((dailyCap - alreadyAwarded).coerceAtLeast(0.0))
+                    val messageArgs =
+                        JSONArray(listOf(current.categoryNameSnapshot, adjustedActualMillis / MINUTE_MILLIS)).toString()
+                    if (existingLedger == null) {
+                        pointLedgerDao.insertIgnore(
+                            PointLedgerEntity(
+                                id = ledgerId,
+                                occurredAt = adjustedEndAt,
+                                ledgerDate = ledgerDate,
+                                entryType = PointLedgerEntryType.OFFLINE_FOCUS,
+                                deltaPoints = adjustedPoints,
+                                sourceRefId = sourceRefId,
+                                messageKey = "ledger_offline_focus",
+                                messageArgsJson = messageArgs,
+                                note = current.categoryNameSnapshot,
+                                createdAt = System.currentTimeMillis(),
+                            ),
+                        )
+                    } else {
+                        pointLedgerDao.update(
+                            existingLedger.copy(
+                                occurredAt = adjustedEndAt,
+                                ledgerDate = ledgerDate,
+                                deltaPoints = adjustedPoints,
+                                messageArgsJson = messageArgs,
+                                note = current.categoryNameSnapshot,
+                            ),
+                        )
+                    }
+                    val adjusted =
+                        current.copy(
+                            actualDurationMillis = adjustedActualMillis,
+                            status = OfflineFocusSessionStatus.SETTLED,
+                            completedAt = adjustedEndAt,
+                            pointsAwarded = adjustedPoints,
+                            settledLedgerId = ledgerId,
+                            updatedAt = System.currentTimeMillis(),
+                        )
+                    sessionDao.update(adjusted)
+                    OfflineFocusFinishResult(
+                        session = adjusted,
+                        insertedLedger = true,
+                        awardedPoints = adjustedPoints - (existingLedger?.deltaPoints ?: 0.0),
+                    )
+                } ?: return@withContext null
+            if (result.awardedPoints != 0.0) {
+                preferences.addUserPoints(result.awardedPoints)
+                AppLimitRepository(context, database).checkAchievements()
+            }
+            toSession(result.session)
+        }
+    }
+
+    suspend fun getDefaultCategory(): OfflineFocusCategory? {
         return withContext(Dispatchers.IO) {
             ensureBuiltInCategories()
-            resolveCategory(preferences.getOfflineFocusDefaultCategoryIdOnce()).let(::toCategory)
+            resolveCategory(preferences.getOfflineFocusDefaultCategoryIdOnce())?.let(::toCategory)
         }
     }
 
@@ -322,10 +459,9 @@ class OfflineFocusRepository(
         nowMillis: Long = System.currentTimeMillis(),
     ) {
         withContext(Dispatchers.IO) {
-            if (!preferences.getOfflineFocusEnabledOnce()) return@withContext
             val current = sessionDao.getActiveSession() ?: return@withContext
             val whitelist = preferences.getOfflineFocusWhitelistPackagesOnce() + ownPackageName
-            val allowed = packageName in whitelist
+            val allowed = packageName in whitelist || isNeutralFocusForegroundPackage(packageName, ownPackageName)
             if (allowed) {
                 if (current.status == OfflineFocusSessionStatus.PAUSED &&
                     current.pauseReason == OfflineFocusPauseReason.NON_WHITELIST_APP
@@ -369,6 +505,70 @@ class OfflineFocusRepository(
         }
     }
 
+    private fun isNeutralFocusForegroundPackage(
+        packageName: String,
+        ownPackageName: String,
+    ): Boolean {
+        val packageLower = packageName.lowercase()
+        return packageName == ownPackageName ||
+            packageName == "android" ||
+            packageName == "com.android.systemui" ||
+            packageName == "com.google.android.systemui" ||
+            packageName in homeLauncherPackages() ||
+            packageName in inputMethodPackages() ||
+            packageName in knownHomeLauncherPackages ||
+            packageLower.contains("launcher")
+    }
+
+    private fun homeLauncherPackages(): Set<String> {
+        cachedHomeLauncherPackages?.let { return it }
+        val intent =
+            Intent(Intent.ACTION_MAIN).apply {
+                addCategory(Intent.CATEGORY_HOME)
+            }
+        val packages =
+            runCatching {
+                context.packageManager
+                    .queryIntentActivities(intent, 0)
+                    .mapNotNull { it.activityInfo?.packageName }
+                    .toSet()
+            }.getOrDefault(emptySet())
+        val resolvedHome =
+            runCatching {
+                context.packageManager.resolveActivity(intent, 0)?.activityInfo?.packageName
+            }.getOrNull()
+        val resolvedPackages = packages + setOfNotNull(resolvedHome)
+        cachedHomeLauncherPackages = resolvedPackages
+        return resolvedPackages
+    }
+
+    private fun inputMethodPackages(): Set<String> {
+        val now = System.currentTimeMillis()
+        cachedInputMethodPackages
+            ?.takeIf { now - cachedInputMethodPackagesAtMillis <= INPUT_METHOD_PACKAGE_CACHE_MILLIS }
+            ?.let { return it }
+        val resolver = context.contentResolver
+        val values =
+            listOfNotNull(
+                runCatching {
+                    Settings.Secure.getString(resolver, Settings.Secure.DEFAULT_INPUT_METHOD)
+                }.getOrNull(),
+                runCatching {
+                    Settings.Secure.getString(resolver, Settings.Secure.ENABLED_INPUT_METHODS)
+                }.getOrNull(),
+            )
+        val packages =
+            values
+                .flatMap { value -> value.split(':', ';') }
+                .mapNotNull { entry ->
+                    entry.substringBefore('/').trim().takeIf { it.contains('.') }
+                }
+                .toSet()
+        cachedInputMethodPackages = packages
+        cachedInputMethodPackagesAtMillis = now
+        return packages
+    }
+
     suspend fun updateCategoryColor(
         categoryId: String,
         colorArgb: Int,
@@ -399,7 +599,6 @@ class OfflineFocusRepository(
         pointsPerMinute: Double,
     ): OfflineFocusCategory? {
         return withContext(Dispatchers.IO) {
-            ensureBuiltInCategories()
             val now = System.currentTimeMillis()
             val normalizedName = name.trim().takeIf { it.isNotBlank() } ?: return@withContext null
             val normalizedPoints = pointsPerMinute.coerceIn(MIN_POINTS_PER_MINUTE, MAX_POINTS_PER_MINUTE)
@@ -449,9 +648,6 @@ class OfflineFocusRepository(
             val category = categoryDao.getById(categoryId) ?: return@withContext null
             val storage = FocusIconStorage.fromContext(context)
             val importedPath = storage.importImage(context.contentResolver, sourceUri)
-            if (!category.customIconPath.isNullOrBlank()) {
-                storage.deleteImportedIcon(category.customIconPath)
-            }
             categoryDao.updateEditableFields(
                 id = category.id,
                 name = category.name,
@@ -517,12 +713,6 @@ class OfflineFocusRepository(
     ): Boolean {
         return withContext(Dispatchers.IO) {
             val category = categoryDao.getById(categoryId) ?: return@withContext false
-            if (archived) {
-                val activeCount = categoryDao.getAll(includeArchived = false).size
-                if (!category.isArchived && activeCount <= 1) {
-                    return@withContext false
-                }
-            }
             categoryDao.updateEditableFields(
                 id = category.id,
                 name = category.name,
@@ -546,8 +736,6 @@ class OfflineFocusRepository(
     suspend fun deleteCategory(categoryId: String): Boolean {
         return withContext(Dispatchers.IO) {
             val category = categoryDao.getById(categoryId) ?: return@withContext false
-            val activeCount = categoryDao.getAll(includeArchived = false).size
-            if (!category.isArchived && activeCount <= 1) return@withContext false
             categoryDao.updateEditableFields(
                 id = category.id,
                 name = category.name,
@@ -572,7 +760,7 @@ class OfflineFocusRepository(
         categoryId: String?,
         durationMinutes: Int,
         endedAtMillis: Long = System.currentTimeMillis(),
-    ): OfflineFocusSession {
+    ): OfflineFocusSession? {
         return withContext(Dispatchers.IO) {
             ensureBuiltInCategories()
             val normalizedMinutes =
@@ -584,7 +772,7 @@ class OfflineFocusRepository(
             val dailyCap = preferences.getOfflineFocusDailyPointCapOnce().toDouble()
             val result =
                 database.withTransaction {
-                    val category = resolveCategory(categoryId)
+                    val category = resolveCategory(categoryId) ?: return@withTransaction null
                     val sessionId = UUID.randomUUID().toString()
                     val ledgerId = UUID.randomUUID().toString()
                     val durationMillis = normalizedMinutes * MINUTE_MILLIS
@@ -638,6 +826,7 @@ class OfflineFocusRepository(
                         awardedPoints = awardedPoints,
                     )
                 }
+            result ?: return@withContext null
             if (result.awardedPoints > 0.0) {
                 preferences.addUserPoints(result.awardedPoints)
                 AppLimitRepository(context, database).checkAchievements()
@@ -646,12 +835,12 @@ class OfflineFocusRepository(
         }
     }
 
-    suspend fun createDebugSession(input: OfflineFocusDebugSessionInput): OfflineFocusSession {
+    suspend fun createDebugSession(input: OfflineFocusDebugSessionInput): OfflineFocusSession? {
         return withContext(Dispatchers.IO) {
             ensureBuiltInCategories()
             val result =
                 database.withTransaction {
-                    val category = resolveCategory(input.categoryId)
+                    val category = resolveCategory(input.categoryId) ?: return@withTransaction null
                     val now = System.currentTimeMillis()
                     val sessionId = input.sessionId?.trim()?.takeIf { it.isNotBlank() } ?: UUID.randomUUID().toString()
                     val ledgerId = if (input.createLedger) UUID.randomUUID().toString() else null
@@ -717,6 +906,7 @@ class OfflineFocusRepository(
                         awardedPoints = input.pointsAwarded,
                     )
                 }
+            result ?: return@withContext null
             if (result.insertedLedger && result.awardedPoints != 0.0) {
                 preferences.addUserPoints(result.awardedPoints)
                 AppLimitRepository(context, database).checkAchievements()
@@ -802,7 +992,13 @@ class OfflineFocusRepository(
                                     deltaPoints = cappedPoints,
                                     sourceRefId = sourceRefId,
                                     messageKey = "ledger_offline_focus",
-                                    messageArgsJson = "[\"${current.categoryNameSnapshot}\",${(actualForPoints / MINUTE_MILLIS)}]",
+                                    messageArgsJson =
+                                        JSONArray(
+                                            listOf(
+                                                current.categoryNameSnapshot,
+                                                actualForPoints / MINUTE_MILLIS,
+                                            ),
+                                        ).toString(),
                                     note = current.categoryNameSnapshot,
                                     createdAt = nowMillis,
                                 )
@@ -833,29 +1029,46 @@ class OfflineFocusRepository(
         }
     }
 
-    private suspend fun resolveCategory(categoryId: String?): OfflineFocusCategoryEntity {
+    private suspend fun resolveCategory(categoryId: String?): OfflineFocusCategoryEntity? {
         val candidates = categoryDao.getAll(includeArchived = false)
         val selected = categoryId?.let { id -> candidates.firstOrNull { it.id == id } }
-        return selected ?: candidates.firstOrNull { it.id == DEFAULT_CATEGORY_ID } ?: candidates.first()
+        return selected ?: candidates.firstOrNull { it.id == DEFAULT_CATEGORY_ID } ?: candidates.firstOrNull()
     }
 
     private fun elapsedMillis(
         session: OfflineFocusSessionEntity,
         nowMillis: Long,
     ): Long {
-        val end = maxOf(nowMillis, session.startedAt)
+        val referenceNow =
+            if (session.status == OfflineFocusSessionStatus.PAUSED) {
+                session.pausedAt ?: nowMillis
+            } else {
+                nowMillis
+            }
+        val end = maxOf(referenceNow, session.startedAt)
         return (end - session.startedAt).coerceIn(0L, session.plannedDurationMillis)
     }
 
-    private fun buildSummary(sessions: List<OfflineFocusSessionEntity>): OfflineFocusTodaySummary {
+    private fun buildSummary(
+        sessions: List<OfflineFocusSessionEntity>,
+        windowStartMillis: Long? = null,
+        windowEndMillis: Long? = null,
+    ): OfflineFocusTodaySummary {
         val completed =
             sessions.filter {
                 it.status == OfflineFocusSessionStatus.COMPLETED ||
                     it.status == OfflineFocusSessionStatus.SETTLED
             }
-        val totalMillis = completed.sumOf { it.actualDurationMillis }
+        val clippedDurations =
+            completed
+                .associateWith { session ->
+                    clippedCompletedDurationMillis(session, windowStartMillis, windowEndMillis)
+                }
+                .filterValues { it > 0L }
+        val totalMillis = clippedDurations.values.sum()
         val summaries =
             completed
+                .filter { clippedDurations.containsKey(it) }
                 .groupBy { it.categoryId }
                 .map { (_, items) ->
                     val first = items.first()
@@ -864,19 +1077,50 @@ class OfflineFocusRepository(
                         iconKey = first.categoryIconKeySnapshot,
                         customIconPath = first.categoryCustomIconPathSnapshot,
                         colorArgb = first.categoryColorArgbSnapshot,
-                        totalMillis = items.sumOf { it.actualDurationMillis },
+                        totalMillis = items.sumOf { clippedDurations[it] ?: 0L },
                         completedCount = items.size,
-                        pointsAwarded = items.sumOf { it.pointsAwarded },
+                        pointsAwarded = items.sumOf { pointsAwardedInWindow(it, windowStartMillis, windowEndMillis) },
                     )
                 }
                 .sortedByDescending { it.totalMillis }
         return OfflineFocusTodaySummary(
             totalMillis = totalMillis,
-            completedCount = completed.size,
-            pointsAwarded = completed.sumOf { it.pointsAwarded },
+            completedCount = clippedDurations.size,
+            pointsAwarded = completed.sumOf { pointsAwardedInWindow(it, windowStartMillis, windowEndMillis) },
             sessions = sessions.map(::toSession),
             categories = summaries,
         )
+    }
+
+    private fun pointsAwardedInWindow(
+        session: OfflineFocusSessionEntity,
+        windowStartMillis: Long?,
+        windowEndMillis: Long?,
+    ): Double {
+        if (windowStartMillis == null || windowEndMillis == null) return session.pointsAwarded
+        val awardedAt = session.completedAt ?: return 0.0
+        return if (awardedAt >= windowStartMillis && awardedAt < windowEndMillis) {
+            session.pointsAwarded
+        } else {
+            0.0
+        }
+    }
+
+    private fun clippedCompletedDurationMillis(
+        session: OfflineFocusSessionEntity,
+        windowStartMillis: Long?,
+        windowEndMillis: Long?,
+    ): Long {
+        val duration = session.actualDurationMillis.coerceAtLeast(0L)
+        if (duration == 0L) return 0L
+        if (windowStartMillis == null || windowEndMillis == null) return duration
+        val actualEnd =
+            (session.completedAt ?: session.abandonedAt ?: (session.startedAt + duration))
+                .coerceAtMost(session.startedAt + duration)
+        val actualStart = actualEnd - duration
+        val clippedStart = maxOf(actualStart, windowStartMillis)
+        val clippedEnd = minOf(actualEnd, windowEndMillis)
+        return (clippedEnd - clippedStart).coerceAtLeast(0L)
     }
 
     private fun toCategory(entity: OfflineFocusCategoryEntity): OfflineFocusCategory =
@@ -933,13 +1177,29 @@ class OfflineFocusRepository(
         private const val MIN_POINTS_PER_MINUTE = 0.0
         private const val MAX_POINTS_PER_MINUTE = 20.0
         private const val DEFAULT_CUSTOM_ICON_KEY = "custom"
+        private const val INPUT_METHOD_PACKAGE_CACHE_MILLIS = 60_000L
 
         fun sourceRefId(sessionId: String): String = "offline_focus:$sessionId"
 
         private val builtInDefinitions =
             listOf(
-                BuiltInOfflineFocusCategory("offline_focus_reading", "Reading", "focus_icon_reading", "offline_focus_category_reading", 0xFFFF6161.toInt(), 0),
-                BuiltInOfflineFocusCategory("offline_focus_fitness", "Fitness", "focus_icon_fitness", "offline_focus_category_fitness", 0xFF35D870.toInt(), 1),
+                BuiltInOfflineFocusCategory("offline_focus_reading", "Reading", "focus_icon_words", "offline_focus_category_reading", 0xFFFF6161.toInt(), 0),
+                BuiltInOfflineFocusCategory("offline_focus_fitness", "Fitness", "focus_icon_morning", "offline_focus_category_fitness", 0xFF35D870.toInt(), 1),
+            )
+
+        private val knownHomeLauncherPackages =
+            setOf(
+                "com.miui.home",
+                "com.android.launcher",
+                "com.android.launcher3",
+                "com.google.android.apps.nexuslauncher",
+                "com.huawei.android.launcher",
+                "com.hihonor.android.launcher",
+                "com.oppo.launcher",
+                "com.vivo.launcher",
+                "com.sec.android.app.launcher",
+                "com.motorola.launcher3",
+                "miui.systemui.plugin",
             )
     }
 }

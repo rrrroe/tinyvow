@@ -18,6 +18,7 @@ import android.os.PowerManager
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.health.connect.client.PermissionController
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -53,7 +54,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.width
@@ -65,6 +65,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.layout.offset
@@ -138,7 +139,9 @@ import com.rrrrz.tinyvow.data.accessibility.AccessibilityServiceStateChecker
 import com.rrrrz.tinyvow.data.apps.InstalledAppRepository
 import com.rrrrz.tinyvow.data.apps.ManagedApp
 import com.rrrrz.tinyvow.data.db.AppDatabase
+import com.rrrrz.tinyvow.data.db.OfflineFocusAbandonReason
 import com.rrrrz.tinyvow.data.db.OfflineFocusMode
+import com.rrrrz.tinyvow.data.db.OfflineFocusSessionStatus
 import com.rrrrz.tinyvow.data.notification.NotificationPermissionChecker
 import com.rrrrz.tinyvow.data.privacy.LocalDataManager
 import com.rrrrz.tinyvow.data.pro.ProFeatureGate
@@ -155,6 +158,7 @@ import com.rrrrz.tinyvow.data.repository.DailyCheckInResult
 import com.rrrrz.tinyvow.data.repository.DailyCheckInTodayState
 import com.rrrrz.tinyvow.data.repository.DailyArchiveRepository
 import com.rrrrz.tinyvow.data.repository.CustomRewardDraft
+import com.rrrrz.tinyvow.data.repository.calculateEncourageTargetPoints
 import com.rrrrz.tinyvow.data.repository.PointsRepository
 import com.rrrrz.tinyvow.data.repository.InventoryRewardItem
 import com.rrrrz.tinyvow.data.repository.OfflineFocusCategory
@@ -174,7 +178,9 @@ import com.rrrrz.tinyvow.data.settings.HomeActivityRingColorSource
 import com.rrrrz.tinyvow.data.settings.HomeActivityRingMetric
 import com.rrrrz.tinyvow.data.settings.HomeActivityRingPreferences
 import com.rrrrz.tinyvow.data.settings.ManagedAppPreferences
+import com.rrrrz.tinyvow.data.settings.OfflineFocusCategoryDefaults
 import com.rrrrz.tinyvow.data.special.SpecialAppUsageRepository
+import com.rrrrz.tinyvow.data.steps.HealthConnectStepDataSource
 import com.rrrrz.tinyvow.data.steps.StepTrackingRepository
 import com.rrrrz.tinyvow.data.time.BusinessDay
 import com.rrrrz.tinyvow.data.supermode.GuardedAction
@@ -197,6 +203,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flowOf
 import androidx.compose.animation.*
 import androidx.compose.foundation.BorderStroke
 import java.time.Instant
@@ -247,17 +254,21 @@ import com.rrrrz.tinyvow.ui.theme.ThemePresets
 import com.rrrrz.tinyvow.ui.theme.TinyVowButton
 import com.rrrrz.tinyvow.ui.theme.TinyVowButtonTone
 import com.rrrrz.tinyvow.ui.theme.TinyVowCard
+import com.rrrrz.tinyvow.ui.theme.TinyVowDetailScaffold
 import com.rrrrz.tinyvow.ui.theme.TinyVowElevation
+import com.rrrrz.tinyvow.ui.theme.TinyVowPageBackground
 import com.rrrrz.tinyvow.ui.theme.TinyVowRadius
 import com.rrrrz.tinyvow.ui.theme.TinyVowSpacing
 import com.rrrrz.tinyvow.ui.theme.TinyVowSnackbarHost
+import com.rrrrz.tinyvow.ui.theme.TinyVowStatusPill
 import com.rrrrz.tinyvow.ui.theme.selectedThemeDisplayName
 
-enum class Screen { HOME, REWARDS, STATS, ME, CHECK_IN_OVERVIEW, ME_PRO, ME_PERMISSIONS, ME_NOTIFICATIONS, ME_DAY_BOUNDARY, ME_OFFLINE_FOCUS, ME_APPEARANCE, ME_RING_SETTINGS, ME_DATA_PRIVACY, ME_VERSION, SUPER_MODE, LABORATORY, LAB_FOCUS_HISTORY_EDITOR, HISTORY, THEME, LANGUAGE, HELP_FEEDBACK, CONTACT_US, SPECIAL_APPS, WEREAD_SPECIAL_APP, MEDIA_APPS, APP_COLOR_DEBUG, PERMISSION_DIAGNOSTICS }
+enum class Screen { HOME, REWARDS, STATS, ME, HOME_STEP_PROGRESS_STATS, CHECK_IN_OVERVIEW, ME_SAVED_PROGRESS_STATS, ME_POINTS_PROGRESS_STATS, ME_PRO, ME_PERMISSIONS, ME_NOTIFICATIONS, ME_DAY_BOUNDARY, ME_OFFLINE_FOCUS, ME_APPEARANCE, ME_RING_SETTINGS, ME_DATA_PRIVACY, ME_VERSION, SUPER_MODE, LABORATORY, LAB_FOCUS_HISTORY_EDITOR, HISTORY, THEME, LANGUAGE, HELP_FEEDBACK, CONTACT_US, SPECIAL_APPS, WEREAD_SPECIAL_APP, MEDIA_APPS, LOCK_SCREEN_TIMER_APPS, APP_COLOR_DEBUG, PERMISSION_DIAGNOSTICS }
 enum class RewardsSection { STORE, INVENTORY, ACHIEVEMENTS }
 
 private const val CONTACT_EMAIL = "rrrr.zhao@qq.com"
 private const val WEREAD_AUTO_SYNC_DEBOUNCE_MS = 60_000L
+private const val HOME_STEP_REFRESH_INTERVAL_MS = 60_000L
 private const val HOME_CONTROL_TOLERANCE_MINUTES = 5L
 private const val HOME_OVERVIEW_DATA_REVEAL_MILLIS = 1_440
 private const val HOME_CONTROL_RING_CLOSE_HOUR = 20
@@ -753,6 +764,9 @@ private fun groupProtectionSnapshot(
 
 @Composable
 fun HomeRoute(
+    completedOfflineFocusSessionId: String? = null,
+    offlineFocusDetailRequestToken: Int = 0,
+    onCompletedOfflineFocusConsumed: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
@@ -816,9 +830,6 @@ fun HomeRoute(
     val offlineFocusDayEndMillis = remember(businessToday) {
         BusinessDay.nextDayStartMillis(businessToday, ZoneId.systemDefault(), BusinessDay.cachedStartHour())
     }
-    LaunchedEffect(offlineFocusRepository) {
-        offlineFocusRepository.ensureBuiltInCategories()
-    }
     val offlineFocusCategories by offlineFocusRepository.observeCategories()
         .collectAsStateWithLifecycle(initialValue = emptyList(), lifecycle = lifecycle)
     val offlineFocusAllCategories by offlineFocusRepository.observeCategories(includeArchived = true)
@@ -846,6 +857,18 @@ fun HomeRoute(
             initialValue = ManagedAppPreferences.DEFAULT_OFFLINE_FOCUS_DAILY_POINT_CAP,
             lifecycle = lifecycle,
         )
+    val offlineFocusRestReminderEnabled by preferences.offlineFocusRestReminderEnabled
+        .collectAsStateWithLifecycle(initialValue = true, lifecycle = lifecycle)
+    val offlineFocusRestReminderMinutes by preferences.offlineFocusRestReminderMinutes
+        .collectAsStateWithLifecycle(initialValue = ManagedAppPreferences.DEFAULT_OFFLINE_FOCUS_REST_REMINDER_MINUTES, lifecycle = lifecycle)
+    val offlineFocusRestReminderSoundEnabled by preferences.offlineFocusRestReminderSoundEnabled
+        .collectAsStateWithLifecycle(initialValue = true, lifecycle = lifecycle)
+    val offlineFocusRestReminderVibrationEnabled by preferences.offlineFocusRestReminderVibrationEnabled
+        .collectAsStateWithLifecycle(initialValue = true, lifecycle = lifecycle)
+    val offlineFocusRestReminderRingtoneUri by preferences.offlineFocusRestReminderRingtoneUri
+        .collectAsStateWithLifecycle(initialValue = null, lifecycle = lifecycle)
+    val offlineFocusCategoryDefaults by preferences.offlineFocusCategoryDefaults
+        .collectAsStateWithLifecycle(initialValue = emptyMap(), lifecycle = lifecycle)
     val todayStepState by stepTrackingRepository.observeToday(businessToday.toString()).collectAsStateWithLifecycle(
         initialValue =
             com.rrrrz.tinyvow.data.steps.TodayStepState(
@@ -853,9 +876,11 @@ fun HomeRoute(
                 steps = 0,
                 available = stepTrackingRepository.hasStepCounter(),
                 permissionGranted = stepTrackingRepository.hasActivityRecognitionPermission(),
-            ),
+        ),
         lifecycle = lifecycle,
     )
+    val historicalStepDays by database.stepDayDao().observeAll()
+        .collectAsStateWithLifecycle(initialValue = emptyList(), lifecycle = lifecycle)
     
     val loadedGroupsWithApps by collectNullableAsStateWithLifecycle(appLimitRepository.getAllGroupsWithApps(), lifecycle)
     val groupsWithAppsLoaded = loadedGroupsWithApps != null
@@ -884,8 +909,6 @@ fun HomeRoute(
         initialValue = ManagedAppPreferences.DEFAULT_OFFLINE_FOCUS_DAILY_TARGET_MINUTES,
         lifecycle = lifecycle,
     )
-    val offlineFocusEnabled by preferences.offlineFocusEnabled
-        .collectAsStateWithLifecycle(initialValue = false, lifecycle = lifecycle)
     val selectedThemeId by preferences.selectedThemeId.collectAsStateWithLifecycle(initialValue = DefaultThemeSeed.id, lifecycle = lifecycle)
     val customThemes by preferences.customThemes.collectAsStateWithLifecycle(initialValue = emptyList(), lifecycle = lifecycle)
     val selectedAppLanguage by preferences.selectedAppLanguage.collectAsStateWithLifecycle(initialValue = com.rrrrz.tinyvow.i18n.AppLanguage.SYSTEM, lifecycle = lifecycle)
@@ -940,6 +963,10 @@ fun HomeRoute(
     val historicalArchivesLoaded by
         collectNullableAsStateWithLifecycle(dailyArchiveRepository.getRecentArchives(limit = 3650), lifecycle)
     val historicalArchives = historicalArchivesLoaded.orEmpty()
+    val pointDailyStats by database.pointLedgerDao().observeDailyStats()
+        .collectAsStateWithLifecycle(initialValue = emptyList(), lifecycle = lifecycle)
+    val pointSpendRecords by database.pointLedgerDao().observeSpendRecords()
+        .collectAsStateWithLifecycle(initialValue = emptyList(), lifecycle = lifecycle)
     val homeOverviewRecentGroupArchivesLoaded by collectNullableAsStateWithLifecycle(
         dailyArchiveRepository.getGroupArchivesByRange(
             businessToday.minusDays(7).toString(),
@@ -993,6 +1020,7 @@ fun HomeRoute(
     val subscriptionEntitlement by subscriptionRepository.entitlement.collectAsStateWithLifecycle(lifecycle = lifecycle)
     val subscriptionOffers by subscriptionRepository.offers.collectAsStateWithLifecycle(lifecycle = lifecycle)
     val debugProExpiresAtMillis by preferences.debugProExpiresAtMillis.collectAsStateWithLifecycle(initialValue = null, lifecycle = lifecycle)
+    var localCompletedOfflineFocusSessionId by remember { mutableStateOf<String?>(null) }
     val proEntitlement = remember(subscriptionEntitlement, debugProExpiresAtMillis) {
         val now = System.currentTimeMillis()
         val debugExpiresAt = debugProExpiresAtMillis
@@ -1006,6 +1034,17 @@ fun HomeRoute(
             subscriptionEntitlement
         }
     }
+    val visibleCompletedOfflineFocusSessionId = completedOfflineFocusSessionId ?: localCompletedOfflineFocusSessionId
+    val completedOfflineFocusSessionFlow =
+        remember(visibleCompletedOfflineFocusSessionId, offlineFocusRepository) {
+            visibleCompletedOfflineFocusSessionId
+                ?.let { offlineFocusRepository.observeSession(it) }
+                ?: flowOf(null)
+        }
+    val completedOfflineFocusSession by completedOfflineFocusSessionFlow.collectAsStateWithLifecycle(
+        initialValue = null,
+        lifecycle = lifecycle,
+    )
     val superModeStatus = remember(superModeStoredState, proEntitlement.isProActive, currentTimeMillis) {
         superModeController.buildStatus(
             storedState = superModeStoredState,
@@ -1019,12 +1058,42 @@ fun HomeRoute(
     }
 
     var currentScreen by remember { mutableStateOf(Screen.HOME) }
+    var lastOfflineFocusActiveSessionId by remember { mutableStateOf<String?>(null) }
     var homeOverviewAnimationReplayToken by remember { mutableIntStateOf(0) }
     var statsAnimationReplayToken by remember { mutableIntStateOf(0) }
     var rewardsSection by remember { mutableStateOf(RewardsSection.STORE) }
     var hasPlayedHomeOverviewDataReveal by rememberSaveable { mutableStateOf(false) }
     var homeOverviewRuntimeState by remember { mutableStateOf(HomeOverviewRuntimeState()) }
     var homeAppIconCache by remember { mutableStateOf<Map<String, Drawable>>(emptyMap()) }
+    LaunchedEffect(offlineFocusDetailRequestToken) {
+        if (offlineFocusDetailRequestToken > 0) {
+            currentScreen = Screen.HOME
+        }
+    }
+    LaunchedEffect(offlineFocusActiveSession?.id, visibleCompletedOfflineFocusSessionId) {
+        val activeSession = offlineFocusActiveSession
+        if (activeSession != null) {
+            lastOfflineFocusActiveSessionId = activeSession.id
+            return@LaunchedEffect
+        }
+        if (visibleCompletedOfflineFocusSessionId != null) {
+            lastOfflineFocusActiveSessionId = null
+            return@LaunchedEffect
+        }
+        val endedSessionId = lastOfflineFocusActiveSessionId ?: return@LaunchedEffect
+        lastOfflineFocusActiveSessionId = null
+        val endedSession = offlineFocusRepository.getSessionOnce(endedSessionId) ?: return@LaunchedEffect
+        val shouldShowRestScreen =
+            endedSession.status == OfflineFocusSessionStatus.COMPLETED ||
+                endedSession.status == OfflineFocusSessionStatus.SETTLED ||
+                (
+                    endedSession.status == OfflineFocusSessionStatus.ABANDONED &&
+                        endedSession.abandonedReason == OfflineFocusAbandonReason.BELOW_THRESHOLD
+                )
+        if (shouldShowRestScreen) {
+            localCompletedOfflineFocusSessionId = endedSession.id
+        }
+    }
     val snackbarHostState = remember { SnackbarHostState() }
     val performTodayCheckIn: () -> Unit = {
         coroutineScope.launch {
@@ -1051,6 +1120,12 @@ fun HomeRoute(
     }
     var activityRecognitionPermissionGranted by remember {
         mutableStateOf(stepTrackingRepository.hasActivityRecognitionPermission())
+    }
+    var healthConnectStepsAvailable by remember {
+        mutableStateOf(stepTrackingRepository.isHealthConnectAvailable())
+    }
+    var healthConnectStepsPermissionGranted by remember {
+        mutableStateOf(false)
     }
     
     var installedApps by remember { mutableStateOf<List<ManagedApp>>(emptyList()) }
@@ -1169,15 +1244,15 @@ fun HomeRoute(
         action: GuardedAction,
         onAllowed: () -> Unit,
     ) {
+        if (!superModeStatus.isEnabled) {
+            clearPendingSuperModeRequest()
+            onAllowed()
+            return
+        }
         if (!superModeStatus.isConfigured) {
             clearPendingSuperModeRequest()
             setupRequiredActionLabel = guardedActionLabel(action)
             showSuperModeSetupDialog = true
-            return
-        }
-        if (!superModeStatus.isEnabled) {
-            clearPendingSuperModeRequest()
-            onAllowed()
             return
         }
         if (superModeStatus.isActive) {
@@ -1226,6 +1301,15 @@ fun HomeRoute(
         contract = ActivityResultContracts.RequestPermission(),
     ) {
         activityRecognitionPermissionGranted = stepTrackingRepository.hasActivityRecognitionPermission()
+    }
+    val healthConnectPermissionLauncher = rememberLauncherForActivityResult(
+        contract = PermissionController.createRequestPermissionResultContract(),
+    ) {
+        coroutineScope.launch {
+            healthConnectStepsAvailable = stepTrackingRepository.isHealthConnectAvailable()
+            healthConnectStepsPermissionGranted = stepTrackingRepository.hasHealthConnectStepPermission()
+            stepTrackingRepository.refreshTodayFromHealthConnect()
+        }
     }
     val backupImportLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument(),
@@ -1292,8 +1376,11 @@ fun HomeRoute(
                     accessibilityServiceStateChecker.isEnabled(AppLimitAccessibilityService::class.java)
                 notificationPermissionGranted = notificationPermissionChecker.isGranted()
                 activityRecognitionPermissionGranted = stepTrackingRepository.hasActivityRecognitionPermission()
+                healthConnectStepsAvailable = stepTrackingRepository.isHealthConnectAvailable()
                 isIgnoringBattery = powerManager.isIgnoringBatteryOptimizations(context.packageName)
                 coroutineScope.launch {
+                    healthConnectStepsPermissionGranted = stepTrackingRepository.hasHealthConnectStepPermission()
+                    stepTrackingRepository.refreshTodayFromHealthConnect()
                     subscriptionRepository.refresh()
                 }
                 triggerWeReadAutoSync()
@@ -1307,21 +1394,53 @@ fun HomeRoute(
         onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
-    DisposableEffect(activityRecognitionPermissionGranted, todayStepState.available) {
-        if (activityRecognitionPermissionGranted && todayStepState.available) {
+    LaunchedEffect(stepTrackingRepository) {
+        healthConnectStepsAvailable = stepTrackingRepository.isHealthConnectAvailable()
+        healthConnectStepsPermissionGranted = stepTrackingRepository.hasHealthConnectStepPermission()
+        stepTrackingRepository.refreshTodayFromHealthConnect()
+    }
+
+    DisposableEffect(activityRecognitionPermissionGranted, todayStepState.available, todayStepState.source) {
+        if (
+            activityRecognitionPermissionGranted &&
+                todayStepState.available &&
+                todayStepState.source != com.rrrrz.tinyvow.data.db.STEP_DAY_SOURCE_HEALTH_CONNECT
+        ) {
             stepTrackingRepository.start()
         }
         onDispose { stepTrackingRepository.stop() }
     }
 
-    LaunchedEffect(proEntitlement.isProActive, todayStepState.date, todayStepState.steps, stepPointsPerStep) {
-        if (proEntitlement.isProActive) {
-            stepTrackingRepository.creditTodayStepsIfEligible(
-                steps = todayStepState.steps,
-                date = todayStepState.date,
-                pointsPerStep = stepPointsPerStep,
-            )
+    LaunchedEffect(
+        activityRecognitionPermissionGranted,
+        healthConnectStepsPermissionGranted,
+        todayStepState.available,
+        todayStepState.source,
+    ) {
+        if (healthConnectStepsPermissionGranted) {
+            while (true) {
+                stepTrackingRepository.refreshTodayFromHealthConnect()
+                delay(HOME_STEP_REFRESH_INTERVAL_MS)
+            }
+        } else if (
+            activityRecognitionPermissionGranted &&
+                todayStepState.available &&
+                todayStepState.source != com.rrrrz.tinyvow.data.db.STEP_DAY_SOURCE_HEALTH_CONNECT
+        ) {
+            while (true) {
+                delay(HOME_STEP_REFRESH_INTERVAL_MS)
+                stepTrackingRepository.restart()
+            }
         }
+    }
+
+    LaunchedEffect(proEntitlement.isProActive, todayStepState.date, todayStepState.steps, stepPointsPerStep) {
+        stepTrackingRepository.creditTodayStepsIfEligible(
+            steps = todayStepState.steps,
+            date = todayStepState.date,
+            pointsPerStep = stepPointsPerStep,
+            allowNewCredit = proEntitlement.isProActive,
+        )
     }
 
     LaunchedEffect(Unit) {
@@ -1474,9 +1593,9 @@ fun HomeRoute(
                     rewardsSection = RewardsSection.STORE
                 }
                 currentScreen = when (currentScreen) {
-                    Screen.WEREAD_SPECIAL_APP, Screen.MEDIA_APPS, Screen.APP_COLOR_DEBUG -> Screen.SPECIAL_APPS
-                    Screen.PERMISSION_DIAGNOSTICS -> Screen.HOME
-                    Screen.CHECK_IN_OVERVIEW, Screen.ME_PRO, Screen.ME_PERMISSIONS, Screen.ME_NOTIFICATIONS, Screen.ME_DAY_BOUNDARY, Screen.ME_OFFLINE_FOCUS, Screen.ME_APPEARANCE, Screen.ME_RING_SETTINGS, Screen.ME_DATA_PRIVACY, Screen.ME_VERSION, Screen.SUPER_MODE, Screen.LABORATORY, Screen.HISTORY, Screen.THEME, Screen.LANGUAGE, Screen.HELP_FEEDBACK, Screen.CONTACT_US, Screen.SPECIAL_APPS -> Screen.ME
+                    Screen.WEREAD_SPECIAL_APP, Screen.MEDIA_APPS, Screen.LOCK_SCREEN_TIMER_APPS, Screen.APP_COLOR_DEBUG -> Screen.SPECIAL_APPS
+                    Screen.HOME_STEP_PROGRESS_STATS, Screen.PERMISSION_DIAGNOSTICS -> Screen.HOME
+                    Screen.CHECK_IN_OVERVIEW, Screen.ME_SAVED_PROGRESS_STATS, Screen.ME_POINTS_PROGRESS_STATS, Screen.ME_PRO, Screen.ME_PERMISSIONS, Screen.ME_NOTIFICATIONS, Screen.ME_DAY_BOUNDARY, Screen.ME_OFFLINE_FOCUS, Screen.ME_APPEARANCE, Screen.ME_RING_SETTINGS, Screen.ME_DATA_PRIVACY, Screen.ME_VERSION, Screen.SUPER_MODE, Screen.LABORATORY, Screen.HISTORY, Screen.THEME, Screen.LANGUAGE, Screen.HELP_FEEDBACK, Screen.CONTACT_US, Screen.SPECIAL_APPS -> Screen.ME
                     else -> Screen.HOME
                 }
             }
@@ -1576,25 +1695,53 @@ fun HomeRoute(
                         stepPointsRewardThreshold = stepPointsRewardThreshold,
                         homeActivityRingPreferences = homeActivityRingPreferences,
                         homeActivityRingColorPreferences = homeActivityRingColorPreferences,
-                        isStepCounterAvailable = todayStepState.available,
-                        isActivityRecognitionPermissionGranted = todayStepState.permissionGranted,
+                        isStepCounterAvailable = todayStepState.available || healthConnectStepsAvailable,
+                        isActivityRecognitionPermissionGranted =
+                            todayStepState.permissionGranted || healthConnectStepsPermissionGranted,
                         offlineFocusCategories = offlineFocusCategories,
                         offlineFocusActiveSession = offlineFocusActiveSession,
+                        offlineFocusDetailRequestToken = offlineFocusDetailRequestToken,
                         offlineFocusTodaySummary = offlineFocusTodaySummary,
                         offlineFocusDefaultCategoryId = offlineFocusDefaultCategoryId,
                         offlineFocusDefaultDurationMinutes = offlineFocusDefaultDurationMinutes,
                         offlineFocusDefaultMode = offlineFocusDefaultMode,
+                        offlineFocusRestReminderMinutes = offlineFocusRestReminderMinutes,
+                        offlineFocusCategoryDefaults = offlineFocusCategoryDefaults,
                         offlineFocusDailyTargetMinutes = offlineFocusDailyTargetMinutes,
-                        offlineFocusEnabled = offlineFocusEnabled,
+                        offlineFocusRulesAvailable = effectiveAccessibilityServiceEnabled,
+                        onSetOfflineFocusRestReminderMinutes = { minutes ->
+                            coroutineScope.launch {
+                                preferences.setOfflineFocusRestReminderMinutes(minutes)
+                            }
+                        },
                         onStartOfflineFocus = { categoryId, minutes, mode ->
                             coroutineScope.launch {
                                 if (!proEntitlement.isProActive) {
                                     proUpsellSource = ProUpsellSource.FOCUS_MODE
                                     return@launch
                                 }
+                                if (mode == OfflineFocusMode.STRICT && !effectiveAccessibilityServiceEnabled) {
+                                    requestAccessibilitySettings()
+                                    return@launch
+                                }
                                 val session = offlineFocusRepository.startSession(categoryId, minutes, mode)
+                                    ?: run {
+                                        snackbarHostState.showSnackbar(AppText.t("offline_focus_category_empty_start_hint"))
+                                        return@launch
+                                    }
                                 preferences.setOfflineFocusDefaultMode(mode)
                                 OfflineFocusTimerService.start(context, session.id)
+                            }
+                        },
+                        onOpenOfflineFocusRulesSettings = { requestAccessibilitySettings() },
+                        onAllowOfflineFocusViolationPackage = { packageName ->
+                            coroutineScope.launch {
+                                preferences.setOfflineFocusWhitelistPackages(offlineFocusWhitelistPackages + packageName)
+                                offlineFocusActiveSession?.id?.let { sessionId ->
+                                    offlineFocusRepository.resumeSession(sessionId)
+                                    OfflineFocusTimerService.resume(context, sessionId)
+                                }
+                                snackbarHostState.showSnackbar(AppText.t("offline_focus_whitelist_added_and_resumed"))
                             }
                         },
                         onUpsertOfflineFocusCategory = { categoryId, name, iconKey, customIconPath, colorArgb, pointsPerMinute ->
@@ -1612,9 +1759,10 @@ fun HomeRoute(
                         },
                         onFinishOfflineFocusEarly = { sessionId ->
                             coroutineScope.launch {
-                                offlineFocusRepository.stopSessionEarly(sessionId)
+                                val completedSession = offlineFocusRepository.stopSessionEarly(sessionId)
+                                localCompletedOfflineFocusSessionId = completedSession?.id
                             }
-                            OfflineFocusTimerService.stopEarly(context, sessionId)
+                            OfflineFocusTimerService.stopEarly(context, sessionId, showCompletionAlert = false)
                         },
                         onAbandonOfflineFocus = { sessionId ->
                             coroutineScope.launch {
@@ -1676,20 +1824,27 @@ fun HomeRoute(
                         onOpenStepProComparison = {
                             currentScreen = Screen.ME_PRO
                         },
+                        onOpenStepStats = {
+                            currentScreen = Screen.HOME_STEP_PROGRESS_STATS
+                        },
                         onRefreshStepData = {
-                            when {
-                                !stepTrackingRepository.hasStepCounter() -> {
-                                    coroutineScope.launch {
+                            coroutineScope.launch {
+                                healthConnectStepsAvailable = stepTrackingRepository.isHealthConnectAvailable()
+                                healthConnectStepsPermissionGranted = stepTrackingRepository.hasHealthConnectStepPermission()
+                                val refreshedFromHealth = stepTrackingRepository.refreshTodayFromHealthConnect()
+                                when {
+                                    refreshedFromHealth -> {
+                                        snackbarHostState.showSnackbar(AppText.t("home_step_refresh_requested"))
+                                    }
+                                    !stepTrackingRepository.hasStepCounter() -> {
                                         snackbarHostState.showSnackbar(AppText.t("home_step_counter_unavailable"))
                                     }
-                                }
-                                !stepTrackingRepository.hasActivityRecognitionPermission() -> {
-                                    pendingSensitiveDisclosure = SensitivePermissionDisclosure.ACTIVITY_RECOGNITION
-                                }
-                                else -> {
-                                    stepTrackingRepository.restart()
-                                    activityRecognitionPermissionGranted = stepTrackingRepository.hasActivityRecognitionPermission()
-                                    coroutineScope.launch {
+                                    !stepTrackingRepository.hasActivityRecognitionPermission() -> {
+                                        pendingSensitiveDisclosure = SensitivePermissionDisclosure.ACTIVITY_RECOGNITION
+                                    }
+                                    else -> {
+                                        stepTrackingRepository.restart()
+                                        activityRecognitionPermissionGranted = stepTrackingRepository.hasActivityRecognitionPermission()
                                         snackbarHostState.showSnackbar(AppText.t("home_step_refresh_requested"))
                                     }
                                 }
@@ -1889,7 +2044,7 @@ fun HomeRoute(
                             reportMemoryCache = statsReportMemoryCache,
                             screenEnterReplayToken = statsAnimationReplayToken,
                             isProActive = proEntitlement.isProActive,
-                            offlineFocusEnabled = offlineFocusEnabled,
+                            offlineFocusEnabled = true,
                             onShowProUpsell = { proUpsellSource = it },
                             onRequestUsageAccess = { requestUsageAccessSettings() },
                             modifier = Modifier.fillMaxSize(),
@@ -2060,6 +2215,8 @@ fun HomeRoute(
                         onNavigateToLaboratory = { currentScreen = Screen.LABORATORY },
                         onNavigateToHistory = { currentScreen = Screen.HISTORY },
                         onNavigateToCheckInOverview = { currentScreen = Screen.CHECK_IN_OVERVIEW },
+                        onNavigateToSavedProgressStats = { currentScreen = Screen.ME_SAVED_PROGRESS_STATS },
+                        onNavigateToPointsProgressStats = { currentScreen = Screen.ME_POINTS_PROGRESS_STATS },
                         onNavigateToThemeSettings = { currentScreen = Screen.THEME },
                         onNavigateToAppearanceSettings = { currentScreen = Screen.ME_APPEARANCE },
                         onNavigateToLanguageSettings = { currentScreen = Screen.LANGUAGE },
@@ -2218,6 +2375,41 @@ fun HomeRoute(
                         onMonthChange = { selectedCheckInMonthKey = it.toString() },
                     )
                 }
+                Screen.HOME_STEP_PROGRESS_STATS -> {
+                    MeProgressStatsScreen(
+                        metric = MeProgressMetric.STEPS,
+                        archives = historicalArchives,
+                        pointDailyStats = pointDailyStats,
+                        pointSpendRecords = pointSpendRecords,
+                        currentPointsBalance = userPoints,
+                        stepDays = historicalStepDays,
+                        stepTarget = stepPointsRewardThreshold,
+                        today = businessToday,
+                        onBack = { currentScreen = Screen.HOME },
+                    )
+                }
+                Screen.ME_SAVED_PROGRESS_STATS -> {
+                    MeProgressStatsScreen(
+                        metric = MeProgressMetric.SAVED_MINUTES,
+                        archives = historicalArchives,
+                        pointDailyStats = pointDailyStats,
+                        pointSpendRecords = pointSpendRecords,
+                        currentPointsBalance = userPoints,
+                        today = businessToday,
+                        onBack = { currentScreen = Screen.ME },
+                    )
+                }
+                Screen.ME_POINTS_PROGRESS_STATS -> {
+                    MeProgressStatsScreen(
+                        metric = MeProgressMetric.EARNED_POINTS,
+                        archives = historicalArchives,
+                        pointDailyStats = pointDailyStats,
+                        pointSpendRecords = pointSpendRecords,
+                        currentPointsBalance = userPoints,
+                        today = businessToday,
+                        onBack = { currentScreen = Screen.ME },
+                    )
+                }
                 Screen.ME_PERMISSIONS -> {
                     PermissionSettingsPage(
                         usageAccessGranted = effectiveUsageAccessStatus == UsageAccessStatus.GRANTED,
@@ -2336,20 +2528,19 @@ fun HomeRoute(
                     OfflineFocusSettingsScreen(
                         categories = offlineFocusAllCategories,
                         installedApps = installedApps,
-                        enabled = offlineFocusEnabled,
                         defaultCategoryId = offlineFocusDefaultCategoryId,
                         defaultDurationMinutes = offlineFocusDefaultDurationMinutes,
                         defaultMode = offlineFocusDefaultMode,
+                        categoryDefaults = offlineFocusCategoryDefaults,
                         whitelistPackages = offlineFocusWhitelistPackages,
                         continueOnLock = offlineFocusContinueOnLock,
                         dailyPointCap = offlineFocusDailyPointCap,
+                        restReminderEnabled = offlineFocusRestReminderEnabled,
+                        restReminderMinutes = offlineFocusRestReminderMinutes,
+                        restReminderSoundEnabled = offlineFocusRestReminderSoundEnabled,
+                        restReminderVibrationEnabled = offlineFocusRestReminderVibrationEnabled,
+                        restReminderRingtoneUri = offlineFocusRestReminderRingtoneUri,
                         onBack = { currentScreen = Screen.ME },
-                        onSetEnabled = { enabled ->
-                            coroutineScope.launch {
-                                preferences.setOfflineFocusEnabled(enabled)
-                                snackbarHostState.showSnackbar(AppText.t("offline_focus_settings_saved"))
-                            }
-                        },
                         onSelectDefaultCategory = { categoryId ->
                             coroutineScope.launch {
                                 preferences.setOfflineFocusDefaultCategoryId(categoryId)
@@ -2386,6 +2577,36 @@ fun HomeRoute(
                                 snackbarHostState.showSnackbar(AppText.t("offline_focus_settings_saved"))
                             }
                         },
+                        onSetRestReminderEnabled = { enabled ->
+                            coroutineScope.launch {
+                                preferences.setOfflineFocusRestReminderEnabled(enabled)
+                                snackbarHostState.showSnackbar(AppText.t("offline_focus_settings_saved"))
+                            }
+                        },
+                        onSetRestReminderMinutes = { minutes ->
+                            coroutineScope.launch {
+                                preferences.setOfflineFocusRestReminderMinutes(minutes)
+                                snackbarHostState.showSnackbar(AppText.t("offline_focus_settings_saved"))
+                            }
+                        },
+                        onSetRestReminderSoundEnabled = { enabled ->
+                            coroutineScope.launch {
+                                preferences.setOfflineFocusRestReminderSoundEnabled(enabled)
+                                snackbarHostState.showSnackbar(AppText.t("offline_focus_settings_saved"))
+                            }
+                        },
+                        onSetRestReminderVibrationEnabled = { enabled ->
+                            coroutineScope.launch {
+                                preferences.setOfflineFocusRestReminderVibrationEnabled(enabled)
+                                snackbarHostState.showSnackbar(AppText.t("offline_focus_settings_saved"))
+                            }
+                        },
+                        onSetRestReminderRingtoneUri = { uri ->
+                            coroutineScope.launch {
+                                preferences.setOfflineFocusRestReminderRingtoneUri(uri)
+                                snackbarHostState.showSnackbar(AppText.t("offline_focus_settings_saved"))
+                            }
+                        },
                         onUpsertCategory = { categoryId, name, iconKey, customIconPath, colorArgb, pointsPerMinute ->
                             coroutineScope.launch {
                                 offlineFocusRepository.upsertCategory(
@@ -2413,26 +2634,14 @@ fun HomeRoute(
                         },
                         onSetCategoryArchived = { categoryId, archived ->
                             coroutineScope.launch {
-                                val updated = offlineFocusRepository.setCategoryArchived(categoryId, archived)
-                                snackbarHostState.showSnackbar(
-                                    if (updated) {
-                                        AppText.t("offline_focus_settings_saved")
-                                    } else {
-                                        AppText.t("offline_focus_category_archive_last_error")
-                                    },
-                                )
+                                offlineFocusRepository.setCategoryArchived(categoryId, archived)
+                                snackbarHostState.showSnackbar(AppText.t("offline_focus_settings_saved"))
                             }
                         },
                         onDeleteCategory = { categoryId ->
                             coroutineScope.launch {
-                                val updated = offlineFocusRepository.deleteCategory(categoryId)
-                                snackbarHostState.showSnackbar(
-                                    if (updated) {
-                                        AppText.t("offline_focus_settings_saved")
-                                    } else {
-                                        AppText.t("offline_focus_category_archive_last_error")
-                                    },
-                                )
+                                offlineFocusRepository.deleteCategory(categoryId)
+                                snackbarHostState.showSnackbar(AppText.t("offline_focus_settings_saved"))
                             }
                         },
                     )
@@ -2685,6 +2894,7 @@ fun HomeRoute(
                         onBack = { currentScreen = Screen.ME },
                         onOpenWeRead = { currentScreen = Screen.WEREAD_SPECIAL_APP },
                         onOpenMediaApps = { currentScreen = Screen.MEDIA_APPS },
+                        onOpenLockScreenTimerApps = { currentScreen = Screen.LOCK_SCREEN_TIMER_APPS },
                         onOpenAppColors = { currentScreen = Screen.APP_COLOR_DEBUG },
                         isProActive = proEntitlement.isProActive,
                         onOpenProMembership = { currentScreen = Screen.ME_PRO },
@@ -2697,6 +2907,11 @@ fun HomeRoute(
                 }
                 Screen.MEDIA_APPS -> {
                     MediaAppSettingsScreen(
+                        onBack = { currentScreen = Screen.SPECIAL_APPS },
+                    )
+                }
+                Screen.LOCK_SCREEN_TIMER_APPS -> {
+                    LockScreenTimerAppSettingsScreen(
                         onBack = { currentScreen = Screen.SPECIAL_APPS },
                     )
                 }
@@ -3117,6 +3332,62 @@ fun HomeRoute(
         )
     }
 
+    completedOfflineFocusSession?.let { session ->
+        OfflineFocusCompletionDialog(
+            session = session,
+            restReminderEnabled = offlineFocusRestReminderEnabled,
+            restReminderMinutes = offlineFocusRestReminderMinutes,
+            restReminderSoundEnabled = offlineFocusRestReminderSoundEnabled,
+            restReminderVibrationEnabled = offlineFocusRestReminderVibrationEnabled,
+            restReminderRingtoneUri = offlineFocusRestReminderRingtoneUri,
+            onDismiss = {
+                OfflineFocusTimerService.dismissCompletionAlert(context)
+                localCompletedOfflineFocusSessionId = null
+                onCompletedOfflineFocusConsumed()
+            },
+            onSetRestReminderEnabled = { enabled ->
+                coroutineScope.launch { preferences.setOfflineFocusRestReminderEnabled(enabled) }
+            },
+            onSetRestReminderSoundEnabled = { enabled ->
+                coroutineScope.launch { preferences.setOfflineFocusRestReminderSoundEnabled(enabled) }
+            },
+            onSetRestReminderVibrationEnabled = { enabled ->
+                coroutineScope.launch { preferences.setOfflineFocusRestReminderVibrationEnabled(enabled) }
+            },
+            onSetRestReminderRingtoneUri = { uri ->
+                coroutineScope.launch { preferences.setOfflineFocusRestReminderRingtoneUri(uri) }
+            },
+            onAdjustEndEarlier = {
+                Unit
+            },
+            onUserInteraction = {
+                OfflineFocusTimerService.stopCompletionSignal(context)
+            },
+            onStartAgain = {
+                coroutineScope.launch {
+                    if (!proEntitlement.isProActive) {
+                        proUpsellSource = ProUpsellSource.FOCUS_MODE
+                        return@launch
+                    }
+                    val nextSession =
+                        offlineFocusRepository.startSession(
+                            categoryId = session.categoryId,
+                            durationMinutes = (session.plannedDurationMillis / 60_000L).toInt().coerceAtLeast(1),
+                            focusMode = session.focusMode,
+                        ) ?: run {
+                            snackbarHostState.showSnackbar(AppText.t("offline_focus_category_empty_start_hint"))
+                            return@launch
+                        }
+                    preferences.setOfflineFocusDefaultMode(session.focusMode)
+                    OfflineFocusTimerService.dismissCompletionAlert(context)
+                    localCompletedOfflineFocusSessionId = null
+                    onCompletedOfflineFocusConsumed()
+                    OfflineFocusTimerService.start(context, nextSession.id)
+                }
+            },
+        )
+    }
+
     yesterdayReportState?.takeIf { !showWelcomeIntro && !showFirstRunCoachmark }?.let { report ->
         YesterdayReportDialog(
             state = report,
@@ -3173,7 +3444,11 @@ fun HomeRoute(
                         }
                         SensitivePermissionDisclosure.ACTIVITY_RECOGNITION -> {
                             pendingSensitiveDisclosure = null
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                            healthConnectStepsAvailable = stepTrackingRepository.isHealthConnectAvailable()
+                            healthConnectStepsPermissionGranted = stepTrackingRepository.hasHealthConnectStepPermission()
+                            if (healthConnectStepsAvailable && !healthConnectStepsPermissionGranted) {
+                                healthConnectPermissionLauncher.launch(HealthConnectStepDataSource.STEP_PERMISSIONS)
+                            } else if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                                 activityRecognitionPermissionLauncher.launch(Manifest.permission.ACTIVITY_RECOGNITION)
                             } else {
                                 activityRecognitionPermissionGranted = true
@@ -3434,8 +3709,8 @@ private fun SensitivePermissionDisclosureDialog(
                 AppText.t("home_tiny_vow_uses_notification_permission_to_send_local")
         }
         SensitivePermissionDisclosure.ACTIVITY_RECOGNITION -> {
-            AppText.t("home_activity_recognition_disclosure") to
-                AppText.t("home_tiny_vow_uses_activity_recognition_for_local_steps")
+            AppText.t("home_step_health_permission_disclosure") to
+                AppText.t("home_tiny_vow_uses_health_steps_first")
         }
         SensitivePermissionDisclosure.BATTERY_OPTIMIZATION -> {
             AppText.t("home_battery_allowlist_disclosure") to
@@ -3492,13 +3767,19 @@ fun HomeScreen(
     isActivityRecognitionPermissionGranted: Boolean = false,
     offlineFocusCategories: List<OfflineFocusCategory> = emptyList(),
     offlineFocusActiveSession: OfflineFocusSession? = null,
+    offlineFocusDetailRequestToken: Int = 0,
     offlineFocusTodaySummary: OfflineFocusTodaySummary = OfflineFocusTodaySummary(),
     offlineFocusDefaultCategoryId: String? = null,
     offlineFocusDefaultDurationMinutes: Int = ManagedAppPreferences.DEFAULT_OFFLINE_FOCUS_DURATION_MINUTES,
     offlineFocusDefaultMode: OfflineFocusMode = OfflineFocusMode.NORMAL,
+    offlineFocusRestReminderMinutes: Int = ManagedAppPreferences.DEFAULT_OFFLINE_FOCUS_REST_REMINDER_MINUTES,
+    offlineFocusCategoryDefaults: Map<String, OfflineFocusCategoryDefaults> = emptyMap(),
     offlineFocusDailyTargetMinutes: Int = ManagedAppPreferences.DEFAULT_OFFLINE_FOCUS_DAILY_TARGET_MINUTES,
-    offlineFocusEnabled: Boolean = false,
+    offlineFocusRulesAvailable: Boolean = false,
+    onSetOfflineFocusRestReminderMinutes: (Int) -> Unit = {},
     onStartOfflineFocus: (String, Int, OfflineFocusMode) -> Unit = { _, _, _ -> },
+    onOpenOfflineFocusRulesSettings: () -> Unit = {},
+    onAllowOfflineFocusViolationPackage: (String) -> Unit = {},
     onUpsertOfflineFocusCategory: (String?, String, String, String?, Int, Double) -> Unit = { _, _, _, _, _, _ -> },
     onFinishOfflineFocusEarly: (String) -> Unit = {},
     onAbandonOfflineFocus: (String) -> Unit = {},
@@ -3525,6 +3806,7 @@ fun HomeScreen(
     onDismissPermissionPrompts: (List<String>) -> Unit,
     onRequestActivityRecognitionPermission: () -> Unit = {},
     onOpenStepProComparison: () -> Unit = {},
+    onOpenStepStats: () -> Unit = {},
     onRefreshStepData: () -> Unit = {},
     onSaveStepPointsPerStep: (Double) -> Unit = {},
     onSaveStepPointsRewardThreshold: (Int) -> Unit = {},
@@ -3692,6 +3974,8 @@ fun HomeScreen(
     val usageAccessGranted = usageAccessStatus == UsageAccessStatus.GRANTED
     val statusColor = if (usageAccessGranted) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
     val isOverviewReady = overviewInputsReady && isOverviewUsageReady
+    val effectiveHomeActivityRingPreferences =
+        if (isProActive) homeActivityRingPreferences else HomeActivityRingPreferences()
 
     val overviewState =
         remember(
@@ -3714,7 +3998,7 @@ fun HomeScreen(
             todayEarnedPoints,
             todayStepCount,
             stepPointsRewardThreshold,
-            homeActivityRingPreferences,
+            effectiveHomeActivityRingPreferences,
             offlineFocusTodaySummary,
             offlineFocusDailyTargetMinutes,
             achievementProgress,
@@ -3740,7 +4024,7 @@ fun HomeScreen(
                 todayEarnedPoints = todayEarnedPoints,
                 todayStepCount = todayStepCount,
                 stepPointsRewardThreshold = stepPointsRewardThreshold,
-                ringPreferences = homeActivityRingPreferences,
+                ringPreferences = effectiveHomeActivityRingPreferences,
                 offlineFocusTodaySummary = offlineFocusTodaySummary,
                 offlineFocusDailyTargetMinutes = offlineFocusDailyTargetMinutes,
                 achievementProgress = achievementProgress,
@@ -3779,11 +4063,11 @@ fun HomeScreen(
             }.take(2)
         }
 
-    Scaffold(modifier = modifier.fillMaxSize()) { innerPadding ->
+    TinyVowPageBackground(modifier = modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
+                .statusBarsPadding()
                 .verticalScroll(homeScrollState)
         ) {
             val startupDismissIds =
@@ -3846,20 +4130,13 @@ fun HomeScreen(
                     modifier = Modifier.fillMaxWidth(),
                 )
 
-                if (usageAccessGranted) {
+                if (usageAccessGranted && isProActive) {
                     val focusSessionForHome = offlineFocusActiveSession.takeIf { isProActive }
-                    val focusIsRunning = focusSessionForHome != null
-                    val compactCardHeightModifier =
-                        if (focusIsRunning) {
-                            Modifier.fillMaxHeight()
-                        } else {
-                            Modifier.height(HomeCompactCardHeight)
-                        }
+                    val compactCardHeightModifier = Modifier.height(HomeCompactCardHeight)
                     Row(
                         modifier =
                             Modifier
-                                .fillMaxWidth()
-                                .then(if (focusIsRunning) Modifier.height(IntrinsicSize.Min) else Modifier),
+                                .fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(TinyVowSpacing.CardGap),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
@@ -3870,7 +4147,7 @@ fun HomeScreen(
                             isProActive = isProActive,
                             onClick = {
                                 if (isProActive) {
-                                    onRefreshStepData()
+                                    onOpenStepStats()
                                 } else {
                                     onOpenStepProComparison()
                                 }
@@ -3890,16 +4167,31 @@ fun HomeScreen(
                         OfflineFocusHomeCard(
                             categories = offlineFocusCategories,
                             activeSession = focusSessionForHome,
+                            detailRequestToken = offlineFocusDetailRequestToken,
                             todaySummary = offlineFocusTodaySummary,
                             defaultCategoryId = offlineFocusDefaultCategoryId,
                             defaultDurationMinutes = offlineFocusDefaultDurationMinutes,
                             defaultMode = offlineFocusDefaultMode,
+                            restReminderMinutes = offlineFocusRestReminderMinutes,
+                            categoryDefaults = offlineFocusCategoryDefaults,
+                            focusRulesAvailable = offlineFocusRulesAvailable,
                             isProActive = isProActive,
                             onStart = onStartOfflineFocus,
+                            onSetRestReminderMinutes = { minutes ->
+                                onSetOfflineFocusRestReminderMinutes(minutes)
+                            },
+                            onOpenFocusRulesSettings = onOpenOfflineFocusRulesSettings,
                             onLocked = { onShowProUpsell(ProUpsellSource.FOCUS_MODE) },
                             onUpsertCategory = onUpsertOfflineFocusCategory,
                             onFinishEarly = onFinishOfflineFocusEarly,
+                            onPause = { sessionId ->
+                                OfflineFocusTimerService.pause(context, sessionId)
+                            },
+                            onResume = { sessionId ->
+                                OfflineFocusTimerService.resume(context, sessionId)
+                            },
                             onAbandon = onAbandonOfflineFocus,
+                            onAllowViolationPackage = onAllowOfflineFocusViolationPackage,
                             modifier =
                                 Modifier
                                     .weight(1f)
@@ -3939,7 +4231,7 @@ fun HomeScreen(
                 )
             }
 
-            if (showStepPointsDialog) {
+            if (showStepPointsDialog && isProActive) {
                 StepPointsSettingsDialog(
                     todaySteps = todayStepCount,
                     currentPointsPerStep = stepPointsPerStep,
@@ -3972,6 +4264,11 @@ fun HomeScreen(
                     GroupDashboard(
                         groupsWithApps = groupsWithApps,
                         usageMap = usageMap,
+                        periodUsageMap = periodUsageMap,
+                        todayAppUsageMap = todayAppUsageMap,
+                        todayAppOpenCountMap = todayAppOpenCountMap,
+                        todaySessions = todaySessions,
+                        todayStepCount = todayStepCount,
                         activeRewardEffects = activeRewardEffects,
                         appIconCache = appIconCache,
                         onAppIconLoaded = onAppIconLoaded,
@@ -8524,8 +8821,10 @@ private fun buildHomeActivityRings(
 
     val growthTargetPoints =
         validEncourageGroups.sumOf { group ->
-            val targetUsagePoints = group.group.limitMinutes * group.group.pointsPerMinute
-            targetUsagePoints.coerceAtLeast(0.0)
+            calculateEncourageTargetPoints(
+                targetMinutes = group.group.limitMinutes,
+                pointsPerMinute = group.group.pointsPerMinute,
+            )
         }
     val growthProgress =
         if (growthTargetPoints > 0.0) {
@@ -9573,7 +9872,6 @@ private fun proDiagnosticValue(entitlement: ProEntitlementState): String {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun DiagnosticSettingsPage(
     usageAccessGranted: Boolean,
@@ -9594,35 +9892,13 @@ private fun DiagnosticSettingsPage(
     val themeColors = LocalThemeColors.current
     val context = LocalContext.current
     BackHandler(onBack = onBack)
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        text = stringResource(R.string.action_diagnostic_settings),
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.SemiBold,
-                        color = themeColors.inkStrong,
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = AppText.t("group_back"))
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    scrolledContainerColor = MaterialTheme.colorScheme.surface,
-                ),
-            )
-        },
-    ) { innerPadding ->
+    TinyVowDetailScaffold(
+        title = stringResource(R.string.action_diagnostic_settings),
+        onBack = onBack,
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background)
-                .padding(innerPadding)
                 .verticalScroll(rememberScrollState())
                 .padding(
                     start = TinyVowSpacing.PageHorizontal,
@@ -9887,8 +10163,9 @@ private fun AccessibilityStatusCard(
                 color = if (accessibilityServiceEnabled) statusColor else MaterialTheme.colorScheme.onSurfaceVariant,
             )
             if (isMenuMode || !accessibilityServiceEnabled) {
-                Button(
+                TinyVowButton(
                     onClick = onOpenAccessibilitySettings,
+                    tone = TinyVowButtonTone.Primary,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Text(text = stringResource(R.string.accessibility_card_action))
@@ -9939,8 +10216,9 @@ private fun ReminderStatusCard(
                 color = if (notificationPermissionGranted) statusColor else MaterialTheme.colorScheme.onSurfaceVariant,
             )
             if (isMenuMode || !notificationPermissionGranted) {
-                Button(
+                TinyVowButton(
                     onClick = onRequestNotificationPermission,
+                    tone = TinyVowButtonTone.Primary,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Text(text = stringResource(R.string.reminder_card_action))
@@ -9989,8 +10267,9 @@ private fun PermissionCard(
                 color = if (usageAccessGranted) statusColor else MaterialTheme.colorScheme.onSurfaceVariant,
             )
 
-            Button(
+            TinyVowButton(
                 onClick = onOpenUsageAccessSettings,
+                tone = if (usageAccessGranted) TinyVowButtonTone.Neutral else TinyVowButtonTone.Primary,
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Text(
@@ -10045,13 +10324,14 @@ private fun AutoStartCard(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Button(
+                TinyVowButton(
                     onClick = onOpenAutoStartSettings,
+                    tone = TinyVowButtonTone.Primary,
                     modifier = Modifier.weight(1f),
                 ) {
                     Text(text = stringResource(R.string.autostart_card_action))
                 }
-                OutlinedButton(
+                TinyVowButton(
                     onClick = onSetAutoStartDismissed,
                     modifier = Modifier.weight(1f),
                 ) {
@@ -10067,21 +10347,11 @@ private fun PermissionStatusLine(
     text: String,
     color: Color,
 ) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Box(
-            modifier = Modifier
-                .size(9.dp)
-                .background(color, CircleShape),
-        )
-        Text(
-            text = text,
-            style = MaterialTheme.typography.bodyMedium,
-            color = color,
-        )
-    }
+    TinyVowStatusPill(
+        text = text,
+        color = color,
+        containerColor = color.copy(alpha = 0.12f),
+    )
 }
 
 @Composable
@@ -10125,8 +10395,9 @@ private fun BatteryOptimizationCard(
                 color = if (isIgnoringBattery) statusColor else MaterialTheme.colorScheme.onSurfaceVariant,
             )
             if (isMenuMode || !isIgnoringBattery) {
-                Button(
+                TinyVowButton(
                     onClick = onRequestBatteryOptimization,
+                    tone = TinyVowButtonTone.Primary,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Text(text = stringResource(R.string.battery_card_action))

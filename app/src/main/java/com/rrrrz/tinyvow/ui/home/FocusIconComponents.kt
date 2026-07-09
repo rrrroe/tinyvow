@@ -41,33 +41,80 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
+import com.rrrrz.tinyvow.R
 import com.rrrrz.tinyvow.ui.theme.LocalThemeColors
 import java.io.File
 
 internal val FocusPresetIconKeys =
     listOf(
-        "focus_icon_reading",
-        "focus_icon_fitness",
-        "focus_icon_study",
-        "focus_icon_writing",
-        "focus_icon_meditation",
-        "focus_icon_create",
-        "focus_icon_coding",
-        "focus_icon_music",
-        "focus_icon_language",
-        "focus_icon_cooking",
-        "focus_icon_chores",
-        "focus_icon_walking",
-        "focus_icon_yoga",
-        "focus_icon_planning",
-        "focus_icon_drawing",
-        "focus_icon_gardening",
-        "focus_icon_handcraft",
-        "focus_icon_instrument",
-        "focus_icon_companion",
-        "focus_icon_photo",
+        "focus_icon_words",
+        "focus_icon_class",
+        "focus_icon_piano",
+        "focus_icon_guitar",
+        "focus_icon_diary",
+        "focus_icon_organize",
+        "focus_icon_housework",
+        "focus_icon_water",
+        "focus_icon_nap",
+        "focus_icon_morning",
+        "focus_icon_strength",
+        "focus_icon_stretch",
+        "focus_icon_meditate",
+        "focus_icon_paint",
+        "focus_icon_yoga_pose",
+        "focus_icon_note",
+        "focus_icon_code",
+        "focus_icon_graduation",
+        "focus_icon_running",
+        "focus_icon_read_book",
+        "focus_icon_nature",
+        "focus_icon_calendar",
+        "focus_icon_breathing",
+        "focus_icon_checklist",
+        "focus_icon_journal_alt",
+        "focus_icon_lamp",
+        "focus_icon_pomodoro",
+        "focus_icon_target",
+        "focus_icon_rest",
+        "focus_icon_mountain",
     )
+
+internal fun focusPresetIconResource(iconKey: String): Int? =
+    when (iconKey) {
+        "focus_icon_words", "focus_icon_reading", "reading" -> R.drawable.focus_icon_words
+        "focus_icon_class", "focus_icon_study", "learning" -> R.drawable.focus_icon_class
+        "focus_icon_piano", "focus_icon_music", "focus_icon_instrument" -> R.drawable.focus_icon_piano
+        "focus_icon_guitar", "focus_icon_create" -> R.drawable.focus_icon_guitar
+        "focus_icon_diary", "focus_icon_writing" -> R.drawable.focus_icon_diary
+        "focus_icon_organize", "focus_icon_planning" -> R.drawable.focus_icon_organize
+        "focus_icon_housework", "focus_icon_chores" -> R.drawable.focus_icon_housework
+        "focus_icon_water", "focus_icon_cooking" -> R.drawable.focus_icon_water
+        "focus_icon_nap", "focus_icon_meditation", "focus_icon_yoga" -> R.drawable.focus_icon_nap
+        "focus_icon_morning", "focus_icon_fitness", "exercise", "focus_icon_walking" -> R.drawable.focus_icon_morning
+        "focus_icon_strength" -> R.drawable.focus_icon_strength
+        "focus_icon_stretch" -> R.drawable.focus_icon_stretch
+        "focus_icon_meditate" -> R.drawable.focus_icon_meditate
+        "focus_icon_paint", "focus_icon_drawing" -> R.drawable.focus_icon_paint
+        "focus_icon_yoga_pose" -> R.drawable.focus_icon_yoga_pose
+        "focus_icon_note" -> R.drawable.focus_icon_note
+        "focus_icon_code", "focus_icon_coding" -> R.drawable.focus_icon_code
+        "focus_icon_graduation" -> R.drawable.focus_icon_graduation
+        "focus_icon_running" -> R.drawable.focus_icon_running
+        "focus_icon_read_book" -> R.drawable.focus_icon_read_book
+        "focus_icon_nature", "focus_icon_gardening" -> R.drawable.focus_icon_nature
+        "focus_icon_calendar" -> R.drawable.focus_icon_calendar
+        "focus_icon_breathing" -> R.drawable.focus_icon_breathing
+        "focus_icon_checklist" -> R.drawable.focus_icon_checklist
+        "focus_icon_journal_alt" -> R.drawable.focus_icon_journal_alt
+        "focus_icon_lamp" -> R.drawable.focus_icon_lamp
+        "focus_icon_pomodoro" -> R.drawable.focus_icon_pomodoro
+        "focus_icon_target" -> R.drawable.focus_icon_target
+        "focus_icon_rest" -> R.drawable.focus_icon_rest
+        "focus_icon_mountain" -> R.drawable.focus_icon_mountain
+        else -> null
+    }
 
 internal fun focusPresetIconVector(iconKey: String): ImageVector? =
     when (iconKey) {
@@ -108,11 +155,12 @@ internal fun FocusTypeIcon(
                 ?.let { path -> runCatching { BitmapFactory.decodeFile(File(path).absolutePath) }.getOrNull() }
         }
     val presetIcon = focusPresetIconVector(iconKey)
+    val presetIconResource = focusPresetIconResource(iconKey)
     Box(
         modifier =
             modifier
                 .clip(RoundedCornerShape(12.dp))
-                .background(color),
+                .background(if (presetIconResource == null) color else Color.Transparent),
         contentAlignment = Alignment.Center,
     ) {
         when {
@@ -125,6 +173,14 @@ internal fun FocusTypeIcon(
                         Modifier
                             .fillMaxSize()
                             .clip(RoundedCornerShape(12.dp)),
+                )
+            }
+            presetIconResource != null -> {
+                Image(
+                    painter = painterResource(id = presetIconResource),
+                    contentDescription = null,
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier.fillMaxSize(),
                 )
             }
             presetIcon != null -> {

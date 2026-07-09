@@ -28,6 +28,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Headphones
+import androidx.compose.material.icons.filled.LockClock
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -41,7 +42,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -59,7 +59,9 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import com.rrrrz.tinyvow.data.db.SpecialAppUsagePreference
+import com.rrrrz.tinyvow.data.lockscreen.LockScreenTimerAppRepository
 import com.rrrrz.tinyvow.data.media.MediaAppPlaybackRepository
+import com.rrrrz.tinyvow.data.pro.ProFeatureGate
 import com.rrrrz.tinyvow.data.special.SpecialAppUsageRepository
 import com.rrrrz.tinyvow.data.special.WeReadApiCheckResult
 import com.rrrrz.tinyvow.data.special.WeReadApiException
@@ -72,7 +74,10 @@ import com.rrrrz.tinyvow.i18n.AppText
 import com.rrrrz.tinyvow.ui.theme.LocalThemeColors
 import com.rrrrz.tinyvow.ui.theme.TinyVowButton
 import com.rrrrz.tinyvow.ui.theme.TinyVowCard
+import com.rrrrz.tinyvow.ui.theme.TinyVowDetailScaffold
+import com.rrrrz.tinyvow.ui.theme.TinyVowPageBackground
 import com.rrrrz.tinyvow.ui.theme.TinyVowRadius
+import com.rrrrz.tinyvow.ui.theme.TinyVowSettingsGroup
 import com.rrrrz.tinyvow.ui.theme.TinyVowSpacing
 import java.text.DateFormat
 import java.time.LocalDate
@@ -89,6 +94,7 @@ fun SpecialAppsScreen(
     onBack: () -> Unit,
     onOpenWeRead: () -> Unit,
     onOpenMediaApps: () -> Unit,
+    onOpenLockScreenTimerApps: () -> Unit,
     onOpenAppColors: () -> Unit,
     isProActive: Boolean,
     onOpenProMembership: () -> Unit,
@@ -97,43 +103,25 @@ fun SpecialAppsScreen(
     val context = LocalContext.current
     val repository = remember(context) { SpecialAppUsageRepository(context) }
     val mediaRepository = remember(context) { MediaAppPlaybackRepository(context) }
+    val lockScreenTimerRepository = remember(context) { LockScreenTimerAppRepository(context) }
     var state by remember { mutableStateOf<WeReadSettingsState?>(null) }
     var mediaAppCount by remember { mutableStateOf(0) }
+    var lockScreenTimerAppCount by remember { mutableStateOf(0) }
 
     LaunchedEffect(Unit) {
         state = repository.buildSettingsState()
         mediaAppCount = mediaRepository.getConfigs().count { it.enabled }
+        lockScreenTimerAppCount = lockScreenTimerRepository.getConfigs().count { it.enabled }
     }
 
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        text = AppText.t("special_app_list_title"),
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.SemiBold,
-                        color = themeColors.inkStrong,
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = AppText.t("group_back"))
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    scrolledContainerColor = MaterialTheme.colorScheme.surface,
-                ),
-            )
-        },
-    ) { innerPadding ->
+    TinyVowDetailScaffold(
+        title = AppText.t("special_app_list_title"),
+        onBack = onBack,
+        navigationContentDescription = AppText.t("group_back"),
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background)
-                .padding(innerPadding)
                 .verticalScroll(rememberScrollState())
                 .padding(
                     horizontal = TinyVowSpacing.PageHorizontal,
@@ -141,26 +129,26 @@ fun SpecialAppsScreen(
                 ),
             verticalArrangement = Arrangement.spacedBy(TinyVowSpacing.SectionGap),
         ) {
-            TinyVowCard(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(TinyVowRadius.FeaturedCard),
-                color = MaterialTheme.colorScheme.primaryContainer,
-                borderAlpha = 0.18f,
-            ) {
-                Column(
-                    modifier = Modifier.padding(
-                        horizontal = TinyVowSpacing.CardHorizontal,
-                        vertical = TinyVowSpacing.CardVertical,
-                    ),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                TinyVowCard(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(TinyVowRadius.FeaturedCard),
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    borderAlpha = 0.18f,
                 ) {
-                    Text(
-                        text = AppText.t("special_app_list_description"),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = themeColors.ink.copy(alpha = 0.78f),
-                    )
+                    Column(
+                        modifier = Modifier.padding(
+                            horizontal = TinyVowSpacing.CardHorizontal,
+                            vertical = TinyVowSpacing.CardVertical,
+                        ),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Text(
+                            text = AppText.t("special_app_list_description"),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = themeColors.ink.copy(alpha = 0.78f),
+                        )
+                    }
                 }
-            }
 
             SpecialAppListItem(
                 icon = Icons.AutoMirrored.Filled.MenuBook,
@@ -173,6 +161,7 @@ fun SpecialAppsScreen(
                 },
                 active = state?.hasApiKey == true,
                 showProBadge = true,
+                isProActive = isProActive,
                 onClick = { if (isProActive) onOpenWeRead() else onOpenProMembership() },
             )
 
@@ -187,7 +176,29 @@ fun SpecialAppsScreen(
                 },
                 active = mediaAppCount > 0,
                 showProBadge = true,
+                isProActive = isProActive,
                 onClick = { if (isProActive) onOpenMediaApps() else onOpenProMembership() },
+            )
+
+            SpecialAppListItem(
+                icon = Icons.Default.LockClock,
+                title = AppText.t("lock_screen_timer_app_settings_title"),
+                subtitle = AppText.t("lock_screen_timer_app_settings_list_subtitle"),
+                status = if (lockScreenTimerAppCount > 0) {
+                    AppText.t("lock_screen_timer_app_status_configured_count", lockScreenTimerAppCount)
+                } else {
+                    AppText.t("special_app_status_not_configured")
+                },
+                active = lockScreenTimerAppCount > 0,
+                showProBadge = true,
+                isProActive = isProActive,
+                onClick = {
+                    if (ProFeatureGate.canUseLockScreenTimerApps(isProActive)) {
+                        onOpenLockScreenTimerApps()
+                    } else {
+                        onOpenProMembership()
+                    }
+                },
             )
 
             SpecialAppListItem(
@@ -199,12 +210,12 @@ fun SpecialAppsScreen(
                 onClick = onOpenAppColors,
             )
 
-            Text(
-                text = AppText.t("special_app_list_future_hint"),
-                style = MaterialTheme.typography.bodySmall,
-                color = themeColors.inkMuted,
-                modifier = Modifier.padding(horizontal = 4.dp),
-            )
+                Text(
+                    text = AppText.t("special_app_list_future_hint"),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = themeColors.inkMuted,
+                    modifier = Modifier.padding(horizontal = 4.dp),
+                )
         }
     }
 }
@@ -326,35 +337,14 @@ fun SpecialAppSettingsScreen(
         )
     }
 
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        text = AppText.t("special_app_weread_title"),
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.SemiBold,
-                        color = themeColors.inkStrong,
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = AppText.t("group_back"))
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    scrolledContainerColor = MaterialTheme.colorScheme.surface,
-                ),
-            )
-        },
-    ) { innerPadding ->
+    TinyVowDetailScaffold(
+        title = AppText.t("special_app_weread_title"),
+        onBack = onBack,
+        navigationContentDescription = AppText.t("group_back"),
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background)
-                .padding(innerPadding)
                 .verticalScroll(rememberScrollState())
                 .padding(
                     horizontal = TinyVowSpacing.PageHorizontal,
@@ -411,9 +401,9 @@ fun SpecialAppSettingsScreen(
                         modifier = Modifier.fillMaxWidth(),
                     ) {
                         Text(AppText.t("special_app_save_key"))
-                    }
-                }
             }
+    }
+}
 
             SettingsCard(title = AppText.t("special_app_sync_section")) {
                 Text(
@@ -703,6 +693,7 @@ private fun SpecialAppListItem(
     status: String,
     active: Boolean,
     showProBadge: Boolean = false,
+    isProActive: Boolean = false,
     onClick: () -> Unit,
 ) {
     Surface(
@@ -746,9 +737,11 @@ private fun SpecialAppListItem(
                         fontWeight = FontWeight.SemiBold,
                     )
                     if (showProBadge) {
-                        ProMemberBadge()
+                        ProMemberBadge(isActive = isProActive)
                     }
-                    StatusPill(text = status, active = active)
+                    if (!showProBadge || isProActive) {
+                        StatusPill(text = status, active = active)
+                    }
                 }
                 Text(
                     text = subtitle,
@@ -1250,12 +1243,7 @@ private fun SettingsCard(
     content: @Composable ColumnScope.() -> Unit,
 ) {
     val themeColors = LocalThemeColors.current
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(22.dp),
-        color = MaterialTheme.colorScheme.surface,
-        shadowElevation = 1.dp,
-    ) {
+    TinyVowSettingsGroup {
         Column(
             modifier = Modifier.padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
@@ -1439,14 +1427,17 @@ private fun formatWeReadError(error: Throwable): String {
     if (apiError?.httpCode == 401) {
         return AppText.t("special_app_error_unauthorized")
     }
+    if (apiError?.upgradeRequired == true) {
+        return AppText.t("special_app_error_skill_upgrade_required")
+    }
     return error.message ?: AppText.t("special_app_test_failed")
 }
 
 private fun formatStoredWeReadError(error: String): String =
-    if (error.startsWith("HTTP 401")) {
-        AppText.t("special_app_error_unauthorized")
-    } else {
-        error
+    when {
+        error.startsWith("HTTP 401") -> AppText.t("special_app_error_unauthorized")
+        error == "WeRead Skill needs upgrade" -> AppText.t("special_app_error_skill_upgrade_required")
+        else -> error
     }
 
 private fun parseSpecialAppDate(value: String): LocalDate? =

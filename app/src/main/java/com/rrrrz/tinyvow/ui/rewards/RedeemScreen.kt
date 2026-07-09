@@ -1,5 +1,7 @@
 package com.rrrrz.tinyvow.ui.rewards
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
@@ -15,6 +17,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.EmojiEvents
@@ -28,9 +31,11 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -46,6 +51,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.platform.LocalContext
 import com.rrrrz.tinyvow.data.db.GroupType
 import com.rrrrz.tinyvow.data.db.LimitPeriod
 import com.rrrrz.tinyvow.data.db.ActiveRewardEffectEntity
@@ -64,6 +70,7 @@ import com.rrrrz.tinyvow.data.repository.CustomRewardDraft
 import com.rrrrz.tinyvow.data.repository.InventoryRewardItem
 import com.rrrrz.tinyvow.data.repository.PendingStreakShieldItem
 import com.rrrrz.tinyvow.data.repository.RewardIconCatalog
+import com.rrrrz.tinyvow.data.repository.RewardIconStorage
 import com.rrrrz.tinyvow.data.repository.RewardIconSpec
 import com.rrrrz.tinyvow.data.repository.RewardSaveValidationError
 import com.rrrrz.tinyvow.data.repository.RewardStoreItem
@@ -71,17 +78,22 @@ import com.rrrrz.tinyvow.data.repository.evaluateRewardStoreAvailability
 import com.rrrrz.tinyvow.data.repository.parseRewardPayload
 import com.rrrrz.tinyvow.data.repository.validateCustomRewardInput
 import com.rrrrz.tinyvow.data.supermode.GuardedAction
+import com.rrrrz.tinyvow.data.settings.ManagedAppPreferences
 import com.rrrrz.tinyvow.i18n.AppText
 import com.rrrrz.tinyvow.ui.home.ProUpsellSource
 import com.rrrrz.tinyvow.ui.theme.LocalThemeColors
 import com.rrrrz.tinyvow.ui.theme.TinyVowButton
 import com.rrrrz.tinyvow.ui.theme.TinyVowButtonTone
 import com.rrrrz.tinyvow.ui.theme.TinyVowCard
+import com.rrrrz.tinyvow.ui.theme.TinyVowEmptyState
+import com.rrrrz.tinyvow.ui.theme.TinyVowPageBackground
 import com.rrrrz.tinyvow.ui.theme.TinyVowRadius
+import com.rrrrz.tinyvow.ui.theme.TinyVowSectionHeader
 import com.rrrrz.tinyvow.ui.theme.TinyVowSpacing
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlinx.coroutines.launch
 
 private enum class InventorySubsection {
     ITEMS,
@@ -167,76 +179,78 @@ fun RedeemScreen(
             onArchiveReward = { archivingReward = it },
         )
     } else {
-        LazyColumn(
-            modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(
-                horizontal = TinyVowSpacing.PageHorizontal,
-                vertical = TinyVowSpacing.PageTop,
-            ),
-            verticalArrangement = Arrangement.spacedBy(TinyVowSpacing.CardGap),
-        ) {
-            item { CompactPointsSummaryCard(userPoints = userPoints) }
+        TinyVowPageBackground {
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(
+                    horizontal = TinyVowSpacing.PageHorizontal,
+                    vertical = TinyVowSpacing.PageTop,
+                ),
+                verticalArrangement = Arrangement.spacedBy(TinyVowSpacing.CardGap),
+            ) {
+                item { CompactPointsSummaryCard(userPoints = userPoints) }
 
-            if (primaryItems.isNotEmpty()) {
-                item { RewardSectionTitle(title = AppText.t("redeem_store_group_more_time")) }
-                items(primaryItems, key = { it.reward.id }) { item ->
-                    StoreRewardItemCard(
-                        item = item,
-                        userPoints = userPoints,
-                        controlGroupCount = controlGroups,
-                        encourageGroupCount = encourageGroups,
-                        onPurchase = { purchaseWithGuard(item.reward) },
+                if (primaryItems.isNotEmpty()) {
+                    item { RewardSectionTitle(title = AppText.t("redeem_store_group_more_time")) }
+                    items(primaryItems, key = { it.reward.id }) { item ->
+                        StoreRewardItemCard(
+                            item = item,
+                            userPoints = userPoints,
+                            controlGroupCount = controlGroups,
+                            encourageGroupCount = encourageGroups,
+                            onPurchase = { purchaseWithGuard(item.reward) },
+                        )
+                    }
+                }
+
+                if (streakItems.isNotEmpty()) {
+                    item { RewardSectionTitle(title = AppText.t("redeem_store_group_keep_progress")) }
+                    items(streakItems, key = { it.reward.id }) { item ->
+                        StoreRewardItemCard(
+                            item = item,
+                            userPoints = userPoints,
+                            controlGroupCount = controlGroups,
+                            encourageGroupCount = encourageGroups,
+                            onPurchase = { purchaseWithGuard(item.reward) },
+                        )
+                    }
+                }
+
+                if (pointItems.isNotEmpty()) {
+                    item { RewardSectionTitle(title = AppText.t("redeem_store_group_more_points")) }
+                    items(pointItems, key = { it.reward.id }) { item ->
+                        StoreRewardItemCard(
+                            item = item,
+                            userPoints = userPoints,
+                            controlGroupCount = controlGroups,
+                            encourageGroupCount = encourageGroups,
+                            onPurchase = { purchaseWithGuard(item.reward) },
+                        )
+                    }
+                }
+
+                item { RewardSectionTitle(title = AppText.t("redeem_custom_rewards")) }
+                if (customRewards.isEmpty()) {
+                    item { EmptyRewardsCard(text = AppText.t("redeem_custom_rewards_empty")) }
+                } else {
+                    items(customRewards, key = { it.reward.id }) { item ->
+                        StoreRewardItemCard(
+                            item = item,
+                            userPoints = userPoints,
+                            controlGroupCount = controlGroups,
+                            encourageGroupCount = encourageGroups,
+                            onPurchase = { purchaseWithGuard(item.reward) },
+                        )
+                    }
+                }
+
+                item {
+                    TinyVowButton(
+                        text = AppText.t("redeem_custom_config"),
+                        onClick = { showConfigPage = true },
+                        modifier = Modifier.fillMaxWidth(),
                     )
                 }
-            }
-
-            if (streakItems.isNotEmpty()) {
-                item { RewardSectionTitle(title = AppText.t("redeem_store_group_keep_progress")) }
-                items(streakItems, key = { it.reward.id }) { item ->
-                    StoreRewardItemCard(
-                        item = item,
-                        userPoints = userPoints,
-                        controlGroupCount = controlGroups,
-                        encourageGroupCount = encourageGroups,
-                        onPurchase = { purchaseWithGuard(item.reward) },
-                    )
-                }
-            }
-
-            if (pointItems.isNotEmpty()) {
-                item { RewardSectionTitle(title = AppText.t("redeem_store_group_more_points")) }
-                items(pointItems, key = { it.reward.id }) { item ->
-                    StoreRewardItemCard(
-                        item = item,
-                        userPoints = userPoints,
-                        controlGroupCount = controlGroups,
-                        encourageGroupCount = encourageGroups,
-                        onPurchase = { purchaseWithGuard(item.reward) },
-                    )
-                }
-            }
-
-            item { RewardSectionTitle(title = AppText.t("redeem_custom_rewards")) }
-            if (customRewards.isEmpty()) {
-                item { EmptyRewardsCard(text = AppText.t("redeem_custom_rewards_empty")) }
-            } else {
-                items(customRewards, key = { it.reward.id }) { item ->
-                    StoreRewardItemCard(
-                        item = item,
-                        userPoints = userPoints,
-                        controlGroupCount = controlGroups,
-                        encourageGroupCount = encourageGroups,
-                        onPurchase = { purchaseWithGuard(item.reward) },
-                    )
-                }
-            }
-
-            item {
-                TinyVowButton(
-                    text = AppText.t("redeem_custom_config"),
-                    onClick = { showConfigPage = true },
-                    modifier = Modifier.fillMaxWidth(),
-                )
             }
         }
     }
@@ -323,77 +337,81 @@ private fun RewardConfigScreen(
 ) {
     val builtinItems = remember(storeItems) { storeItems.filter { it.reward.builtinKey != null } }
 
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(
-            horizontal = TinyVowSpacing.PageHorizontal,
-            vertical = TinyVowSpacing.PageTop,
-        ),
-        verticalArrangement = Arrangement.spacedBy(TinyVowSpacing.CardGap),
-    ) {
-        item {
-            Surface(
-                shape = RoundedCornerShape(18.dp),
-                color = MaterialTheme.colorScheme.surface,
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth().padding(horizontal = 6.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+    TinyVowPageBackground {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(
+                horizontal = TinyVowSpacing.PageHorizontal,
+                vertical = TinyVowSpacing.PageTop,
+            ),
+            verticalArrangement = Arrangement.spacedBy(TinyVowSpacing.CardGap),
+        ) {
+            item {
+                TinyVowCard(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(TinyVowRadius.Card),
+                    borderAlpha = 0.34f,
                 ) {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = AppText.t("group_back"))
-                    }
-                    Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = AppText.t("redeem_custom_config_title"),
-                            style = MaterialTheme.typography.titleMedium,
-                        )
-                        Text(
-                            text = AppText.t("redeem_custom_config_hint"),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 6.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        IconButton(onClick = onBack) {
+                            Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = AppText.t("group_back"))
+                        }
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = AppText.t("redeem_custom_config_title"),
+                                style = MaterialTheme.typography.titleMedium,
+                            )
+                            Text(
+                                text = AppText.t("redeem_custom_config_hint"),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
                     }
                 }
             }
-        }
 
-        item { RewardSectionTitle(title = AppText.t("redeem_builtin_reward_prices")) }
-        items(builtinItems, key = { it.reward.id }) { item ->
-            RewardConfigItemCard(
-                reward = item.reward,
-                subtitle = AppText.t("redeem_config_builtin_subtitle", item.reward.pointCost),
-                primaryActionDescription = AppText.t("redeem_edit_builtin_reward_cost"),
-                onPrimaryAction = { onEditReward(item.reward) },
-            )
-        }
-
-        item { RewardSectionTitle(title = AppText.t("redeem_custom_rewards")) }
-        item {
-            OutlinedButton(
-                onClick = onAddCustomReward,
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(16.dp),
-            ) {
-                Text(AppText.t("redeem_add_custom_reward"))
-            }
-        }
-        if (customRewards.isEmpty()) {
-            item { EmptyRewardsCard(text = AppText.t("redeem_custom_rewards_empty")) }
-        } else {
-            items(customRewards, key = { it.reward.id }) { item ->
-                val customIndex = customRewards.indexOfFirst { it.reward.id == item.reward.id }
-                val canEdit = ProFeatureGate.canEditCustomReward(isProActive, customIndex)
+            item { RewardSectionTitle(title = AppText.t("redeem_builtin_reward_prices")) }
+            items(builtinItems, key = { it.reward.id }) { item ->
                 RewardConfigItemCard(
                     reward = item.reward,
-                    subtitle = AppText.t("redeem_config_custom_subtitle", item.reward.pointCost),
-                    primaryActionDescription = AppText.t("redeem_edit_reward"),
+                    subtitle = AppText.t("redeem_config_builtin_subtitle", item.reward.pointCost),
+                    primaryActionDescription = AppText.t("redeem_edit_builtin_reward_cost"),
                     onPrimaryAction = { onEditReward(item.reward) },
-                    primaryEnabled = canEdit,
-                    secondaryActionDescription = AppText.t("redeem_archive_custom_reward"),
-                    onSecondaryAction = { onArchiveReward(item.reward) },
                 )
+            }
+
+            item { RewardSectionTitle(title = AppText.t("redeem_custom_rewards")) }
+            item {
+                TinyVowButton(
+                    text = AppText.t("redeem_add_custom_reward"),
+                    onClick = onAddCustomReward,
+                    modifier = Modifier.fillMaxWidth(),
+                    tone = TinyVowButtonTone.Primary,
+                )
+            }
+            if (customRewards.isEmpty()) {
+                item { EmptyRewardsCard(text = AppText.t("redeem_custom_rewards_empty")) }
+            } else {
+                items(customRewards, key = { it.reward.id }) { item ->
+                    val customIndex = customRewards.indexOfFirst { it.reward.id == item.reward.id }
+                    val canEdit = ProFeatureGate.canEditCustomReward(isProActive, customIndex)
+                    RewardConfigItemCard(
+                        reward = item.reward,
+                        subtitle = AppText.t("redeem_config_custom_subtitle", item.reward.pointCost),
+                        primaryActionDescription = AppText.t("redeem_edit_reward"),
+                        onPrimaryAction = { onEditReward(item.reward) },
+                        primaryEnabled = canEdit,
+                        secondaryActionDescription = AppText.t("redeem_archive_custom_reward"),
+                        onSecondaryAction = { onArchiveReward(item.reward) },
+                    )
+                }
             }
         }
     }
@@ -417,104 +435,105 @@ fun RewardInventoryScreen(
     val controlGroups = remember(groups) { groups.filter { it.group.type == GroupType.CONTROL } }
     val encourageGroups = remember(groups) { groups.filter { it.group.type == GroupType.ENCOURAGE } }
 
-    LazyColumn(
-        modifier = Modifier.fillMaxSize(),
-        contentPadding = PaddingValues(
-            horizontal = TinyVowSpacing.PageHorizontal,
-            vertical = TinyVowSpacing.PageTop,
-        ),
-        verticalArrangement = Arrangement.spacedBy(TinyVowSpacing.CardGap),
-    ) {
-        item {
-            SubsectionSwitcher(
-                current = subsection,
-                onChange = { subsection = it },
-            )
-        }
+    TinyVowPageBackground {
+        LazyColumn(
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(
+                horizontal = TinyVowSpacing.PageHorizontal,
+                vertical = TinyVowSpacing.PageTop,
+            ),
+            verticalArrangement = Arrangement.spacedBy(TinyVowSpacing.CardGap),
+        ) {
+            item {
+                SubsectionSwitcher(
+                    current = subsection,
+                    onChange = { subsection = it },
+                )
+            }
 
-        when (subsection) {
-            InventorySubsection.ITEMS -> {
-                if (pendingItems.isNotEmpty()) {
-                    item { RewardSectionTitle(title = AppText.t("redeem_inventory_pending_title")) }
-                    items(pendingItems, key = { it.pending.id }) { item ->
-                        PendingShieldCard(
-                            item = item,
-                            onUse = { onResolvePending(item.pending.id, true) },
-                            onDismiss = { onResolvePending(item.pending.id, false) },
-                        )
+            when (subsection) {
+                InventorySubsection.ITEMS -> {
+                    if (pendingItems.isNotEmpty()) {
+                        item { RewardSectionTitle(title = AppText.t("redeem_inventory_pending_title")) }
+                        items(pendingItems, key = { it.pending.id }) { item ->
+                            PendingShieldCard(
+                                item = item,
+                                onUse = { onResolvePending(item.pending.id, true) },
+                                onDismiss = { onResolvePending(item.pending.id, false) },
+                            )
+                        }
                     }
-                }
 
-                item { RewardSectionTitle(title = AppText.t("redeem_inventory_title")) }
-                if (inventoryItems.isEmpty()) {
-                    item { EmptyRewardsCard(text = AppText.t("redeem_inventory_empty")) }
-                } else {
-                    items(inventoryItems, key = { it.reward.id }) { item ->
-                        InventoryRewardCard(
-                            item = item,
-                            onUseClick = {
-                                when (item.reward.rewardType) {
-                                    RewardType.TIME_ADD,
-                                    RewardType.PERIOD_PASS -> {
-                                        useReward = item.reward
-                                        useTargetType = GroupType.CONTROL
+                    item { RewardSectionTitle(title = AppText.t("redeem_inventory_title")) }
+                    if (inventoryItems.isEmpty()) {
+                        item { EmptyRewardsCard(text = AppText.t("redeem_inventory_empty")) }
+                    } else {
+                        items(inventoryItems, key = { it.reward.id }) { item ->
+                            InventoryRewardCard(
+                                item = item,
+                                onUseClick = {
+                                    when (item.reward.rewardType) {
+                                        RewardType.TIME_ADD,
+                                        RewardType.PERIOD_PASS -> {
+                                            useReward = item.reward
+                                            useTargetType = GroupType.CONTROL
+                                        }
+                                        RewardType.DOUBLE_POINTS_DAY -> {
+                                            useReward = item.reward
+                                            useTargetType = GroupType.ENCOURAGE
+                                        }
+                                        else -> Unit
                                     }
-                                    RewardType.DOUBLE_POINTS_DAY -> {
-                                        useReward = item.reward
-                                        useTargetType = GroupType.ENCOURAGE
-                                    }
-                                    else -> Unit
-                                }
-                            },
-                        )
-                    }
-                }
-            }
-
-            InventorySubsection.EFFECTS -> {
-                item { RewardSectionTitle(title = AppText.t("redeem_effects_active_title")) }
-                if (activeRewardEffects.isEmpty()) {
-                    item { EmptyRewardsCard(text = AppText.t("redeem_effects_active_empty")) }
-                } else {
-                    items(activeRewardEffects, key = { it.id }) { effect ->
-                        ActiveRewardEffectCard(effect = effect)
+                                },
+                            )
+                        }
                     }
                 }
 
-                item { RewardSectionTitle(title = AppText.t("redeem_effects_benefit_title")) }
-                if (rewardEffectBenefits.isEmpty()) {
-                    item { EmptyRewardsCard(text = AppText.t("redeem_effects_benefit_empty")) }
-                } else {
-                    items(rewardEffectBenefits.take(20), key = { it.id }) { benefit ->
-                        RewardEffectBenefitCard(benefit = benefit)
+                InventorySubsection.EFFECTS -> {
+                    item { RewardSectionTitle(title = AppText.t("redeem_effects_active_title")) }
+                    if (activeRewardEffects.isEmpty()) {
+                        item { EmptyRewardsCard(text = AppText.t("redeem_effects_active_empty")) }
+                    } else {
+                        items(activeRewardEffects, key = { it.id }) { effect ->
+                            ActiveRewardEffectCard(effect = effect)
+                        }
+                    }
+
+                    item { RewardSectionTitle(title = AppText.t("redeem_effects_benefit_title")) }
+                    if (rewardEffectBenefits.isEmpty()) {
+                        item { EmptyRewardsCard(text = AppText.t("redeem_effects_benefit_empty")) }
+                    } else {
+                        items(rewardEffectBenefits.take(20), key = { it.id }) { benefit ->
+                            RewardEffectBenefitCard(benefit = benefit)
+                        }
                     }
                 }
-            }
 
-            InventorySubsection.PURCHASES -> {
-                item { RewardSectionTitle(title = AppText.t("redeem_recent_redemptions")) }
-                if (redemptionHistory.isEmpty()) {
-                    item { EmptyRewardsCard(text = AppText.t("redeem_no_history_yet")) }
-                } else {
-                    items(redemptionHistory, key = { it.id }) { record ->
-                        RedemptionHistoryItem(record = record)
+                InventorySubsection.PURCHASES -> {
+                    item { RewardSectionTitle(title = AppText.t("redeem_recent_redemptions")) }
+                    if (redemptionHistory.isEmpty()) {
+                        item { EmptyRewardsCard(text = AppText.t("redeem_no_history_yet")) }
+                    } else {
+                        items(redemptionHistory, key = { it.id }) { record ->
+                            RedemptionHistoryItem(record = record)
+                        }
                     }
                 }
-            }
 
-            InventorySubsection.USES -> {
-                item { RewardSectionTitle(title = AppText.t("redeem_use_history_title")) }
-                if (rewardUseHistory.isEmpty()) {
-                    item { EmptyRewardsCard(text = AppText.t("redeem_use_history_empty")) }
-                } else {
-                    items(rewardUseHistory, key = { it.id }) { record ->
-                        RewardUseHistoryItemCard(record = record)
+                InventorySubsection.USES -> {
+                    item { RewardSectionTitle(title = AppText.t("redeem_use_history_title")) }
+                    if (rewardUseHistory.isEmpty()) {
+                        item { EmptyRewardsCard(text = AppText.t("redeem_use_history_empty")) }
+                    } else {
+                        items(rewardUseHistory, key = { it.id }) { record ->
+                            RewardUseHistoryItemCard(record = record)
+                        }
                     }
                 }
             }
         }
     }
-
     val selectedReward = useReward
     val selectedTargetType = useTargetType
     if (selectedReward != null && selectedTargetType != null) {
@@ -730,32 +749,12 @@ private fun CompactPointsSummaryCard(userPoints: Double) {
 
 @Composable
 private fun RewardSectionTitle(title: String) {
-    val themeColors = LocalThemeColors.current
-    Text(
-        text = title,
-        style = MaterialTheme.typography.titleSmall,
-        color = themeColors.inkStrong,
-    )
+    TinyVowSectionHeader(title = title)
 }
 
 @Composable
 private fun EmptyRewardsCard(text: String) {
-    val themeColors = LocalThemeColors.current
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(TinyVowRadius.ItemCard),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.36f),
-    ) {
-        Text(
-            text = text,
-            modifier = Modifier.padding(
-                horizontal = TinyVowSpacing.CardHorizontal,
-                vertical = TinyVowSpacing.CompactCardVertical,
-            ),
-            style = MaterialTheme.typography.bodySmall,
-            color = themeColors.inkMuted,
-        )
-    }
+    TinyVowEmptyState(title = text)
 }
 
 @Composable
@@ -1129,6 +1128,59 @@ private fun periodLabel(period: LimitPeriod): String =
         },
     )
 
+@Composable
+private fun RewardIconChoiceTile(
+    selected: Boolean,
+    contentDescription: String,
+    onClick: () -> Unit,
+    content: @Composable BoxScope.() -> Unit,
+) {
+    Surface(
+        modifier =
+            Modifier
+                .size(55.dp)
+                .semantics { this.contentDescription = contentDescription }
+                .clickable(onClick = onClick),
+        shape = RoundedCornerShape(14.dp),
+        color =
+            if (selected) {
+                MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
+            } else {
+                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.24f)
+            },
+        border =
+            BorderStroke(
+                width = if (selected) 2.dp else 1.dp,
+                color =
+                    if (selected) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)
+                    },
+            ),
+    ) {
+        Box(contentAlignment = Alignment.Center, content = content)
+    }
+}
+
+@Composable
+private fun RewardImportIconChoiceTile(
+    onClick: () -> Unit,
+) {
+    RewardIconChoiceTile(
+        selected = false,
+        contentDescription = AppText.t("redeem_icon_import_photo"),
+        onClick = onClick,
+    ) {
+        Icon(
+            imageVector = Icons.Default.Add,
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.primary,
+            modifier = Modifier.size(22.dp),
+        )
+    }
+}
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun RewardEditDialog(
@@ -1136,6 +1188,10 @@ fun RewardEditDialog(
     onDismiss: () -> Unit,
     onConfirm: (CustomRewardDraft) -> Unit,
 ) {
+    val context = LocalContext.current
+    val preferences = remember(context) { ManagedAppPreferences(context.applicationContext) }
+    val coroutineScope = rememberCoroutineScope()
+    val importedRewardIconPaths by preferences.rewardIconLibraryPaths.collectAsState(initial = emptyList())
     val builtinCostOnly = reward?.builtinKey != null
     var title by remember(reward?.id) { mutableStateOf(reward?.title ?: "") }
     var cost by remember(reward?.id) { mutableStateOf(reward?.pointCost?.toString() ?: "100") }
@@ -1145,8 +1201,27 @@ fun RewardEditDialog(
     var selectedPresetKey by remember(reward?.id) {
         mutableStateOf(reward?.takeIf { it.iconSource == RewardIconSource.PRESET }?.iconValue)
     }
+    var selectedImportedIconPath by remember(reward?.id) {
+        mutableStateOf(reward?.takeIf { it.iconSource == RewardIconSource.IMPORTED_FILE }?.iconValue)
+    }
     var showErrors by remember(reward?.id) { mutableStateOf(false) }
     var showingIconPicker by remember(reward?.id) { mutableStateOf(false) }
+    val importRewardIconLauncher =
+        rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+            if (uri != null) {
+                coroutineScope.launch {
+                    runCatching {
+                        RewardIconStorage
+                            .fromContext(context.applicationContext)
+                            .importImage(context.contentResolver, uri)
+                    }.onSuccess { importedPath ->
+                        preferences.addRewardIconLibraryPath(importedPath)
+                        selectedPresetKey = null
+                        selectedImportedIconPath = importedPath
+                    }
+                }
+            }
+        }
 
     val costValue = cost.toIntOrNull() ?: 0
     val stockValue = if (isInfinite) -1 else stock.toIntOrNull() ?: 0
@@ -1160,7 +1235,9 @@ fun RewardEditDialog(
         if (builtinCostOnly) {
             null
         } else {
-            selectedPresetKey?.let { RewardIconSpec(RewardIconSource.PRESET, it) } ?: existingIconSpec
+            selectedImportedIconPath?.let { RewardIconSpec(RewardIconSource.IMPORTED_FILE, it) }
+                ?: selectedPresetKey?.let { RewardIconSpec(RewardIconSource.PRESET, it) }
+                ?: existingIconSpec
         }
     val validationError =
         if (builtinCostOnly) {
@@ -1195,47 +1272,60 @@ fun RewardEditDialog(
                         verticalArrangement = Arrangement.spacedBy(0.dp),
                     ) {
                         RewardIconCatalog.customPresetKeys.forEach { key ->
-                            val selected = selectedPresetKey == key
-                            Surface(
-                                modifier =
-                                    Modifier
-                                        .size(55.dp)
-                                        .semantics {
-                                            contentDescription =
-                                                AppText.t(
-                                                    "redeem_icon_preset_accessibility",
-                                                    RewardIconCatalog.presetOrdinal(key) ?: 0,
-                                                )
-                                        }
-                                        .clickable {
-                                            selectedPresetKey = key
-                                            showingIconPicker = false
-                                        },
-                                shape = RoundedCornerShape(14.dp),
-                                color =
-                                    if (selected) {
-                                        MaterialTheme.colorScheme.primary.copy(alpha = 0.12f)
-                                    } else {
-                                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.24f)
-                                    },
-                                border =
-                                    BorderStroke(
-                                        width = if (selected) 2.dp else 1.dp,
-                                        color =
-                                            if (selected) {
-                                                MaterialTheme.colorScheme.primary
-                                            } else {
-                                                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)
-                                            },
-                                    ),
+                            RewardIconChoiceTile(
+                                selected = selectedImportedIconPath == null && selectedPresetKey == key,
+                                contentDescription = AppText.t(
+                                    "redeem_icon_preset_accessibility",
+                                    RewardIconCatalog.presetOrdinal(key) ?: 0,
+                                ),
+                                onClick = {
+                                    selectedPresetKey = key
+                                    selectedImportedIconPath = null
+                                    showingIconPicker = false
+                                },
                             ) {
-                                Box(contentAlignment = Alignment.Center) {
-                                    RewardIconPreview(
-                                        iconSource = RewardIconSource.PRESET,
-                                        iconValue = key,
-                                        size = 72.dp,
-                                    )
-                                }
+                                RewardIconPreview(
+                                    iconSource = RewardIconSource.PRESET,
+                                    iconValue = key,
+                                    size = 72.dp,
+                                )
+                            }
+                        }
+                        val visibleImportedPaths =
+                            (importedRewardIconPaths + listOfNotNull(reward?.takeIf { it.iconSource == RewardIconSource.IMPORTED_FILE }?.iconValue))
+                                .filter { it.isNotBlank() }
+                                .distinct()
+                        visibleImportedPaths.forEach { importedPath ->
+                            RewardIconChoiceTile(
+                                selected = selectedImportedIconPath == importedPath,
+                                contentDescription = AppText.t("redeem_icon_photo_ready"),
+                                onClick = {
+                                    selectedPresetKey = null
+                                    selectedImportedIconPath = importedPath
+                                    showingIconPicker = false
+                                },
+                            ) {
+                                RewardIconPreview(
+                                    iconSource = RewardIconSource.IMPORTED_FILE,
+                                    iconValue = importedPath,
+                                    size = 72.dp,
+                                )
+                            }
+                        }
+                        RewardImportIconChoiceTile(
+                            onClick = { importRewardIconLauncher.launch("image/*") },
+                        )
+                        if (selectedImportedIconPath != null && selectedImportedIconPath !in visibleImportedPaths) {
+                            RewardIconChoiceTile(
+                                selected = true,
+                                contentDescription = AppText.t("redeem_icon_photo_ready"),
+                                onClick = { showingIconPicker = false },
+                            ) {
+                                RewardIconPreview(
+                                    iconSource = RewardIconSource.IMPORTED_FILE,
+                                    iconValue = selectedImportedIconPath,
+                                    size = 72.dp,
+                                )
                             }
                         }
                     }

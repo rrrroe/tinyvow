@@ -146,9 +146,14 @@ import com.rrrrz.tinyvow.ui.theme.LocalReportColors
 import com.rrrrz.tinyvow.ui.theme.TinyVowCard
 import com.rrrrz.tinyvow.ui.theme.TinyVowButton
 import com.rrrrz.tinyvow.ui.theme.TinyVowButtonTone
+import com.rrrrz.tinyvow.ui.theme.TinyVowCardContent
 import com.rrrrz.tinyvow.ui.theme.TinyVowElevation
+import com.rrrrz.tinyvow.ui.theme.TinyVowEmptyState
+import com.rrrrz.tinyvow.ui.theme.TinyVowPageBackground
 import com.rrrrz.tinyvow.ui.theme.TinyVowRadius
+import com.rrrrz.tinyvow.ui.theme.TinyVowSectionHeader
 import com.rrrrz.tinyvow.ui.theme.TinyVowSpacing
+import com.rrrrz.tinyvow.ui.theme.TinyVowStatusPill
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
@@ -528,12 +533,7 @@ private fun StatsScreenLayout(
     screenEnterReplayToken: Int,
     modifier: Modifier = Modifier,
 ) {
-    val reportColors = LocalReportColors.current
-    Box(
-        modifier = modifier
-            .fillMaxSize()
-            .background(Brush.verticalGradient(reportColors.pageGradient)),
-    ) {
+    TinyVowPageBackground(modifier = modifier) {
         when {
             !state.isPermissionGranted -> PermissionRequiredState(
                 onRequestUsageAccess = onRequestUsageAccess,
@@ -702,11 +702,12 @@ private fun ReportPageContent(
     val defaultDayModules =
         buildList {
             add(SharePosterModule.BEHAVIOR)
-            add(SharePosterModule.TIME_TIDE)
             add(SharePosterModule.FOCUS)
-            if (offlineFocusEnabled) add(SharePosterModule.OFFLINE)
             add(SharePosterModule.RHYTHM)
             add(SharePosterModule.INSIGHTS)
+            if (offlineFocusEnabled) {
+                add(SharePosterModule.OFFLINE)
+            }
         }
 
     Column(
@@ -739,7 +740,7 @@ private fun ReportPageContent(
                             )
                         }
                         SharePosterModule.OFFLINE -> {
-                            OfflineFocusDailyCard(state = state.offlineFocusState)
+                            OfflineFocusMarksCard(state = state.offlineFocusState)
                         }
                         SharePosterModule.APPS -> Unit
                         SharePosterModule.RHYTHM -> DailyRhythmCard(
@@ -761,19 +762,6 @@ private fun ReportPageContent(
                     }
                 } else {
                     moduleContent()
-                }
-            }
-            if (shareModules == null && offlineFocusEnabled) {
-                if (isProActive) {
-                    OfflineFocusPomodoroRhythmCard(state = state.offlineFocusState)
-                    OfflineFocusMarksCard(state = state.offlineFocusState)
-                } else {
-                    ProLockedDailyPreview(onClick = { onShowProUpsell(ProUpsellSource.ADVANCED_REPORT) }) {
-                        OfflineFocusPomodoroRhythmCard(state = state.offlineFocusState)
-                    }
-                    ProLockedDailyPreview(onClick = { onShowProUpsell(ProUpsellSource.ADVANCED_REPORT) }) {
-                        OfflineFocusMarksCard(state = state.offlineFocusState)
-                    }
                 }
             }
         } else {
@@ -811,7 +799,7 @@ private fun ProLockedDailyPreview(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .blur(1.25.dp)
+                    .blur(3.dp)
                     .graphicsLayer { alpha = 0.92f },
         ) {
             content()
@@ -832,19 +820,6 @@ private fun ProLockedDailyPreview(
                     ),
                 cornerRadius = CornerRadius(26.dp.toPx(), 26.dp.toPx()),
             )
-            val lineColor = themeColors.base.copy(alpha = 0.16f)
-            val step = 34.dp.toPx()
-            val stroke = 1.2.dp.toPx()
-            var startX = -size.height
-            while (startX < size.width) {
-                drawLine(
-                    color = lineColor,
-                    start = Offset(startX, size.height),
-                    end = Offset(startX + size.height, 0f),
-                    strokeWidth = stroke,
-                )
-                startX += step
-            }
         }
         Row(
             modifier =
@@ -1697,28 +1672,22 @@ private fun PlaceholderReportScreen(
     ) {
         ReportTabRow(selectedTab = state.selectedTab, onTabSelected = onTabSelected)
         ReportCard {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Surface(
-                    shape = RoundedCornerShape(999.dp),
-                    color = MaterialTheme.colorScheme.secondaryContainer,
-                ) {
-                    Text(
-                        text = AppText.t("stats_archived_reports_waiting"),
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
-                        style = MaterialTheme.typography.labelLarge,
-                        color = MaterialTheme.colorScheme.onSecondaryContainer,
-                    )
-                }
-                Text(
-                    text = state.placeholderTitle.orEmpty(),
-                    style = MaterialTheme.typography.headlineSmall,
-                )
-                Text(
-                    text = state.placeholderDescription.orEmpty(),
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-            }
+            TinyVowStatusPill(
+                text = AppText.t("stats_archived_reports_waiting"),
+                color = LocalThemeColors.current.base,
+                containerColor = LocalThemeColors.current.baseContainer,
+                modifier = Modifier.align(Alignment.Start),
+            )
+            Text(
+                text = state.placeholderTitle.orEmpty(),
+                style = MaterialTheme.typography.headlineSmall,
+                color = LocalThemeColors.current.inkStrong,
+            )
+            Text(
+                text = state.placeholderDescription.orEmpty(),
+                style = MaterialTheme.typography.bodyLarge,
+                color = LocalThemeColors.current.inkMuted,
+            )
         }
     }
 }
@@ -1729,30 +1698,14 @@ private fun PermissionRequiredState(
 ) {
     val context = LocalContext.current
     Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        ReportCard(
+        TinyVowEmptyState(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(horizontal = TinyVowSpacing.PageHorizontal),
-        ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                Icon(
-                    imageVector = Icons.Default.BarChart,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(28.dp),
-                )
-                Text(
-                    text = AppText.t("stats_report_needs_usage_records_permission"),
-                    style = MaterialTheme.typography.titleLarge,
-                )
-                Text(
-                    text = AppText.t("stats_enable_usage_records_for_daily_report"),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+            icon = Icons.Default.BarChart,
+            title = AppText.t("stats_report_needs_usage_records_permission"),
+            body = AppText.t("stats_enable_usage_records_for_daily_report"),
+            action = {
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     TinyVowButton(
                         text = AppText.t("stats_view_details_and_enable"),
@@ -1770,8 +1723,8 @@ private fun PermissionRequiredState(
                         modifier = Modifier.weight(1f),
                     )
                 }
-            }
-        }
+            },
+        )
     }
 }
 
@@ -2702,13 +2655,10 @@ private fun ReportShareActionCard(
     }
 
     if (showPreview) {
-        val context = LocalContext.current
-        val preferences = remember(context) { ManagedAppPreferences(context.applicationContext) }
-        val offlineFocusEnabled by preferences.offlineFocusEnabled.collectAsStateWithLifecycle(initialValue = false)
         ReportPageSharePreviewDialog(
             state = state,
             isProActive = isProActive,
-            offlineFocusEnabled = offlineFocusEnabled,
+            offlineFocusEnabled = true,
             onDismiss = { showPreview = false },
         )
     }
@@ -2739,9 +2689,6 @@ private fun availableSharePosterModules(
             if (state.dailyFocusState is SectionState.Ready) {
                 add(SharePosterModule.FOCUS)
             }
-            if (isProActive && offlineFocusEnabled && state.offlineFocusState is SectionState.Ready) {
-                add(SharePosterModule.OFFLINE)
-            }
             val timeline = (state.timelineState as? SectionState.Ready)?.data
             if (isProActive && timeline != null && (timeline.buckets.isNotEmpty() || timeline.periodUsage.any { it.deviceMillis > 0L })) {
                 add(SharePosterModule.RHYTHM)
@@ -2749,6 +2696,9 @@ private fun availableSharePosterModules(
             val behaviorMap = (state.behaviorMapState as? SectionState.Ready)?.data
             if (isProActive && behaviorMap != null && behaviorMap.points.isNotEmpty()) {
                 add(SharePosterModule.INSIGHTS)
+            }
+            if (offlineFocusEnabled && state.offlineFocusState !is SectionState.Loading) {
+                add(SharePosterModule.OFFLINE)
             }
         }
     } else {
@@ -2816,7 +2766,12 @@ private fun SharePosterModule.labelKey(selectedTab: ReportTab): String =
         SharePosterModule.BEHAVIOR -> "stats_share_module_behavior"
         SharePosterModule.TIME_TIDE -> "stats_share_module_time_tide"
         SharePosterModule.FOCUS -> "stats_share_module_focus"
-        SharePosterModule.OFFLINE -> "stats_share_module_offline_focus"
+        SharePosterModule.OFFLINE ->
+            if (selectedTab == ReportTab.DAY) {
+                "offline_focus_marks_title"
+            } else {
+                "stats_share_module_offline_focus"
+            }
         SharePosterModule.APPS -> "stats_share_module_apps"
         SharePosterModule.RHYTHM -> "stats_share_module_rhythm"
         SharePosterModule.INSIGHTS ->
@@ -5330,50 +5285,21 @@ internal fun SectionHeader(
     subtitle: String? = null,
     trailing: String? = null,
 ) {
-    val themeColors = LocalThemeColors.current
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(18.dp),
-            )
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.SemiBold,
-                color = themeColors.inkStrong,
-            )
-            if (trailing != null) {
-                Spacer(modifier = Modifier.weight(1f))
-                Surface(
-                    shape = RoundedCornerShape(999.dp),
-                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
-                ) {
-                    Text(
-                        text = trailing,
-                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                }
+    TinyVowSectionHeader(
+        title = title,
+        icon = icon,
+        subtitle = subtitle,
+        trailing = trailing?.let { label ->
+            {
+                TinyVowStatusPill(
+                    text = label,
+                    color = LocalThemeColors.current.base,
+                    containerColor = LocalThemeColors.current.baseContainer,
+                    leadingDot = false,
+                )
             }
-        }
-        if (subtitle != null) {
-            Text(
-                text = subtitle,
-                style = MaterialTheme.typography.bodySmall,
-                color = themeColors.inkMuted,
-            )
-        }
-    }
+        },
+    )
 }
 
 @Composable
@@ -5387,14 +5313,7 @@ internal fun ReportCard(
         borderAlpha = 0.28f,
         shadowElevation = TinyVowElevation.Card,
     ) {
-        Column(
-            modifier = Modifier.padding(
-                horizontal = TinyVowSpacing.CardHorizontal,
-                vertical = TinyVowSpacing.CardVertical,
-            ),
-            verticalArrangement = Arrangement.spacedBy(TinyVowSpacing.CardGap),
-            content = content,
-        )
+        TinyVowCardContent(content = content)
     }
 }
 

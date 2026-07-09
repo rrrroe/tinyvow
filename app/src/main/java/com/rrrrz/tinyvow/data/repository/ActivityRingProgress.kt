@@ -62,8 +62,10 @@ internal fun buildActivityRingProgressSnapshot(
         groupSnapshots
             .filter { it.groupType == GroupType.ENCOURAGE && it.limitMinutes > 0 }
             .sumOf { snapshot ->
-                val targetUsagePoints = snapshot.limitMinutes * snapshot.pointsPerMinute
-                targetUsagePoints.coerceAtLeast(0.0)
+                calculateEncourageTargetPoints(
+                    targetMinutes = snapshot.limitMinutes,
+                    pointsPerMinute = snapshot.pointsPerMinute,
+                )
             }
     val growthProgress =
         if (growthTargetPoints > 0.0) {

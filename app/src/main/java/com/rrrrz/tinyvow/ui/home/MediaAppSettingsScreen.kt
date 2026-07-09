@@ -6,7 +6,6 @@ import android.content.Intent
 import android.graphics.drawable.Drawable
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -28,21 +27,18 @@ import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Headphones
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -67,7 +63,12 @@ import com.rrrrz.tinyvow.i18n.AppText
 import com.rrrrz.tinyvow.service.media.MediaAppPlaybackListenerService
 import com.rrrrz.tinyvow.service.media.MediaAppPlaybackMonitor
 import com.rrrrz.tinyvow.ui.theme.LocalThemeColors
+import com.rrrrz.tinyvow.ui.theme.TinyVowButton
+import com.rrrrz.tinyvow.ui.theme.TinyVowButtonTone
 import com.rrrrz.tinyvow.ui.theme.TinyVowCard
+import com.rrrrz.tinyvow.ui.theme.TinyVowDetailScaffold
+import com.rrrrz.tinyvow.ui.theme.TinyVowEmptyState
+import com.rrrrz.tinyvow.ui.theme.TinyVowPageBackground
 import com.rrrrz.tinyvow.ui.theme.TinyVowRadius
 import com.rrrrz.tinyvow.ui.theme.TinyVowSpacing
 import kotlinx.coroutines.delay
@@ -117,13 +118,14 @@ fun MediaAppSettingsScreen(
             title = { Text(AppText.t("media_app_permission_dialog_title")) },
             text = { Text(AppText.t("media_app_permission_dialog_body")) },
             confirmButton = {
-                Button(
+                TinyVowButton(
                     onClick = {
                         showPermissionDialog = false
                         context.openNotificationListenerSettings(
                             ComponentName(context, MediaAppPlaybackListenerService::class.java),
                         )
                     },
+                    tone = TinyVowButtonTone.Primary,
                 ) {
                     Text(AppText.t("media_app_open_listener_settings"))
                 }
@@ -152,40 +154,19 @@ fun MediaAppSettingsScreen(
         )
     }
 
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        text = AppText.t("media_app_settings_title"),
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.SemiBold,
-                        color = themeColors.inkStrong,
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = AppText.t("group_back"))
-                    }
-                },
-                actions = {
-                    IconButton(onClick = { showAddDialog = true }) {
-                        Icon(Icons.Default.Add, contentDescription = AppText.t("media_app_add_app"))
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    scrolledContainerColor = MaterialTheme.colorScheme.surface,
-                ),
-            )
+    TinyVowDetailScaffold(
+        title = AppText.t("media_app_settings_title"),
+        onBack = onBack,
+        navigationContentDescription = AppText.t("group_back"),
+        actions = {
+            IconButton(onClick = { showAddDialog = true }) {
+                Icon(Icons.Default.Add, contentDescription = AppText.t("media_app_add_app"))
+            }
         },
-    ) { innerPadding ->
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background)
-                .padding(innerPadding)
                 .verticalScroll(rememberScrollState())
                 .padding(
                     horizontal = TinyVowSpacing.PageHorizontal,
@@ -287,32 +268,26 @@ private fun MediaPermissionCard(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            OutlinedButton(onClick = onOpenSettings) {
-                Text(AppText.t("media_app_permission_action"))
-            }
+            TinyVowButton(text = AppText.t("media_app_permission_action"), onClick = onOpenSettings)
         }
     }
 }
 
 @Composable
 private fun MediaEmptyCard(onAdd: () -> Unit) {
-    SettingsSurface {
-        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text(
-                text = AppText.t("media_app_empty_title"),
-                style = MaterialTheme.typography.titleSmall,
-                fontWeight = FontWeight.SemiBold,
+    TinyVowEmptyState(
+        title = AppText.t("media_app_empty_title"),
+        body = AppText.t("media_app_empty_description"),
+        icon = Icons.Default.Headphones,
+        action = {
+            TinyVowButton(
+                text = AppText.t("media_app_add_app"),
+                onClick = onAdd,
+                tone = TinyVowButtonTone.Primary,
+                modifier = Modifier.fillMaxWidth(),
             )
-            Text(
-                text = AppText.t("media_app_empty_description"),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-            Button(onClick = onAdd, modifier = Modifier.fillMaxWidth()) {
-                Text(AppText.t("media_app_add_app"))
-            }
-        }
-    }
+        },
+    )
 }
 
 @Composable
@@ -566,11 +541,10 @@ private fun ManagedApp.looksLikeLauncherApp(): Boolean {
 
 @Composable
 private fun SettingsSurface(content: @Composable () -> Unit) {
-    Surface(
+    TinyVowCard(
         modifier = Modifier.fillMaxWidth(),
         shape = androidx.compose.foundation.shape.RoundedCornerShape(18.dp),
         color = MaterialTheme.colorScheme.surface,
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.42f)),
         shadowElevation = 1.dp,
     ) {
         Column(modifier = Modifier.padding(16.dp)) {

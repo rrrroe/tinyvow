@@ -204,5 +204,6 @@ dependencies {
     implementation(libs.google.play.billing.ktx)
     implementation(libs.androidx.palette)
     implementation(libs.material.color.utilities)
+    implementation(libs.androidx.health.connect.client)
     ksp(libs.androidx.room.compiler)
 }

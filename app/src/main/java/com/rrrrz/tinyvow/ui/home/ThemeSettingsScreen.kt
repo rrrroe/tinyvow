@@ -28,7 +28,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -42,7 +41,9 @@ import com.rrrrz.tinyvow.ui.theme.LocalThemeColors
 import com.rrrrz.tinyvow.ui.theme.ThemePresets
 import com.rrrrz.tinyvow.ui.theme.ThemeSeed
 import com.rrrrz.tinyvow.ui.theme.TinyVowCard
+import com.rrrrz.tinyvow.ui.theme.TinyVowDetailScaffold
 import com.rrrrz.tinyvow.ui.theme.TinyVowElevation
+import com.rrrrz.tinyvow.ui.theme.TinyVowPageBackground
 import com.rrrrz.tinyvow.ui.theme.TinyVowRadius
 import com.rrrrz.tinyvow.ui.theme.TinyVowSpacing
 import com.rrrrz.tinyvow.ui.theme.localizedName
@@ -68,35 +69,14 @@ fun ThemeSettingsScreen(
     val effectiveSelectedThemeId = resolveThemeSeed(selectedThemeId, customThemes).id
     val currentThemeName = selectedThemeDisplayName(selectedThemeId, customThemes)
 
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        text = AppText.t("me_appearance_theme"),
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.SemiBold,
-                        color = themeColors.inkStrong,
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = AppText.t("group_back"))
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    scrolledContainerColor = MaterialTheme.colorScheme.surface,
-                ),
-            )
-        },
-    ) { innerPadding ->
+    TinyVowDetailScaffold(
+        title = AppText.t("me_appearance_theme"),
+        onBack = onBack,
+        navigationContentDescription = AppText.t("group_back"),
+    ) {
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background)
-                .padding(innerPadding)
                 .padding(horizontal = TinyVowSpacing.PageHorizontal),
             contentPadding = PaddingValues(
                 top = TinyVowSpacing.PageTop,

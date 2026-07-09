@@ -1958,19 +1958,46 @@ internal fun buildOfflineFocusSectionData(
     val completedSessions =
         summary.sessions
             .filter { it.completedAt != null && it.actualDurationMillis > 0L }
-            .map { session ->
-                val endMillis = session.completedAt ?: (session.startedAt + session.actualDurationMillis)
+            .mapNotNull { session ->
+                val durationMillis = session.actualDurationMillis.coerceAtLeast(0L)
+                val actualEndMillis =
+                    (session.completedAt ?: (session.startedAt + durationMillis))
+                        .coerceAtMost(session.startedAt + durationMillis)
+                val actualStartMillis = actualEndMillis - durationMillis
+                val clippedStartMillis = maxOf(actualStartMillis, dayStartMillis)
+                val clippedEndMillis = minOf(actualEndMillis, dayEndMillis)
+                val clippedDurationMillis = (clippedEndMillis - clippedStartMillis).coerceAtLeast(0L)
+                if (clippedDurationMillis <= 0L) return@mapNotNull null
                 OfflineFocusTimelineItem(
                     categoryName = session.categoryName,
                     iconKey = session.iconKey,
+                    customIconPath = session.customIconPath,
                     colorArgb = session.colorArgb,
-                    startMillis = session.startedAt,
-                    endMillis = endMillis,
-                    durationMillis = session.actualDurationMillis,
-                    pointsAwarded = session.pointsAwarded,
+                    startMillis = clippedStartMillis,
+                    endMillis = clippedEndMillis,
+                    durationMillis = clippedDurationMillis,
+                    pointsAwarded =
+                        if ((session.completedAt ?: 0L) in dayStartMillis until dayEndMillis) {
+                            session.pointsAwarded
+                        } else {
+                            0.0
+                        },
                 )
             }
             .sortedBy { it.startMillis }
+    val interruptedSessions =
+        summary.sessions.filter { session ->
+            session.abandonedAt != null ||
+                session.pauseReason != null ||
+                session.violationPackageName != null
+        }
+    val topInterruptionPackage =
+        interruptedSessions
+            .mapNotNull { it.violationPackageName }
+            .groupingBy { it }
+            .eachCount()
+            .maxByOrNull { it.value }
+            ?.key
     return OfflineFocusSectionData(
         totalMillis = summary.totalMillis,
         completedCount = summary.completedCount,
@@ -1978,11 +2005,14 @@ internal fun buildOfflineFocusSectionData(
         dayStartMillis = dayStartMillis,
         dayEndMillis = dayEndMillis,
         sessions = completedSessions,
+        interruptionCount = interruptedSessions.size,
+        topInterruptionPackage = topInterruptionPackage,
         categories =
             summary.categories.map { category ->
                 OfflineFocusCategoryBreakdown(
                     categoryName = category.categoryName,
                     iconKey = category.iconKey,
+                    customIconPath = category.customIconPath,
                     colorArgb = category.colorArgb,
                     totalMillis = category.totalMillis,
                     completedCount = category.completedCount,

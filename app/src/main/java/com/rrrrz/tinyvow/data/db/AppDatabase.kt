@@ -36,10 +36,13 @@ import com.rrrrz.tinyvow.data.db.migration.AppDatabaseMigrations
         MediaAppConfigEntity::class,
         MediaAppPlaybackDayEntity::class,
         MediaAppPlaybackSegmentEntity::class,
+        LockScreenTimerAppConfigEntity::class,
+        LockScreenTimerAppDayEntity::class,
+        LockScreenTimerAppSegmentEntity::class,
         OfflineFocusCategoryEntity::class,
         OfflineFocusSessionEntity::class,
     ],
-    version = 29,
+    version = 31,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -71,6 +74,9 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun mediaAppConfigDao(): MediaAppConfigDao
     abstract fun mediaAppPlaybackDayDao(): MediaAppPlaybackDayDao
     abstract fun mediaAppPlaybackSegmentDao(): MediaAppPlaybackSegmentDao
+    abstract fun lockScreenTimerAppConfigDao(): LockScreenTimerAppConfigDao
+    abstract fun lockScreenTimerAppDayDao(): LockScreenTimerAppDayDao
+    abstract fun lockScreenTimerAppSegmentDao(): LockScreenTimerAppSegmentDao
     abstract fun offlineFocusCategoryDao(): OfflineFocusCategoryDao
     abstract fun offlineFocusSessionDao(): OfflineFocusSessionDao
 
@@ -97,6 +103,8 @@ abstract class AppDatabase : RoomDatabase() {
         val MIGRATION_26_27 = AppDatabaseMigrations.MIGRATION_26_27
         val MIGRATION_27_28 = AppDatabaseMigrations.MIGRATION_27_28
         val MIGRATION_28_29 = AppDatabaseMigrations.MIGRATION_28_29
+        val MIGRATION_29_30 = AppDatabaseMigrations.MIGRATION_29_30
+        val MIGRATION_30_31 = AppDatabaseMigrations.MIGRATION_30_31
 
         @Volatile
         private var INSTANCE: AppDatabase? = null

@@ -10,6 +10,9 @@ import androidx.room.PrimaryKey
 import androidx.room.Query
 import kotlinx.coroutines.flow.Flow
 
+const val STEP_DAY_SOURCE_SENSOR = "SENSOR"
+const val STEP_DAY_SOURCE_HEALTH_CONNECT = "HEALTH_CONNECT"
+
 @Entity(
     tableName = "step_days",
     indices = [
@@ -27,6 +30,8 @@ data class StepDayEntity(
     val sensorBaseSteps: Long,
     @ColumnInfo(name = "last_sensor_steps")
     val lastSensorSteps: Long,
+    @ColumnInfo(name = "source")
+    val source: String = STEP_DAY_SOURCE_SENSOR,
     @ColumnInfo(name = "updated_at")
     val updatedAt: Long,
 )
@@ -57,6 +62,9 @@ interface StepDayDao {
 
     @Query("SELECT * FROM step_days WHERE step_date = :date LIMIT 1")
     fun observeByDate(date: String): Flow<StepDayEntity?>
+
+    @Query("SELECT * FROM step_days ORDER BY step_date ASC")
+    fun observeAll(): Flow<List<StepDayEntity>>
 
     @Query("SELECT * FROM step_days WHERE step_date < :date ORDER BY step_date DESC LIMIT 1")
     suspend fun getLatestBefore(date: String): StepDayEntity?

@@ -40,7 +40,6 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -73,6 +72,7 @@ import com.rrrrz.tinyvow.data.repository.ProtectionEventRepository
 import com.rrrrz.tinyvow.i18n.AppText
 import com.rrrrz.tinyvow.ui.theme.LocalThemeColors
 import com.rrrrz.tinyvow.ui.theme.TinyVowCard
+import com.rrrrz.tinyvow.ui.theme.TinyVowDetailScaffold
 import com.rrrrz.tinyvow.ui.theme.TinyVowRadius
 import com.rrrrz.tinyvow.ui.theme.TinyVowSpacing
 import java.time.Instant
@@ -155,42 +155,21 @@ fun HistoryRoute(
         selectedDate = null
     }
 
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        text = if (selectedDate == null) {
-                            AppText.t("history_usage_history")
-                        } else {
-                            AppText.t("history_archive_details")
-                        },
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.SemiBold,
-                        color = themeColors.inkStrong,
-                    )
-                },
-                navigationIcon = {
-                    IconButton(
-                        onClick = {
-                            if (selectedDate == null) {
-                                onBack()
-                            } else {
-                                selectedDate = null
-                            }
-                        },
-                    ) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = AppText.t("group_back"))
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    scrolledContainerColor = MaterialTheme.colorScheme.surface,
-                ),
-            )
+    TinyVowDetailScaffold(
+        title = if (selectedDate == null) {
+            AppText.t("history_usage_history")
+        } else {
+            AppText.t("history_archive_details")
         },
-    ) { innerPadding ->
+        onBack = {
+            if (selectedDate == null) {
+                onBack()
+            } else {
+                selectedDate = null
+            }
+        },
+        navigationContentDescription = AppText.t("group_back"),
+    ) {
         if (selectedDate == null) {
             HistoryListScreen(
                 archives = archives,
@@ -202,7 +181,6 @@ fun HistoryRoute(
                 groupFilter = groupFilter,
                 onGroupFilterChange = { groupFilter = it },
                 onSelectDate = { selectedDate = it },
-                modifier = Modifier.padding(innerPadding),
             )
         } else {
             HistoryDetailScreen(
@@ -231,7 +209,6 @@ fun HistoryRoute(
                 refreshError = refreshError,
                 showDebugRebuild = BuildConfig.DEBUG,
                 preferredGroupFilter = groupFilter,
-                modifier = Modifier.padding(innerPadding),
             )
         }
     }

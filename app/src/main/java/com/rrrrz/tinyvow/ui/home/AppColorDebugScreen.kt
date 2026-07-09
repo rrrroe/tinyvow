@@ -43,7 +43,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
@@ -80,6 +79,7 @@ import com.rrrrz.tinyvow.i18n.AppText
 import com.rrrrz.tinyvow.ui.theme.LocalReportColors
 import com.rrrrz.tinyvow.ui.theme.LocalThemeColors
 import com.rrrrz.tinyvow.ui.theme.TinyVowCard
+import com.rrrrz.tinyvow.ui.theme.TinyVowDetailScaffold
 import com.rrrrz.tinyvow.ui.theme.TinyVowSpacing
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -148,12 +148,19 @@ fun AppColorDebugScreen(
     }
 
     pendingManualPicker?.let { picker ->
-        ManualColorPickerDialog(
-            state = picker,
+        SharedManualColorPickerDialog(
+            title = AppText.t("app_color_manual_picker_title", picker.item.appName),
+            selectedColor = picker.selectedColor,
+            hexValue = picker.hexValue,
+            selectedXRatio = picker.selectedXRatio,
+            selectedYRatio = picker.selectedYRatio,
+            source = picker.source,
+            iconBitmap = picker.item.icon,
+            iconSourceBitmap = picker.item.bitmap,
             onColorPicked = { color ->
                 pendingManualPicker = pendingManualPicker?.copy(
                     selectedColor = color,
-                    hexValue = color.toHexString(),
+                    hexValue = color.toPickerHexString(),
                 )
             },
             onTapPositionChanged = { xRatio, yRatio ->
@@ -162,10 +169,17 @@ fun AppColorDebugScreen(
                     selectedYRatio = yRatio,
                 )
             },
+            onSourceChange = { source ->
+                pendingManualPicker = pendingManualPicker?.copy(
+                    source = source,
+                    selectedXRatio = null,
+                    selectedYRatio = null,
+                )
+            },
             onHexChanged = { value ->
                 pendingManualPicker = pendingManualPicker?.copy(
                     hexValue = value,
-                    selectedColor = parseHexColor(value) ?: pendingManualPicker?.selectedColor,
+                    selectedColor = parsePickerHexColor(value) ?: pendingManualPicker?.selectedColor,
                 )
             },
             onDismiss = { pendingManualPicker = null },
@@ -181,35 +195,14 @@ fun AppColorDebugScreen(
         )
     }
 
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        text = AppText.t("app_color_debug_title"),
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.SemiBold,
-                        color = themeColors.inkStrong,
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = AppText.t("group_back"))
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    scrolledContainerColor = MaterialTheme.colorScheme.surface,
-                ),
-            )
-        },
-    ) { innerPadding ->
+    TinyVowDetailScaffold(
+        title = AppText.t("app_color_debug_title"),
+        onBack = onBack,
+        navigationContentDescription = AppText.t("group_back"),
+    ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background)
-                .padding(innerPadding)
                 .padding(
                     horizontal = TinyVowSpacing.PageHorizontal,
                     vertical = TinyVowSpacing.PageTop,
@@ -323,7 +316,7 @@ fun AppColorDebugScreen(
                                 pendingManualPicker = ManualColorPickerState(
                                     item = item,
                                     selectedColor = manualColor,
-                                    hexValue = manualColor?.toHexString().orEmpty(),
+                                    hexValue = manualColor?.toPickerHexString().orEmpty(),
                                 )
                             },
                         )
@@ -557,144 +550,6 @@ private fun ConfirmColorChoiceDialog(
     )
 }
 
-@Composable
-private fun ManualColorPickerDialog(
-    state: ManualColorPickerState,
-    onColorPicked: (Color) -> Unit,
-    onTapPositionChanged: (Float, Float) -> Unit,
-    onHexChanged: (String) -> Unit,
-    onDismiss: () -> Unit,
-    onConfirm: (Color) -> Unit,
-) {
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(AppText.t("app_color_manual_picker_title", state.item.appName)) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Box(
-                    modifier = Modifier
-                        .size(220.dp)
-                        .clip(RoundedCornerShape(18.dp))
-                        .background(MaterialTheme.colorScheme.surfaceContainerLow)
-                        .border(
-                            width = 1.dp,
-                            color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f),
-                            shape = RoundedCornerShape(18.dp),
-                        )
-                        .pointerInput(state.item.bitmap) {
-                            detectTapGestures { offset ->
-                                pickManualColorAt(
-                                    bitmap = state.item.bitmap,
-                                    offset = offset,
-                                    width = size.width,
-                                    height = size.height,
-                                    onTapPositionChanged = onTapPositionChanged,
-                                    onColorPicked = onColorPicked,
-                                )
-                            }
-                        }
-                        .pointerInput(state.item.bitmap) {
-                            detectDragGestures(
-                                onDragStart = { offset ->
-                                    pickManualColorAt(
-                                        bitmap = state.item.bitmap,
-                                        offset = offset,
-                                        width = size.width,
-                                        height = size.height,
-                                        onTapPositionChanged = onTapPositionChanged,
-                                        onColorPicked = onColorPicked,
-                                    )
-                                },
-                                onDrag = { change, _ ->
-                                    pickManualColorAt(
-                                        bitmap = state.item.bitmap,
-                                        offset = change.position,
-                                        width = size.width,
-                                        height = size.height,
-                                        onTapPositionChanged = onTapPositionChanged,
-                                        onColorPicked = onColorPicked,
-                                    )
-                                },
-                            )
-                        },
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Image(
-                        bitmap = state.item.icon,
-                        contentDescription = null,
-                        contentScale = ContentScale.Fit,
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .padding(12.dp),
-                    )
-                    if (state.selectedXRatio != null && state.selectedYRatio != null) {
-                        Canvas(modifier = Modifier.fillMaxSize()) {
-                            val center = Offset(
-                                x = size.width * state.selectedXRatio,
-                                y = size.height * state.selectedYRatio,
-                            )
-                            drawCircle(
-                                color = Color.White,
-                                radius = 10.dp.toPx(),
-                                center = center,
-                                style = Stroke(width = 3.dp.toPx()),
-                            )
-                            drawCircle(
-                                color = Color.Black.copy(alpha = 0.82f),
-                                radius = 10.dp.toPx(),
-                                center = center,
-                                style = Stroke(width = 1.5.dp.toPx()),
-                            )
-                        }
-                    }
-                }
-                Row(
-                    horizontalArrangement = Arrangement.spacedBy(10.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    AppColorBlock(
-                        color = state.selectedColor,
-                        selected = false,
-                        contentDescription = AppText.t("app_color_manual_selected_color"),
-                        size = AppColorSwatchSize,
-                    )
-                    Text(
-                        text = AppText.t("app_color_manual_picker_hint"),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    )
-                }
-                OutlinedTextField(
-                    value = state.hexValue,
-                    onValueChange = onHexChanged,
-                    singleLine = true,
-                    label = { Text(AppText.t("app_color_manual_hex_label")) },
-                    supportingText = {
-                        Text(
-                            text = AppText.t("app_color_manual_hex_hint"),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        )
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
-        },
-        confirmButton = {
-            Button(
-                enabled = state.selectedColor != null,
-                onClick = { state.selectedColor?.let(onConfirm) },
-            ) {
-                Text(AppText.t("app_color_save_selection_confirm"))
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(AppText.t("action_cancel"))
-            }
-        },
-    )
-}
-
 private data class AppColorComparisonItem(
     val packageName: String,
     val appName: String,
@@ -717,6 +572,7 @@ private data class ManualColorPickerState(
     val hexValue: String,
     val selectedXRatio: Float? = null,
     val selectedYRatio: Float? = null,
+    val source: ManualColorPickerSource = ManualColorPickerSource.ICON,
 )
 
 private val AppColorIconSize = 32.dp
@@ -755,80 +611,5 @@ private fun buildAppColorComparisonItem(
     )
 }
 
-private fun sampleBitmapColor(
-    bitmap: Bitmap,
-    xRatio: Float,
-    yRatio: Float,
-): Color? {
-    val x = (xRatio * (bitmap.width - 1)).toInt().coerceIn(0, bitmap.width - 1)
-    val y = (yRatio * (bitmap.height - 1)).toInt().coerceIn(0, bitmap.height - 1)
-    nearestOpaquePixel(bitmap, x, y)?.let { return Color(it) }
-    return null
-}
-
-private fun pickManualColorAt(
-    bitmap: Bitmap,
-    offset: Offset,
-    width: Int,
-    height: Int,
-    onTapPositionChanged: (Float, Float) -> Unit,
-    onColorPicked: (Color) -> Unit,
-) {
-    val xRatio = (offset.x / width.toFloat().coerceAtLeast(1f)).coerceIn(0f, 1f)
-    val yRatio = (offset.y / height.toFloat().coerceAtLeast(1f)).coerceIn(0f, 1f)
-    onTapPositionChanged(xRatio, yRatio)
-    sampleBitmapColor(
-        bitmap = bitmap,
-        xRatio = xRatio,
-        yRatio = yRatio,
-    )?.let(onColorPicked)
-}
-
-private fun nearestOpaquePixel(
-    bitmap: Bitmap,
-    centerX: Int,
-    centerY: Int,
-): Int? {
-    for (radius in 0..8) {
-        for (dx in -radius..radius) {
-            for (dy in -radius..radius) {
-                val x = (centerX + dx).coerceIn(0, bitmap.width - 1)
-                val y = (centerY + dy).coerceIn(0, bitmap.height - 1)
-                val pixel = bitmap.getPixel(x, y)
-                if (android.graphics.Color.alpha(pixel) >= 48) {
-                    return android.graphics.Color.rgb(
-                        android.graphics.Color.red(pixel),
-                        android.graphics.Color.green(pixel),
-                        android.graphics.Color.blue(pixel),
-                    )
-                }
-            }
-        }
-    }
-    return null
-}
-
 private fun readableIconTint(color: Color): Color =
     if (color.luminance() > 0.55f) Color.Black else Color.White
-
-private fun Color.toHexString(): String {
-    val argb = toArgb()
-    val red = android.graphics.Color.red(argb)
-    val green = android.graphics.Color.green(argb)
-    val blue = android.graphics.Color.blue(argb)
-    return "#%02X%02X%02X".format(red, green, blue)
-}
-
-private fun parseHexColor(value: String): Color? {
-    val normalized = value.trim().removePrefix("#")
-    if (normalized.length != 6 || normalized.any { it !in '0'..'9' && it !in 'a'..'f' && it !in 'A'..'F' }) {
-        return null
-    }
-    return runCatching {
-        Color(android.graphics.Color.rgb(
-            normalized.substring(0, 2).toInt(16),
-            normalized.substring(2, 4).toInt(16),
-            normalized.substring(4, 6).toInt(16),
-        ))
-    }.getOrNull()
-}

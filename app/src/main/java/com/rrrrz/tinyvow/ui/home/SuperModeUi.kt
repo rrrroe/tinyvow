@@ -39,7 +39,6 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
-import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -56,6 +55,7 @@ import com.rrrrz.tinyvow.data.supermode.SuperModeStatus
 import com.rrrrz.tinyvow.i18n.AppText
 import com.rrrrz.tinyvow.ui.theme.LocalThemeColors
 import com.rrrrz.tinyvow.ui.theme.TinyVowCard
+import com.rrrrz.tinyvow.ui.theme.TinyVowDetailScaffold
 import com.rrrrz.tinyvow.ui.theme.TinyVowRadius
 import com.rrrrz.tinyvow.ui.theme.TinyVowSpacing
 
@@ -144,36 +144,15 @@ fun SuperModeSettingsSheet(
     onDisable: () -> Unit,
 ) {
     val themeColors = LocalThemeColors.current
-    Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
-        topBar = {
-            TopAppBar(
-                title = {
-                    Text(
-                        text = AppText.t("super_mode_title"),
-                        style = MaterialTheme.typography.titleLarge,
-                        fontWeight = FontWeight.SemiBold,
-                        color = themeColors.inkStrong,
-                    )
-                },
-                navigationIcon = {
-                    IconButton(onClick = onDismiss) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = AppText.t("group_back"))
-                    }
-                },
-                colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surface,
-                    scrolledContainerColor = MaterialTheme.colorScheme.surface,
-                ),
-            )
-        },
-    ) { innerPadding ->
+    TinyVowDetailScaffold(
+        title = AppText.t("super_mode_title"),
+        onBack = onDismiss,
+        navigationContentDescription = AppText.t("group_back"),
+    ) {
         Column(
             modifier =
                 Modifier
                     .fillMaxSize()
-                    .background(MaterialTheme.colorScheme.background)
-                    .padding(innerPadding)
                     .padding(
                         horizontal = TinyVowSpacing.PageHorizontal,
                         vertical = TinyVowSpacing.PageTop,
