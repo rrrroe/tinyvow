@@ -646,20 +646,13 @@ fun AppearanceSettingsScreen(
 fun RingSettingsScreen(
     ringPreferences: HomeActivityRingPreferences,
     ringColorPreferences: HomeActivityRingColorPreferences,
-    stepRewardThreshold: Int,
-    stepPointsPerStep: Double,
     offlineFocusDailyTargetMinutes: Int,
     onBack: () -> Unit,
     onSelectRingMetric: (HomeActivityRingSlot, HomeActivityRingMetric) -> Unit,
     onSelectRingMetricColor: (HomeActivityRingMetric, HomeActivityRingColorSource, Int?) -> Unit,
-    onSaveStepSettings: (Int, Double) -> Unit,
     onSaveOfflineFocusDailyTarget: (Int) -> Unit,
 ) {
-    var stepThresholdText by remember(stepRewardThreshold) { mutableStateOf(stepRewardThreshold.toString()) }
-    var stepRateText by remember(stepPointsPerStep) { mutableStateOf(formatPreferenceDecimal(stepPointsPerStep)) }
     var focusTargetText by remember(offlineFocusDailyTargetMinutes) { mutableStateOf(offlineFocusDailyTargetMinutes.toString()) }
-    val parsedStepThreshold = stepThresholdText.toIntOrNull()?.coerceAtLeast(0)
-    val parsedStepRate = stepRateText.toDoubleOrNull()?.coerceAtLeast(0.0)
     val parsedFocusTarget = focusTargetText.toIntOrNull()?.coerceAtLeast(0)
 
     MeDetailPageScaffold(
@@ -711,47 +704,6 @@ fun RingSettingsScreen(
                 preference = ringColorPreferences.growth,
                 onSelectColor = onSelectRingMetricColor,
             )
-            SettingsDivider()
-            RingMetricColorSelector(
-                metric = HomeActivityRingMetric.STEPS,
-                title = ringMetricLabel(HomeActivityRingMetric.STEPS),
-                body = AppText.t("ring_settings_steps_explanation"),
-                preference = ringColorPreferences.steps,
-                onSelectColor = onSelectRingMetricColor,
-            )
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                OutlinedTextField(
-                    value = stepThresholdText,
-                    onValueChange = { stepThresholdText = sanitizePreferenceIntegerInput(it) },
-                    label = { Text(AppText.t("home_step_points_reward_threshold_label")) },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    modifier = Modifier.weight(1f),
-                )
-                OutlinedTextField(
-                    value = stepRateText,
-                    onValueChange = { stepRateText = sanitizePreferenceDecimalInput(it) },
-                    label = { Text(AppText.t("home_step_points_rate_label")) },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    modifier = Modifier.weight(1f),
-                )
-            }
-            TinyVowButton(
-                text = AppText.t("ring_settings_save_steps"),
-                onClick = {
-                    if (parsedStepThreshold != null && parsedStepRate != null) {
-                        onSaveStepSettings(parsedStepThreshold, parsedStepRate)
-                    }
-                },
-                enabled = parsedStepThreshold != null && parsedStepRate != null,
-                tone = TinyVowButtonTone.Primary,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            SettingsDivider()
             RingMetricColorSelector(
                 metric = HomeActivityRingMetric.FOCUS,
                 title = ringMetricLabel(HomeActivityRingMetric.FOCUS),
@@ -824,7 +776,7 @@ private fun RingSlotSelector(
                 expanded = expanded,
                 onDismissRequest = { expanded = false },
             ) {
-                HomeActivityRingMetric.entries.forEach { metric ->
+                HomeActivityRingMetric.entries.filterNot { it == HomeActivityRingMetric.STEPS }.forEach { metric ->
                     DropdownMenuItem(
                         text = { Text(ringMetricLabel(metric)) },
                         onClick = {
@@ -3409,4 +3361,3 @@ fun MeMenuItem(
         },
     )
 }
-

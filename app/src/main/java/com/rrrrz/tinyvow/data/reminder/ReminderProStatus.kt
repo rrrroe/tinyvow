@@ -21,10 +21,12 @@ internal suspend fun resolveReminderProActive(
     return when {
         BuildConfig.ENABLE_LOCAL_ACTIVATION -> {
             val authRepository = LocalAuthRepository(context)
-            val session = authRepository.ensureLocalSession()
             val repository = LocalActivationSubscriptionRepository(
                 context = context,
                 publicKeyBase64 = BuildConfig.ACTIVATION_PUBLIC_KEY_BASE64,
+            )
+            val session = authRepository.ensureLocalSession(
+                preferredUserId = repository.restorableUserId(),
             )
             repository.bindUser(session.userId)
             repository.entitlement.value.status == ProEntitlementStatus.ACTIVE

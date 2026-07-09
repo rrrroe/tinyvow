@@ -173,8 +173,8 @@ import kotlin.math.roundToInt
 import kotlin.math.roundToLong
 
 private const val STAT_CHART_ANIMATIONS_ENABLED = false
-private const val SharePosterMinExportWidthPx = 1440f
-private const val SharePosterMaxExportScale = 2f
+private const val SharePosterMinExportWidthPx = 2880f
+private const val SharePosterMaxExportScale = 4f
 private val ReportTopControlHeight = 50.dp
 private val ReportNavigatorArrowSize = ReportTopControlHeight
 

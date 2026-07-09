@@ -226,6 +226,7 @@ import kotlin.system.exitProcess
 import com.rrrrz.tinyvow.data.usage.MergedUsageRepository
 import com.rrrrz.tinyvow.data.usage.UsageRepository
 
+import com.rrrrz.tinyvow.data.db.EncourageMetric
 import com.rrrrz.tinyvow.data.db.GroupType
 import com.rrrrz.tinyvow.data.db.LimitPeriod
 import com.rrrrz.tinyvow.data.db.AchievementEntity
@@ -1610,7 +1611,9 @@ fun HomeRoute(
 
     LaunchedEffect(BuildConfig.ENABLE_LOCAL_ACTIVATION) {
         if (BuildConfig.ENABLE_LOCAL_ACTIVATION) {
-            val session = authRepository.ensureLocalSession()
+            val session = authRepository.ensureLocalSession(
+                preferredUserId = localActivationRepository?.restorableUserId(),
+            )
             localActivationRepository?.bindUser(session.userId)
         }
     }
@@ -2665,8 +2668,6 @@ fun HomeRoute(
                         RingSettingsScreen(
                             ringPreferences = homeActivityRingPreferences,
                             ringColorPreferences = homeActivityRingColorPreferences,
-                            stepRewardThreshold = stepPointsRewardThreshold,
-                            stepPointsPerStep = stepPointsPerStep,
                             offlineFocusDailyTargetMinutes = offlineFocusDailyTargetMinutes,
                             onBack = { currentScreen = Screen.ME_APPEARANCE },
                             onSelectRingMetric = { slot, metric ->
@@ -2678,13 +2679,6 @@ fun HomeRoute(
                             onSelectRingMetricColor = { metric, source, customArgb ->
                                 coroutineScope.launch {
                                     preferences.setHomeActivityRingMetricColor(metric, source, customArgb)
-                                    snackbarHostState.showSnackbar(AppText.t("ring_settings_saved"))
-                                }
-                            },
-                            onSaveStepSettings = { threshold, pointsPerStep ->
-                                coroutineScope.launch {
-                                    preferences.setStepPointsRewardThreshold(threshold)
-                                    preferences.setStepPointsPerStep(pointsPerStep)
                                     snackbarHostState.showSnackbar(AppText.t("ring_settings_saved"))
                                 }
                             },
@@ -4132,72 +4126,36 @@ fun HomeScreen(
 
                 if (usageAccessGranted && isProActive) {
                     val focusSessionForHome = offlineFocusActiveSession.takeIf { isProActive }
-                    val compactCardHeightModifier = Modifier.height(HomeCompactCardHeight)
-                    Row(
-                        modifier =
-                            Modifier
-                                .fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(TinyVowSpacing.CardGap),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        HomeStepSummaryCard(
-                            steps = todayStepCount,
-                            earnedPoints = todayStepPoints,
-                            rewardThreshold = stepPointsRewardThreshold,
-                            isProActive = isProActive,
-                            onClick = {
-                                if (isProActive) {
-                                    onOpenStepStats()
-                                } else {
-                                    onOpenStepProComparison()
-                                }
-                            },
-                            onLongClick = {
-                                if (isProActive) {
-                                    showStepPointsDialog = true
-                                } else {
-                                    onOpenStepProComparison()
-                                }
-                            },
-                            modifier =
-                                Modifier
-                                    .weight(1f)
-                                    .then(compactCardHeightModifier),
-                        )
-                        OfflineFocusHomeCard(
-                            categories = offlineFocusCategories,
-                            activeSession = focusSessionForHome,
-                            detailRequestToken = offlineFocusDetailRequestToken,
-                            todaySummary = offlineFocusTodaySummary,
-                            defaultCategoryId = offlineFocusDefaultCategoryId,
-                            defaultDurationMinutes = offlineFocusDefaultDurationMinutes,
-                            defaultMode = offlineFocusDefaultMode,
-                            restReminderMinutes = offlineFocusRestReminderMinutes,
-                            categoryDefaults = offlineFocusCategoryDefaults,
-                            focusRulesAvailable = offlineFocusRulesAvailable,
-                            isProActive = isProActive,
-                            onStart = onStartOfflineFocus,
-                            onSetRestReminderMinutes = { minutes ->
-                                onSetOfflineFocusRestReminderMinutes(minutes)
-                            },
-                            onOpenFocusRulesSettings = onOpenOfflineFocusRulesSettings,
-                            onLocked = { onShowProUpsell(ProUpsellSource.FOCUS_MODE) },
-                            onUpsertCategory = onUpsertOfflineFocusCategory,
-                            onFinishEarly = onFinishOfflineFocusEarly,
-                            onPause = { sessionId ->
-                                OfflineFocusTimerService.pause(context, sessionId)
-                            },
-                            onResume = { sessionId ->
-                                OfflineFocusTimerService.resume(context, sessionId)
-                            },
-                            onAbandon = onAbandonOfflineFocus,
-                            onAllowViolationPackage = onAllowOfflineFocusViolationPackage,
-                            modifier =
-                                Modifier
-                                    .weight(1f)
-                                    .then(compactCardHeightModifier),
-                        )
-                    }
+                    OfflineFocusHomeCard(
+                        categories = offlineFocusCategories,
+                        activeSession = focusSessionForHome,
+                        detailRequestToken = offlineFocusDetailRequestToken,
+                        todaySummary = offlineFocusTodaySummary,
+                        defaultCategoryId = offlineFocusDefaultCategoryId,
+                        defaultDurationMinutes = offlineFocusDefaultDurationMinutes,
+                        defaultMode = offlineFocusDefaultMode,
+                        restReminderMinutes = offlineFocusRestReminderMinutes,
+                        categoryDefaults = offlineFocusCategoryDefaults,
+                        focusRulesAvailable = offlineFocusRulesAvailable,
+                        isProActive = isProActive,
+                        onStart = onStartOfflineFocus,
+                        onSetRestReminderMinutes = { minutes ->
+                            onSetOfflineFocusRestReminderMinutes(minutes)
+                        },
+                        onOpenFocusRulesSettings = onOpenOfflineFocusRulesSettings,
+                        onLocked = { onShowProUpsell(ProUpsellSource.FOCUS_MODE) },
+                        onUpsertCategory = onUpsertOfflineFocusCategory,
+                        onFinishEarly = onFinishOfflineFocusEarly,
+                        onPause = { sessionId ->
+                            OfflineFocusTimerService.pause(context, sessionId)
+                        },
+                        onResume = { sessionId ->
+                            OfflineFocusTimerService.resume(context, sessionId)
+                        },
+                        onAbandon = onAbandonOfflineFocus,
+                        onAllowViolationPackage = onAllowOfflineFocusViolationPackage,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
                 }
 
                 if (usageAccessGranted && activeRewardEffects.isNotEmpty()) {
@@ -4228,23 +4186,6 @@ fun HomeScreen(
                 HomeBehaviorRadarDialog(
                     state = overviewState,
                     onDismiss = { showHomeBehaviorRadarDialog = false },
-                )
-            }
-
-            if (showStepPointsDialog && isProActive) {
-                StepPointsSettingsDialog(
-                    todaySteps = todayStepCount,
-                    currentPointsPerStep = stepPointsPerStep,
-                    currentRewardThreshold = stepPointsRewardThreshold,
-                    isStepCounterAvailable = isStepCounterAvailable,
-                    isActivityRecognitionPermissionGranted = isActivityRecognitionPermissionGranted,
-                    onRequestActivityRecognitionPermission = onRequestActivityRecognitionPermission,
-                    onSave = { pointsPerStep, rewardThreshold ->
-                        onSaveStepPointsPerStep(pointsPerStep)
-                        onSaveStepPointsRewardThreshold(rewardThreshold)
-                        showStepPointsDialog = false
-                    },
-                    onDismiss = { showStepPointsDialog = false },
                 )
             }
 
@@ -9515,7 +9456,7 @@ private fun buildHomeOverviewUiState(
     isYesterdayArchivePending: Boolean,
 ): HomeOverviewUiState {
     val controlGroups = groupsWithApps.filter { it.group.type == GroupType.CONTROL }
-    val encourageGroups = groupsWithApps.filter { it.group.type == GroupType.ENCOURAGE }
+    val encourageGroups = groupsWithApps.filter { it.group.type == GroupType.ENCOURAGE && it.group.encourageMetric != EncourageMetric.STEPS }
     val controlPeriodUsageMinutesByGroup =
         controlGroups.associate { group ->
             group.group.id to ((periodUsageMap[group.group.id] ?: 0L) / 60_000L).toInt()

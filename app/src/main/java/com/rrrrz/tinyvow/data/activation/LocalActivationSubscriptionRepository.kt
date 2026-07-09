@@ -46,6 +46,15 @@ class LocalActivationSubscriptionRepository(
         refresh()
     }
 
+    suspend fun restorableUserId(): String? {
+        val preferences = context.activationDataStore.data.first()
+        return ActivationEntitlementResolver.restorableUserId(
+            record = LocalActivationRecord.fromJsonString(preferences[Keys.activationJson]),
+            nowMillis = nowMillis(),
+            lastSeenWallClockMillis = preferences[Keys.lastSeenWallClockMillis],
+        )
+    }
+
     suspend fun activate(userId: String, code: String): Result<ProEntitlementState> =
         mutex.withLock {
             runCatching {

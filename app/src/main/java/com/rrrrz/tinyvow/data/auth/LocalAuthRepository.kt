@@ -40,15 +40,33 @@ class LocalAuthRepository(
             decodeSession(preferences[Keys.sessionJson])
         }
 
-    override suspend fun ensureLocalSession(): UserSession {
+    override suspend fun ensureLocalSession(): UserSession =
+        ensureLocalSession(preferredUserId = null)
+
+    suspend fun ensureLocalSession(preferredUserId: String?): UserSession {
+        val restoredUserId = preferredUserId?.takeIf { it.isNotBlank() }
         val existing = session.first()
-        if (existing != null) return existing
+        if (existing != null) {
+            if (
+                restoredUserId != null &&
+                existing.provider == LOCAL_CHINA_PROVIDER &&
+                existing.userId != restoredUserId
+            ) {
+                val now = System.currentTimeMillis()
+                return existing.copy(
+                    userId = restoredUserId,
+                    providerSubject = restoredUserId,
+                    lastSignedInAt = now,
+                ).also { saveSession(it) }
+            }
+            return existing
+        }
 
         val now = System.currentTimeMillis()
-        val userId = UUID.randomUUID().toString()
+        val userId = restoredUserId ?: UUID.randomUUID().toString()
         val nextSession = UserSession(
             userId = userId,
-            provider = "local_china",
+            provider = LOCAL_CHINA_PROVIDER,
             providerSubject = userId,
             email = null,
             displayName = null,
@@ -168,6 +186,8 @@ class LocalAuthRepository(
     }
 
     companion object {
+        private const val LOCAL_CHINA_PROVIDER = "local_china"
+
         suspend fun clearStoredSession(context: Context) {
             context.authDataStore.edit { it.clear() }
         }

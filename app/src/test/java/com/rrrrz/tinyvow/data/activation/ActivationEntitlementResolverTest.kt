@@ -47,6 +47,28 @@ class ActivationEntitlementResolverTest {
     }
 
     @Test
+    fun activeRecordProvidesRestorableUserId() {
+        val userId = ActivationEntitlementResolver.restorableUserId(
+            record = record(expiresAtMillis = 2_000L),
+            nowMillis = 1_000L,
+            lastSeenWallClockMillis = 900L,
+        )
+
+        assertEquals("user-1", userId)
+    }
+
+    @Test
+    fun expiredRecordDoesNotProvideRestorableUserId() {
+        val userId = ActivationEntitlementResolver.restorableUserId(
+            record = record(expiresAtMillis = 999L),
+            nowMillis = 1_000L,
+            lastSeenWallClockMillis = 900L,
+        )
+
+        assertEquals(null, userId)
+    }
+
+    @Test
     fun activationExtendsFromCurrentExpiryWhenAlreadyActive() {
         val now = 1_000L
         val currentExpiry = now + 5 * 86_400_000L

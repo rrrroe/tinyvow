@@ -25,6 +25,7 @@ import com.rrrrz.tinyvow.data.db.RewardType
 import com.rrrrz.tinyvow.data.db.TopAppArchiveSummary
 import com.rrrrz.tinyvow.data.settings.ManagedAppPreferences
 import com.rrrrz.tinyvow.data.special.SpecialAppUsageRepository
+import com.rrrrz.tinyvow.data.special.WeReadHistoryRefreshSummary
 import com.rrrrz.tinyvow.data.usage.UsageRepository
 import com.rrrrz.tinyvow.data.usage.MergedUsageRepository
 import com.rrrrz.tinyvow.domain.limit.isControlTimeoutForStats
@@ -124,6 +125,7 @@ class DailyArchiveRepository(
             require(targetDate.isBefore(today)) {
                 "Only completed days can be refreshed."
             }
+            syncSpecialAppHistoryForArchiveDate(targetDate)
             archiveDate(targetDate)
             AppLimitRepository(context, database).refreshStreakShieldPending()
             checkAchievementsAfterArchive()
@@ -135,6 +137,7 @@ class DailyArchiveRepository(
             val now = System.currentTimeMillis()
             val dayStartHour = preferences.getDayBoundaryHourOnce()
             val today = ArchiveDateUtils.localDateAt(now, zoneId, dayStartHour)
+            val specialHistorySync = syncMissingSpecialAppHistoryBeforeArchive()
             var state = stateDao.get()
             if (state == null) {
                 val todayString = ArchiveDateUtils.formatDate(today)
@@ -145,6 +148,7 @@ class DailyArchiveRepository(
                     updatedAt = now,
                 )
                 stateDao.upsert(state)
+                refreshArchivedDatesWithSyncedReadingBuckets(specialHistorySync)
                 repairArchivesMissingAppSnapshots()
                 AppLimitRepository(context, database).refreshStreakShieldPending()
                 checkAchievementsAfterArchive()
@@ -153,6 +157,7 @@ class DailyArchiveRepository(
 
             val archiveStartDate = LocalDate.parse(state.archiveStartDate)
             if (!today.isAfter(archiveStartDate)) {
+                refreshArchivedDatesWithSyncedReadingBuckets(specialHistorySync)
                 repairArchivesMissingAppSnapshots()
                 AppLimitRepository(context, database).refreshStreakShieldPending()
                 checkAchievementsAfterArchive()
@@ -163,6 +168,7 @@ class DailyArchiveRepository(
             val nextDate =
                 state.lastArchivedDate?.let { LocalDate.parse(it).plusDays(1) } ?: archiveStartDate
             if (nextDate.isAfter(endDate)) {
+                refreshArchivedDatesWithSyncedReadingBuckets(specialHistorySync, latestDate = endDate)
                 repairArchivesMissingAppSnapshots()
                 AppLimitRepository(context, database).refreshStreakShieldPending()
                 checkAchievementsAfterArchive()
@@ -177,6 +183,11 @@ class DailyArchiveRepository(
             stateDao.upsert(mutableState)
 
             try {
+                refreshArchivedDatesWithSyncedReadingBuckets(
+                    summary = specialHistorySync,
+                    latestDate = endDate,
+                    beforeDate = nextDate,
+                )
                 var date = nextDate
                 while (!date.isAfter(endDate)) {
                     archiveDate(date)
@@ -208,6 +219,40 @@ class DailyArchiveRepository(
 
     private suspend fun checkAchievementsAfterArchive() {
         AppLimitRepository(context, database).checkAchievements()
+    }
+
+    private suspend fun syncMissingSpecialAppHistoryBeforeArchive(): WeReadHistoryRefreshSummary? {
+        val config = runCatching { specialAppUsageRepository.getWeReadConfig() }.getOrNull() ?: return null
+        if (!config.syncEnabled || (!config.enabledForControl && !config.enabledForEncourage)) return null
+        return specialAppUsageRepository
+            .syncMissingWeReadHistoryUpToYesterday()
+            .getOrNull()
+    }
+
+    private suspend fun syncSpecialAppHistoryForArchiveDate(date: LocalDate) {
+        val config = runCatching { specialAppUsageRepository.getWeReadConfig() }.getOrNull() ?: return
+        if (!config.syncEnabled || (!config.enabledForControl && !config.enabledForEncourage)) return
+        specialAppUsageRepository.refreshWeReadHistoryDate(date)
+    }
+
+    private suspend fun refreshArchivedDatesWithSyncedReadingBuckets(
+        summary: WeReadHistoryRefreshSummary?,
+        latestDate: LocalDate? = null,
+        beforeDate: LocalDate? = null,
+    ) {
+        if (summary == null || summary.readingBucketCount <= 0) return
+        val archivedDates = dailyArchiveDao.getAllArchiveDatesAsc().toSet()
+        var date = summary.fromDate
+        while (!date.isAfter(summary.toDate)) {
+            val isAfterLatest = latestDate != null && date.isAfter(latestDate)
+            if (isAfterLatest) break
+            val isBeforePendingArchive = beforeDate == null || date.isBefore(beforeDate)
+            val dateString = ArchiveDateUtils.formatDate(date)
+            if (isBeforePendingArchive && dateString in archivedDates) {
+                archiveDate(date)
+            }
+            date = date.plusDays(1)
+        }
     }
 
     private suspend fun repairArchivesMissingAppSnapshots() {

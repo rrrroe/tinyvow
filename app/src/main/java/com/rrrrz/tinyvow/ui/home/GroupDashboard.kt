@@ -180,7 +180,7 @@ fun GroupDashboard(
         groupsWithApps.filter { it.group.type == GroupType.CONTROL }
     }
     val encourageGroups = remember(groupsWithApps) {
-        groupsWithApps.filter { it.group.type == GroupType.ENCOURAGE }
+        groupsWithApps.filter { it.group.type == GroupType.ENCOURAGE && it.group.encourageMetric != EncourageMetric.STEPS }
     }
     val requestEditGroup: (AppGroupWithApps) -> Unit = { groupWithApps ->
         val groupsForType =
@@ -2558,4 +2558,3 @@ private fun trimTrailingZero(value: Double): String {
         value.toString().trimEnd('0').trimEnd('.')
     }
 }
-

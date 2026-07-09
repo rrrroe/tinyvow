@@ -9,6 +9,20 @@ data class ActivationEntitlementResolution(
 )
 
 object ActivationEntitlementResolver {
+    fun restorableUserId(
+        record: LocalActivationRecord?,
+        nowMillis: Long,
+        lastSeenWallClockMillis: Long?,
+    ): String? {
+        if (record == null) return null
+        return resolve(
+            record = record,
+            userId = record.userId,
+            nowMillis = nowMillis,
+            lastSeenWallClockMillis = lastSeenWallClockMillis,
+        ).entitlement.takeIf { it.isProActive }?.let { record.userId }
+    }
+
     fun resolve(
         record: LocalActivationRecord?,
         userId: String?,

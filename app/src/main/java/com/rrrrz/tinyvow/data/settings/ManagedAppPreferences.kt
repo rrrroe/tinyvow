@@ -1362,7 +1362,10 @@ class ManagedAppPreferences(
         value: String?,
         fallback: HomeActivityRingMetric,
     ): HomeActivityRingMetric =
-        runCatching { HomeActivityRingMetric.valueOf(value.orEmpty()) }.getOrDefault(fallback)
+        runCatching { HomeActivityRingMetric.valueOf(value.orEmpty()) }
+            .getOrDefault(fallback)
+            .takeUnless { it == HomeActivityRingMetric.STEPS }
+            ?: fallback
 
     private fun parseHomeActivityRingColorPreference(
         metric: HomeActivityRingMetric,
