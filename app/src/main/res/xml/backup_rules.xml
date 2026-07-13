@@ -18,4 +18,7 @@
     <exclude
         domain="file"
         path="weread_api_key_pending_restore" />
+    <exclude
+        domain="sharedpref"
+        path="health_connect_step_probe.xml" />
 </full-backup-content>

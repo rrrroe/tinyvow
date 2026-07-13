@@ -72,6 +72,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.requiredHeight
 import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.GenericShape
@@ -110,6 +111,9 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.foundation.text.KeyboardOptions
@@ -257,6 +261,9 @@ import com.rrrrz.tinyvow.ui.theme.TinyVowButtonTone
 import com.rrrrz.tinyvow.ui.theme.TinyVowCard
 import com.rrrrz.tinyvow.ui.theme.TinyVowDetailScaffold
 import com.rrrrz.tinyvow.ui.theme.TinyVowElevation
+import com.rrrrz.tinyvow.ui.theme.TinyVowEmptyState
+import com.rrrrz.tinyvow.ui.theme.TinyVowIconSurface
+import com.rrrrz.tinyvow.ui.theme.TinyVowMetricTile
 import com.rrrrz.tinyvow.ui.theme.TinyVowPageBackground
 import com.rrrrz.tinyvow.ui.theme.TinyVowRadius
 import com.rrrrz.tinyvow.ui.theme.TinyVowSpacing
@@ -538,6 +545,21 @@ private data class HomeBattleAction(
     val progress: Float,
     val group: AppGroupWithApps? = null,
     val subtitleGroupName: String? = null,
+    val subtitleStrikethroughText: String? = null,
+)
+
+private enum class HomeOverviewDetailKind {
+    CONTROL,
+    ENCOURAGE,
+}
+
+private data class HomeOverviewGroupDetailUiState(
+    val groupData: AppGroupWithApps,
+    val usedMillis: Long,
+    val targetMillis: Long,
+    val extraMinutes: Int = 0,
+    val hasPeriodPass: Boolean = false,
+    val pointsMultiplier: Double = 1.0,
 )
 
 private data class HomeControlOverviewUiState(
@@ -547,6 +569,7 @@ private data class HomeControlOverviewUiState(
     val scoreRatio: Float,
     val streakDays: Int,
     val streakLabel: String,
+    val groups: List<HomeOverviewGroupDetailUiState> = emptyList(),
 )
 
 private data class HomeEncourageOverviewUiState(
@@ -557,6 +580,7 @@ private data class HomeEncourageOverviewUiState(
     val streakDays: Int,
     val streakLabel: String,
     val pointsMultiplierLabel: String?,
+    val groups: List<HomeOverviewGroupDetailUiState> = emptyList(),
 )
 
 private data class HomeHistoryOverviewUiState(
@@ -676,12 +700,19 @@ private fun RewardsSwitchButton(
     modifier: Modifier = Modifier,
 ) {
     TinyVowButton(
-        text = title,
         onClick = onClick,
         selected = selected,
         modifier = modifier,
-        contentPadding = PaddingValues(horizontal = 12.dp, vertical = 10.dp),
-    )
+        contentPadding = PaddingValues(horizontal = 6.dp, vertical = 10.dp),
+    ) {
+        Text(
+            text = title,
+            style = MaterialTheme.typography.labelLarge,
+            fontWeight = FontWeight.SemiBold,
+            textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+            maxLines = 1,
+        )
+    }
 }
 
 private fun purchaseRewardResultMessage(result: PurchaseRewardResult): String =
@@ -691,6 +722,7 @@ private fun purchaseRewardResultMessage(result: PurchaseRewardResult): String =
         PurchaseRewardResult.InsufficientPoints -> AppText.t("redeem_error_insufficient_points")
         PurchaseRewardResult.OutOfStock -> AppText.t("redeem_error_out_of_stock")
         PurchaseRewardResult.DailyLimitReached -> AppText.t("redeem_error_daily_limit_reached")
+        PurchaseRewardResult.MonthlyLimitReached -> AppText.t("redeem_error_monthly_limit_reached")
         PurchaseRewardResult.InvalidReward -> AppText.t("redeem_error_invalid_reward")
     }
 
@@ -1708,10 +1740,16 @@ fun HomeRoute(
                         offlineFocusDefaultCategoryId = offlineFocusDefaultCategoryId,
                         offlineFocusDefaultDurationMinutes = offlineFocusDefaultDurationMinutes,
                         offlineFocusDefaultMode = offlineFocusDefaultMode,
+                        offlineFocusRestReminderEnabled = offlineFocusRestReminderEnabled,
                         offlineFocusRestReminderMinutes = offlineFocusRestReminderMinutes,
                         offlineFocusCategoryDefaults = offlineFocusCategoryDefaults,
                         offlineFocusDailyTargetMinutes = offlineFocusDailyTargetMinutes,
                         offlineFocusRulesAvailable = effectiveAccessibilityServiceEnabled,
+                        onSetOfflineFocusRestReminderEnabled = { enabled ->
+                            coroutineScope.launch {
+                                preferences.setOfflineFocusRestReminderEnabled(enabled)
+                            }
+                        },
                         onSetOfflineFocusRestReminderMinutes = { minutes ->
                             coroutineScope.launch {
                                 preferences.setOfflineFocusRestReminderMinutes(minutes)
@@ -2043,6 +2081,8 @@ fun HomeRoute(
                             groupsWithApps = groupsWithApps,
                             userPoints = userPoints,
                             todayPoints = todayPoints,
+                            profileDisplayName = profileDisplayName ?: userSession?.displayName,
+                            profileAvatarUri = profileAvatarUri ?: userSession?.avatarUrl,
                             archiveRepository = dailyArchiveRepository,
                             reportMemoryCache = statsReportMemoryCache,
                             screenEnterReplayToken = statsAnimationReplayToken,
@@ -3366,7 +3406,12 @@ fun HomeRoute(
                     val nextSession =
                         offlineFocusRepository.startSession(
                             categoryId = session.categoryId,
-                            durationMinutes = (session.plannedDurationMillis / 60_000L).toInt().coerceAtLeast(1),
+                            durationMinutes =
+                                if (session.plannedDurationMillis <= 0L) {
+                                    ManagedAppPreferences.UNLIMITED_OFFLINE_FOCUS_DURATION_MINUTES
+                                } else {
+                                    (session.plannedDurationMillis / 60_000L).toInt().coerceAtLeast(1)
+                                },
                             focusMode = session.focusMode,
                         ) ?: run {
                             snackbarHostState.showSnackbar(AppText.t("offline_focus_category_empty_start_hint"))
@@ -3766,10 +3811,12 @@ fun HomeScreen(
     offlineFocusDefaultCategoryId: String? = null,
     offlineFocusDefaultDurationMinutes: Int = ManagedAppPreferences.DEFAULT_OFFLINE_FOCUS_DURATION_MINUTES,
     offlineFocusDefaultMode: OfflineFocusMode = OfflineFocusMode.NORMAL,
+    offlineFocusRestReminderEnabled: Boolean = true,
     offlineFocusRestReminderMinutes: Int = ManagedAppPreferences.DEFAULT_OFFLINE_FOCUS_REST_REMINDER_MINUTES,
     offlineFocusCategoryDefaults: Map<String, OfflineFocusCategoryDefaults> = emptyMap(),
     offlineFocusDailyTargetMinutes: Int = ManagedAppPreferences.DEFAULT_OFFLINE_FOCUS_DAILY_TARGET_MINUTES,
     offlineFocusRulesAvailable: Boolean = false,
+    onSetOfflineFocusRestReminderEnabled: (Boolean) -> Unit = {},
     onSetOfflineFocusRestReminderMinutes: (Int) -> Unit = {},
     onStartOfflineFocus: (String, Int, OfflineFocusMode) -> Unit = { _, _, _ -> },
     onOpenOfflineFocusRulesSettings: () -> Unit = {},
@@ -3847,6 +3894,7 @@ fun HomeScreen(
     var createFirstVowRequest by remember { mutableIntStateOf(0) }
     var openBattleGroupDetailRequest by remember { mutableIntStateOf(0) }
     var openBattleGroupDetailGroup by remember { mutableStateOf<AppGroupWithApps?>(null) }
+    var homeOverviewDetailKind by remember { mutableStateOf<HomeOverviewDetailKind?>(null) }
     var showHomeBehaviorRadarDialog by remember { mutableStateOf(false) }
     val recentGroupArchives =
         archiveRepository?.let { repository ->
@@ -4100,6 +4148,8 @@ fun HomeScreen(
                         shouldPlayDataReveal = shouldPlayOverviewDataReveal,
                         onDataRevealStarted = onOverviewDataRevealStarted,
                         onOpenBehaviorRadar = { showHomeBehaviorRadarDialog = true },
+                        onOpenControlDetail = { homeOverviewDetailKind = HomeOverviewDetailKind.CONTROL },
+                        onOpenEncourageDetail = { homeOverviewDetailKind = HomeOverviewDetailKind.ENCOURAGE },
                         modifier = Modifier.fillMaxWidth(),
                     )
                 }
@@ -4131,14 +4181,17 @@ fun HomeScreen(
                         activeSession = focusSessionForHome,
                         detailRequestToken = offlineFocusDetailRequestToken,
                         todaySummary = offlineFocusTodaySummary,
+                        dailyTargetMinutes = offlineFocusDailyTargetMinutes,
                         defaultCategoryId = offlineFocusDefaultCategoryId,
                         defaultDurationMinutes = offlineFocusDefaultDurationMinutes,
                         defaultMode = offlineFocusDefaultMode,
+                        restReminderEnabled = offlineFocusRestReminderEnabled,
                         restReminderMinutes = offlineFocusRestReminderMinutes,
                         categoryDefaults = offlineFocusCategoryDefaults,
                         focusRulesAvailable = offlineFocusRulesAvailable,
                         isProActive = isProActive,
                         onStart = onStartOfflineFocus,
+                        onSetRestReminderEnabled = onSetOfflineFocusRestReminderEnabled,
                         onSetRestReminderMinutes = { minutes ->
                             onSetOfflineFocusRestReminderMinutes(minutes)
                         },
@@ -4154,7 +4207,10 @@ fun HomeScreen(
                         },
                         onAbandon = onAbandonOfflineFocus,
                         onAllowViolationPackage = onAllowOfflineFocusViolationPackage,
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .height(HomeCompactCardHeight),
                     )
                 }
 
@@ -4186,6 +4242,19 @@ fun HomeScreen(
                 HomeBehaviorRadarDialog(
                     state = overviewState,
                     onDismiss = { showHomeBehaviorRadarDialog = false },
+                )
+            }
+
+            homeOverviewDetailKind?.let { kind ->
+                HomeOverviewDetailSheet(
+                    kind = kind,
+                    state = overviewState,
+                    onOpenGroup = { group ->
+                        homeOverviewDetailKind = null
+                        openBattleGroupDetailGroup = group
+                        openBattleGroupDetailRequest += 1
+                    },
+                    onDismiss = { homeOverviewDetailKind = null },
                 )
             }
 
@@ -5295,6 +5364,8 @@ private fun HomeOverviewPaperCard(
     shouldPlayDataReveal: Boolean,
     onDataRevealStarted: () -> Unit,
     onOpenBehaviorRadar: () -> Unit,
+    onOpenControlDetail: () -> Unit,
+    onOpenEncourageDetail: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val themeColors = LocalThemeColors.current
@@ -5396,6 +5467,7 @@ private fun HomeOverviewPaperCard(
                             compact = compact,
                             centerGapPx = centerGapPx,
                             notchRadiusPx = notchRadiusPx,
+                            onClick = onOpenControlDetail,
                             modifier = Modifier
                                 .weight(1f)
                                 .offset(x = 5.dp),
@@ -5427,6 +5499,7 @@ private fun HomeOverviewPaperCard(
                             compact = compact,
                             centerGapPx = centerGapPx,
                             notchRadiusPx = notchRadiusPx,
+                            onClick = onOpenEncourageDetail,
                             modifier = Modifier.weight(1f),
                         )
                     }
@@ -5461,6 +5534,374 @@ private fun HomeOverviewPaperCard(
         }
     }
 }
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun HomeOverviewDetailSheet(
+    kind: HomeOverviewDetailKind,
+    state: HomeOverviewUiState,
+    onOpenGroup: (AppGroupWithApps) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val themeColors = LocalThemeColors.current
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val isControl = kind == HomeOverviewDetailKind.CONTROL
+    val accent = if (isControl) themeColors.control else themeColors.encourage
+    val accentContainer = if (isControl) themeColors.controlContainer else themeColors.encourageContainer
+    val groups = if (isControl) state.control.groups else state.encourage.groups
+    val completedGroups = if (isControl) state.control.completedGroups else state.encourage.completedGroups
+    val totalGroups = if (isControl) state.control.totalGroups else state.encourage.totalGroups
+    val title =
+        AppText.t(
+            if (isControl) {
+                "home_overview_detail_control_title"
+            } else {
+                "home_overview_detail_encourage_title"
+            },
+        )
+    val heroLabel =
+        AppText.t(
+            if (isControl) {
+                "home_overview_detail_saved_today"
+            } else {
+                "home_overview_detail_earned_today"
+            },
+        )
+    val heroValue =
+        if (isControl) {
+            AppText.t("home_value_minutes", state.control.todaySavedMinutes.toString())
+        } else {
+            AppText.t("home_overview_detail_points_value", formatHomePointWholeValue(state.encourage.todayEarnedPoints))
+        }
+    val heroBody =
+        when {
+            totalGroups == 0 ->
+                AppText.t(
+                    if (isControl) {
+                        "home_overview_detail_control_empty_body"
+                    } else {
+                        "home_overview_detail_encourage_empty_body"
+                    },
+                )
+            completedGroups >= totalGroups ->
+                AppText.t(
+                    if (isControl) {
+                        "home_overview_detail_control_all_met_body"
+                    } else {
+                        "home_overview_detail_encourage_all_met_body"
+                    },
+                    totalGroups,
+                )
+            else ->
+                AppText.t(
+                    if (isControl) {
+                        "home_overview_detail_control_progress_body"
+                    } else {
+                        "home_overview_detail_encourage_progress_body"
+                    },
+                    completedGroups,
+                    totalGroups,
+                )
+        }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        shape = RoundedCornerShape(
+            topStart = TinyVowRadius.FeaturedCard,
+            topEnd = TinyVowRadius.FeaturedCard,
+        ),
+        containerColor = MaterialTheme.colorScheme.surface,
+        tonalElevation = 0.dp,
+    ) {
+        Column(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 640.dp)
+                    .verticalScroll(rememberScrollState())
+                    .navigationBarsPadding()
+                    .padding(
+                        start = TinyVowSpacing.PageHorizontal,
+                        end = TinyVowSpacing.PageHorizontal,
+                        bottom = 24.dp,
+                    ),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                TinyVowIconSurface(
+                    icon = if (isControl) Icons.Default.VerifiedUser else Icons.Default.Star,
+                    contentDescription = null,
+                    size = 42.dp,
+                    iconSize = 22.dp,
+                    containerColor = accentContainer.copy(alpha = 0.82f),
+                    contentColor = accent,
+                )
+                Text(
+                    text = title,
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = themeColors.inkStrong,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                TinyVowStatusPill(
+                    text = AppText.t("home_overview_detail_status", completedGroups, totalGroups),
+                    color = accent,
+                    leadingDot = false,
+                )
+                IconButton(onClick = onDismiss) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = AppText.t("group_close"),
+                        tint = themeColors.inkMuted,
+                    )
+                }
+            }
+
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Text(
+                    text = heroLabel,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = themeColors.inkMuted,
+                )
+                Text(
+                    text = heroValue,
+                    style = MaterialTheme.typography.displaySmall,
+                    fontWeight = FontWeight.Bold,
+                    color = themeColors.inkStrong,
+                )
+                Text(
+                    text = heroBody,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = themeColors.inkMuted,
+                    textAlign = TextAlign.Center,
+                )
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(TinyVowSpacing.CardGap),
+            ) {
+                if (isControl) {
+                    TinyVowMetricTile(
+                        label = AppText.t("home_overview_detail_control_streak"),
+                        value = AppText.t("home_overview_detail_days_value", state.control.streakDays),
+                        color = accent,
+                        modifier = Modifier.weight(1f),
+                    )
+                    TinyVowMetricTile(
+                        label = AppText.t("home_overview_detail_total_saved"),
+                        value = AppText.t("home_value_minutes", state.history.totalSavedMinutes.toString()),
+                        color = accent,
+                        modifier = Modifier.weight(1f),
+                    )
+                } else {
+                    TinyVowMetricTile(
+                        label = AppText.t("home_overview_detail_encourage_streak"),
+                        value = AppText.t("home_overview_detail_days_value", state.encourage.streakDays),
+                        color = accent,
+                        modifier = Modifier.weight(1f),
+                    )
+                    TinyVowMetricTile(
+                        label = AppText.t("home_overview_detail_current_balance"),
+                        value = AppText.t("home_overview_detail_points_value", formatHomePointValue(state.history.currentPoints)),
+                        color = accent,
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            }
+
+            Text(
+                text =
+                    AppText.t(
+                        if (isControl) {
+                            "home_overview_detail_period_control"
+                        } else {
+                            "home_overview_detail_period_encourage"
+                        },
+                    ),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold,
+                color = themeColors.inkStrong,
+            )
+
+            if (groups.isEmpty()) {
+                TinyVowEmptyState(
+                    title =
+                        AppText.t(
+                            if (isControl) {
+                                "home_overview_detail_control_empty_title"
+                            } else {
+                                "home_overview_detail_encourage_empty_title"
+                            },
+                        ),
+                    body = heroBody,
+                    icon = if (isControl) Icons.Default.VerifiedUser else Icons.Default.Star,
+                )
+            } else {
+                groups.forEach { group ->
+                    HomeOverviewDetailGroupRow(
+                        item = group,
+                        kind = kind,
+                        accent = accent,
+                        onClick = { onOpenGroup(group.groupData) },
+                    )
+                }
+                if (!isControl) {
+                    Text(
+                        text =
+                            AppText.t(
+                                "home_overview_detail_total_earned_value",
+                                formatHomePointValue(state.history.totalEarnedPoints),
+                            ),
+                        modifier = Modifier.fillMaxWidth(),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = themeColors.inkMuted,
+                        textAlign = TextAlign.Center,
+                    )
+                }
+                Text(
+                    text = AppText.t("home_overview_detail_group_hint"),
+                    modifier = Modifier.fillMaxWidth(),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = themeColors.inkMuted,
+                    textAlign = TextAlign.Center,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun HomeOverviewDetailGroupRow(
+    item: HomeOverviewGroupDetailUiState,
+    kind: HomeOverviewDetailKind,
+    accent: Color,
+    onClick: () -> Unit,
+) {
+    val themeColors = LocalThemeColors.current
+    val isControl = kind == HomeOverviewDetailKind.CONTROL
+    val usedMinutes = ceilHomeMinutes(item.usedMillis)
+    val targetMinutes = ceilHomeMinutes(item.targetMillis)
+    val remainingMillis = (item.targetMillis - item.usedMillis).coerceAtLeast(0L)
+    val exceededMillis = (item.usedMillis - item.targetMillis).coerceAtLeast(0L)
+    val statusText =
+        when {
+            isControl && exceededMillis > 0L -> AppText.t("home_overview_detail_over_value", ceilHomeMinutes(exceededMillis))
+            isControl && remainingMillis > 0L -> AppText.t("home_overview_detail_remaining_value", ceilHomeMinutes(remainingMillis))
+            isControl -> AppText.t("home_overview_detail_limit_used")
+            !isControl && remainingMillis > 0L -> AppText.t("home_overview_detail_more_needed_value", ceilHomeMinutes(remainingMillis))
+            else -> AppText.t("home_overview_detail_met")
+        }
+    val metadata =
+        buildList {
+            if (isControl && item.extraMinutes > 0) {
+                add(AppText.t("home_overview_detail_extra_minutes", item.extraMinutes))
+            }
+            if (isControl && item.hasPeriodPass) {
+                add(AppText.t("home_group_effect_period_pass"))
+            }
+            if (!isControl) {
+                add(
+                    AppText.t(
+                        "home_overview_detail_points_rate",
+                        trimHomeMultiplier(item.groupData.group.pointsPerMinute),
+                    ),
+                )
+                if (item.pointsMultiplier > 1.0) {
+                    add(AppText.t("home_points_multiplier_badge", trimHomeMultiplier(item.pointsMultiplier)))
+                }
+            }
+        }.joinToString(AppText.t("home_overview_detail_metadata_separator"))
+    val progress =
+        item.usedMillis.toFloat() /
+            item.targetMillis.coerceAtLeast(1L).toFloat()
+
+    Surface(
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
+        shape = RoundedCornerShape(TinyVowRadius.ItemCard),
+        color = themeColors.surfaceSoft,
+        border = BorderStroke(1.dp, themeColors.borderSoft.copy(alpha = 0.72f)),
+    ) {
+        Column(
+            modifier = Modifier.padding(
+                horizontal = TinyVowSpacing.CompactCardHorizontal,
+                vertical = TinyVowSpacing.CompactCardVertical,
+            ),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(
+                        text = item.groupData.group.name,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.SemiBold,
+                        color = themeColors.inkStrong,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        text = homeOverviewDetailPeriodLabel(item.groupData.group.limitPeriod),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = themeColors.inkMuted,
+                    )
+                }
+                Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(
+                        text = AppText.t("home_overview_detail_usage_value", usedMinutes, targetMinutes),
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.SemiBold,
+                        color = themeColors.ink,
+                    )
+                    Text(
+                        text = statusText,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = accent,
+                    )
+                }
+                Icon(
+                    imageVector = Icons.Default.ChevronRight,
+                    contentDescription = null,
+                    tint = themeColors.inkMuted,
+                )
+            }
+            LinearProgressIndicator(
+                progress = { progress.coerceIn(0f, 1f) },
+                modifier = Modifier.fillMaxWidth().height(6.dp).clip(CircleShape),
+                color = accent,
+                trackColor = accent.copy(alpha = 0.12f),
+            )
+            if (metadata.isNotBlank()) {
+                Text(
+                    text = metadata,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = themeColors.inkMuted,
+                )
+            }
+        }
+    }
+}
+
+private fun homeOverviewDetailPeriodLabel(period: LimitPeriod): String =
+    when (period) {
+        LimitPeriod.DAILY -> AppText.t("group_daily_short")
+        LimitPeriod.WEEKLY -> AppText.t("group_weekly_short")
+        LimitPeriod.MONTHLY -> AppText.t("group_monthly_short")
+    }
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -6078,7 +6519,7 @@ private fun HomeActivityRingProgressLabel(
         }
         Text(
             text = label,
-            modifier = Modifier.width(32.dp),
+            modifier = Modifier.width(42.dp),
             style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.sp),
             fontWeight = FontWeight.SemiBold,
             color = contentColor.copy(alpha = 0.78f),
@@ -6088,7 +6529,6 @@ private fun HomeActivityRingProgressLabel(
         )
         Box(
             modifier = Modifier
-                .offset(x = (-5).dp)
                 .width(31.dp),
             contentAlignment = Alignment.CenterStart,
         ) {
@@ -6683,6 +7123,7 @@ private fun HomeOverviewWingPanel(
     compact: Boolean,
     centerGapPx: Float,
     notchRadiusPx: Float,
+    onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val panelShape = remember(isLeft, centerGapPx, notchRadiusPx) {
@@ -6706,7 +7147,8 @@ private fun HomeOverviewWingPanel(
                 Modifier
                     .offset(x = if (isLeft) -outwardExpansion else 0.dp)
                     .requiredWidth(maxWidth + outwardExpansion)
-                    .fillMaxHeight(),
+                    .fillMaxHeight()
+                    .clickable(onClick = onClick),
             shape = panelShape,
             color = color,
             border = BorderStroke(3.dp, accent),
@@ -6743,6 +7185,12 @@ private fun HomeOverviewWingPanel(
                         maxLines = 2,
                         overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f),
+                    )
+                    Icon(
+                        imageVector = Icons.Default.ChevronRight,
+                        contentDescription = null,
+                        tint = contentColor.copy(alpha = 0.54f),
+                        modifier = Modifier.size(17.dp),
                     )
                     if (!isLeft) {
                         Spacer(modifier = Modifier.width(7.dp))
@@ -7865,6 +8313,7 @@ private fun HomeBattleActionTile(
                         homeBattleSubtitleText(
                             subtitle = action.subtitle,
                             subtitleGroupName = action.subtitleGroupName,
+                            strikethroughText = action.subtitleStrikethroughText,
                             accent = accent,
                             restColor = themeColors.inkMuted,
                         ),
@@ -7917,22 +8366,35 @@ private fun homeStepTitleText(
 private fun homeBattleSubtitleText(
     subtitle: String,
     subtitleGroupName: String? = null,
+    strikethroughText: String? = null,
     accent: Color,
     restColor: Color,
 ) = buildAnnotatedString {
-    val name = subtitleGroupName
-    if (name != null && name.isNotEmpty()) {
-        val idx = subtitle.indexOf(name)
-        if (idx >= 0) {
-            withStyle(SpanStyle(color = restColor)) { append(subtitle.substring(0, idx)) }
-            withStyle(SpanStyle(color = accent, fontWeight = FontWeight.SemiBold)) { append(name) }
-            withStyle(SpanStyle(color = restColor)) { append(subtitle.substring(idx + name.length)) }
-        } else {
-            withStyle(SpanStyle(color = restColor)) { append(subtitle) }
+    withStyle(SpanStyle(color = restColor)) { append(subtitle) }
+    subtitleGroupName
+        ?.takeIf { it.isNotEmpty() }
+        ?.let { name ->
+            val index = subtitle.indexOf(name)
+            if (index >= 0) {
+                addStyle(
+                    style = SpanStyle(color = accent, fontWeight = FontWeight.SemiBold),
+                    start = index,
+                    end = index + name.length,
+                )
+            }
         }
-    } else {
-        withStyle(SpanStyle(color = restColor)) { append(subtitle) }
-    }
+    strikethroughText
+        ?.takeIf { it.isNotEmpty() }
+        ?.let { text ->
+            val index = subtitle.lastIndexOf(text)
+            if (index >= 0) {
+                addStyle(
+                    style = SpanStyle(textDecoration = TextDecoration.LineThrough),
+                    start = index,
+                    end = index + text.length,
+                )
+            }
+        }
 }
 
 @Composable
@@ -8963,12 +9425,13 @@ private fun buildHomeBattleActions(
                         risk.usedMillis.toDouble() / risk.effectiveLimitMillis.coerceAtLeast(1L).toDouble()
                     } ?: return@let null
                 val groupNames = homeBattleGroupSummary(risks.map { it.group.group.name })
+                val streakText = AppText.t("home_battle_streak_compact", achievementProgress.controlStreak + 1)
                 val detail =
                     when (level) {
                         HomeControlRiskLevel.HALF -> AppText.t("home_battle_control_groups_half", groupNames, achievementProgress.controlStreak + 1)
                         HomeControlRiskLevel.NEAR_LIMIT -> AppText.t("home_battle_control_groups_near_limit", groupNames, achievementProgress.controlStreak + 1)
                         HomeControlRiskLevel.DEPLETED -> AppText.t("home_battle_control_groups_depleted", groupNames, achievementProgress.controlStreak + 1)
-                        HomeControlRiskLevel.OVER_LIMIT -> AppText.t("home_battle_control_groups_over_limit", groupNames)
+                        HomeControlRiskLevel.OVER_LIMIT -> AppText.t("home_battle_control_groups_over_limit", groupNames, achievementProgress.controlStreak + 1)
                     }
                 val title =
                     when (level) {
@@ -8995,6 +9458,8 @@ private fun buildHomeBattleActions(
                         (worstRisk.usedMillis.toFloat() / worstRisk.effectiveLimitMillis.coerceAtLeast(1L).toFloat())
                             .coerceIn(0f, 1f),
                     group = worstRisk.group,
+                    subtitleStrikethroughText =
+                        streakText.takeIf { level == HomeControlRiskLevel.OVER_LIMIT },
                 )
             }
             ?: controlGroups
@@ -9077,7 +9542,6 @@ private fun buildHomeBattleActions(
                             "home_battle_shortcut_points_subtitle",
                             candidate.group.group.name,
                             formatHomePointWholeValue(candidate.earnablePoints),
-                            achievementProgress.encourageStreak + 1,
                         ),
                     subtitleGroupName = candidate.group.group.name,
                     value = AppText.t("home_battle_encourage_left_value", ceilHomeMinutes(candidate.remainingMillis)),
@@ -9507,18 +9971,6 @@ private fun buildHomeOverviewUiState(
                 ) / 60_000L).toInt()
             (effectiveLimitMinutes - todayUsageMinutes).coerceAtLeast(0)
         }
-    val encourageTodayEarnedPoints =
-        encourageGroups.sumOf { group ->
-            val usageMillis = usageMap[group.group.id] ?: 0L
-            val usagePoints = usageMillis / 60_000.0 * group.group.pointsPerMinute
-            val targetBonus =
-                if (usageMillis >= group.group.limitMinutes * 60_000L) {
-                    group.group.limitMinutes * group.group.pointsPerMinute
-                } else {
-                    0.0
-                }
-            usagePoints + targetBonus
-        }
     val encouragePointsMultiplier =
         activeRewardEffects
             .filter { it.effectType == RewardType.DOUBLE_POINTS_DAY && it.targetGroupType == GroupType.ENCOURAGE }
@@ -9530,6 +9982,34 @@ private fun buildHomeOverviewUiState(
         } else {
             null
         }
+    val controlOverviewGroups =
+        controlGroups.map { group ->
+            val extraMinutes =
+                (activeBonusMinutesByGroup[group.group.id] ?: 0) +
+                    activeRewardExtraMinutes(activeRewardEffects, group.group.id)
+            HomeOverviewGroupDetailUiState(
+                groupData = group,
+                usedMillis = periodUsageMap[group.group.id] ?: 0L,
+                targetMillis =
+                    homeEffectiveControlLimitMillis(
+                        activeRewardEffects = activeRewardEffects,
+                        activeBonusMinutesByGroup = activeBonusMinutesByGroup,
+                        groupId = group.group.id,
+                        limitMinutes = group.group.limitMinutes,
+                    ),
+                extraMinutes = extraMinutes,
+                hasPeriodPass = hasActivePeriodPass(activeRewardEffects, group.group.id),
+            )
+        }
+    val encourageOverviewGroups =
+        encourageGroups.map { group ->
+            HomeOverviewGroupDetailUiState(
+                groupData = group,
+                usedMillis = periodUsageMap[group.group.id] ?: 0L,
+                targetMillis = group.group.limitMinutes.coerceAtLeast(1) * 60_000L,
+                pointsMultiplier = activeEncouragePointsMultiplier(activeRewardEffects, group.group.id),
+            )
+        }
     val activityRings =
         buildHomeActivityRings(
             controlGroups = controlGroups,
@@ -9537,7 +10017,7 @@ private fun buildHomeOverviewUiState(
             periodUsageMap = periodUsageMap,
             activeRewardEffects = activeRewardEffects,
             activeBonusMinutesByGroup = activeBonusMinutesByGroup,
-            todayEarnedPoints = encourageTodayEarnedPoints,
+            todayEarnedPoints = todayEarnedPoints,
             todayStepCount = todayStepCount,
             stepPointsRewardThreshold = stepPointsRewardThreshold,
             offlineFocusTodaySummary = offlineFocusTodaySummary,
@@ -9597,26 +10077,30 @@ private fun buildHomeOverviewUiState(
                 completedGroups = controlCompletedGroups,
                 totalGroups = controlGroups.size,
                 scoreRatio = controlScoreRatio,
-                streakDays = achievementProgress.controlStreak,
+                streakDays =
+                    achievementProgress.controlStreak +
+                        if (controlGroups.isNotEmpty() && controlCompletedGroups >= controlGroups.size) 1 else 0,
                 streakLabel =
                     homeStreakLabel(
                         archivedStreak = achievementProgress.controlStreak,
                         todayCompleted = controlGroups.isNotEmpty() && controlCompletedGroups >= controlGroups.size,
                     ),
+                groups = controlOverviewGroups,
             ),
         encourage =
             HomeEncourageOverviewUiState(
-                todayEarnedPoints = encourageTodayEarnedPoints,
+                todayEarnedPoints = todayEarnedPoints,
                 completedGroups = encourageCompletedGroups,
                 totalGroups = encourageGroups.size,
                 scoreRatio = encourageScoreRatio,
-                streakDays = achievementProgress.encourageStreak,
+                streakDays = achievementProgress.encourageStreak + if (encourageCompletedGroups > 0) 1 else 0,
                 streakLabel =
                     homeStreakLabel(
                         archivedStreak = achievementProgress.encourageStreak,
                         todayCompleted = encourageCompletedGroups > 0,
                     ),
                 pointsMultiplierLabel = encouragePointsMultiplierLabel,
+                groups = encourageOverviewGroups,
             ),
         history =
             HomeHistoryOverviewUiState(

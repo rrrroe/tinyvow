@@ -19,3 +19,4 @@ tools/activation/*.private
 tools/activation/*.class
 release-signing/
 dist/
+.codex-remote-attachments/

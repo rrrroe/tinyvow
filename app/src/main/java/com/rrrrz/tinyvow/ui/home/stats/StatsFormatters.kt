@@ -10,19 +10,19 @@ import kotlin.math.abs
 import kotlin.math.roundToLong
 
 internal fun formatDuration(durationMillis: Long): String {
-    if (durationMillis <= 0L) return "0m"
+    if (durationMillis <= 0L) return "0min"
     val totalMinutes = durationMillis / 60_000L
     val hours = totalMinutes / 60
     val minutes = totalMinutes % 60
     return when {
-        hours > 0 && minutes > 0 -> "${hours}h ${minutes}m"
+        hours > 0 && minutes > 0 -> "${hours}h ${minutes}min"
         hours > 0 -> "${hours}h"
-        else -> "${minutes}m"
+        else -> "${minutes}min"
     }
 }
 
 internal fun parseDisplayDuration(durationText: String): Long {
-    val hourMinuteMatch = Regex("""(?:(\d+)h)?(?: ?(\d+)m)?""").matchEntire(durationText)
+    val hourMinuteMatch = Regex("""(?:(\d+)h)?(?: ?(\d+)m(?:in)?)?""").matchEntire(durationText)
     if (hourMinuteMatch != null) {
         val hours = hourMinuteMatch.groupValues[1].toLongOrNull() ?: 0L
         val minutes = hourMinuteMatch.groupValues[2].toLongOrNull() ?: 0L
@@ -36,7 +36,7 @@ internal fun formatAxisDuration(durationMillis: Long): String {
     val hours = totalMinutes / 60
     return when {
         hours >= 1 -> "${hours}h"
-        totalMinutes > 0 -> "${totalMinutes}m"
+        totalMinutes > 0 -> "${totalMinutes}min"
         else -> "0"
     }
 }

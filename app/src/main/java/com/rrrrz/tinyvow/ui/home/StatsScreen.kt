@@ -12,6 +12,7 @@ import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
@@ -40,9 +41,11 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
@@ -52,6 +55,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.CallSplit
 import androidx.compose.material.icons.automirrored.filled.CompareArrows
+import androidx.compose.material.icons.automirrored.filled.TrendingUp
 import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Bolt
@@ -64,6 +68,7 @@ import androidx.compose.material.icons.filled.NightsStay
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.RocketLaunch
 import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.Shield
 import androidx.compose.material.icons.filled.Timeline
 import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material.icons.filled.WbSunny
@@ -109,6 +114,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -137,6 +144,7 @@ import com.rrrrz.tinyvow.data.repository.ArchiveDateUtils
 import com.rrrrz.tinyvow.data.repository.DailyArchiveRepository
 import com.rrrrz.tinyvow.data.repository.OfflineFocusRepository
 import com.rrrrz.tinyvow.data.settings.ManagedAppPreferences
+import com.rrrrz.tinyvow.data.time.BusinessDay
 import com.rrrrz.tinyvow.data.usage.AppSession
 import com.rrrrz.tinyvow.data.usage.UsageAccessStatus
 import com.rrrrz.tinyvow.data.usage.UsageRepository
@@ -175,16 +183,18 @@ import kotlin.math.roundToLong
 private const val STAT_CHART_ANIMATIONS_ENABLED = false
 private const val SharePosterMinExportWidthPx = 2880f
 private const val SharePosterMaxExportScale = 4f
-private val ReportTopControlHeight = 50.dp
-private val ReportNavigatorArrowSize = ReportTopControlHeight
+private val ReportTopControlHeight = 36.dp
+private val ReportNavigatorArrowSize = 24.dp
+private val ReportTopControlShape = RoundedCornerShape(10.dp)
 
-private enum class SharePosterModule {
+internal enum class SharePosterModule {
     BEHAVIOR,
     TIME_TIDE,
     FOCUS,
     OFFLINE,
     APPS,
     RHYTHM,
+    POINTS,
     INSIGHTS,
     OVERVIEW,
     TREND,
@@ -227,6 +237,15 @@ class StatsReportMemoryCache {
 
     internal fun rememberReport(state: DailyReportUiState) {
         if (!state.isPermissionGranted || state.isRefreshing) return
+        val today = BusinessDay.today(ZoneId.systemDefault(), BusinessDay.cachedStartHour())
+        val includesToday =
+            when (state.selectedTab) {
+                ReportTab.DAY -> state.selectedArchiveDate == today.toString()
+                ReportTab.WEEK -> state.selectedWeekStart?.let { today in it..it.plusDays(6) } == true
+                ReportTab.MONTH -> state.selectedMonth == YearMonth.from(today)
+                ReportTab.YEAR -> state.selectedYear == today.year
+            }
+        if (includesToday) return
         val cacheKey =
             reportCacheKey(
                 selectedTab = state.selectedTab,
@@ -259,6 +278,8 @@ fun StatsRoute(
     groupsWithApps: List<AppGroupWithApps>,
     userPoints: Double,
     todayPoints: Double,
+    profileDisplayName: String?,
+    profileAvatarUri: String?,
     archiveRepository: DailyArchiveRepository,
     reportMemoryCache: StatsReportMemoryCache,
     screenEnterReplayToken: Int,
@@ -304,6 +325,7 @@ fun StatsRoute(
         selectedWeekStart,
         selectedMonth,
         selectedYear,
+        screenEnterReplayToken,
     ) {
         if (usageAccessStatus != UsageAccessStatus.GRANTED) {
             applyUiState(DailyReportUiState(
@@ -318,21 +340,7 @@ fun StatsRoute(
             return@LaunchedEffect
         }
 
-        reportMemoryCache.getReport(
-            selectedTab = selectedTab,
-            selectedArchiveDate = selectedArchiveDate,
-            selectedWeekStart = selectedWeekStart,
-            selectedMonth = selectedMonth,
-            selectedYear = selectedYear,
-        )?.let { cachedState ->
-            applyUiState(cachedState.copy(
-                isPermissionGranted = true,
-                selectedTab = selectedTab,
-                isRefreshing = false,
-                animateValues = false,
-            ))
-            return@LaunchedEffect
-        }
+        val businessToday = BusinessDay.today(zoneId, BusinessDay.cachedStartHour())
 
         applyUiState(
             createRefreshingUiState(
@@ -345,14 +353,21 @@ fun StatsRoute(
             )
         )
 
+        val historicalArchives =
+            withContext(Dispatchers.IO) {
+                archiveRepository
+                    .getRecentArchives(limit = 3650)
+                    .first()
+                    .sortedByDescending { it.archiveDate }
+            }.also(reportMemoryCache::putRecentArchives)
+        val liveDaySnapshot =
+            withContext(Dispatchers.IO) {
+                archiveRepository.buildLiveDayReportSnapshot()
+            }
         val recentArchives =
-            reportMemoryCache.getRecentArchives()
-                ?: withContext(Dispatchers.IO) {
-                    archiveRepository
-                        .getRecentArchives(limit = 3650)
-                        .first()
-                        .sortedByDescending { it.archiveDate }
-                }.also(reportMemoryCache::putRecentArchives)
+            (listOf(liveDaySnapshot.archive) + historicalArchives)
+                .distinctBy { it.archiveDate }
+                .sortedByDescending { it.archiveDate }
 
         when (selectedTab) {
             ReportTab.DAY -> {
@@ -367,26 +382,34 @@ fun StatsRoute(
                     selectedArchiveDate = normalizedSelectedDate
                     return@LaunchedEffect
                 }
-                reportMemoryCache.getReport(
-                    selectedTab = ReportTab.DAY,
-                    selectedArchiveDate = normalizedSelectedDate,
-                    selectedWeekStart = null,
-                    selectedMonth = null,
-                    selectedYear = null,
-                )?.let { cachedState ->
-                    applyUiState(cachedState.copy(
-                        isPermissionGranted = true,
-                        selectedTab = selectedTab,
-                        isRefreshing = false,
-                        animateValues = false,
-                    ))
-                    return@LaunchedEffect
+                if (normalizedSelectedDate != liveDaySnapshot.archive.archiveDate) {
+                    val archivesDesc = recentArchives.sortedByDescending { it.archiveDate }
+                    val selectedIndex = archivesDesc.indexOfFirst { it.archiveDate == normalizedSelectedDate }
+                    reportMemoryCache.getReport(
+                        selectedTab = ReportTab.DAY,
+                        selectedArchiveDate = normalizedSelectedDate,
+                        selectedWeekStart = null,
+                        selectedMonth = null,
+                        selectedYear = null,
+                    )?.let { cachedState ->
+                        applyUiState(cachedState.copy(
+                            isPermissionGranted = true,
+                            selectedTab = selectedTab,
+                            isRefreshing = false,
+                            animateValues = false,
+                            previousArchiveDate = archivesDesc.getOrNull(selectedIndex + 1)?.archiveDate,
+                            nextArchiveDate = archivesDesc.getOrNull(selectedIndex - 1)?.archiveDate,
+                            availableArchiveDates = archivesDesc.map { it.archiveDate },
+                        ))
+                        return@LaunchedEffect
+                    }
                 }
                 buildArchivedDayReportUiState(
                     selectedDate = normalizedSelectedDate,
                     recentArchives = recentArchives,
                     archiveRepository = archiveRepository,
                     offlineFocusRepository = offlineFocusRepository,
+                    liveDaySnapshot = liveDaySnapshot,
                     updateState = { transform ->
                         val nextState = transform(uiState)
                         applyUiState(nextState)
@@ -423,20 +446,41 @@ fun StatsRoute(
                     selectedYear = normalizedYear
                     return@LaunchedEffect
                 }
-                reportMemoryCache.getReport(
-                    selectedTab = selectedTab,
-                    selectedArchiveDate = null,
-                    selectedWeekStart = normalizedWeekStart,
-                    selectedMonth = normalizedMonth,
-                    selectedYear = normalizedYear,
-                )?.let { cachedState ->
-                    applyUiState(cachedState.copy(
-                        isPermissionGranted = true,
+                val normalizedSelectionIncludesToday =
+                    when (selectedTab) {
+                        ReportTab.WEEK -> normalizedWeekStart?.let { businessToday in it..it.plusDays(6) } == true
+                        ReportTab.MONTH -> normalizedMonth == YearMonth.from(businessToday)
+                        ReportTab.YEAR -> normalizedYear == businessToday.year
+                        ReportTab.DAY -> false
+                    }
+                if (!normalizedSelectionIncludesToday) {
+                    val selectedWeekIndex = availableWeekStarts.indexOf(normalizedWeekStart)
+                    val selectedMonthIndex = availableMonths.indexOf(normalizedMonth)
+                    val selectedYearIndex = availableYears.indexOf(normalizedYear)
+                    reportMemoryCache.getReport(
                         selectedTab = selectedTab,
-                        isRefreshing = false,
-                        animateValues = false,
-                    ))
-                    return@LaunchedEffect
+                        selectedArchiveDate = null,
+                        selectedWeekStart = normalizedWeekStart,
+                        selectedMonth = normalizedMonth,
+                        selectedYear = normalizedYear,
+                    )?.let { cachedState ->
+                        applyUiState(cachedState.copy(
+                            isPermissionGranted = true,
+                            selectedTab = selectedTab,
+                            isRefreshing = false,
+                            animateValues = false,
+                            previousWeekStart = availableWeekStarts.getOrNull(selectedWeekIndex + 1),
+                            nextWeekStart = availableWeekStarts.getOrNull(selectedWeekIndex - 1),
+                            availableWeekStarts = availableWeekStarts,
+                            previousMonth = availableMonths.getOrNull(selectedMonthIndex + 1),
+                            nextMonth = availableMonths.getOrNull(selectedMonthIndex - 1),
+                            availableMonths = availableMonths,
+                            previousYear = availableYears.getOrNull(selectedYearIndex + 1),
+                            nextYear = availableYears.getOrNull(selectedYearIndex - 1),
+                            availableYears = availableYears,
+                        ))
+                        return@LaunchedEffect
+                    }
                 }
                 buildArchivedWindowReportUiState(
                     selectedTab = selectedTab,
@@ -444,6 +488,7 @@ fun StatsRoute(
                     archiveRepository = archiveRepository,
                     offlineFocusRepository = offlineFocusRepository,
                     recentArchives = recentArchives,
+                    liveDaySnapshot = liveDaySnapshot,
                     selectedWeekStart = normalizedWeekStart,
                     selectedMonth = normalizedMonth,
                     selectedYear = normalizedYear,
@@ -503,6 +548,8 @@ fun StatsRoute(
         },
         isProActive = isProActive,
         offlineFocusEnabled = offlineFocusEnabled,
+        profileDisplayName = profileDisplayName,
+        profileAvatarUri = profileAvatarUri,
         onShowProUpsell = onShowProUpsell,
         onRequestUsageAccess = onRequestUsageAccess,
         screenEnterReplayToken = screenEnterReplayToken,
@@ -528,6 +575,8 @@ private fun StatsScreenLayout(
     onSelectYear: (Int) -> Unit,
     isProActive: Boolean,
     offlineFocusEnabled: Boolean,
+    profileDisplayName: String?,
+    profileAvatarUri: String?,
     onShowProUpsell: (ProUpsellSource) -> Unit,
     onRequestUsageAccess: () -> Unit,
     screenEnterReplayToken: Int,
@@ -559,6 +608,8 @@ private fun StatsScreenLayout(
                 onSelectYear = onSelectYear,
                 isProActive = isProActive,
                 offlineFocusEnabled = offlineFocusEnabled,
+                profileDisplayName = profileDisplayName,
+                profileAvatarUri = profileAvatarUri,
                 onShowProUpsell = onShowProUpsell,
                 screenEnterReplayToken = screenEnterReplayToken,
             )
@@ -584,6 +635,8 @@ private fun DailyReportScreen(
     onSelectYear: (Int) -> Unit,
     isProActive: Boolean,
     offlineFocusEnabled: Boolean,
+    profileDisplayName: String?,
+    profileAvatarUri: String?,
     onShowProUpsell: (ProUpsellSource) -> Unit,
     screenEnterReplayToken: Int,
 ) {
@@ -623,13 +676,9 @@ private fun DailyReportScreen(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                ReportTabDropdown(
-                    selectedTab = state.selectedTab,
-                    onTabSelected = onTabSelected,
-                    modifier = Modifier.size(ReportTopControlHeight),
-                )
-                ReportNavigator(
+                ReportPeriodControl(
                     state = state,
+                    onTabSelected = onTabSelected,
                     onPreviousArchiveDate = onPreviousArchiveDate,
                     onNextArchiveDate = onNextArchiveDate,
                     onSelectArchiveDate = onSelectArchiveDate,
@@ -683,8 +732,119 @@ private fun DailyReportScreen(
             state = state,
             isProActive = isProActive,
             offlineFocusEnabled = offlineFocusEnabled,
+            profileDisplayName = profileDisplayName,
+            profileAvatarUri = profileAvatarUri,
             onDismiss = { showSharePreview = false },
         )
+    }
+}
+
+@Composable
+private fun ReportPeriodControl(
+    state: DailyReportUiState,
+    onTabSelected: (ReportTab) -> Unit,
+    onPreviousArchiveDate: () -> Unit,
+    onNextArchiveDate: () -> Unit,
+    onSelectArchiveDate: (String) -> Unit,
+    onPreviousWeek: () -> Unit,
+    onNextWeek: () -> Unit,
+    onSelectWeekStart: (LocalDate) -> Unit,
+    onPreviousMonth: () -> Unit,
+    onNextMonth: () -> Unit,
+    onSelectMonth: (YearMonth) -> Unit,
+    onPreviousYear: () -> Unit,
+    onNextYear: () -> Unit,
+    onSelectYear: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Row(
+        modifier = modifier.height(ReportTopControlHeight),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        ReportTabSegmentedRow(
+            selectedTab = state.selectedTab,
+            onTabSelected = onTabSelected,
+            modifier = Modifier.wrapContentWidth(),
+        )
+        Spacer(modifier = Modifier.width(4.dp))
+        ReportNavigator(
+            state = state,
+            onPreviousArchiveDate = onPreviousArchiveDate,
+            onNextArchiveDate = onNextArchiveDate,
+            onSelectArchiveDate = onSelectArchiveDate,
+            onPreviousWeek = onPreviousWeek,
+            onNextWeek = onNextWeek,
+            onSelectWeekStart = onSelectWeekStart,
+            onPreviousMonth = onPreviousMonth,
+            onNextMonth = onNextMonth,
+            onSelectMonth = onSelectMonth,
+            onPreviousYear = onPreviousYear,
+            onNextYear = onNextYear,
+            onSelectYear = onSelectYear,
+            modifier = Modifier.weight(1f),
+        )
+    }
+}
+
+@Composable
+private fun ReportTabSegmentedRow(
+    selectedTab: ReportTab,
+    onTabSelected: (ReportTab) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val themeColors = LocalThemeColors.current
+    val inset = 2.dp
+    val selectedIndex = ReportTab.entries.indexOf(selectedTab).coerceAtLeast(0)
+    val segmentSize = ReportTopControlHeight - inset * 2
+    val controlWidth = segmentSize * ReportTab.entries.size + inset * 2
+    Surface(
+        modifier = modifier.width(controlWidth).height(ReportTopControlHeight),
+        shape = ReportTopControlShape,
+        color = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.82f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.34f)),
+    ) {
+        BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
+            val segmentWidth = (maxWidth - inset * 2) / ReportTab.entries.size
+            val selectedOffset by animateDpAsState(
+                targetValue = inset + segmentWidth * selectedIndex,
+                animationSpec = tween(durationMillis = 180),
+                label = "reportTabSlider",
+            )
+            Surface(
+                modifier = Modifier
+                    .offset(x = selectedOffset, y = inset)
+                    .width(segmentWidth)
+                    .height(maxHeight - inset * 2),
+                shape = RoundedCornerShape(8.dp),
+                color = themeColors.baseContainer.copy(alpha = 0.88f),
+                border = BorderStroke(1.dp, themeColors.base.copy(alpha = 0.30f)),
+            ) {}
+            Row(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(inset),
+            ) {
+                ReportTab.entries.forEach { tab ->
+                    val selected = tab == selectedTab
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxHeight()
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { onTabSelected(tab) },
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = tab.compactLabel(),
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Medium,
+                            color = if (selected) themeColors.base else MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 
@@ -696,8 +856,11 @@ private fun ReportPageContent(
     onShowProUpsell: (ProUpsellSource) -> Unit,
     screenEnterReplayToken: Int,
     modifier: Modifier = Modifier,
+    animateValues: Boolean = state.animateValues,
     shareModules: List<SharePosterModule>? = null,
 ) {
+    if (state.isRefreshing) return
+
     val isDayReport = state.selectedTab == ReportTab.DAY
     val defaultDayModules =
         buildList {
@@ -729,13 +892,13 @@ private fun ReportPageContent(
                         }
                         SharePosterModule.TIME_TIDE -> DailyTimeTideCard(
                             timeTideState = state.timeTideState,
-                            animateValues = state.animateValues,
+                            animateValues = animateValues,
                         )
                         SharePosterModule.FOCUS -> {
                             DailyFocusCard(
                                 focusState = state.dailyFocusState,
                                 compactLayout = false,
-                                animateValues = state.animateValues,
+                                animateValues = animateValues,
                                 screenEnterReplayToken = screenEnterReplayToken,
                             )
                         }
@@ -747,6 +910,7 @@ private fun ReportPageContent(
                             timelineState = state.timelineState,
                             focusState = state.dailyFocusState,
                         )
+                        SharePosterModule.POINTS -> Unit
                         SharePosterModule.INSIGHTS -> {
                             DailyInsightCard(behaviorMapState = state.behaviorMapState)
                         }
@@ -765,18 +929,12 @@ private fun ReportPageContent(
                 }
             }
         } else {
-            if (shareModules == null) {
-                PeriodReportScreen(
-                    state = state,
-                    animateValues = state.animateValues,
-                )
-            } else {
-                PeriodShareReportContent(
-                    state = state,
-                    shareModules = shareModules,
-                    animateValues = state.animateValues,
-                )
-            }
+            PeriodReportScreen(
+                state = state,
+                animateValues = animateValues,
+                offlineFocusEnabled = offlineFocusEnabled,
+                modules = shareModules,
+            )
         }
     }
 }
@@ -916,66 +1074,13 @@ private fun SharePosterModule.isLockedDailyPreviewModule(): Boolean =
         SharePosterModule.OFFLINE,
         SharePosterModule.APPS,
         SharePosterModule.RHYTHM,
+        SharePosterModule.POINTS,
         SharePosterModule.INSIGHTS,
         SharePosterModule.OVERVIEW,
         SharePosterModule.TREND,
         SharePosterModule.HEATMAP,
         SharePosterModule.STRUCTURE -> true
     }
-
-@Composable
-private fun PeriodShareReportContent(
-    state: DailyReportUiState,
-    shareModules: List<SharePosterModule>,
-    animateValues: Boolean,
-) {
-    when (val periodState = state.periodReportState) {
-        SectionState.Loading -> {
-            PeriodReportSkeleton(selectedTab = state.selectedTab)
-        }
-        SectionState.Empty -> {
-            Text(
-                text = AppText.t("stats_not_enough_samples"),
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        is SectionState.Ready -> {
-            val data = periodState.data
-            shareModules.forEach { module ->
-                when (module) {
-                    SharePosterModule.OVERVIEW -> {
-                        PeriodHeroCard(
-                            hero = data.hero,
-                            animateValues = animateValues,
-                        )
-                    }
-                    SharePosterModule.FOCUS -> {
-                        PeriodFocusCard(
-                            data = data.windowFocus,
-                            animateValues = animateValues,
-                        )
-                    }
-                    SharePosterModule.OFFLINE -> OfflineFocusDailyCard(state = SectionState.Ready(data.offlineFocus))
-                    SharePosterModule.TREND -> PeriodTrendCard(data.trend)
-                    SharePosterModule.HEATMAP -> data.heatmap?.let { PeriodHeatmapCard(it) }
-                    SharePosterModule.STRUCTURE -> {
-                        when (data.tab) {
-                            ReportTab.MONTH -> data.monthStructure?.let { PeriodMonthStructureCard(it) }
-                            ReportTab.YEAR -> data.quarterSection?.let { PeriodQuarterBreakdownCard(it) }
-                            ReportTab.DAY, ReportTab.WEEK -> Unit
-                        }
-                    }
-                    SharePosterModule.APPS -> PeriodAppFocusCard(data.appFocus)
-                    SharePosterModule.INSIGHTS -> PeriodInsightSection(data = data)
-                    SharePosterModule.BEHAVIOR,
-                    SharePosterModule.TIME_TIDE,
-                    SharePosterModule.RHYTHM -> Unit
-                }
-            }
-        }
-    }
-}
 
 @Composable
 private fun ReportNavigator(
@@ -1003,7 +1108,7 @@ private fun ReportNavigator(
             ReportTab.DAY -> false
     }
     if (state.isRefreshing && (waitingForDayDate || waitingForPeriod)) {
-        ReportNavigatorSkeleton(selectedTab = state.selectedTab, modifier = modifier)
+        Spacer(modifier = modifier.height(ReportTopControlHeight))
         return
     }
     if (state.selectedTab == ReportTab.DAY) {
@@ -1018,7 +1123,7 @@ private fun ReportNavigator(
                 onSelectArchiveDate = onSelectArchiveDate,
                 modifier = modifier,
             )
-        } ?: ReportNavigatorSkeleton(selectedTab = state.selectedTab, modifier = modifier)
+        } ?: Spacer(modifier = modifier.height(ReportTopControlHeight))
     } else {
         PeriodNavigator(
             selectedTab = state.selectedTab,
@@ -1068,13 +1173,14 @@ private fun ReportNavigatorSkeleton(
                 .fillMaxSize()
                 .padding(horizontal = 0.dp, vertical = 0.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            horizontalArrangement = Arrangement.End,
         ) {
-            SkeletonCircle(size = 40.dp)
+            SkeletonCircle(size = ReportNavigatorArrowSize)
             Surface(
                 modifier = Modifier.weight(1f).fillMaxHeight(),
-                shape = RoundedCornerShape(14.dp),
+                shape = ReportTopControlShape,
                 color = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.86f),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.28f)),
             ) {
                 Row(
                     modifier = Modifier
@@ -1093,7 +1199,7 @@ private fun ReportNavigatorSkeleton(
                     )
                 }
             }
-            SkeletonCircle(size = 40.dp)
+            SkeletonCircle(size = ReportNavigatorArrowSize)
         }
     }
 }
@@ -1156,7 +1262,7 @@ private fun PeriodNavigator(
                 .fillMaxSize()
                 .padding(horizontal = 0.dp, vertical = 0.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            horizontalArrangement = Arrangement.End,
         ) {
             ReportNavigatorArrowButton(
                 modifier = Modifier.size(ReportNavigatorArrowSize),
@@ -1169,32 +1275,31 @@ private fun PeriodNavigator(
                     }
                 },
                 enabled = canGoPrevious,
-                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                symbol = AppText.t("stats_previous_symbol"),
                 contentDescription = AppText.t("stats_previous"),
             )
             Surface(
                 modifier = Modifier
-                    .weight(1f)
-                    .fillMaxHeight()
-                    .clickable { showDialog = true },
-                shape = RoundedCornerShape(14.dp),
-                color = LocalThemeColors.current.baseContainer.copy(alpha = 0.46f),
+                    .weight(1f, fill = false)
+                    .fillMaxHeight(),
+                onClick = { showDialog = true },
+                shape = ReportTopControlShape,
+                color = Color.Transparent,
             ) {
                 Row(
                     modifier = Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                        .fillMaxHeight()
+                        .padding(horizontal = 2.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     Text(
                         text = title,
-                        modifier = Modifier.weight(1f),
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.SemiBold,
                         color = topControlColor,
                         textAlign = TextAlign.Center,
-                        maxLines = 2,
+                        maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
@@ -1210,7 +1315,7 @@ private fun PeriodNavigator(
                     }
                 },
                 enabled = canGoNext,
-                imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                symbol = AppText.t("stats_next_symbol"),
                 contentDescription = AppText.t("stats_next"),
             )
         }
@@ -1254,7 +1359,7 @@ private fun PeriodNavigator(
 
 @Composable
 private fun ReportNavigatorArrowButton(
-    imageVector: ImageVector,
+    symbol: String,
     contentDescription: String,
     enabled: Boolean,
     onClick: () -> Unit,
@@ -1262,23 +1367,21 @@ private fun ReportNavigatorArrowButton(
 ) {
     val themeColors = LocalThemeColors.current
     Surface(
-        modifier = modifier.clickable(enabled = enabled, onClick = onClick),
-        shape = RoundedCornerShape(14.dp),
-        color =
-            if (enabled) {
-                themeColors.baseContainer.copy(alpha = 0.46f)
-            } else {
-                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.20f)
-            },
+        modifier = modifier.semantics { this.contentDescription = contentDescription },
+        onClick = onClick,
+        enabled = enabled,
+        shape = ReportTopControlShape,
+        color = Color.Transparent,
     ) {
         Box(
             modifier = Modifier.fillMaxSize(),
             contentAlignment = Alignment.Center,
         ) {
-            Icon(
-                imageVector = imageVector,
-                contentDescription = contentDescription,
-                tint = if (enabled) themeColors.base else themeColors.inkMuted.copy(alpha = 0.42f),
+            Text(
+                text = symbol,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = if (enabled) themeColors.base else themeColors.inkMuted.copy(alpha = 0.42f),
             )
         }
     }
@@ -1462,39 +1565,38 @@ private fun ArchiveDateNavigator(
                 .fillMaxSize()
                 .padding(horizontal = 0.dp, vertical = 0.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
+            horizontalArrangement = Arrangement.End,
         ) {
             ReportNavigatorArrowButton(
                 modifier = Modifier.size(ReportNavigatorArrowSize),
                 onClick = onPreviousArchiveDate,
                 enabled = previousArchiveDate != null,
-                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                symbol = AppText.t("stats_previous_symbol"),
                 contentDescription = AppText.t("stats_previous_day"),
             )
             Surface(
                 modifier =
                     Modifier
-                        .weight(1f)
-                        .fillMaxHeight()
-                        .clickable { showCalendar = true },
-                shape = RoundedCornerShape(14.dp),
-                color = LocalThemeColors.current.baseContainer.copy(alpha = 0.46f),
+                        .weight(1f, fill = false)
+                        .fillMaxHeight(),
+                onClick = { showCalendar = true },
+                shape = ReportTopControlShape,
+                color = Color.Transparent,
             ) {
                 Row(
                     modifier = Modifier
-                        .fillMaxSize()
-                        .padding(horizontal = 10.dp, vertical = 6.dp),
+                        .fillMaxHeight()
+                        .padding(horizontal = 2.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     Text(
                         text = formatArchiveDate(selectedArchiveDate, AppText.t("stats_archive_date_full")),
-                        modifier = Modifier.weight(1f),
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.SemiBold,
                         color = topControlColor,
                         textAlign = TextAlign.Center,
-                        maxLines = 2,
+                        maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                     )
                 }
@@ -1503,7 +1605,7 @@ private fun ArchiveDateNavigator(
                 modifier = Modifier.size(ReportNavigatorArrowSize),
                 onClick = onNextArchiveDate,
                 enabled = nextArchiveDate != null,
-                imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                symbol = AppText.t("stats_next_symbol"),
                 contentDescription = AppText.t("stats_next_day"),
             )
         }
@@ -2308,7 +2410,7 @@ internal fun AdaptiveRowGrid(
 }
 
 @Composable
-private fun DailyFocusCard(
+internal fun DailyFocusCard(
     focusState: SectionState<DailyFocusSectionData>,
     compactLayout: Boolean = false,
     animateValues: Boolean = false,
@@ -2330,7 +2432,7 @@ private fun DailyFocusCard(
                 if (index == 0) {
                     DailyModeSummaryCard(
                         summary = focusState.data.control,
-                        icon = Icons.Default.Bolt,
+                        icon = Icons.Default.Shield,
                         compact = compactLayout,
                         useHomeMetricCardStyle = true,
                         animateValues = animateValues,
@@ -2340,7 +2442,7 @@ private fun DailyFocusCard(
                 } else {
                     DailyModeSummaryCard(
                         summary = focusState.data.encourage,
-                        icon = Icons.Default.RocketLaunch,
+                        icon = Icons.AutoMirrored.Filled.TrendingUp,
                         compact = compactLayout,
                         useHomeMetricCardStyle = true,
                         animateValues = animateValues,
@@ -2561,7 +2663,6 @@ private fun ReportShareIconCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val shape = RoundedCornerShape(18.dp)
     val themeColors = LocalThemeColors.current
     val iconColor =
         if (enabled) {
@@ -2569,29 +2670,17 @@ private fun ReportShareIconCard(
         } else {
             MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.42f)
         }
-    Surface(
+    IconButton(
         modifier = modifier,
         onClick = onClick,
         enabled = enabled,
-        shape = shape,
-        color =
-            if (enabled) {
-                themeColors.baseContainer.copy(alpha = 0.46f)
-            } else {
-                MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.20f)
-            },
     ) {
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center,
-        ) {
-            Icon(
-                imageVector = Icons.Default.Share,
-                contentDescription = AppText.t("group_share"),
-                tint = iconColor,
-                modifier = Modifier.size(22.dp),
-            )
-        }
+        Icon(
+            imageVector = Icons.Default.Share,
+            contentDescription = AppText.t("group_share"),
+            tint = iconColor,
+            modifier = Modifier.size(22.dp),
+        )
     }
 }
 
@@ -2703,33 +2792,7 @@ private fun availableSharePosterModules(
         }
     } else {
         val periodData = (state.periodReportState as? SectionState.Ready)?.data
-        buildList {
-            if (periodData != null) {
-                add(SharePosterModule.OVERVIEW)
-                add(SharePosterModule.FOCUS)
-                if (offlineFocusEnabled && (periodData.offlineFocus.totalMillis > 0L || periodData.offlineFocus.completedCount > 0)) {
-                    add(SharePosterModule.OFFLINE)
-                }
-                if (periodData.trend.points.isNotEmpty()) {
-                    add(SharePosterModule.TREND)
-                }
-                if (periodData.heatmap?.cells?.isNotEmpty() == true) {
-                    add(SharePosterModule.HEATMAP)
-                }
-                if (
-                    periodData.monthStructure?.weeks?.isNotEmpty() == true ||
-                    periodData.quarterSection?.quarters?.isNotEmpty() == true
-                ) {
-                    add(SharePosterModule.STRUCTURE)
-                }
-                if (periodData.appFocus.topApps.isNotEmpty()) {
-                    add(SharePosterModule.APPS)
-                }
-                if (periodData.behavior?.structure != null) {
-                    add(SharePosterModule.INSIGHTS)
-                }
-            }
-        }
+        periodData?.let { availablePeriodReportModules(it, offlineFocusEnabled) }.orEmpty()
     }
 }
 
@@ -2740,6 +2803,11 @@ private fun restoredSharePosterModules(
     availableModules: List<SharePosterModule>,
     selectedTab: ReportTab,
 ): List<SharePosterModule> {
+    val hasUnavailableSavedModule =
+        moduleIds.any { id -> availableModules.none { module -> module.name == id } }
+    if (selectedTab == ReportTab.WEEK && hasUnavailableSavedModule) {
+        return defaultSharePosterModules(availableModules, selectedTab)
+    }
     return moduleIds
         .mapNotNull { id -> availableModules.firstOrNull { it.name == id } }
         .distinct()
@@ -2763,7 +2831,7 @@ private fun defaultSharePosterModules(
 
 private fun SharePosterModule.labelKey(selectedTab: ReportTab): String =
     when (this) {
-        SharePosterModule.BEHAVIOR -> "stats_share_module_behavior"
+        SharePosterModule.BEHAVIOR -> "stats_behavior_analysis"
         SharePosterModule.TIME_TIDE -> "stats_share_module_time_tide"
         SharePosterModule.FOCUS -> "stats_share_module_focus"
         SharePosterModule.OFFLINE ->
@@ -2773,10 +2841,11 @@ private fun SharePosterModule.labelKey(selectedTab: ReportTab): String =
                 "stats_share_module_offline_focus"
             }
         SharePosterModule.APPS -> "stats_share_module_apps"
-        SharePosterModule.RHYTHM -> "stats_share_module_rhythm"
+        SharePosterModule.RHYTHM -> "stats_time_flow"
+        SharePosterModule.POINTS -> "stats_weekly_points_trajectory"
         SharePosterModule.INSIGHTS ->
-            if (selectedTab == ReportTab.DAY) {
-                "stats_share_module_daily_insights"
+            if (selectedTab == ReportTab.DAY || selectedTab == ReportTab.WEEK) {
+                "stats_behavior_map_title"
             } else {
                 "stats_share_module_behavior_overview"
             }
@@ -2792,6 +2861,8 @@ private fun ReportPageSharePreviewDialog(
     state: DailyReportUiState,
     isProActive: Boolean,
     offlineFocusEnabled: Boolean,
+    profileDisplayName: String? = null,
+    profileAvatarUri: String? = null,
     onDismiss: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -2972,12 +3043,18 @@ private fun ReportPageSharePreviewDialog(
                                         ),
                                     verticalArrangement = Arrangement.spacedBy(TinyVowSpacing.SectionGap),
                                 ) {
+                                    SharePosterIdentityHeader(
+                                        state = state,
+                                        displayName = profileDisplayName,
+                                        avatarUri = profileAvatarUri,
+                                    )
                                     ReportPageContent(
                                         state = state,
                                         isProActive = isProActive,
                                         offlineFocusEnabled = offlineFocusEnabled,
                                         onShowProUpsell = {},
                                         screenEnterReplayToken = 0,
+                                        animateValues = false,
                                         shareModules = selectedModules,
                                     )
                                     SharePosterDownloadFooter()
@@ -3014,6 +3091,168 @@ private fun ReportPageSharePreviewDialog(
                 }
             }
         }
+    }
+}
+
+private data class SharePosterPeriodLabel(
+    val primary: String,
+    val secondary: String? = null,
+)
+
+@Composable
+private fun SharePosterIdentityHeader(
+    state: DailyReportUiState,
+    displayName: String?,
+    avatarUri: String?,
+) {
+    val context = LocalContext.current
+    val locale = context.resources.configuration.locales.get(0) ?: Locale.getDefault()
+    val periodLabel = remember(
+        state.selectedTab,
+        state.selectedArchiveDate,
+        state.selectedWeekStart,
+        state.selectedMonth,
+        state.selectedYear,
+        locale,
+    ) {
+        buildSharePosterPeriodLabel(state = state, locale = locale)
+    }
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(18.dp),
+        color = MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.28f)),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            Surface(
+                modifier = Modifier.size(42.dp),
+                shape = CircleShape,
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+            ) {
+                if (avatarUri.isNullOrBlank()) {
+                    Image(
+                        painter = painterResource(R.mipmap.ic_launcher_foreground),
+                        contentDescription = AppText.t("me_profile_avatar"),
+                        modifier = Modifier.padding(3.dp),
+                    )
+                } else {
+                    AsyncImage(
+                        model = avatarUri,
+                        contentDescription = AppText.t("me_profile_avatar"),
+                        modifier = Modifier.fillMaxSize(),
+                        contentScale = ContentScale.Crop,
+                        fallback = painterResource(R.mipmap.ic_launcher_foreground),
+                        error = painterResource(R.mipmap.ic_launcher_foreground),
+                    )
+                }
+            }
+            Text(
+                text = displayName?.takeIf { it.isNotBlank() } ?: AppText.t("me_local_account_default_name"),
+                modifier = Modifier.weight(1f),
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Column(
+                horizontalAlignment = Alignment.End,
+                verticalArrangement = Arrangement.Center,
+            ) {
+                Text(
+                    text = periodLabel.primary,
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    textAlign = TextAlign.End,
+                    maxLines = 1,
+                )
+                periodLabel.secondary?.let { secondary ->
+                    Text(
+                        text = secondary,
+                        style = MaterialTheme.typography.labelMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        textAlign = TextAlign.End,
+                        maxLines = 1,
+                    )
+                }
+            }
+        }
+    }
+}
+
+private fun buildSharePosterPeriodLabel(
+    state: DailyReportUiState,
+    locale: Locale,
+): SharePosterPeriodLabel {
+    val isChinese = locale.language.equals("zh", ignoreCase = true)
+    val today = BusinessDay.today(ZoneId.systemDefault(), BusinessDay.cachedStartHour())
+    fun withLiveStatus(label: String, isLive: Boolean): String =
+        if (isLive) "$label · ${AppText.t("stats_status_in_progress")}" else label
+    fun monthLabel(month: Int, short: Boolean = false): String =
+        if (isChinese) {
+            month.toString()
+        } else {
+            java.time.Month.of(month).getDisplayName(if (short) TextStyle.SHORT else TextStyle.FULL, locale)
+        }
+
+    return when (state.selectedTab) {
+        ReportTab.DAY -> {
+            val date = state.selectedArchiveDate?.let { runCatching { LocalDate.parse(it) }.getOrNull() } ?: LocalDate.now()
+            SharePosterPeriodLabel(
+                primary =
+                    withLiveStatus(
+                        AppText.t("stats_share_period_day", date.year, monthLabel(date.monthValue), date.dayOfMonth),
+                        date == today,
+                    ),
+                secondary = date.dayOfWeek.getDisplayName(TextStyle.FULL, locale),
+            )
+        }
+        ReportTab.WEEK -> {
+            val start = state.selectedWeekStart ?: LocalDate.now().with(java.time.DayOfWeek.MONDAY)
+            val end = start.plusDays(6)
+            SharePosterPeriodLabel(
+                primary = withLiveStatus(
+                    AppText.t(
+                        "stats_share_period_week",
+                        start.get(IsoFields.WEEK_BASED_YEAR),
+                        start.get(IsoFields.WEEK_OF_WEEK_BASED_YEAR),
+                    ),
+                    today in start..end,
+                ),
+                secondary = AppText.t(
+                    "stats_share_period_week_range",
+                    start.year,
+                    monthLabel(start.monthValue, short = true),
+                    start.dayOfMonth,
+                    end.year,
+                    monthLabel(end.monthValue, short = true),
+                    end.dayOfMonth,
+                ),
+            )
+        }
+        ReportTab.MONTH -> {
+            val month = state.selectedMonth ?: YearMonth.now()
+            SharePosterPeriodLabel(
+                primary =
+                    withLiveStatus(
+                        AppText.t("stats_share_period_month", month.year, monthLabel(month.monthValue)),
+                        month == YearMonth.from(today),
+                    ),
+            )
+        }
+        ReportTab.YEAR -> SharePosterPeriodLabel(
+            primary =
+                (state.selectedYear ?: LocalDate.now().year).let { year ->
+                    withLiveStatus(AppText.t("stats_share_period_year", year), year == today.year)
+                },
+        )
     }
 }
 

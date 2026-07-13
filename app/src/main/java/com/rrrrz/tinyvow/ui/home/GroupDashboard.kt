@@ -130,6 +130,7 @@ import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.ZoneId
 import java.time.temporal.TemporalAdjusters
+import java.util.Locale
 
 private val DialogHorizontalPadding = 28.dp
 private val CompactFieldHeight = 50.dp
@@ -1311,7 +1312,7 @@ private fun GroupOverviewPanel(
                 add((if (isStepGroup) AppText.t("group_step_target_label") else AppText.t("group_target_limit_label")) to if (isStepGroup) AppText.t("group_step_count_value", groupData.group.stepTarget) else formatUsageDuration(targetMillis))
                 add(AppText.t("group_status") to groupDetailStatusLabel(groupData, periodUsageMillis, targetMillis, todayStepCount))
                 if (groupData.group.type == GroupType.ENCOURAGE) {
-                    add(AppText.t("group_points") to AppText.t("group_points_value", trimTrailingZero(estimatedPoints)))
+                    add(AppText.t("group_points") to AppText.t("group_points_value", formatGroupPointValue(estimatedPoints)))
                 }
             },
             accent = accent,
@@ -1420,7 +1421,7 @@ private fun StepRulePanel(
         items = listOf(
             AppText.t("group_step_today_steps") to AppText.t("group_step_count_value", todayStepCount),
             AppText.t("group_step_target_label") to AppText.t("group_step_count_value", groupData.group.stepTarget),
-            AppText.t("group_step_remaining_value", remaining) to AppText.t("group_points_value", trimTrailingZero(todayStepCount * groupData.group.pointsPerStep)),
+            AppText.t("group_step_remaining_value", remaining) to AppText.t("group_points_value", formatGroupPointValue(todayStepCount * groupData.group.pointsPerStep)),
         ),
         accent = accent,
     )
@@ -1576,7 +1577,7 @@ private fun GroupHistoryPanel(
                 add(AppText.t("group_complete") to AppText.t("group_value_days_4", summary.completedDays))
                 add(AppText.t("group_total_usage") to formatUsageDuration(summary.totalUsageMillis))
                 if (groupData.group.type == GroupType.ENCOURAGE) {
-                    add(AppText.t("group_points") to AppText.t("group_points_value", trimTrailingZero(summary.totalEarnedPoints)))
+                    add(AppText.t("group_points") to AppText.t("group_points_value", formatGroupPointValue(summary.totalEarnedPoints)))
                     add(AppText.t("group_detail_average_investment") to formatUsageDuration(if (summary.archivedDays > 0) summary.totalUsageMillis / summary.archivedDays else 0L))
                 } else {
                     add(AppText.t("group_blocks") to AppText.t("group_value_times", summary.blockEvents))
@@ -1755,7 +1756,7 @@ private fun groupDetailAppMeta(
     return if (scope == GroupDetailAppScope.HISTORY) {
         val pointsPart =
             if (row.earnedPoints > 0.0) {
-                " · ${AppText.t("group_points_value", trimTrailingZero(row.earnedPoints))}"
+                " · ${AppText.t("group_points_value", formatGroupPointValue(row.earnedPoints))}"
             } else {
                 ""
             }
@@ -2558,3 +2559,6 @@ private fun trimTrailingZero(value: Double): String {
         value.toString().trimEnd('0').trimEnd('.')
     }
 }
+
+private fun formatGroupPointValue(value: Double): String =
+    String.format(Locale.ROOT, "%.1f", value)

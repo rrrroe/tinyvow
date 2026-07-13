@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -30,11 +31,14 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Timer
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
@@ -81,10 +85,15 @@ import com.rrrrz.tinyvow.ui.theme.TinyVowButton
 import com.rrrrz.tinyvow.ui.theme.TinyVowButtonTone
 import com.rrrrz.tinyvow.ui.theme.TinyVowCard
 import com.rrrrz.tinyvow.ui.theme.TinyVowElevation
+import com.rrrrz.tinyvow.ui.theme.TinyVowEmptyState
+import com.rrrrz.tinyvow.ui.theme.TinyVowIconSurface
 import com.rrrrz.tinyvow.ui.theme.TinyVowMetricTile
 import com.rrrrz.tinyvow.ui.theme.TinyVowPageBackground
 import com.rrrrz.tinyvow.ui.theme.TinyVowRadius
 import com.rrrrz.tinyvow.ui.theme.TinyVowSpacing
+import com.rrrrz.tinyvow.ui.theme.TinyVowStatusPill
+import java.text.DateFormat
+import java.util.Date
 import kotlinx.coroutines.delay
 import kotlin.math.roundToInt
 
@@ -95,14 +104,17 @@ internal fun OfflineFocusHomeCard(
     activeSession: OfflineFocusSession?,
     detailRequestToken: Int,
     todaySummary: OfflineFocusTodaySummary,
+    dailyTargetMinutes: Int,
     defaultCategoryId: String?,
     defaultDurationMinutes: Int,
     defaultMode: OfflineFocusMode,
+    restReminderEnabled: Boolean,
     restReminderMinutes: Int,
     categoryDefaults: Map<String, OfflineFocusCategoryDefaults>,
     focusRulesAvailable: Boolean,
     isProActive: Boolean,
     onStart: (String, Int, OfflineFocusMode) -> Unit,
+    onSetRestReminderEnabled: (Boolean) -> Unit,
     onSetRestReminderMinutes: (Int) -> Unit,
     onLocked: () -> Unit,
     onOpenFocusRulesSettings: () -> Unit,
@@ -116,6 +128,7 @@ internal fun OfflineFocusHomeCard(
 ) {
     var showStartSheet by remember { mutableStateOf(false) }
     var showActiveDetailSheet by remember { mutableStateOf(false) }
+    var showTodayDetailSheet by remember { mutableStateOf(false) }
     var pendingFinishSessionId by remember { mutableStateOf<String?>(null) }
     var pendingAbandonSessionId by remember { mutableStateOf<String?>(null) }
     val themeColors = LocalThemeColors.current
@@ -138,7 +151,11 @@ internal fun OfflineFocusHomeCard(
     val accent = Color((activeSession?.colorArgb ?: defaultCategory?.colorArgb) ?: 0xFF3F7CAC.toInt())
     LaunchedEffect(detailRequestToken, activeSession?.id) {
         if (detailRequestToken > 0 && activeSession != null) {
+            showTodayDetailSheet = false
             showActiveDetailSheet = true
+        }
+        if (activeSession != null) {
+            showTodayDetailSheet = false
         }
     }
 
@@ -150,7 +167,7 @@ internal fun OfflineFocusHomeCard(
                     onClick = {
                         if (isProActive) {
                             if (activeSession == null) {
-                                showStartSheet = true
+                                showTodayDetailSheet = true
                             } else {
                                 showActiveDetailSheet = true
                             }
@@ -272,18 +289,32 @@ internal fun OfflineFocusHomeCard(
         }
     }
 
+    if (showTodayDetailSheet && activeSession == null) {
+        OfflineFocusTodayDetailSheet(
+            summary = todaySummary,
+            dailyTargetMinutes = dailyTargetMinutes,
+            onDismiss = { showTodayDetailSheet = false },
+            onStartFocus = {
+                showTodayDetailSheet = false
+                showStartSheet = true
+            },
+        )
+    }
+
     if (showStartSheet) {
         OfflineFocusStartSheet(
             categories = categories,
             defaultCategoryId = defaultCategory?.id,
             defaultDurationMinutes = defaultDurationMinutes,
             defaultMode = defaultMode,
+            restReminderEnabled = restReminderEnabled,
             restReminderMinutes = restReminderMinutes,
             categoryDefaults = categoryDefaults,
             focusRulesAvailable = focusRulesAvailable,
             onUpsertCategory = onUpsertCategory,
             onOpenFocusRulesSettings = onOpenFocusRulesSettings,
             onDismiss = { showStartSheet = false },
+            onSetRestReminderEnabled = onSetRestReminderEnabled,
             onSetRestReminderMinutes = onSetRestReminderMinutes,
             onStart = { categoryId, minutes, mode ->
                 showStartSheet = false
@@ -338,6 +369,299 @@ internal fun OfflineFocusHomeCard(
         )
     }
 }
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun OfflineFocusTodayDetailSheet(
+    summary: OfflineFocusTodaySummary,
+    dailyTargetMinutes: Int,
+    onDismiss: () -> Unit,
+    onStartFocus: () -> Unit,
+) {
+    val themeColors = LocalThemeColors.current
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val accent = themeColors.base
+    val totalMinutes = (summary.totalMillis / 60_000L).toInt()
+    val targetMinutes = dailyTargetMinutes.coerceAtLeast(1)
+    val progress = (summary.totalMillis.toFloat() / (targetMinutes * 60_000L).toFloat()).coerceIn(0f, 1f)
+    val progressPercent = (progress * 100f).roundToInt()
+    val completedSessions =
+        remember(summary.sessions) {
+            summary.sessions
+                .filter {
+                    (it.status == OfflineFocusSessionStatus.COMPLETED ||
+                        it.status == OfflineFocusSessionStatus.SETTLED) &&
+                        it.actualDurationMillis > 0L
+                }
+                .sortedByDescending { it.completedAt ?: it.startedAt }
+                .take(3)
+        }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        shape = RoundedCornerShape(
+            topStart = TinyVowRadius.FeaturedCard,
+            topEnd = TinyVowRadius.FeaturedCard,
+        ),
+        containerColor = MaterialTheme.colorScheme.surface,
+        tonalElevation = 0.dp,
+    ) {
+        Column(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 680.dp)
+                    .verticalScroll(rememberScrollState())
+                    .navigationBarsPadding()
+                    .padding(
+                        start = TinyVowSpacing.PageHorizontal,
+                        end = TinyVowSpacing.PageHorizontal,
+                        bottom = 24.dp,
+                    ),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp),
+            ) {
+                TinyVowIconSurface(
+                    icon = Icons.Default.Timer,
+                    contentDescription = null,
+                    size = 42.dp,
+                    iconSize = 22.dp,
+                    containerColor = themeColors.baseContainer.copy(alpha = 0.84f),
+                    contentColor = accent,
+                )
+                Text(
+                    text = AppText.t("offline_focus_today_detail_title"),
+                    modifier = Modifier.weight(1f),
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = themeColors.inkStrong,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+                TinyVowStatusPill(
+                    text = AppText.t("offline_focus_today_target_progress", progressPercent),
+                    color = accent,
+                    leadingDot = false,
+                )
+                IconButton(onClick = onDismiss) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = AppText.t("group_close"),
+                        tint = themeColors.inkMuted,
+                    )
+                }
+            }
+
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(
+                    text = AppText.t("offline_focus_today_minutes_value", totalMinutes),
+                    style = MaterialTheme.typography.displaySmall,
+                    fontWeight = FontWeight.Bold,
+                    color = themeColors.inkStrong,
+                )
+                Text(
+                    text = AppText.t("offline_focus_today_target_value", targetMinutes),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = themeColors.inkMuted,
+                )
+                LinearProgressIndicator(
+                    progress = { progress },
+                    modifier = Modifier.fillMaxWidth().height(8.dp).clip(CircleShape),
+                    color = accent,
+                    trackColor = accent.copy(alpha = 0.12f),
+                )
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                TinyVowMetricTile(
+                    label = AppText.t("offline_focus_today_summary_minutes"),
+                    value = AppText.t("offline_focus_today_minutes_value", totalMinutes),
+                    color = accent,
+                    modifier = Modifier.weight(1f),
+                )
+                TinyVowMetricTile(
+                    label = AppText.t("offline_focus_today_summary_sessions"),
+                    value = AppText.t("offline_focus_today_sessions_value", summary.completedCount),
+                    color = accent,
+                    modifier = Modifier.weight(1f),
+                )
+                TinyVowMetricTile(
+                    label = AppText.t("offline_focus_today_summary_points"),
+                    value = AppText.t("offline_focus_today_points_value", summary.pointsAwarded.roundToInt()),
+                    color = accent,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+
+            if (summary.completedCount == 0) {
+                TinyVowEmptyState(
+                    title = AppText.t("offline_focus_today_empty_title"),
+                    body = AppText.t("offline_focus_today_empty_body"),
+                    icon = Icons.Default.Timer,
+                )
+            } else {
+                if (summary.categories.isNotEmpty()) {
+                    Text(
+                        text = AppText.t("offline_focus_today_categories_title"),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = themeColors.inkStrong,
+                    )
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        summary.categories.take(3).forEach { category ->
+                            OfflineFocusTodayCategoryRow(
+                                category = category,
+                                totalMillis = summary.totalMillis,
+                            )
+                        }
+                    }
+                }
+
+                if (completedSessions.isNotEmpty()) {
+                    Text(
+                        text = AppText.t("offline_focus_today_recent_title"),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = themeColors.inkStrong,
+                    )
+                    Column {
+                        completedSessions.forEachIndexed { index, session ->
+                            OfflineFocusTodaySessionRow(session = session)
+                            if (index < completedSessions.lastIndex) {
+                                HorizontalDivider(color = themeColors.dividerSoft)
+                            }
+                        }
+                    }
+                }
+            }
+
+            TinyVowButton(
+                text = AppText.t("offline_focus_start"),
+                onClick = onStartFocus,
+                tone = TinyVowButtonTone.Primary,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+    }
+}
+
+@Composable
+private fun OfflineFocusTodayCategoryRow(
+    category: com.rrrrz.tinyvow.data.repository.OfflineFocusCategorySummary,
+    totalMillis: Long,
+) {
+    val themeColors = LocalThemeColors.current
+    val color = Color(category.colorArgb)
+    val progress = category.totalMillis.toFloat() / totalMillis.coerceAtLeast(1L).toFloat()
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        FocusTypeIcon(
+            iconKey = category.iconKey,
+            customIconPath = category.customIconPath,
+            color = color,
+            modifier = Modifier.size(36.dp),
+        )
+        Column(modifier = Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(5.dp)) {
+            Text(
+                text = category.categoryName,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.SemiBold,
+                color = themeColors.inkStrong,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            LinearProgressIndicator(
+                progress = { progress.coerceIn(0f, 1f) },
+                modifier = Modifier.fillMaxWidth().height(5.dp).clip(CircleShape),
+                color = color,
+                trackColor = color.copy(alpha = 0.12f),
+            )
+        }
+        Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Text(
+                text = AppText.t("offline_focus_today_minutes_value", (category.totalMillis / 60_000L).toInt()),
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.SemiBold,
+                color = themeColors.ink,
+            )
+            Text(
+                text = AppText.t("offline_focus_today_sessions_value", category.completedCount),
+                style = MaterialTheme.typography.bodySmall,
+                color = themeColors.inkMuted,
+            )
+        }
+    }
+}
+
+@Composable
+private fun OfflineFocusTodaySessionRow(session: OfflineFocusSession) {
+    val themeColors = LocalThemeColors.current
+    val accent = Color(session.colorArgb)
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(
+            text = offlineFocusTodaySessionTime(session.startedAt),
+            modifier = Modifier.widthIn(min = 44.dp),
+            style = MaterialTheme.typography.bodySmall,
+            fontWeight = FontWeight.SemiBold,
+            color = themeColors.ink,
+        )
+        Text(
+            text = session.categoryName,
+            modifier = Modifier.weight(1f),
+            style = MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = themeColors.inkStrong,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Text(
+            text = AppText.t("offline_focus_today_minutes_value", (session.actualDurationMillis / 60_000L).toInt()),
+            style = MaterialTheme.typography.bodySmall,
+            color = themeColors.inkMuted,
+        )
+        Text(
+            text =
+                AppText.t(
+                    if (session.focusMode == OfflineFocusMode.STRICT) {
+                        "offline_focus_mode_strict"
+                    } else {
+                        "offline_focus_mode_normal"
+                    },
+                ),
+            style = MaterialTheme.typography.bodySmall,
+            color = themeColors.inkMuted,
+        )
+        Text(
+            text = AppText.t("offline_focus_today_points_value", session.pointsAwarded.roundToInt()),
+            style = MaterialTheme.typography.labelMedium,
+            fontWeight = FontWeight.SemiBold,
+            color = accent,
+        )
+    }
+}
+
+private fun offlineFocusTodaySessionTime(startedAt: Long): String =
+    DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(startedAt))
 
 @Composable
 private fun OfflineFocusRunningProgressIcon(
@@ -430,11 +754,15 @@ private fun OfflineFocusRunningSummary(
         )
         Text(
             text =
-                AppText.t(
-                    "offline_focus_elapsed_total_format",
-                    formatCountdown(elapsed),
-                    formatCountdown(session.plannedDurationMillis),
-                ),
+                if (session.plannedDurationMillis <= 0L) {
+                    AppText.t("offline_focus_elapsed_unlimited_format", formatCountdown(elapsed))
+                } else {
+                    AppText.t(
+                        "offline_focus_elapsed_total_format",
+                        formatCountdown(elapsed),
+                        formatCountdown(session.plannedDurationMillis),
+                    )
+                },
             style = MaterialTheme.typography.labelSmall.copy(fontSize = 10.8.sp, lineHeight = 14.sp),
             fontWeight = FontWeight.Medium,
             color = themeColors.inkMuted,
@@ -476,7 +804,8 @@ private fun OfflineFocusActiveDetailSheet(
             now
         }
     val elapsed = (referenceNow - session.startedAt).coerceAtLeast(0L)
-    val remaining = (session.plannedDurationMillis - elapsed).coerceAtLeast(0L)
+    val remaining =
+        if (session.plannedDurationMillis <= 0L) null else (session.plannedDurationMillis - elapsed).coerceAtLeast(0L)
     val accent = Color(session.colorArgb)
     val progress =
         if (session.plannedDurationMillis <= 0L) {
@@ -584,7 +913,7 @@ private fun OfflineFocusActiveDetailSheet(
                             )
                             TinyVowMetricTile(
                                 label = AppText.t("offline_focus_active_remaining"),
-                                value = formatCountdown(remaining),
+                                value = remaining?.let(::formatCountdown) ?: AppText.t("offline_focus_unlimited"),
                                 color = accent,
                                 modifier = Modifier.weight(1f),
                             )
@@ -601,7 +930,12 @@ private fun OfflineFocusActiveDetailSheet(
                             )
                             TinyVowMetricTile(
                                 label = AppText.t("offline_focus_completed_metric_duration"),
-                                value = formatCountdown(session.plannedDurationMillis),
+                                value =
+                                    if (session.plannedDurationMillis <= 0L) {
+                                        AppText.t("offline_focus_unlimited")
+                                    } else {
+                                        formatCountdown(session.plannedDurationMillis)
+                                    },
                                 color = accent,
                                 modifier = Modifier.weight(1f),
                             )
@@ -945,12 +1279,14 @@ private fun OfflineFocusStartSheet(
     defaultCategoryId: String?,
     defaultDurationMinutes: Int,
     defaultMode: OfflineFocusMode,
+    restReminderEnabled: Boolean,
     restReminderMinutes: Int,
     categoryDefaults: Map<String, OfflineFocusCategoryDefaults>,
     focusRulesAvailable: Boolean,
     onUpsertCategory: (String?, String, String, String?, Int, Double) -> Unit,
     onOpenFocusRulesSettings: () -> Unit,
     onDismiss: () -> Unit,
+    onSetRestReminderEnabled: (Boolean) -> Unit,
     onSetRestReminderMinutes: (Int) -> Unit,
     onStart: (String, Int, OfflineFocusMode) -> Unit,
 ) {
@@ -978,7 +1314,6 @@ private fun OfflineFocusStartSheet(
     var showCategoryEditorDialog by remember { mutableStateOf(false) }
     var pendingStrictStart by remember { mutableStateOf<Triple<String, Int, OfflineFocusMode>?>(null) }
     val selectedCategory = categories.firstOrNull { it.id == selectedCategoryId }
-    val rhythmPresets = remember { listOf(25 to 5, 50 to 10, 90 to 20) }
     fun selectCategory(categoryId: String) {
         selectedCategoryId = categoryId
         val defaults = categoryDefaults[categoryId]
@@ -992,11 +1327,16 @@ private fun OfflineFocusStartSheet(
                 defaults?.mode ?: defaultMode
             }
     }
-    val startDuration = durationDraft.toIntOrNull()
-        ?.coerceIn(
-            ManagedAppPreferences.MIN_OFFLINE_FOCUS_DURATION_MINUTES,
-            ManagedAppPreferences.MAX_OFFLINE_FOCUS_DURATION_MINUTES,
-        )
+    val startDuration =
+        if (selectedDuration == ManagedAppPreferences.UNLIMITED_OFFLINE_FOCUS_DURATION_MINUTES) {
+            ManagedAppPreferences.UNLIMITED_OFFLINE_FOCUS_DURATION_MINUTES
+        } else {
+            durationDraft.toIntOrNull()
+                ?.coerceIn(
+                    ManagedAppPreferences.MIN_OFFLINE_FOCUS_DURATION_MINUTES,
+                    ManagedAppPreferences.MAX_OFFLINE_FOCUS_DURATION_MINUTES,
+                )
+        }
     val canStart = selectedCategoryId != null && startDuration != null
     ModalBottomSheet(
         onDismissRequest = onDismiss,
@@ -1060,52 +1400,44 @@ private fun OfflineFocusStartSheet(
             }
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
-                    text = AppText.t("offline_focus_rhythm_presets"),
-                    style = MaterialTheme.typography.labelLarge,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
-                FlowRow(
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    rhythmPresets.forEach { (focusMinutes, restMinutes) ->
-                        val selected = selectedDuration == focusMinutes && restReminderMinutes == restMinutes
-                        AssistChip(
-                            onClick = {
-                                selectedDuration = focusMinutes
-                                durationDraft = focusMinutes.toString()
-                                onSetRestReminderMinutes(restMinutes)
-                            },
-                            label = {
-                                Text(AppText.t("offline_focus_rhythm_preset_format", focusMinutes, restMinutes))
-                            },
-                            border =
-                                BorderStroke(
-                                    1.dp,
-                                    if (selected) {
-                                        selectedCategory?.colorArgb?.let(::Color) ?: MaterialTheme.colorScheme.primary
-                                    } else {
-                                        MaterialTheme.colorScheme.outlineVariant
-                                    },
-                                ),
-                        )
-                    }
-                }
-            }
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(
                     text = AppText.t("offline_focus_duration"),
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf(15, 25, 45, 60).forEach { minutes ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    listOf(
+                        15,
+                        25,
+                        45,
+                        60,
+                        ManagedAppPreferences.UNLIMITED_OFFLINE_FOCUS_DURATION_MINUTES,
+                    ).forEach { minutes ->
                         AssistChip(
                             onClick = {
                                 selectedDuration = minutes
-                                durationDraft = minutes.toString()
+                                durationDraft =
+                                    if (minutes == ManagedAppPreferences.UNLIMITED_OFFLINE_FOCUS_DURATION_MINUTES) {
+                                        ""
+                                    } else {
+                                        minutes.toString()
+                                    }
                             },
-                            label = { Text(AppText.t("offline_focus_minutes_format", minutes)) },
+                            label = {
+                                Text(
+                                    text =
+                                        if (minutes == ManagedAppPreferences.UNLIMITED_OFFLINE_FOCUS_DURATION_MINUTES) {
+                                            AppText.t("offline_focus_unlimited")
+                                        } else {
+                                            AppText.t("offline_focus_minutes_short_format", minutes)
+                                        },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    textAlign = TextAlign.Center,
+                                    maxLines = 1,
+                                )
+                            },
                             border = BorderStroke(
                                 1.dp,
                                 if (selectedDuration == minutes) {
@@ -1114,6 +1446,7 @@ private fun OfflineFocusStartSheet(
                                     MaterialTheme.colorScheme.outlineVariant
                                 },
                             ),
+                            modifier = Modifier.weight(1f),
                         )
                     }
                 }
@@ -1137,6 +1470,60 @@ private fun OfflineFocusStartSheet(
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                 )
+            }
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = AppText.t("offline_focus_rest_reminder_minutes"),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    listOf(5, 10, ManagedAppPreferences.UNLIMITED_OFFLINE_FOCUS_DURATION_MINUTES).forEach { minutes ->
+                        val unlimited = minutes == ManagedAppPreferences.UNLIMITED_OFFLINE_FOCUS_DURATION_MINUTES
+                        val selected =
+                            if (unlimited) {
+                                !restReminderEnabled
+                            } else {
+                                restReminderEnabled && restReminderMinutes == minutes
+                            }
+                        AssistChip(
+                            onClick = {
+                                if (unlimited) {
+                                    onSetRestReminderEnabled(false)
+                                } else {
+                                    onSetRestReminderEnabled(true)
+                                    onSetRestReminderMinutes(minutes)
+                                }
+                            },
+                            label = {
+                                Text(
+                                    text =
+                                        if (unlimited) {
+                                            AppText.t("offline_focus_unlimited")
+                                        } else {
+                                            AppText.t("offline_focus_minutes_short_format", minutes)
+                                        },
+                                    modifier = Modifier.fillMaxWidth(),
+                                    textAlign = TextAlign.Center,
+                                    maxLines = 1,
+                                )
+                            },
+                            border = BorderStroke(
+                                1.dp,
+                                if (selected) {
+                                    selectedCategory?.colorArgb?.let(::Color) ?: MaterialTheme.colorScheme.primary
+                                } else {
+                                    MaterialTheme.colorScheme.outlineVariant
+                                },
+                            ),
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                    repeat(2) { Spacer(modifier = Modifier.weight(1f)) }
+                }
             }
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(
@@ -1209,7 +1596,11 @@ private fun OfflineFocusStartSheet(
             TinyVowButton(
                 text =
                     selectedCategory?.let {
-                        AppText.t("offline_focus_start_button_format", startDuration ?: selectedDuration, it.name)
+                        if (startDuration == ManagedAppPreferences.UNLIMITED_OFFLINE_FOCUS_DURATION_MINUTES) {
+                            AppText.t("offline_focus_start_button_unlimited_format", it.name)
+                        } else {
+                            AppText.t("offline_focus_start_button_format", startDuration ?: selectedDuration, it.name)
+                        }
                     } ?: AppText.t("offline_focus_start"),
                 onClick = {
                     val duration = startDuration ?: return@TinyVowButton

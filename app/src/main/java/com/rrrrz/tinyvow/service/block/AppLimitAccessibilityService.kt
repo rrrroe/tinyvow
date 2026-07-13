@@ -615,7 +615,7 @@ class AppLimitAccessibilityService : AccessibilityService() {
             notifyEncourageTargetCompleted(group, nowMillis)
             
             if (BuildConfig.DEBUG) {
-                Log.i(TAG, "Group ${group.name} reached daily target! Bonus $bonusPoints pts granted.")
+                Log.i(TAG, "Group ${group.name} reached daily target! Bonus $bonusPoints PT granted.")
             }
         }
     }

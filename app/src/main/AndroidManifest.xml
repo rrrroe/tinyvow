@@ -67,6 +67,20 @@
             </intent-filter>
         </activity>
 
+        <!-- Android 14+ platform Health Connect only exposes apps that provide this
+             permission-usage entry point. Keep the legacy activity above for Android 13. -->
+        <activity-alias
+            android:name="ViewHealthPermissionUsageActivity"
+            android:exported="true"
+            android:permission="android.permission.START_VIEW_PERMISSION_USAGE"
+            android:targetActivity=".HealthConnectRationaleActivity">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW_PERMISSION_USAGE" />
+
+                <category android:name="android.intent.category.HEALTH_PERMISSIONS" />
+            </intent-filter>
+        </activity-alias>
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"

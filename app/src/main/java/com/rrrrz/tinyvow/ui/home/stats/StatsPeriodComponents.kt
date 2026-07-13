@@ -24,6 +24,7 @@ import androidx.compose.foundation.Image
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.ColumnScope
@@ -50,7 +51,9 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.automirrored.filled.CallSplit
 import androidx.compose.material.icons.automirrored.filled.CompareArrows
+import androidx.compose.material.icons.automirrored.filled.ShowChart
 import androidx.compose.material.icons.filled.AccessTime
+import androidx.compose.material.icons.filled.Analytics
 import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.CalendarMonth
@@ -91,10 +94,13 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -121,6 +127,7 @@ import com.rrrrz.tinyvow.data.usage.UsageStatsUsageRepository
 import com.rrrrz.tinyvow.ui.theme.LocalThemeColors
 import com.rrrrz.tinyvow.ui.theme.LocalReportColors
 import com.rrrrz.tinyvow.ui.theme.ReportColors
+import com.rrrrz.tinyvow.ui.theme.TinyVowIconSurface
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
@@ -144,11 +151,11 @@ import kotlin.math.roundToLong
 internal fun PeriodReportScreen(
     state: DailyReportUiState,
     animateValues: Boolean = false,
+    offlineFocusEnabled: Boolean = true,
+    modules: List<SharePosterModule>? = null,
 ) {
     when (val periodState = state.periodReportState) {
-        SectionState.Loading -> {
-            PeriodReportSkeleton(selectedTab = state.selectedTab)
-        }
+        SectionState.Loading -> Unit
         SectionState.Empty -> {
             Text(
                 text = AppText.t("stats_not_enough_samples"),
@@ -158,40 +165,227 @@ internal fun PeriodReportScreen(
         }
         is SectionState.Ready -> {
             val data = periodState.data
-            PeriodHeroCard(
-                hero = data.hero,
-                animateValues = animateValues,
-            )
-            PeriodFocusCard(
-                data = data.windowFocus,
-                animateValues = animateValues,
-            )
-            OfflineFocusDailyCard(state = SectionState.Ready(data.offlineFocus))
-            when (data.tab) {
-                ReportTab.WEEK -> {
-                    PeriodTrendCard(data.trend)
-                    PeriodAppFocusCard(data.appFocus)
-                    PeriodInsightSection(data = data)
-                }
-                ReportTab.MONTH -> {
-                    data.heatmap?.let { PeriodHeatmapCard(it) }
-                    PeriodTrendCard(data.trend)
-                    data.monthStructure?.let { PeriodMonthStructureCard(it) }
-                    PeriodAppFocusCard(data.appFocus)
-                    PeriodInsightSection(data = data)
-                }
-                ReportTab.YEAR -> {
-                    data.heatmap?.let { PeriodHeatmapCard(it) }
-                    PeriodTrendCard(data.trend)
-                    data.quarterSection?.let { PeriodQuarterBreakdownCard(it) }
-                    PeriodAppFocusCard(data.appFocus)
-                    PeriodInsightSection(data = data)
-                }
-                ReportTab.DAY -> Unit
+            (modules ?: availablePeriodReportModules(data, offlineFocusEnabled)).forEach { module ->
+                PeriodReportModuleContent(
+                    data = data,
+                    module = module,
+                    animateValues = animateValues,
+                )
             }
         }
     }
 }
+
+internal fun availablePeriodReportModules(
+    data: PeriodReportData,
+    offlineFocusEnabled: Boolean,
+): List<SharePosterModule> =
+    when (data.tab) {
+        ReportTab.WEEK,
+        ReportTab.MONTH ->
+            buildList {
+                add(SharePosterModule.BEHAVIOR)
+                add(SharePosterModule.FOCUS)
+                add(SharePosterModule.RHYTHM)
+                if (data.weeklyPoints != null) add(SharePosterModule.POINTS)
+                add(SharePosterModule.INSIGHTS)
+                if (offlineFocusEnabled) add(SharePosterModule.OFFLINE)
+            }
+        ReportTab.YEAR ->
+            buildList {
+                add(SharePosterModule.OVERVIEW)
+                add(SharePosterModule.FOCUS)
+                if (offlineFocusEnabled) add(SharePosterModule.OFFLINE)
+                if (data.heatmap != null) add(SharePosterModule.HEATMAP)
+                add(SharePosterModule.TREND)
+                if (data.monthStructure != null || data.quarterSection != null) add(SharePosterModule.STRUCTURE)
+                add(SharePosterModule.APPS)
+                add(SharePosterModule.INSIGHTS)
+            }
+        ReportTab.DAY -> emptyList()
+    }
+
+@Composable
+private fun PeriodReportModuleContent(
+    data: PeriodReportData,
+    module: SharePosterModule,
+    animateValues: Boolean,
+) {
+    when (module) {
+        SharePosterModule.BEHAVIOR -> {
+            if (data.tab == ReportTab.WEEK || data.tab == ReportTab.MONTH) {
+                WeeklyBehaviorProfileCard(data = data)
+            }
+        }
+        SharePosterModule.FOCUS -> {
+            if (data.tab == ReportTab.WEEK || data.tab == ReportTab.MONTH) {
+                DailyFocusCard(
+                    focusState =
+                        SectionState.Ready(
+                            DailyFocusSectionData(
+                                control = data.windowFocus.control,
+                                encourage = data.windowFocus.encourage,
+                            ),
+                        ),
+                    animateValues = animateValues,
+                )
+            } else {
+                PeriodFocusCard(
+                    data = data.windowFocus,
+                    animateValues = animateValues,
+                )
+            }
+        }
+        SharePosterModule.RHYTHM -> {
+            if (data.tab == ReportTab.WEEK || data.tab == ReportTab.MONTH) {
+                DailyRhythmCard(
+                    timelineState =
+                        data.timeline
+                            ?.takeIf { timeline -> timeline.buckets.any { it.deviceMillis > 0L } }
+                            ?.let { SectionState.Ready(it) }
+                            ?: SectionState.Empty,
+                    subtitle =
+                        AppText.t(
+                            if (data.tab == ReportTab.MONTH) {
+                                "stats_monthly_time_flow_description"
+                            } else {
+                                "stats_weekly_time_flow_description"
+                            },
+                        ),
+                    weeklyAppFocusDays = data.weeklyAppFocusDays,
+                    behaviorMapData = data.behaviorMap,
+                )
+            }
+        }
+        SharePosterModule.POINTS -> {
+            data.weeklyPoints?.let { WeeklyPointsTrajectoryCard(it, tab = data.tab) }
+        }
+        SharePosterModule.INSIGHTS -> {
+            if (data.tab == ReportTab.WEEK || data.tab == ReportTab.MONTH) {
+                DailyInsightCard(
+                    behaviorMapState = data.behaviorMap?.let { SectionState.Ready(it) } ?: SectionState.Empty,
+                )
+            } else {
+                PeriodInsightSection(data = data)
+            }
+        }
+        SharePosterModule.OFFLINE -> {
+            if (data.tab == ReportTab.WEEK) {
+                WeeklyOfflineFocusPebblesCard(
+                    state = SectionState.Ready(data.offlineFocus),
+                    emptyMessage = AppText.t("offline_focus_weekly_empty"),
+                )
+            } else if (data.tab == ReportTab.MONTH) {
+                MonthlyOfflineFocusPebblesCard(
+                    state = SectionState.Ready(data.offlineFocus),
+                    emptyMessage = AppText.t("offline_focus_monthly_empty"),
+                )
+            } else {
+                OfflineFocusDailyCard(state = SectionState.Ready(data.offlineFocus))
+            }
+        }
+        SharePosterModule.OVERVIEW -> {
+            if (data.tab == ReportTab.MONTH || data.tab == ReportTab.YEAR) {
+                PeriodHeroCard(
+                    hero = data.hero,
+                    animateValues = animateValues,
+                )
+            }
+        }
+        SharePosterModule.HEATMAP -> {
+            if (data.tab == ReportTab.MONTH || data.tab == ReportTab.YEAR) {
+                data.heatmap?.let { PeriodHeatmapCard(it) }
+            }
+        }
+        SharePosterModule.TREND -> {
+            if (data.tab == ReportTab.MONTH || data.tab == ReportTab.YEAR) PeriodTrendCard(data.trend)
+        }
+        SharePosterModule.STRUCTURE -> {
+            when (data.tab) {
+                ReportTab.MONTH -> data.monthStructure?.let { PeriodMonthStructureCard(it) }
+                ReportTab.YEAR -> data.quarterSection?.let { PeriodQuarterBreakdownCard(it) }
+                ReportTab.DAY,
+                ReportTab.WEEK -> Unit
+            }
+        }
+        SharePosterModule.APPS -> {
+            if (data.tab == ReportTab.MONTH || data.tab == ReportTab.YEAR) PeriodAppFocusCard(data.appFocus)
+        }
+        SharePosterModule.TIME_TIDE -> Unit
+    }
+}
+
+@Composable
+private fun WeeklyBehaviorProfileCard(data: PeriodReportData) {
+    val structure = data.behavior?.structure
+    val themeColors = LocalThemeColors.current
+    ReportCard {
+        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            DailyReportSectionHeader(
+                icon = Icons.Default.Analytics,
+                title = AppText.t("stats_behavior_analysis"),
+                subtitle = AppText.t("stats_behavior_structure_description"),
+                accent = themeColors.base,
+            )
+            if (structure == null || structure.scoreMetrics.isEmpty()) {
+                Text(
+                    text = AppText.t("stats_this_archived_window_does_not_have_enough_behavior"),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                val savedAccent = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.72f)
+                BehaviorRadarPanel(
+                    metrics = structure.scoreMetrics,
+                    comparisonMetrics = structure.comparisonScoreMetrics,
+                    cornerMetrics =
+                        listOf(
+                            BehaviorCornerMetric(
+                                label = AppText.t("stats_behavior_corner_usage"),
+                                value = formatBehaviorMetricMinutes(data.totalUsageMillis),
+                                unit = AppText.t("stats_behavior_unit_minutes_short"),
+                                accent = themeColors.base,
+                                rawMillis = data.totalUsageMillis,
+                                align = Alignment.TopStart,
+                            ),
+                            BehaviorCornerMetric(
+                                label = AppText.t("stats_behavior_corner_investment"),
+                                value = formatBehaviorMetricMinutes(data.encourageUsageMillis),
+                                unit = AppText.t("stats_behavior_unit_minutes_short"),
+                                accent = themeColors.encourage,
+                                rawMillis = data.encourageUsageMillis,
+                                align = Alignment.TopEnd,
+                            ),
+                            BehaviorCornerMetric(
+                                label = AppText.t("stats_behavior_corner_control"),
+                                value = formatBehaviorMetricMinutes(data.controlUsageMillis),
+                                unit = AppText.t("stats_behavior_unit_minutes_short"),
+                                accent = themeColors.control,
+                                rawMillis = data.controlUsageMillis,
+                                align = Alignment.BottomStart,
+                            ),
+                            BehaviorCornerMetric(
+                                label = AppText.t("stats_behavior_corner_savings"),
+                                value = formatBehaviorMetricMinutes(data.savedMillis),
+                                unit = AppText.t("stats_behavior_unit_minutes_short"),
+                                accent = savedAccent,
+                                rawMillis = data.savedMillis,
+                                align = Alignment.BottomEnd,
+                            ),
+                        ),
+                    totalMetric =
+                        BehaviorTotalMetric(
+                            label = AppText.t("stats_behavior_total_score"),
+                            value = structure.scoreMetrics.map { it.score }.average().roundToInt().toString(),
+                            unit = "",
+                            accent = themeColors.base,
+                        ),
+                )
+            }
+        }
+    }
+}
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 internal fun PeriodFocusCard(
@@ -362,6 +556,469 @@ internal fun PeriodTrendCard(data: TrendSectionData) {
         }
     }
 }
+
+@Composable
+internal fun WeeklyPointsTrajectoryCard(
+    data: WeeklyPointsSectionData,
+    tab: ReportTab = ReportTab.WEEK,
+) {
+    val themeColors = LocalThemeColors.current
+    var selectedDayIndex by remember(data.days) { mutableStateOf<Int?>(null) }
+    ReportCard {
+        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+            DailyReportSectionHeader(
+                icon = Icons.AutoMirrored.Filled.ShowChart,
+                title = AppText.t("stats_weekly_points_trajectory"),
+                subtitle = AppText.t("stats_weekly_points_trajectory_description"),
+                accent = themeColors.encourage,
+            )
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(18.dp),
+                color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.38f),
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    PointsLegendValue(
+                        color = themeColors.save,
+                        label = AppText.t("stats_weekly_points_income"),
+                        value = formatSignedPointsLocal(data.earnedPoints),
+                    )
+                    PointsLegendValue(
+                        color = themeColors.restraint,
+                        label = AppText.t("stats_weekly_points_expense"),
+                        value = formatSignedPointsLocal(-data.spentPoints),
+                    )
+                    PointsLegendItem(themeColors.encourage, AppText.t("stats_weekly_points_cumulative"), line = true)
+                }
+            }
+            WeeklyPointsTrajectoryChart(
+                days = data.days,
+                selectedDayIndex = selectedDayIndex,
+                onDaySelected = { dayIndex ->
+                    selectedDayIndex = dayIndex.takeUnless { it == selectedDayIndex }
+                },
+            )
+            selectedDayIndex?.let { data.days.getOrNull(it) }?.let { day ->
+                WeeklyPointsDayDetail(day = day)
+            }
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(18.dp),
+                color = themeColors.encourage.copy(alpha = 0.055f),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.45f)),
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 13.dp),
+                    horizontalArrangement = Arrangement.spacedBy(10.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    TinyVowIconSurface(
+                        icon = Icons.Default.Insights,
+                        contentDescription = null,
+                        containerColor = themeColors.encourage.copy(alpha = 0.14f),
+                        contentColor = themeColors.encourage,
+                        size = 34.dp,
+                        iconSize = 18.dp,
+                    )
+                    Text(
+                        text =
+                            if (data.netPoints >= 0.0) {
+                                AppText.t(
+                                    if (tab == ReportTab.MONTH) "stats_monthly_points_net_gain" else "stats_weekly_points_net_gain",
+                                    formatSignedPointsLocal(data.netPoints),
+                                )
+                            } else {
+                                AppText.t(
+                                    if (tab == ReportTab.MONTH) "stats_monthly_points_net_loss" else "stats_weekly_points_net_loss",
+                                    formatSignedPointsLocal(data.netPoints),
+                                )
+                            },
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun WeeklyPointsTrajectoryChart(
+    days: List<WeeklyPointsDay>,
+    selectedDayIndex: Int?,
+    onDaySelected: (Int) -> Unit,
+) {
+    val themeColors = LocalThemeColors.current
+    val gridColor = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.42f)
+    val balanceColor = themeColors.encourage
+    val earnedColor = themeColors.save
+    val spentColor = themeColors.restraint
+    val surfaceColor = MaterialTheme.colorScheme.surface
+    val labelColor = MaterialTheme.colorScheme.onSurfaceVariant
+    val isMonthly = days.size > 7
+    val populatedDayIndexes =
+        days.indices.filter { index ->
+            val day = days[index]
+            day.earnedPoints > 0.0 || day.spentPoints > 0.0
+        }
+    val balances =
+        if (isMonthly) {
+            populatedDayIndexes.map { days[it].closingBalance }
+        } else {
+            days.map { it.closingBalance }
+        }
+    val rawMinBalance = balances.minOrNull() ?: 0.0
+    val rawMaxBalance = balances.maxOrNull() ?: 0.0
+    val rawBalanceRange = (rawMaxBalance - rawMinBalance).coerceAtLeast(1.0)
+    val balancePadding = max(1.0, rawBalanceRange * 0.18)
+    val minBalance = rawMinBalance - balancePadding
+    val maxBalance = rawMaxBalance + balancePadding
+    val balanceRange = (maxBalance - minBalance).coerceAtLeast(1.0)
+    val maxFlow = days.maxOfOrNull { max(it.earnedPoints, it.spentPoints) }?.coerceAtLeast(1.0) ?: 1.0
+    val maxEarnedDayIndex =
+        days.indices.maxByOrNull { days[it].earnedPoints }?.takeIf { days[it].earnedPoints > 0.0 }
+    val maxSpentDayIndex =
+        days.indices.maxByOrNull { days[it].spentPoints }?.takeIf { days[it].spentPoints > 0.0 }
+    val density = LocalDensity.current
+    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+        Text(
+            text = AppText.t("stats_weekly_points_daily_net_axis"),
+            style = MaterialTheme.typography.labelSmall,
+            color = balanceColor,
+        )
+        Text(
+            text = AppText.t("stats_weekly_points_cumulative_axis"),
+            style = MaterialTheme.typography.labelSmall,
+            color = balanceColor,
+        )
+    }
+    Canvas(
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .height(250.dp)
+                .pointerInput(days) {
+                    detectTapGestures { position ->
+                        if (days.isEmpty()) return@detectTapGestures
+                        val left = with(density) { 48.dp.toPx() }
+                        val right = size.width - with(density) { 50.dp.toPx() }
+                        val ratio = ((position.x - left) / (right - left).coerceAtLeast(1f)).coerceIn(0f, 1f)
+                        onDaySelected((ratio * (days.size - 1)).roundToInt().coerceIn(0, days.lastIndex))
+                    }
+                },
+    ) {
+        val leftGutter = 48.dp.toPx()
+        val rightGutter = 50.dp.toPx()
+        val top = 18.dp.toPx()
+        val bottom = size.height - 8.dp.toPx()
+        val plotLeft = leftGutter
+        val plotRight = size.width - rightGutter
+        val plotWidth = (plotRight - plotLeft).coerceAtLeast(1f)
+        val plotHeight = bottom - top
+        val zeroY = top + plotHeight * 0.48f
+        val halfFlowHeight = minOf(zeroY - top, bottom - zeroY) * 0.84f
+        val step = if (days.size <= 1) plotWidth else plotWidth / (days.size - 1).toFloat()
+        val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = labelColor.toArgb()
+            textSize = 10.dp.toPx()
+        }
+        repeat(3) { index ->
+            val y = top + plotHeight * index / 2f
+            drawLine(gridColor, Offset(plotLeft, y), Offset(plotRight, y), strokeWidth = 1.dp.toPx())
+        }
+        drawLine(
+            color = gridColor,
+            start = Offset(plotLeft, zeroY),
+            end = Offset(plotRight, zeroY),
+            strokeWidth = 1.dp.toPx(),
+            pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(7.dp.toPx(), 6.dp.toPx())),
+        )
+        drawContext.canvas.nativeCanvas.apply {
+            textPaint.textAlign = Paint.Align.RIGHT
+            drawText(formatPointsChart(maxFlow), plotLeft - 11.dp.toPx(), top + 4.dp.toPx(), textPaint)
+            drawText("0", plotLeft - 11.dp.toPx(), zeroY + 4.dp.toPx(), textPaint)
+            drawText("−${formatPointsChart(maxFlow)}", plotLeft - 11.dp.toPx(), bottom, textPaint)
+            textPaint.textAlign = Paint.Align.LEFT
+            if (!isMonthly) {
+                drawText(formatPointsChart(maxBalance), plotRight + 11.dp.toPx(), top + 4.dp.toPx(), textPaint)
+                drawText(formatPointsChart((maxBalance + minBalance) / 2.0), plotRight + 11.dp.toPx(), top + plotHeight / 2f + 4.dp.toPx(), textPaint)
+                drawText(formatPointsChart(minBalance), plotRight + 11.dp.toPx(), bottom, textPaint)
+            }
+        }
+        val curvePointEntries =
+            days.mapIndexedNotNull { index, day ->
+                if (isMonthly && index !in populatedDayIndexes) return@mapIndexedNotNull null
+                val x = plotLeft + if (days.size == 1) plotWidth / 2f else step * index
+                val normalized = ((day.closingBalance - minBalance) / balanceRange).toFloat()
+                index to Offset(x, bottom - normalized * plotHeight)
+            }
+        val curvePoints = curvePointEntries.map { it.second }
+        val path = smoothPointsPath(curvePoints)
+        val fillPath = Path().apply {
+            addPath(path)
+            curvePoints.lastOrNull()?.let { lineTo(it.x, bottom) }
+            curvePoints.firstOrNull()?.let { lineTo(it.x, bottom) }
+            close()
+        }
+        if (curvePoints.size >= 2) {
+            drawPath(
+                path = fillPath,
+                brush = Brush.verticalGradient(listOf(balanceColor.copy(alpha = 0.18f), balanceColor.copy(alpha = 0.015f)), top, bottom),
+            )
+        }
+        days.forEachIndexed { index, day ->
+            val x = plotLeft + if (days.size == 1) plotWidth / 2f else step * index
+            val barWidth = 22.dp.toPx().coerceAtMost(step * 0.48f)
+            val earnedHeight = (day.earnedPoints / maxFlow).toFloat() * halfFlowHeight
+            val spentHeight = (day.spentPoints / maxFlow).toFloat() * halfFlowHeight
+            if (index == selectedDayIndex) {
+                drawRoundRect(
+                    color = balanceColor.copy(alpha = 0.08f),
+                    topLeft = Offset(x - step * 0.38f, top),
+                    size = Size(step * 0.76f, plotHeight),
+                    cornerRadius = CornerRadius(10.dp.toPx()),
+                )
+            }
+            if (day.earnedPoints > 0.0) {
+                drawRoundRect(
+                    brush = Brush.verticalGradient(listOf(earnedColor.copy(alpha = 0.78f), earnedColor.copy(alpha = 0.35f))),
+                    topLeft = Offset(x - barWidth / 2f, zeroY - earnedHeight),
+                    size = Size(barWidth, earnedHeight),
+                    cornerRadius = CornerRadius(7.dp.toPx()),
+                )
+            }
+            if (day.spentPoints > 0.0) {
+                drawRoundRect(
+                    brush = Brush.verticalGradient(listOf(spentColor.copy(alpha = 0.42f), spentColor.copy(alpha = 0.76f))),
+                    topLeft = Offset(x - barWidth / 2f, zeroY),
+                    size = Size(barWidth, spentHeight),
+                    cornerRadius = CornerRadius(7.dp.toPx()),
+                )
+            }
+            drawContext.canvas.nativeCanvas.apply {
+                textPaint.textAlign = Paint.Align.CENTER
+                if (isMonthly) {
+                    textPaint.textSize = 9.dp.toPx()
+                    textPaint.isFakeBoldText = true
+                    if (index == maxEarnedDayIndex) {
+                        textPaint.color = earnedColor.toArgb()
+                        drawText(formatPointsChart(day.earnedPoints), x, zeroY - earnedHeight - 6.dp.toPx(), textPaint)
+                    }
+                    if (index == maxSpentDayIndex) {
+                        textPaint.color = spentColor.toArgb()
+                        drawText(formatPointsChart(day.spentPoints), x, zeroY + spentHeight + 11.dp.toPx(), textPaint)
+                    }
+                    textPaint.isFakeBoldText = false
+                } else {
+                    textPaint.color = earnedColor.toArgb()
+                    textPaint.textSize = 9.dp.toPx()
+                    textPaint.isFakeBoldText = true
+                    drawText(formatSignedPointsLocal(day.earnedPoints - day.spentPoints), x, zeroY - earnedHeight - 7.dp.toPx(), textPaint)
+                    textPaint.isFakeBoldText = false
+                    textPaint.textSize = 8.dp.toPx()
+                    if (day.earnedPoints > 0.0) drawText(formatPointsChart(day.earnedPoints), x, zeroY - earnedHeight / 2f + 3.dp.toPx(), textPaint)
+                    textPaint.color = spentColor.toArgb()
+                    if (day.spentPoints > 0.0) drawText(formatPointsChart(day.spentPoints), x, zeroY + spentHeight + 11.dp.toPx(), textPaint)
+                }
+            }
+        }
+        if (curvePoints.isNotEmpty()) {
+            drawPath(path, color = balanceColor, style = androidx.compose.ui.graphics.drawscope.Stroke(width = 2.5.dp.toPx()))
+        }
+        curvePointEntries.forEach { (_, point) ->
+            drawCircle(color = surfaceColor, radius = 4.dp.toPx(), center = point)
+            drawCircle(color = balanceColor, radius = 2.2.dp.toPx(), center = point)
+        }
+        if (isMonthly && curvePointEntries.isNotEmpty()) {
+            val minEntry = curvePointEntries.minByOrNull { (index, _) -> days[index].closingBalance }
+            val maxEntry = curvePointEntries.maxByOrNull { (index, _) -> days[index].closingBalance }
+            listOfNotNull(minEntry, maxEntry)
+                .distinctBy { it.first }
+                .forEach { (index, point) ->
+                    drawContext.canvas.nativeCanvas.apply {
+                        textPaint.textAlign = Paint.Align.CENTER
+                        textPaint.color = balanceColor.toArgb()
+                        textPaint.textSize = 9.dp.toPx()
+                        textPaint.isFakeBoldText = true
+                        val isMaximum = index == maxEntry?.first
+                        val labelY =
+                            if (isMaximum) {
+                                (point.y - 8.dp.toPx()).coerceAtLeast(top + 9.dp.toPx())
+                            } else {
+                                (point.y + 14.dp.toPx()).coerceAtMost(bottom)
+                            }
+                        drawText(formatPointsChart(days[index].closingBalance), point.x, labelY, textPaint)
+                        textPaint.isFakeBoldText = false
+                    }
+                }
+        }
+    }
+    val labelIndexes =
+        if (days.size <= 7) {
+            days.indices.toList()
+        } else {
+            listOf(0, 4, 9, 14, 19, 24, days.lastIndex).distinct().filter { it in days.indices }
+        }
+    Row(
+        modifier = Modifier.fillMaxWidth().padding(start = 48.dp, end = 50.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        labelIndexes.forEach { index ->
+            val day = days[index]
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Text(text = day.label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurface)
+                if (days.size <= 7) {
+                    Text(text = day.dateLabel, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun WeeklyPointsDayDetail(day: WeeklyPointsDay) {
+    val themeColors = LocalThemeColors.current
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.32f),
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalArrangement = Arrangement.spacedBy(5.dp),
+        ) {
+            Text(
+                text = AppText.t("stats_weekly_points_day_detail", day.label, day.dateLabel),
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
+            if (day.focusSummaries.isEmpty() && day.groupSummaries.isEmpty() && day.rewardSpends.isEmpty()) {
+                Text(
+                    text = AppText.t("stats_weekly_points_day_empty"),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else {
+                if (day.focusSummaries.isNotEmpty()) {
+                    WeeklyPointsDetailSectionTitle(AppText.t("stats_weekly_points_detail_focus"))
+                }
+                day.focusSummaries.forEach { focus ->
+                    WeeklyPointsCompactDetailRow(
+                        label =
+                            "${focus.name} · ${formatDuration(focus.durationMillis)} · " +
+                                AppText.t("stats_weekly_points_session_count", focus.sessionCount),
+                        value = formatSignedPointsLocal(focus.pointDelta),
+                        color = themeColors.save,
+                    )
+                }
+                if (day.groupSummaries.isNotEmpty()) {
+                    WeeklyPointsDetailSectionTitle(AppText.t("stats_weekly_points_detail_groups"))
+                }
+                day.groupSummaries.forEach { group ->
+                    WeeklyPointsCompactDetailRow(
+                        label =
+                            "${group.name} · ${formatDuration(group.durationMillis)} · " +
+                                AppText.t(
+                                    if (group.completed) "stats_weekly_points_group_completed" else "stats_weekly_points_group_not_completed",
+                                ),
+                        value = formatSignedPointsLocal(group.pointDelta),
+                        color = if (group.pointDelta >= 0.0) themeColors.encourage else themeColors.restraint,
+                    )
+                }
+                if (day.rewardSpends.isNotEmpty()) {
+                    WeeklyPointsDetailSectionTitle(AppText.t("stats_weekly_points_detail_spends"))
+                }
+                day.rewardSpends.forEach { spend ->
+                    WeeklyPointsCompactDetailRow(
+                        label = AppText.t("stats_weekly_points_spend_purchase", spend.rewardTitle),
+                        value = formatSignedPointsLocal(spend.pointDelta),
+                        color = themeColors.restraint,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun WeeklyPointsDetailSectionTitle(text: String) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.labelMedium,
+        fontWeight = FontWeight.SemiBold,
+        color = MaterialTheme.colorScheme.onSurface,
+        modifier = Modifier.padding(top = 3.dp),
+    )
+}
+
+@Composable
+private fun WeeklyPointsCompactDetailRow(
+    label: String,
+    value: String,
+    color: Color,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Box(modifier = Modifier.size(5.dp).clip(CircleShape).background(color))
+        Text(
+            text = label,
+            modifier = Modifier.weight(1f),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.typography.labelSmall,
+            fontWeight = FontWeight.SemiBold,
+            color = color,
+            maxLines = 1,
+        )
+    }
+}
+
+@Composable
+private fun PointsLegendItem(color: Color, label: String, line: Boolean = false) {
+    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+        Box(modifier = if (line) Modifier.width(20.dp).height(3.dp).clip(CircleShape).background(color) else Modifier.size(8.dp).clip(CircleShape).background(color))
+        Text(text = label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
+private fun PointsLegendValue(color: Color, label: String, value: String) {
+    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+        Box(modifier = Modifier.size(8.dp).clip(CircleShape).background(color))
+        Text(text = label, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text(text = value, style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold, color = color)
+    }
+}
+
+private fun smoothPointsPath(points: List<Offset>): Path =
+    Path().apply {
+        if (points.isEmpty()) return@apply
+        moveTo(points.first().x, points.first().y)
+        points.zipWithNext().forEach { (start, end) ->
+            val midX = (start.x + end.x) / 2f
+            cubicTo(midX, start.y, midX, end.y, end.x, end.y)
+        }
+    }
+
+private fun formatPointsChart(value: Double): String =
+    if (kotlin.math.abs(value % 1.0) < 0.001) {
+        String.format(Locale.getDefault(), "%,.0f", value)
+    } else {
+        String.format(Locale.getDefault(), "%,.1f", value)
+    }
 
 @Composable
 internal fun TrendLineChart(

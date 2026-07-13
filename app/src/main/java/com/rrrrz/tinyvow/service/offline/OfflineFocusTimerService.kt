@@ -178,7 +178,7 @@ class OfflineFocusTimerService : Service() {
                     if (session.status == OfflineFocusSessionStatus.PAUSED) {
                         val pausedAt = session.pausedAt ?: System.currentTimeMillis()
                         val elapsed = (pausedAt - session.startedAt).coerceAtLeast(0L)
-                        val remaining = (session.plannedDurationMillis - elapsed).coerceAtLeast(0L)
+                        val remaining = remainingMillis(session.plannedDurationMillis, elapsed)
                         startForeground(
                             NOTIFICATION_ID,
                             buildNotification(
@@ -199,7 +199,7 @@ class OfflineFocusTimerService : Service() {
                     }
                     val now = System.currentTimeMillis()
                     val elapsed = (now - session.startedAt).coerceAtLeast(0L)
-                    val remaining = (session.plannedDurationMillis - elapsed).coerceAtLeast(0L)
+                    val remaining = remainingMillis(session.plannedDurationMillis, elapsed)
                     startForeground(
                         NOTIFICATION_ID,
                         buildNotification(
@@ -211,7 +211,7 @@ class OfflineFocusTimerService : Service() {
                             paused = false,
                         ),
                     )
-                    if (remaining <= 0L) {
+                    if (session.plannedDurationMillis > 0L && remaining <= 0L) {
                         repository.completeSession(sessionId, now)?.let { completedSession ->
                             unregisterScreenReceiver()
                             sendCompletionAlert(completedSession)
@@ -270,7 +270,13 @@ class OfflineFocusTimerService : Service() {
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
             )
         val elapsedText = formatRemaining(elapsedMillis)
-        val plannedText = formatRemaining(plannedDurationMillis)
+        val unlimited = plannedDurationMillis <= 0L && !starting
+        val plannedText =
+            if (unlimited) {
+                textContext.getString(R.string.offline_focus_unlimited)
+            } else {
+                formatRemaining(plannedDurationMillis)
+            }
         val remainingText = formatRemaining(remainingMillis)
         val builder = NotificationCompat.Builder(this, CHANNEL_ID)
             .setSmallIcon(R.mipmap.ic_launcher)
@@ -278,6 +284,10 @@ class OfflineFocusTimerService : Service() {
             .setContentText(
                 if (starting) {
                     textContext.getString(R.string.offline_focus_notification_starting_body)
+                } else if (unlimited && paused) {
+                    textContext.getString(R.string.offline_focus_notification_unlimited_paused_body, elapsedText)
+                } else if (unlimited) {
+                    textContext.getString(R.string.offline_focus_notification_unlimited_body, elapsedText)
                 } else if (paused) {
                     textContext.getString(R.string.offline_focus_notification_paused_body, remainingText)
                 } else {
@@ -286,7 +296,11 @@ class OfflineFocusTimerService : Service() {
             )
             .setStyle(
                 NotificationCompat.BigTextStyle().bigText(
-                    textContext.getString(R.string.offline_focus_notification_detail, elapsedText, plannedText, remainingText),
+                    if (unlimited) {
+                        textContext.getString(R.string.offline_focus_notification_unlimited_detail, elapsedText)
+                    } else {
+                        textContext.getString(R.string.offline_focus_notification_detail, elapsedText, plannedText, remainingText)
+                    },
                 ),
             )
             .setContentIntent(openIntent)
@@ -601,6 +615,9 @@ class OfflineFocusTimerService : Service() {
         val seconds = totalSeconds % 60L
         return String.format(Locale.getDefault(), "%02d:%02d", minutes, seconds)
     }
+
+    private fun remainingMillis(plannedDurationMillis: Long, elapsedMillis: Long): Long =
+        if (plannedDurationMillis <= 0L) 0L else (plannedDurationMillis - elapsedMillis).coerceAtLeast(0L)
 
     companion object {
         const val ACTION_START = "com.rrrrz.tinyvow.offline_focus.START"

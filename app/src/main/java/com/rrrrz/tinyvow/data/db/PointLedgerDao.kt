@@ -141,6 +141,40 @@ interface PointLedgerDao {
     @Query(
         """
         SELECT
+            ledger_date AS ledgerDate,
+            COALESCE(SUM(CASE WHEN delta_points > 0 THEN delta_points ELSE 0 END), 0) AS earnedPoints,
+            COALESCE(ABS(SUM(CASE WHEN delta_points < 0 THEN delta_points ELSE 0 END)), 0) AS spentPoints,
+            COALESCE(SUM(delta_points), 0) AS netPoints
+        FROM point_ledger
+        WHERE ledger_date BETWEEN :from AND :to
+        GROUP BY ledger_date
+        ORDER BY ledger_date ASC
+        """
+    )
+    suspend fun getDailyStatsByRange(from: String, to: String): List<PointLedgerDailyStats>
+
+    @Query(
+        """
+        SELECT *
+        FROM point_ledger
+        WHERE ledger_date BETWEEN :from AND :to
+        ORDER BY occurred_at ASC
+        """,
+    )
+    suspend fun getEntriesByDateRange(from: String, to: String): List<PointLedgerEntity>
+
+    @Query(
+        """
+        SELECT COALESCE(SUM(delta_points), 0)
+        FROM point_ledger
+        WHERE ledger_date < :date
+        """
+    )
+    suspend fun sumNetBeforeDate(date: String): Double
+
+    @Query(
+        """
+        SELECT
             id AS id,
             ledger_date AS ledgerDate,
             occurred_at AS occurredAt,

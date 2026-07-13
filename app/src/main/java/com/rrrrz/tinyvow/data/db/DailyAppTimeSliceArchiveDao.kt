@@ -35,6 +35,16 @@ interface DailyAppTimeSliceArchiveDao {
     )
     suspend fun getByDateSync(date: String): List<DailyAppTimeSliceArchiveEntity>
 
+    @Query(
+        """
+        SELECT *
+        FROM daily_app_time_slice_archives
+        WHERE archive_date BETWEEN :from AND :to
+        ORDER BY archive_date ASC, slice_index ASC, usage_millis DESC, package_name ASC
+        """
+    )
+    suspend fun getByDateRangeSync(from: String, to: String): List<DailyAppTimeSliceArchiveEntity>
+
     @Transaction
     suspend fun replaceForDate(date: String, items: List<DailyAppTimeSliceArchiveEntity>) {
         deleteByDate(date)

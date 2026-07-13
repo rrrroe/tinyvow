@@ -69,6 +69,7 @@ import com.rrrrz.tinyvow.data.repository.AppGroupWithApps
 import com.rrrrz.tinyvow.data.repository.CustomRewardDraft
 import com.rrrrz.tinyvow.data.repository.InventoryRewardItem
 import com.rrrrz.tinyvow.data.repository.PendingStreakShieldItem
+import com.rrrrz.tinyvow.data.repository.RewardPurchaseLimitPeriod
 import com.rrrrz.tinyvow.data.repository.RewardIconCatalog
 import com.rrrrz.tinyvow.data.repository.RewardIconStorage
 import com.rrrrz.tinyvow.data.repository.RewardIconSpec
@@ -453,24 +454,18 @@ fun RewardInventoryScreen(
 
             when (subsection) {
                 InventorySubsection.ITEMS -> {
-                    if (pendingItems.isNotEmpty()) {
-                        item { RewardSectionTitle(title = AppText.t("redeem_inventory_pending_title")) }
-                        items(pendingItems, key = { it.pending.id }) { item ->
-                            PendingShieldCard(
-                                item = item,
-                                onUse = { onResolvePending(item.pending.id, true) },
-                                onDismiss = { onResolvePending(item.pending.id, false) },
-                            )
-                        }
-                    }
-
                     item { RewardSectionTitle(title = AppText.t("redeem_inventory_title")) }
                     if (inventoryItems.isEmpty()) {
                         item { EmptyRewardsCard(text = AppText.t("redeem_inventory_empty")) }
                     } else {
                         items(inventoryItems, key = { it.reward.id }) { item ->
+                            val shieldPending =
+                                item.shieldTarget?.let { target ->
+                                    pendingItems.firstOrNull { it.pending.shieldTarget == target }
+                                }
                             InventoryRewardCard(
                                 item = item,
+                                shieldPending = shieldPending,
                                 onUseClick = {
                                     when (item.reward.rewardType) {
                                         RewardType.TIME_ADD,
@@ -481,6 +476,9 @@ fun RewardInventoryScreen(
                                         RewardType.DOUBLE_POINTS_DAY -> {
                                             useReward = item.reward
                                             useTargetType = GroupType.ENCOURAGE
+                                        }
+                                        RewardType.STREAK_SHIELD -> {
+                                            shieldPending?.let { onResolvePending(it.pending.id, true) }
                                         }
                                         else -> Unit
                                     }
@@ -599,13 +597,13 @@ private fun SubsectionSwitcher(
         )
         InventorySwitchButton(
             selected = current == InventorySubsection.PURCHASES,
-            title = AppText.t("redeem_recent_redemptions"),
+            title = AppText.t("redeem_recent_redemptions_short"),
             onClick = { onChange(InventorySubsection.PURCHASES) },
             modifier = Modifier.weight(1f),
         )
         InventorySwitchButton(
             selected = current == InventorySubsection.USES,
-            title = AppText.t("redeem_use_history_title"),
+            title = AppText.t("redeem_use_history_short"),
             onClick = { onChange(InventorySubsection.USES) },
             modifier = Modifier.weight(1f),
         )
@@ -807,21 +805,21 @@ private fun StoreRewardItemCard(
                     text = reward.localizedTitle(),
                     style = MaterialTheme.typography.titleSmall,
                     color = themeColors.ink,
-                    maxLines = 1,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
                     text = reward.localizedDescription(),
                     style = MaterialTheme.typography.bodySmall,
                     color = themeColors.inkMuted,
-                    maxLines = 1,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
                     text = storeStockText,
                     style = MaterialTheme.typography.labelSmall,
                     color = if (canPurchase) themeColors.inkMuted else MaterialTheme.colorScheme.error,
-                    maxLines = 1,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
@@ -885,7 +883,11 @@ private fun storeStockText(item: RewardStoreItem): String {
             AppText.t("redeem_store_stock_owned_value", reward.stock, item.ownedQuantity)
         }
     return if (reward.builtinKey != null) {
-        AppText.t("redeem_store_stock_owned_daily_limit", stockText, item.purchasedTodayCount)
+        if (item.purchaseLimitPeriod == RewardPurchaseLimitPeriod.MONTHLY) {
+            AppText.t("redeem_store_stock_owned_monthly_limit", stockText, item.purchasedInLimitPeriodCount)
+        } else {
+            AppText.t("redeem_store_stock_owned_daily_limit", stockText, item.purchasedInLimitPeriodCount)
+        }
     } else {
         stockText
     }
@@ -961,13 +963,15 @@ private fun RewardConfigItemCard(
 @Composable
 private fun InventoryRewardCard(
     item: InventoryRewardItem,
+    shieldPending: PendingStreakShieldItem?,
     onUseClick: () -> Unit,
 ) {
     val reward = item.reward
     val canUse =
         reward.rewardType == RewardType.TIME_ADD ||
             reward.rewardType == RewardType.PERIOD_PASS ||
-            reward.rewardType == RewardType.DOUBLE_POINTS_DAY
+            reward.rewardType == RewardType.DOUBLE_POINTS_DAY ||
+            (reward.rewardType == RewardType.STREAK_SHIELD && shieldPending != null)
     TinyVowCard(
         modifier = Modifier
             .fillMaxWidth()
@@ -993,6 +997,15 @@ private fun InventoryRewardCard(
                     text = reward.localizedTitle(),
                     style = MaterialTheme.typography.titleSmall,
                 )
+                if (reward.rewardType == RewardType.STREAK_SHIELD) {
+                    Text(
+                        text =
+                            shieldPending?.let { AppText.t("redeem_inventory_shield_available_date", it.pending.archiveDate) }
+                                ?: AppText.t("redeem_inventory_shield_unavailable"),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 Text(
                     text = reward.localizedDescription(),
                     style = MaterialTheme.typography.bodySmall,
@@ -1005,10 +1018,11 @@ private fun InventoryRewardCard(
                     color = MaterialTheme.colorScheme.primary,
                 )
             }
-            if (canUse) {
+            if (canUse || reward.rewardType == RewardType.STREAK_SHIELD) {
                 InventorySubButton(
                     text = AppText.t("redeem_inventory_use"),
                     onClick = onUseClick,
+                    enabled = canUse,
                     primary = true,
                 )
             } else {

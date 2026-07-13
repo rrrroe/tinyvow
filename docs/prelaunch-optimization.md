@@ -1,12 +1,12 @@
 # Tiny Vow 上架前优化清单
 
-最后检查日期：2026-05-31
+最后检查日期：2026-07-13
 
 本清单用于每次准备上架、提审、发国内测试包或整理发布产物前做收口。目标是先保证发布可控、审核材料一致、核心链路可验证，再考虑体验打磨。
 
 ## 当前结论
 
-- 当前版本来源是 `gradle.properties`：`TINYVOW_VERSION_NAME=1.1.0`、`TINYVOW_VERSION_CODE=6`。
+- 当前版本来源是 `gradle.properties`：`TINYVOW_VERSION_NAME=1.2.0`、`TINYVOW_VERSION_CODE=8`。
 - Google Play 渠道包名是 `com.rrrrz.tinyvow`，国内渠道包名是 `com.rrrrz.tinyvow.cn`。
 - release 产物必须归档到 `dist/`，命名为 `tinyvow-{channel}-{versionName}-vc{versionCode}-release.{apk|aab}`。
 - 核心发布风险不在单一代码点，而在权限披露、无障碍审核说明、订阅商品配置、真机 release 验证和商店资料一致性。

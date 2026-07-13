@@ -7,9 +7,13 @@ import com.rrrrz.tinyvow.data.db.DailyAppTimeSliceArchiveEntity
 import com.rrrrz.tinyvow.data.db.DailyArchiveEntity
 import com.rrrrz.tinyvow.data.db.DailyGroupArchiveEntity
 import com.rrrrz.tinyvow.data.db.GroupType
+import com.rrrrz.tinyvow.data.db.OfflineFocusSessionEntity
+import com.rrrrz.tinyvow.data.db.PointLedgerEntity
 import com.rrrrz.tinyvow.data.repository.AppGroupWithApps
 import com.rrrrz.tinyvow.data.repository.ArchiveDateUtils
+import com.rrrrz.tinyvow.data.repository.BUILTIN_REWARD_DEFINITIONS
 import com.rrrrz.tinyvow.data.repository.DailyArchiveRepository
+import com.rrrrz.tinyvow.data.repository.LiveDayReportSnapshot
 import com.rrrrz.tinyvow.data.repository.OfflineFocusRepository
 import com.rrrrz.tinyvow.data.repository.OfflineFocusTodaySummary
 import com.rrrrz.tinyvow.data.time.BusinessDay
@@ -114,6 +118,7 @@ internal suspend fun buildArchivedWindowReportUiState(
     archiveRepository: DailyArchiveRepository,
     offlineFocusRepository: OfflineFocusRepository,
     recentArchives: List<DailyArchiveEntity>,
+    liveDaySnapshot: LiveDayReportSnapshot?,
     selectedWeekStart: LocalDate?,
     selectedMonth: YearMonth?,
     selectedYear: Int?,
@@ -175,29 +180,74 @@ internal suspend fun buildArchivedWindowReportUiState(
     val currentTo = ArchiveDateUtils.formatDate(periodBounds.endDate)
     val previousFrom = ArchiveDateUtils.formatDate(periodBounds.previousStartDate)
     val previousTo = ArchiveDateUtils.formatDate(periodBounds.previousEndDate)
-    val currentArchives = archiveRepository.getArchivesByRange(currentFrom, currentTo).first()
+    val currentArchives =
+        (
+            archiveRepository.getArchivesByRange(currentFrom, currentTo).first() +
+                listOfNotNull(
+                    liveDaySnapshot
+                        ?.archive
+                        ?.takeIf { it.archiveDate in currentFrom..currentTo },
+                )
+        ).distinctBy { it.archiveDate }
+    val pointStats =
+        if (selectedTab == ReportTab.WEEK || selectedTab == ReportTab.MONTH) {
+            archiveRepository.getPointLedgerDailyStatsByRange(currentFrom, currentTo)
+        } else {
+            emptyList()
+        }
+    val pointEntries =
+        if (selectedTab == ReportTab.WEEK || selectedTab == ReportTab.MONTH) {
+            archiveRepository.getPointLedgerEntriesByRange(currentFrom, currentTo)
+        } else {
+            emptyList()
+        }
+    val openingPointBalance =
+        if (selectedTab == ReportTab.WEEK || selectedTab == ReportTab.MONTH) {
+            archiveRepository.getPointBalanceBeforeDate(currentFrom)
+        } else {
+            0.0
+        }
     val previousArchives = archiveRepository.getArchivesByRange(previousFrom, previousTo).first()
-    val currentAppArchives = archiveRepository.getAppArchivesByRange(currentFrom, currentTo).first()
+    val currentAppArchives =
+        archiveRepository.getAppArchivesByRange(currentFrom, currentTo).first() +
+            liveDaySnapshot
+                ?.takeIf { it.archive.archiveDate in currentFrom..currentTo }
+                ?.appArchives
+                .orEmpty()
+    val currentTimeSliceArchives =
+        if (selectedTab == ReportTab.WEEK || selectedTab == ReportTab.MONTH) {
+            archiveRepository.getAppTimeSliceArchivesByRange(currentFrom, currentTo) +
+                liveDaySnapshot
+                    ?.takeIf { it.archive.archiveDate in currentFrom..currentTo }
+                    ?.timeSliceArchives
+                    .orEmpty()
+        } else {
+            emptyList()
+        }
     val previousAppArchives = archiveRepository.getAppArchivesByRange(previousFrom, previousTo).first()
-    val currentGroupArchives = archiveRepository.getGroupArchivesByRange(currentFrom, currentTo).first()
+    val currentGroupArchives =
+        archiveRepository.getGroupArchivesByRange(currentFrom, currentTo).first() +
+            liveDaySnapshot
+                ?.takeIf { it.archive.archiveDate in currentFrom..currentTo }
+                ?.groupArchives
+                .orEmpty()
     val currentSnapshots = mergeArchivedAppSnapshots(currentAppArchives)
     val previousSnapshots = mergeArchivedAppSnapshots(previousAppArchives)
     val currentMetrics = buildArchivedWindowMetrics(currentSnapshots)
     val previousMetrics = buildArchivedWindowMetrics(previousSnapshots)
     val topApps =
-        archiveRepository
-            .getTopAppsByRange(
-                from = currentFrom,
-                to = currentTo,
-                limit = 10,
-            ).first()
-            .map {
+        currentSnapshots
+            .groupBy { it.packageName }
+            .map { (packageName, rows) ->
                 AppDisplayItem(
-                    packageName = it.packageName,
-                    label = it.appLabel,
-                    value = it.totalUsageMillis,
+                    packageName = packageName,
+                    label = rows.firstOrNull()?.label ?: packageName,
+                    value = rows.sumOf { it.usageMillis },
                 )
             }
+            .filter { it.value > 0L }
+            .sortedByDescending { it.value }
+            .take(10)
     val overview =
         ScopeOverview(
             totalUsageMillis = currentArchives.sumOf { it.totalUsageMillis },
@@ -236,6 +286,12 @@ internal suspend fun buildArchivedWindowReportUiState(
             dayStartMillis = offlineFocusStartMillis,
             dayEndMillis = offlineFocusEndMillis,
         )
+    val offlineFocusSessions =
+        if (selectedTab == ReportTab.WEEK || selectedTab == ReportTab.MONTH) {
+            offlineFocusRepository.getSessionsForRange(offlineFocusStartMillis, offlineFocusEndMillis)
+        } else {
+            emptyList()
+        }
     val comparisonData =
         buildArchivedComparisonMetrics(
             selectedTab = selectedTab,
@@ -244,6 +300,12 @@ internal suspend fun buildArchivedWindowReportUiState(
             previousMetrics = previousMetrics,
             averagePerDayUsage = averagePerDayUsage,
         ).takeIf { it.isNotEmpty() }?.let { ComparisonSectionData(it) }
+    val periodAppSliceCells =
+        if (selectedTab == ReportTab.WEEK || selectedTab == ReportTab.MONTH) {
+            buildWeeklyTimelineAppSliceCells(periodBounds.startDate, currentTimeSliceArchives, currentSnapshots)
+        } else {
+            emptyList()
+        }
     val reportData =
         buildPeriodReportData(
             selectedTab = selectedTab,
@@ -264,7 +326,60 @@ internal suspend fun buildArchivedWindowReportUiState(
                     )
                 },
             comparison = comparisonData,
-        )
+        ).let { data ->
+            if (selectedTab != ReportTab.WEEK && selectedTab != ReportTab.MONTH) {
+                data
+            } else {
+                val visualEndDate =
+                    if (selectedTab == ReportTab.MONTH) {
+                        YearMonth.from(periodBounds.startDate).atEndOfMonth()
+                    } else {
+                        periodBounds.startDate.plusDays(6)
+                    }
+                val visualDayCount =
+                    (visualEndDate.toEpochDay() - periodBounds.startDate.toEpochDay() + 1L)
+                        .toInt()
+                        .coerceAtLeast(1)
+                data.copy(
+                    weeklyPoints =
+                        buildWeeklyPointsSectionData(
+                            weekStart = periodBounds.startDate,
+                            periodEnd = visualEndDate,
+                            stats = pointStats,
+                            openingBalance = openingPointBalance,
+                            entries = pointEntries,
+                            groupArchives = currentGroupArchives,
+                            focusSessions = offlineFocusSessions,
+                            zoneId = zoneId,
+                            dayStartHour = dayStartHour,
+                        ),
+                    timeline =
+                        buildArchiveTimelineSectionData(
+                            selectedTab = selectedTab,
+                            timelineBuckets = hourBuckets,
+                            nightUsageMillis = currentMetrics.nightUsageMillis,
+                            periodUsage = buildPeriodUsageStats(hourBuckets),
+                            targetMillisPerBucket = null,
+                            sliceCells = selectDominantTimelineSliceCells(periodAppSliceCells),
+                            appSliceCells = periodAppSliceCells,
+                            gridRows = visualDayCount,
+                            sliceCellsAreGridOrdered = true,
+                        ),
+                    behaviorMap =
+                        buildArchivedBehaviorMapSectionData(
+                            snapshots = aggregateWeeklyBehaviorMapSnapshots(currentSnapshots),
+                            appArchives = currentAppArchives,
+                            groupArchives = currentGroupArchives,
+                        ),
+                    weeklyAppFocusDays =
+                        buildWeeklyAppFocusDays(
+                            startDate = periodBounds.startDate,
+                            snapshots = currentSnapshots,
+                            endDate = visualEndDate,
+                        ),
+                )
+            }
+        }
     val selectedWeekIndex = availableWeekStarts.indexOf(selectedWeekStart)
     val selectedMonthIndex = availableMonths.indexOf(selectedMonth)
     val selectedYearIndex = availableYears.indexOf(selectedYear)
@@ -307,6 +422,134 @@ internal suspend fun buildArchivedWindowReportUiState(
     }
 }
 
+internal fun buildWeeklyPointsSectionData(
+    weekStart: LocalDate,
+    periodEnd: LocalDate = weekStart.plusDays(6),
+    stats: List<com.rrrrz.tinyvow.data.db.PointLedgerDailyStats>,
+    openingBalance: Double,
+    entries: List<PointLedgerEntity> = emptyList(),
+    groupArchives: List<DailyGroupArchiveEntity> = emptyList(),
+    focusSessions: List<OfflineFocusSessionEntity> = emptyList(),
+    zoneId: ZoneId = ZoneId.systemDefault(),
+    dayStartHour: Int = BusinessDay.cachedStartHour(),
+): WeeklyPointsSectionData {
+    val byDate = stats.associateBy { it.ledgerDate }
+    val entriesByDate = entries.groupBy { it.ledgerDate }
+    val groupsByDate = groupArchives.groupBy { it.archiveDate }
+    val focusByDate =
+        focusSessions.groupBy { session ->
+            ArchiveDateUtils.formatDate(
+                ArchiveDateUtils.localDateAt(
+                    session.completedAt ?: session.abandonedAt ?: session.startedAt,
+                    zoneId,
+                    dayStartHour,
+                ),
+            )
+        }
+    var balance = openingBalance
+    val dayCount = (periodEnd.toEpochDay() - weekStart.toEpochDay() + 1L).coerceAtLeast(1L)
+    val useDayOfMonthLabel = dayCount > 7L
+    val days =
+        (0L until dayCount).map { offset ->
+            val date = weekStart.plusDays(offset)
+            val day = byDate[ArchiveDateUtils.formatDate(date)]
+            val earned = day?.earnedPoints ?: 0.0
+            val spent = day?.spentPoints ?: 0.0
+            balance += earned - spent
+            val dateKey = ArchiveDateUtils.formatDate(date)
+            val dayEntries = entriesByDate[dateKey].orEmpty()
+            val focusSummaries =
+                focusByDate[dateKey]
+                    .orEmpty()
+                    .groupBy { it.categoryNameSnapshot }
+                    .map { (name, sessions) ->
+                        WeeklyPointsFocusSummary(
+                            name = name,
+                            durationMillis = sessions.sumOf { it.actualDurationMillis },
+                            sessionCount = sessions.size,
+                            pointDelta = sessions.sumOf { it.pointsAwarded },
+                        )
+                    }
+                    .filter { it.durationMillis > 0L || it.pointDelta != 0.0 }
+                    .sortedByDescending { it.durationMillis }
+            val groupSummaries =
+                groupsByDate[dateKey]
+                    .orEmpty()
+                    .filter { it.groupType == GroupType.ENCOURAGE }
+                    .map { group ->
+                        WeeklyPointsGroupSummary(
+                            name = group.groupName,
+                            durationMillis = group.dailyUsageMillis,
+                            completed = group.completed,
+                            pointDelta = group.earnedPoints - group.spentPoints,
+                        )
+                    }
+                    .sortedByDescending { it.durationMillis }
+            val rewardSpends =
+                dayEntries
+                    .filter { it.entryType == com.rrrrz.tinyvow.data.db.PointLedgerEntryType.REWARD_SPEND }
+                    .map { entry ->
+                        WeeklyPointsRewardSpend(
+                            rewardTitle = localizedWeeklyRewardTitle(entry),
+                            pointDelta = entry.deltaPoints,
+                        )
+                    }
+            WeeklyPointsDay(
+                label =
+                    if (useDayOfMonthLabel) {
+                        date.dayOfMonth.toString()
+                    } else {
+                        date.dayOfWeek.getDisplayName(TextStyle.NARROW, Locale.getDefault())
+                    },
+                dateLabel = date.format(DateTimeFormatter.ofPattern("M.d", Locale.getDefault())),
+                earnedPoints = earned,
+                spentPoints = spent,
+                closingBalance = balance,
+                entries =
+                    dayEntries.map { entry ->
+                        WeeklyPointsLedgerEntry(
+                            occurredAt = entry.occurredAt,
+                            deltaPoints = entry.deltaPoints,
+                            entryType = entry.entryType,
+                            groupName = entry.groupNameSnapshot,
+                            rewardTitle =
+                                if (entry.entryType == com.rrrrz.tinyvow.data.db.PointLedgerEntryType.REWARD_SPEND) {
+                                    localizedWeeklyRewardTitle(entry)
+                                } else {
+                                    entry.rewardTitleSnapshot
+                                },
+                            note = entry.note,
+                        )
+                    },
+                focusSummaries = focusSummaries,
+                groupSummaries = groupSummaries,
+                rewardSpends = rewardSpends,
+            )
+        }
+    return WeeklyPointsSectionData(
+        days = days,
+        earnedPoints = days.sumOf { it.earnedPoints },
+        spentPoints = days.sumOf { it.spentPoints },
+        netPoints = days.sumOf { it.earnedPoints - it.spentPoints },
+    )
+}
+
+private fun localizedWeeklyRewardTitle(entry: PointLedgerEntity): String {
+    val snapshot =
+        entry.rewardTitleSnapshot?.takeIf(String::isNotBlank)
+            ?: entry.note.takeIf(String::isNotBlank)
+            ?: return AppText.t("stats_weekly_points_entry_reward_spend")
+    val builtinKeyFromId =
+        entry.rewardId
+            ?.takeIf { it.startsWith("builtin:") }
+            ?.removePrefix("builtin:")
+            ?.takeIf { key -> BUILTIN_REWARD_DEFINITIONS.any { it.builtinKey == key } }
+    val builtinKey =
+        builtinKeyFromId
+            ?: BUILTIN_REWARD_DEFINITIONS.firstOrNull { it.title == snapshot }?.builtinKey
+    return builtinKey?.let { AppText.t("${it}_title") } ?: snapshot
+}
+
 internal fun buildAvailableWeekStarts(recentArchives: List<DailyArchiveEntity>): List<LocalDate> =
     recentArchives
         .map { LocalDate.parse(it.archiveDate).with(TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY)) }
@@ -332,11 +575,11 @@ internal fun resolvePeriodBounds(
     selectedMonth: YearMonth?,
     selectedYear: Int?,
 ): PeriodBounds? {
-    val yesterday = BusinessDay.today(zoneId, BusinessDay.cachedStartHour()).minusDays(1)
+    val today = BusinessDay.today(zoneId, BusinessDay.cachedStartHour())
     return when (selectedTab) {
         ReportTab.WEEK -> {
             val start = selectedWeekStart ?: return null
-            val end = minOf(start.plusDays(6), yesterday)
+            val end = minOf(start.plusDays(6), today)
             val daySpan = (end.toEpochDay() - start.toEpochDay()).coerceAtLeast(0L)
             val previousStart = start.minusWeeks(1)
             PeriodBounds(
@@ -349,7 +592,7 @@ internal fun resolvePeriodBounds(
         ReportTab.MONTH -> {
             val month = selectedMonth ?: return null
             val start = month.atDay(1)
-            val end = minOf(month.atEndOfMonth(), yesterday)
+            val end = minOf(month.atEndOfMonth(), today)
             val daySpan = (end.toEpochDay() - start.toEpochDay()).coerceAtLeast(0L)
             val previousMonth = month.minusMonths(1)
             val previousStart = previousMonth.atDay(1)
@@ -363,7 +606,7 @@ internal fun resolvePeriodBounds(
         ReportTab.YEAR -> {
             val year = selectedYear ?: return null
             val start = LocalDate.of(year, 1, 1)
-            val end = minOf(LocalDate.of(year, 12, 31), yesterday)
+            val end = minOf(LocalDate.of(year, 12, 31), today)
             val daySpan = (end.toEpochDay() - start.toEpochDay()).coerceAtLeast(0L)
             val previousStart = LocalDate.of(year - 1, 1, 1)
             PeriodBounds(
@@ -407,10 +650,34 @@ internal fun buildPeriodDaySummaries(
 
 internal fun buildPeriodHourBuckets(items: List<ArchivedAppSnapshot>): List<DailyTimelineBucket> =
     (0 until 24).map { hour ->
+        val appSegments =
+            items
+                .mapNotNull { snapshot ->
+                    val millis = snapshot.hourlyBuckets.getOrElse(hour) { 0L }
+                    if (millis <= 0L) {
+                        null
+                    } else {
+                        DailyTimelineAppSegment(
+                            packageName = snapshot.packageName,
+                            label = snapshot.label,
+                            millis = millis,
+                        )
+                    }
+                }
+                .groupBy { it.packageName to it.label }
+                .map { (app, segments) ->
+                    DailyTimelineAppSegment(
+                        packageName = app.first,
+                        label = app.second,
+                        millis = segments.sumOf { it.millis },
+                    )
+                }
+                .sortedByDescending { it.millis }
         DailyTimelineBucket(
             hour = hour,
             label = dayHourLabel(hour),
-            deviceMillis = items.sumOf { snapshot -> snapshot.hourlyBuckets.getOrElse(hour) { 0L } },
+            deviceMillis = appSegments.sumOf { it.millis },
+            appSegments = appSegments,
         )
     }
 
@@ -560,6 +827,11 @@ internal fun buildWeeklyReportData(
         windowFocus = windowFocus,
         behavior = behavior,
         comparison = comparison,
+        totalUsageMillis = totalUsage,
+        controlUsageMillis = daySummaries.sumOf { it.controlUsageMillis },
+        encourageUsageMillis = daySummaries.sumOf { it.encourageUsageMillis },
+        savedMillis = daySummaries.sumOf { it.savedMillis },
+        weeklyAppFocusDays = buildWeeklyAppFocusDays(bounds.startDate, snapshots),
     )
 }
 
@@ -650,6 +922,10 @@ internal fun buildMonthlyReportData(
                 subtitle = AppText.t("stats_month_week_structure_description"),
                 weeks = monthWeeks,
             ),
+        totalUsageMillis = totalUsage,
+        controlUsageMillis = daySummaries.sumOf { it.controlUsageMillis },
+        encourageUsageMillis = daySummaries.sumOf { it.encourageUsageMillis },
+        savedMillis = totalSaved,
     )
 }
 
@@ -1652,6 +1928,7 @@ internal suspend fun buildArchivedDayReportUiState(
     recentArchives: List<DailyArchiveEntity>,
     archiveRepository: DailyArchiveRepository,
     offlineFocusRepository: OfflineFocusRepository,
+    liveDaySnapshot: LiveDayReportSnapshot?,
     updateState: ((DailyReportUiState) -> DailyReportUiState) -> Unit,
 ) {
     if (selectedDate == null || recentArchives.isEmpty()) {
@@ -1687,10 +1964,17 @@ internal suspend fun buildArchivedDayReportUiState(
     val selectedArchive = archivesDesc[selectedIndex]
     val previousArchive = archivesDesc.getOrNull(selectedIndex + 1)
     val nextArchive = archivesDesc.getOrNull(selectedIndex - 1)
-    val currentAppArchives = archiveRepository.getAppArchivesByDate(selectedArchive.archiveDate).first()
-    val currentTimeSliceArchives = archiveRepository.getAppTimeSliceArchivesByDate(selectedArchive.archiveDate).first()
+    val selectedLiveSnapshot = liveDaySnapshot?.takeIf { it.archive.archiveDate == selectedArchive.archiveDate }
+    val currentAppArchives =
+        selectedLiveSnapshot?.appArchives
+            ?: archiveRepository.getAppArchivesByDate(selectedArchive.archiveDate).first()
+    val currentTimeSliceArchives =
+        selectedLiveSnapshot?.timeSliceArchives
+            ?: archiveRepository.getAppTimeSliceArchivesByDate(selectedArchive.archiveDate).first()
     val currentSnapshots = mergeArchivedAppSnapshots(currentAppArchives)
-    val currentGroupArchives = archiveRepository.getGroupArchivesByDate(selectedArchive.archiveDate).first()
+    val currentGroupArchives =
+        selectedLiveSnapshot?.groupArchives
+            ?: archiveRepository.getGroupArchivesByDate(selectedArchive.archiveDate).first()
     val offlineFocusData =
         buildOfflineFocusSectionData(
             summary =
@@ -1835,6 +2119,7 @@ internal suspend fun buildArchivedDayReportUiState(
             averagePerDayUsage = averagePerDayUsage,
             averageMetrics = averageMetrics,
         )
+    val currentTimelineAppSliceCells = buildTimelineAppSliceCells(currentTimeSliceArchives)
     val timelineStateData =
         buildArchiveTimelineSectionData(
             selectedTab = ReportTab.DAY,
@@ -1842,7 +2127,8 @@ internal suspend fun buildArchivedDayReportUiState(
             nightUsageMillis = currentMetrics.nightUsageMillis,
             periodUsage = periodUsage,
             targetMillisPerBucket = dailyGoalMillis.takeIf { it > 0L }?.let { it / 24L },
-            sliceCells = buildTimelineSliceCells(currentTimeSliceArchives),
+            sliceCells = selectDominantTimelineSliceCells(currentTimelineAppSliceCells),
+            appSliceCells = currentTimelineAppSliceCells,
         )
     val dailyFocusData =
         buildDailyFocusSectionData(
@@ -1950,6 +2236,25 @@ internal suspend fun buildArchivedDayReportUiState(
     }
 }
 
+internal fun aggregateWeeklyBehaviorMapSnapshots(items: List<ArchivedAppSnapshot>): List<ArchivedAppSnapshot> =
+    items
+        .groupBy { it.packageName }
+        .map { (packageName, rows) ->
+            ArchivedAppSnapshot(
+                archiveDate = rows.minOfOrNull { it.archiveDate } ?: "",
+                packageName = packageName,
+                label = rows.firstOrNull()?.label ?: packageName,
+                usageMillis = rows.sumOf { it.usageMillis },
+                openCount = rows.sumOf { it.openCount.toLong() }.coerceAtMost(Int.MAX_VALUE.toLong()).toInt(),
+                sessionCount = rows.sumOf { it.sessionCount.toLong() }.coerceAtMost(Int.MAX_VALUE.toLong()).toInt(),
+                longestSessionMillis = rows.maxOfOrNull { it.longestSessionMillis } ?: 0L,
+                nightUsageMillis = rows.sumOf { it.nightUsageMillis },
+                hourlyBuckets = LongArray(24) { hour -> rows.sumOf { it.hourlyBuckets.getOrElse(hour) { 0L } } },
+            )
+        }
+        .sortedByDescending { it.usageMillis }
+        .take(BEHAVIOR_MAP_MAX_POINTS)
+
 internal fun buildOfflineFocusSectionData(
     summary: OfflineFocusTodaySummary,
     dayStartMillis: Long,
@@ -2029,6 +2334,11 @@ internal fun buildArchiveTimelineSectionData(
     periodUsage: List<PeriodUsageStat>,
     targetMillisPerBucket: Long? = null,
     sliceCells: List<DailyTimelineSliceCell> = emptyList(),
+    appSliceCells: List<DailyTimelineSliceCell> = emptyList(),
+    cellsPerHour: Int = 12,
+    gridRows: Int = 12,
+    sliceCellsAreGridOrdered: Boolean = false,
+    gridRowLabels: List<String> = emptyList(),
 ): TimelineSectionData {
     val peakBucket = timelineBuckets.maxByOrNull { it.deviceMillis }
     val peakPair =
@@ -2051,23 +2361,158 @@ internal fun buildArchiveTimelineSectionData(
         nightUsageMillis = nightUsageMillis,
         targetMillisPerBucket = targetMillisPerBucket,
         sliceCells = sliceCells,
+        appSliceCells = appSliceCells,
+        cellsPerHour = cellsPerHour,
+        gridRows = gridRows,
+        sliceCellsAreGridOrdered = sliceCellsAreGridOrdered,
+        gridRowLabels = gridRowLabels,
     )
 }
 
-internal fun buildTimelineSliceCells(items: List<DailyAppTimeSliceArchiveEntity>): List<DailyTimelineSliceCell> =
-    items
-        .groupBy { it.sliceIndex }
-        .mapNotNull { (sliceIndex, sliceItems) ->
-            sliceItems
-                .maxWithOrNull(compareBy<DailyAppTimeSliceArchiveEntity> { it.usageMillis }.thenBy { it.packageName })
-                ?.takeIf { it.usageMillis > 0L }
-                ?.let { dominant ->
-                    DailyTimelineSliceCell(
-                        sliceIndex = sliceIndex,
-                        packageName = dominant.packageName,
-                        millis = dominant.usageMillis,
+internal fun buildWeeklyTimelineSliceCells(
+    startDate: LocalDate,
+    items: List<DailyAppTimeSliceArchiveEntity>,
+    snapshots: List<ArchivedAppSnapshot> = emptyList(),
+): List<DailyTimelineSliceCell> =
+    selectDominantTimelineSliceCells(
+        buildWeeklyTimelineAppSliceCells(startDate, items, snapshots),
+    )
+
+internal fun buildWeeklyTimelineAppSliceCells(
+    startDate: LocalDate,
+    items: List<DailyAppTimeSliceArchiveEntity>,
+    snapshots: List<ArchivedAppSnapshot> = emptyList(),
+): List<DailyTimelineSliceCell> {
+    val archivedAppCells =
+        items
+            .groupBy { item ->
+                val dayOffset = (LocalDate.parse(item.archiveDate).toEpochDay() - startDate.toEpochDay()).toInt()
+                val hour = item.sliceIndex / 12
+                (dayOffset * 24 + hour) to item.packageName
+            }
+            .map { (key, appItems) ->
+                val (sliceIndex, packageName) = key
+                val usageMillis = appItems.sumOf { it.usageMillis }
+            DailyTimelineSliceCell(
+                sliceIndex = sliceIndex,
+                    packageName = packageName,
+                    millis = usageMillis,
+                    totalMillis = usageMillis,
+            )
+            }
+            .filter { it.millis > 0L }
+            .sortedWith(compareBy<DailyTimelineSliceCell> { it.sliceIndex }.thenByDescending { it.millis })
+    if (archivedAppCells.isNotEmpty()) return archivedAppCells
+    val fallbackAppCells = snapshots
+        .flatMap { snapshot ->
+            val dayOffset = (LocalDate.parse(snapshot.archiveDate).toEpochDay() - startDate.toEpochDay()).toInt()
+            (0 until 24).mapNotNull { hour ->
+                val millis = snapshot.hourlyBuckets.getOrElse(hour) { 0L }
+                if (millis <= 0L) {
+                    null
+                } else {
+                    DailyTimelineSliceCell(dayOffset * 24 + hour, snapshot.packageName, millis, millis)
+                }
+            }
+        }
+        .sortedWith(compareBy<DailyTimelineSliceCell> { it.sliceIndex }.thenByDescending { it.millis })
+    return fallbackAppCells
+}
+
+internal fun buildWeeklyAppFocusDays(
+    startDate: LocalDate,
+    snapshots: List<ArchivedAppSnapshot>,
+    endDate: LocalDate = startDate.plusDays(6),
+): List<WeeklyAppFocusDay> {
+    val snapshotsByDate = snapshots.groupBy { LocalDate.parse(it.archiveDate) }
+    val useDayOfMonthLabel = endDate.toEpochDay() - startDate.toEpochDay() + 1L > 7L
+    return generateDateSequence(startDate, endDate).map { date ->
+        val apps =
+            snapshotsByDate[date]
+                .orEmpty()
+                .groupBy { it.packageName }
+                .map { (packageName, rows) ->
+                    WeeklyAppFocusItem(
+                        packageName = packageName,
+                        label = rows.firstOrNull()?.label ?: packageName,
+                        usageMillis = rows.sumOf { it.usageMillis },
+                        openCount = rows.sumOf { it.openCount },
                     )
                 }
+        WeeklyAppFocusDay(
+            dayCode =
+                if (useDayOfMonthLabel) {
+                    date.dayOfMonth.toString()
+                } else {
+                    date.dayOfWeek.getDisplayName(TextStyle.NARROW, Locale.getDefault())
+                },
+            apps = apps,
+        )
+    }
+}
+
+internal fun buildTimelineAppSliceCells(items: List<DailyAppTimeSliceArchiveEntity>): List<DailyTimelineSliceCell> =
+    items
+        .filter { it.usageMillis > 0L }
+        .map { item ->
+            DailyTimelineSliceCell(
+                sliceIndex = item.sliceIndex,
+                packageName = item.packageName,
+                millis = item.usageMillis,
+                totalMillis = item.usageMillis,
+            )
+        }
+        .sortedWith(compareBy<DailyTimelineSliceCell> { it.sliceIndex }.thenByDescending { it.millis })
+
+internal fun buildLiveTimelineAppSliceCells(
+    dayStartMillis: Long,
+    endMillis: Long,
+    sessions: List<AppSession>,
+): List<DailyTimelineSliceCell> {
+    val sliceMillis = 5L * 60_000L
+    val usageBySliceAndPackage = linkedMapOf<Pair<Int, String>, Long>()
+    sessions.forEach { session ->
+        val clippedStart = max(session.startTime, dayStartMillis)
+        val clippedEnd = min(session.endTime, endMillis)
+        if (clippedEnd <= clippedStart) return@forEach
+        var cursor = clippedStart
+        while (cursor < clippedEnd) {
+            val sliceIndex = ((cursor - dayStartMillis) / sliceMillis).toInt()
+            val nextSliceStart = dayStartMillis + (sliceIndex + 1L) * sliceMillis
+            val segmentEnd = min(clippedEnd, nextSliceStart)
+            val key = sliceIndex to session.packageName
+            usageBySliceAndPackage[key] = usageBySliceAndPackage.getOrDefault(key, 0L) + (segmentEnd - cursor)
+            cursor = segmentEnd
+        }
+    }
+    return usageBySliceAndPackage
+        .map { (key, usageMillis) ->
+            DailyTimelineSliceCell(
+                sliceIndex = key.first,
+                packageName = key.second,
+                millis = usageMillis,
+                totalMillis = usageMillis,
+            )
+        }
+        .sortedWith(compareBy<DailyTimelineSliceCell> { it.sliceIndex }.thenByDescending { it.millis })
+}
+
+internal fun buildTimelineSliceCells(items: List<DailyAppTimeSliceArchiveEntity>): List<DailyTimelineSliceCell> =
+    selectDominantTimelineSliceCells(buildTimelineAppSliceCells(items))
+
+internal fun selectDominantTimelineSliceCells(
+    appSliceCells: List<DailyTimelineSliceCell>,
+): List<DailyTimelineSliceCell> =
+    appSliceCells
+        .groupBy { it.sliceIndex }
+        .mapNotNull { (sliceIndex, cells) ->
+            cells
+                .filter { it.millis > 0L && it.packageName != null }
+                .maxWithOrNull(compareBy<DailyTimelineSliceCell> { it.millis }.thenBy { it.packageName })
+                ?.copy(
+                    sliceIndex = sliceIndex,
+                    totalMillis = cells.sumOf { it.millis },
+                )
         }
         .sortedBy { it.sliceIndex }
 
@@ -3328,7 +3773,17 @@ internal suspend fun buildDailyReportUiState(
             appLabels = devicePackages.mapValues { it.value.label },
         )
     val periodUsage = buildPeriodUsageStats(timelineBuckets)
-    val timelineInsight = buildTimelineSectionData(timelineBuckets)
+    val liveTimelineAppSliceCells =
+        buildLiveTimelineAppSliceCells(
+            dayStartMillis = todayStart,
+            endMillis = nowMillis,
+            sessions = deviceSessions,
+        )
+    val timelineInsight =
+        buildTimelineSectionData(
+            timelineBuckets = timelineBuckets,
+            appSliceCells = liveTimelineAppSliceCells,
+        )
     val behaviorMapData =
         buildLiveBehaviorMapSectionData(
             usageStats = deviceUsageStats,
@@ -3758,6 +4213,7 @@ internal fun buildPeriodUsageStats(
 
 internal fun buildTimelineSectionData(
     timelineBuckets: List<DailyTimelineBucket>,
+    appSliceCells: List<DailyTimelineSliceCell> = emptyList(),
 ): TimelineSectionData {
     val peakHour = timelineBuckets.maxByOrNull { it.deviceMillis }
     val peakTwoHour = timelineBuckets.windowed(size = 2, step = 1, partialWindows = false)
@@ -3772,6 +4228,8 @@ internal fun buildTimelineSectionData(
         peakTwoHourLabel = peakTwoHour?.first?.let { AppText.t("stats_hour_range_format", it.first().label, it.last().hour + 1) } ?: "--",
         peakTwoHourMillis = peakTwoHour?.second ?: 0L,
         nightUsageMillis = timelineBuckets.filter { it.hour < 6 || it.hour >= 22 }.sumOf { it.deviceMillis },
+        sliceCells = selectDominantTimelineSliceCells(appSliceCells),
+        appSliceCells = appSliceCells,
     )
 }
 

@@ -11,6 +11,7 @@ import com.rrrrz.tinyvow.data.repository.FocusIconStorage
 import com.rrrrz.tinyvow.data.repository.RewardIconStorage
 import com.rrrrz.tinyvow.data.settings.ManagedAppPreferences
 import com.rrrrz.tinyvow.data.special.WeReadApiKeyStore
+import com.rrrrz.tinyvow.data.steps.HealthConnectStepProbe
 import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
@@ -134,6 +135,7 @@ class LocalDataManager(
             LocalActivationSubscriptionRepository.clearStoredActivationData(context)
             RewardIconStorage.fromContext(context).clearAll()
             FocusIconStorage.fromContext(context).clearAll()
+            HealthConnectStepProbe.clearStoredHistory(context)
             WeReadApiKeyStore.deleteStoredKeyMaterial()
             WeReadApiKeyStore.deletePendingRestoredKey(context)
             File(context.cacheDir, "share").deleteRecursively()
@@ -370,6 +372,10 @@ class LocalDataManager(
                 "focus_icons",
                 "Imported custom focus type icon files managed inside Tiny Vow app storage.",
             ) { context -> File(context.filesDir, "focus_icons") },
+            LocalDataStore(
+                "health_connect_step_probe",
+                "Debug-only Health Connect step probe snapshots retained for at most seven calendar days.",
+            ) { context -> HealthConnectStepProbe.storedHistoryFile(context) },
         )
     }
 }

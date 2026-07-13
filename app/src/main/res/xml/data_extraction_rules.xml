@@ -19,6 +19,9 @@
         <exclude
             domain="file"
             path="weread_api_key_pending_restore" />
+        <exclude
+            domain="sharedpref"
+            path="health_connect_step_probe.xml" />
     </cloud-backup>
     <device-transfer>
         <exclude
@@ -39,5 +42,8 @@
         <exclude
             domain="file"
             path="weread_api_key_pending_restore" />
+        <exclude
+            domain="sharedpref"
+            path="health_connect_step_probe.xml" />
     </device-transfer>
 </data-extraction-rules>

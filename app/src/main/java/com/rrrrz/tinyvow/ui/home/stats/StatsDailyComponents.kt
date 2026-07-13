@@ -19,6 +19,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.ColumnScope
@@ -52,10 +53,12 @@ import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Analytics
 import androidx.compose.material.icons.filled.Insights
 import androidx.compose.material.icons.filled.PhoneAndroid
 import androidx.compose.material.icons.filled.RocketLaunch
 import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.ScatterPlot
 import androidx.compose.material.icons.filled.Timeline
 import androidx.compose.material.icons.filled.TouchApp
 import androidx.compose.material.icons.filled.WbSunny
@@ -100,6 +103,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
@@ -1161,15 +1165,27 @@ private fun formatTideDelta(deltaMillis: Long?): String {
 internal fun DailyRhythmCard(
     timelineState: SectionState<TimelineSectionData>,
     focusState: SectionState<DailyFocusSectionData> = SectionState.Empty,
+    subtitle: String = AppText.t("stats_time_flow_description"),
+    emptyMessage: String = AppText.t("stats_this_archived_day_does_not_have_enough_usage"),
+    weeklyAppFocusDays: List<WeeklyAppFocusDay> = emptyList(),
+    behaviorMapData: BehaviorMapSectionData? = null,
 ) {
     val context = LocalContext.current
     val preferences = remember(context) { ManagedAppPreferences(context.applicationContext) }
     val showCellIcons by preferences.dailyRhythmCellIconsEnabled.collectAsState(initial = false)
     val scope = rememberCoroutineScope()
+    var weeklySortByOpens by rememberSaveable { mutableStateOf(true) }
+    var selectedRhythmAppPackage by remember(timelineState) { mutableStateOf<String?>(null) }
+    val isWeekly = (timelineState as? SectionState.Ready)?.data?.let(::isPeriodRhythmTimeline) == true
     ReportCard {
         Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
             if (timelineState is SectionState.Ready) {
                 DailyRhythmHeader(
+                    subtitle = subtitle,
+                    showIconToggle = true,
+                    isWeekly = isWeekly,
+                    weeklySortByOpens = weeklySortByOpens,
+                    onWeeklySortChange = { weeklySortByOpens = it },
                     showCellIcons = showCellIcons,
                     onShowCellIconsChange = { enabled ->
                         scope.launch(Dispatchers.IO) {
@@ -1181,7 +1197,7 @@ internal fun DailyRhythmCard(
                 SectionHeader(
                     icon = Icons.Default.Timeline,
                     title = AppText.t("stats_time_flow"),
-                    subtitle = AppText.t("stats_time_flow_description"),
+                    subtitle = subtitle,
                 )
             }
             when (timelineState) {
@@ -1209,7 +1225,7 @@ internal fun DailyRhythmCard(
                 SectionState.Empty -> {
                     DailyTimelineChart(emptyList())
                     Text(
-                        text = AppText.t("stats_this_archived_day_does_not_have_enough_usage"),
+                        text = emptyMessage,
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
@@ -1218,36 +1234,111 @@ internal fun DailyRhythmCard(
                     DailyRhythmProfileStrip(
                         data = timelineState.data,
                         showCellIcons = showCellIcons,
+                        selectedPackageName = selectedRhythmAppPackage,
+                        onPackageClick = { packageName ->
+                            selectedRhythmAppPackage =
+                                packageName.takeUnless { it == selectedRhythmAppPackage }
+                        },
                     )
-                    DailyRhythmInsightStrip(
-                        data = timelineState.data,
-                    )
+                    if (weeklyAppFocusDays.isNotEmpty()) {
+                        WeeklyRhythmAppFocusSection(
+                            days = weeklyAppFocusDays,
+                            sortByOpens = weeklySortByOpens,
+                            selectedPackageName = selectedRhythmAppPackage,
+                            onPackageClick = { packageName ->
+                                selectedRhythmAppPackage =
+                                    packageName.takeUnless { it == selectedRhythmAppPackage }
+                            },
+                        )
+                        selectedRhythmAppPackage
+                            ?.let { selectedPackage ->
+                                behaviorMapData?.points?.firstOrNull { it.packageName == selectedPackage }
+                            }
+                            ?.let { selectedPoint ->
+                                BehaviorMapSelectedPointCard(point = selectedPoint)
+                            }
+                    } else {
+                        DailyRhythmInsightStrip(data = timelineState.data)
+                    }
                 }
             }
         }
     }
 }
 
+private fun isPeriodRhythmTimeline(data: TimelineSectionData): Boolean =
+    data.gridRows > 1 && data.sliceCellsAreGridOrdered
+
 @Composable
 private fun DailyRhythmHeader(
+    subtitle: String,
+    showIconToggle: Boolean,
+    isWeekly: Boolean,
+    weeklySortByOpens: Boolean,
+    onWeeklySortChange: (Boolean) -> Unit,
     showCellIcons: Boolean,
     onShowCellIconsChange: (Boolean) -> Unit,
+) {
+    DailyReportSectionHeader(
+        icon = Icons.Default.Schedule,
+        title = AppText.t("stats_time_flow"),
+        subtitle = subtitle,
+        accent = LocalThemeColors.current.base,
+        trailing =
+            if (isWeekly || showIconToggle) {
+                {
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        if (isWeekly) {
+                            WeeklyRhythmSortToggle(
+                                sortByOpens = weeklySortByOpens,
+                                onSortByOpensChange = onWeeklySortChange,
+                            )
+                        }
+                        if (showIconToggle) {
+                            FlatRhythmIconToggle(
+                                checked = showCellIcons,
+                                onCheckedChange = onShowCellIconsChange,
+                            )
+                        }
+                    }
+                }
+            } else {
+                null
+            },
+    )
+}
+
+@Composable
+internal fun DailyReportSectionHeader(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    accent: Color,
+    trailing: (@Composable () -> Unit)? = null,
 ) {
     val themeColors = LocalThemeColors.current
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            Icon(
-                imageVector = Icons.Default.Timeline,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.size(18.dp),
-            )
+            Surface(
+                modifier = Modifier.size(36.dp),
+                shape = RoundedCornerShape(12.dp),
+                color = accent.copy(alpha = 0.16f),
+            ) {
+                Box(contentAlignment = Alignment.Center) {
+                    Icon(
+                        imageVector = icon,
+                        contentDescription = null,
+                        tint = accent,
+                        modifier = Modifier.size(19.dp),
+                    )
+                }
+            }
             Text(
-                text = AppText.t("stats_time_flow"),
+                text = title,
                 modifier = Modifier.weight(1f),
                 style = MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.SemiBold,
@@ -1255,13 +1346,10 @@ private fun DailyRhythmHeader(
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
-            FlatRhythmIconToggle(
-                checked = showCellIcons,
-                onCheckedChange = onShowCellIconsChange,
-            )
+            trailing?.invoke()
         }
         Text(
-            text = AppText.t("stats_time_flow_description"),
+            text = subtitle,
             style = MaterialTheme.typography.bodySmall,
             color = themeColors.inkMuted,
         )
@@ -1273,12 +1361,15 @@ private fun DailyRhythmHeader(
 private fun DailyRhythmProfileStrip(
     data: TimelineSectionData,
     showCellIcons: Boolean,
+    selectedPackageName: String? = null,
+    onPackageClick: (String) -> Unit = {},
 ) {
     val visibleLegend = data.appLegend.filter { it.millis >= 60_000L }
     val appPackages =
         (
             visibleLegend.map { it.packageName } +
                 data.sliceCells.mapNotNull { it.packageName } +
+                data.appSliceCells.mapNotNull { it.packageName } +
                 data.buckets.flatMap { bucket -> bucket.appSegments.map { it.packageName } }
             )
             .filter { it != TIMELINE_OTHER_APPS_PACKAGE_NAME }
@@ -1296,27 +1387,80 @@ private fun DailyRhythmProfileStrip(
                 )
             }
         }
-    val heatCells =
+    val selectedAppSliceCells =
+        selectedPackageName?.let { selected ->
+            data.appSliceCells.filter { it.packageName == selected }
+        }.orEmpty()
+    val selectedBuckets =
+        selectedPackageName?.let { selected ->
+            data.buckets.map { bucket ->
+                val selectedSegments = bucket.appSegments.filter { it.packageName == selected }
+                bucket.copy(
+                    deviceMillis = selectedSegments.sumOf { it.millis },
+                    appSegments = selectedSegments,
+                )
+            }
+        } ?: data.buckets
+    val selectedLegend =
+        selectedPackageName?.let { selected -> visibleLegend.filter { it.packageName == selected } } ?: visibleLegend
+    val allHeatCells =
         if (data.sliceCells.isNotEmpty()) {
             buildRhythmHeatCellsFromSlices(
                 sliceCells = data.sliceCells,
+                gridRows = data.gridRows,
+                sliceCellsAreGridOrdered = data.sliceCellsAreGridOrdered,
                 colors = legendColors,
                 fallbackColor = otherAppsColor,
             )
         } else {
             buildMockRhythmHeatCells(
                 buckets = data.buckets,
+                cellsPerHour = data.cellsPerHour,
                 legend = visibleLegend,
                 colors = legendColors,
             )
         }
+    val heatCells =
+        if (selectedPackageName == null) {
+            allHeatCells
+        } else if (selectedAppSliceCells.isNotEmpty()) {
+            buildRhythmHeatCellsFromSlices(
+                sliceCells = selectedAppSliceCells,
+                gridRows = data.gridRows,
+                sliceCellsAreGridOrdered = data.sliceCellsAreGridOrdered,
+                colors = legendColors,
+                fallbackColor = otherAppsColor,
+            )
+        } else {
+            buildMockRhythmHeatCells(
+                buckets = selectedBuckets,
+                cellsPerHour = data.cellsPerHour,
+                legend = selectedLegend,
+                colors = legendColors,
+            )
+        }
 
-    RhythmHeatMapPanel(
-        cells = heatCells,
-        visibleLegend = visibleLegend,
-        legendColors = legendColors,
-        showCellIcons = showCellIcons,
-    )
+    if (isPeriodRhythmTimeline(data)) {
+        RhythmDotChart(
+            cells = heatCells,
+            gridRows = data.gridRows,
+            rowLabels = data.gridRowLabels,
+            showCellIcons = showCellIcons,
+            selectedPackageName = selectedPackageName,
+            scaleMaxUsageMillis = allHeatCells.maxOfOrNull { it.usageMillis }?.coerceAtLeast(1L) ?: 1L,
+        )
+    } else {
+        RhythmHeatMapPanel(
+            cells = heatCells,
+            visibleLegend = visibleLegend,
+            legendColors = legendColors,
+            showCellIcons = showCellIcons,
+            gridRows = data.gridRows,
+            rowLabels = data.gridRowLabels,
+            selectedPackageName = selectedPackageName,
+            onPackageClick = onPackageClick,
+        )
+    }
 }
 
 @Composable
@@ -1374,12 +1518,163 @@ private fun FlatRhythmIconToggle(
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
+private fun RhythmDotChart(
+    cells: List<MockRhythmHeatCell>,
+    gridRows: Int,
+    rowLabels: List<String>,
+    showCellIcons: Boolean,
+    selectedPackageName: String?,
+    scaleMaxUsageMillis: Long,
+) {
+    val visibleCells =
+        remember(cells, selectedPackageName) {
+            selectedPackageName?.let { selected ->
+                cells.map { cell ->
+                    if (cell.packageName == selected || cell.usageMillis <= 0L) {
+                        cell
+                    } else {
+                        cell.copy(
+                            packageName = null,
+                            color = null,
+                            intensity = 0f,
+                            usageMillis = 0L,
+                            totalMillis = 0L,
+                        )
+                    }
+                }
+            } ?: cells
+        }
+    val iconBitmaps = rememberRhythmHeatCellIcons(visibleCells)
+    val cellsByRow = visibleCells.groupBy { it.slot }
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.72f),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.18f)),
+    ) {
+        BoxWithConstraints(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+        ) {
+            val labelWidth = if (rowLabels.isEmpty()) 0.dp else 28.dp
+            val gridWidth = maxWidth - labelWidth
+            val cellWidth = ((gridWidth - RhythmDotChartGap * 23) / 24).coerceAtLeast(2.dp)
+            val cellSize = cellWidth
+            val rowCount = gridRows.coerceAtLeast(1)
+            Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
+                    (0 until rowCount).forEach { row ->
+                    val rowCells = cellsByRow[row].orEmpty().associateBy { it.hour }
+                    Row(
+                        modifier = Modifier.fillMaxWidth().height(cellSize),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        if (labelWidth > 0.dp) {
+                            Text(
+                                text = rowLabels.getOrNull(row).orEmpty(),
+                                modifier = Modifier.width(labelWidth),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                            )
+                        }
+                        Row(
+                            modifier = Modifier.weight(1f),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            (0 until 24).forEach { hour ->
+                                val cell = rowCells[hour]
+                                val usageMillis = cell?.usageMillis ?: 0L
+                                val sizeRatio = (usageMillis.toFloat() / scaleMaxUsageMillis.toFloat()).coerceIn(0f, 1f)
+                                val tileSize =
+                                    if (usageMillis > 0L) {
+                                        (cellSize * (0.24f + 0.66f * sizeRatio)).coerceAtLeast(2.dp)
+                                    } else {
+                                        (cellSize * 0.18f).coerceAtLeast(2.dp)
+                                    }
+                                val dotColor =
+                                    if (usageMillis > 0L) {
+                                        cell?.color?.copy(alpha = 0.92f) ?: MaterialTheme.colorScheme.primary.copy(alpha = 0.66f)
+                                    } else {
+                                        MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.74f)
+                                    }
+                                Box(
+                                    modifier = Modifier.weight(1f).fillMaxHeight(),
+                                    contentAlignment = Alignment.Center,
+                                ) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(tileSize)
+                                            .clip(CircleShape)
+                                            .background(dotColor),
+                                        contentAlignment = Alignment.Center,
+                                    ) {
+                                        if (showCellIcons) {
+                                            cell?.packageName?.let { packageName ->
+                                                iconBitmaps[packageName]?.let { bitmap ->
+                                                    Image(
+                                                        bitmap = bitmap,
+                                                        contentDescription = null,
+                                                        contentScale = ContentScale.Fit,
+                                                        modifier = Modifier
+                                                            .fillMaxSize(0.56f)
+                                                            .clip(CircleShape),
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                    Row(
+                        modifier = Modifier.padding(start = labelWidth).fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                    ) {
+                        listOf("0", "6", "12", "18", "24").forEach { label ->
+                            Text(
+                                text = label,
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+            }
+        }
+    }
+}
+
+private val RhythmDotChartGap = 0.dp
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
 private fun RhythmHeatMapPanel(
     cells: List<MockRhythmHeatCell>,
     visibleLegend: List<DailyTimelineAppLegendItem>,
     legendColors: Map<String, Color>,
     showCellIcons: Boolean,
+    gridRows: Int,
+    rowLabels: List<String>,
+    selectedPackageName: String?,
+    onPackageClick: (String) -> Unit,
 ) {
+    val visibleCells =
+        remember(cells, selectedPackageName) {
+            selectedPackageName?.let { selected ->
+                cells.map { cell ->
+                    if (cell.packageName == selected || cell.usageMillis <= 0L) {
+                        cell
+                    } else {
+                        cell.copy(
+                            packageName = null,
+                            color = null,
+                            intensity = 0f,
+                            usageMillis = 0L,
+                            totalMillis = 0L,
+                        )
+                    }
+                }
+            } ?: cells
+        }
     Surface(
         shape = RoundedCornerShape(16.dp),
         color = MaterialTheme.colorScheme.surfaceContainerLow.copy(alpha = 0.72f),
@@ -1391,8 +1686,10 @@ private fun RhythmHeatMapPanel(
         ) {
             Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                 RhythmHeatGrid(
-                    cells = cells,
+                    cells = visibleCells,
                     showCellIcons = showCellIcons,
+                    gridRows = gridRows,
+                    rowLabels = rowLabels,
                     modifier = Modifier.fillMaxWidth(),
                 )
                 RhythmHeatHourScale(modifier = Modifier.fillMaxWidth())
@@ -1406,10 +1703,16 @@ private fun RhythmHeatMapPanel(
                         color = legendColors[item.packageName] ?: MaterialTheme.colorScheme.primary,
                         label = "${item.label} · ${formatDuration(item.millis)}",
                         packageName = item.packageName.takeIf { it != TIMELINE_OTHER_APPS_PACKAGE_NAME },
+                        selected = selectedPackageName == item.packageName,
+                        muted = selectedPackageName != null && selectedPackageName != item.packageName,
+                        onClick =
+                            item.packageName
+                                .takeIf { it != TIMELINE_OTHER_APPS_PACKAGE_NAME }
+                                ?.let { packageName -> { onPackageClick(packageName) } },
                     )
                 }
                 RhythmLegendPill(
-                    color = Color.White,
+                    color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.76f),
                     label = AppText.t("stats_rhythm_legend_idle"),
                     borderColor = MaterialTheme.colorScheme.outlineVariant,
                 )
@@ -1472,6 +1775,56 @@ private fun RhythmHeatHourScale(
 private fun RhythmHeatGrid(
     cells: List<MockRhythmHeatCell>,
     showCellIcons: Boolean,
+    gridRows: Int,
+    rowLabels: List<String>,
+    modifier: Modifier = Modifier,
+) {
+    if (rowLabels.isEmpty()) {
+        RhythmHeatGridLayout(
+            cells = cells,
+            showCellIcons = showCellIcons,
+            gridRows = gridRows,
+            modifier = modifier,
+        )
+        return
+    }
+    BoxWithConstraints(modifier = modifier) {
+        val labelWidth = 28.dp
+        val gapPx = with(LocalDensity.current) { RhythmHeatCellGap.roundToPx() }
+        val gridWidthPx = with(LocalDensity.current) { (maxWidth - labelWidth).toPx().toInt() }
+        val cellWidthPx = ((gridWidthPx - gapPx * 23) / 24).coerceAtLeast(1)
+        val cellHeightDp = with(LocalDensity.current) { (cellWidthPx * 1.5f).toDp() }
+        Row(modifier = Modifier.fillMaxWidth()) {
+            Column(modifier = Modifier.width(labelWidth)) {
+                rowLabels.take(gridRows).forEach { label ->
+                    Box(
+                        modifier = Modifier.height(cellHeightDp + RhythmHeatCellGap),
+                        contentAlignment = Alignment.CenterStart,
+                    ) {
+                        Text(
+                            text = label,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                        )
+                    }
+                }
+            }
+            RhythmHeatGridLayout(
+                cells = cells,
+                showCellIcons = showCellIcons,
+                gridRows = gridRows,
+                modifier = Modifier.weight(1f),
+            )
+        }
+    }
+}
+
+@Composable
+private fun RhythmHeatGridLayout(
+    cells: List<MockRhythmHeatCell>,
+    showCellIcons: Boolean,
+    gridRows: Int,
     modifier: Modifier = Modifier,
 ) {
     val iconBitmaps = rememberRhythmHeatCellIcons(cells)
@@ -1489,23 +1842,24 @@ private fun RhythmHeatGrid(
     ) { measurables, constraints ->
         val gapPx = RhythmHeatCellGap.roundToPx()
         val availableWidth = constraints.maxWidth.coerceAtLeast(0)
-        val cellSize = ((availableWidth - gapPx * 23) / 24).coerceAtLeast(1)
-        val width = cellSize * 24 + gapPx * 23
-        val height = cellSize * 12 + gapPx * 11
+        val cellWidth = ((availableWidth - gapPx * 23) / 24).coerceAtLeast(1)
+        val cellHeight = cellWidth
+        val width = cellWidth * 24 + gapPx * 23
+        val height = cellHeight * gridRows + gapPx * (gridRows - 1)
         val placeables =
             measurables.map { measurable ->
                 measurable.measure(
-                    androidx.compose.ui.unit.Constraints.fixed(cellSize, cellSize),
+                    androidx.compose.ui.unit.Constraints.fixed(cellWidth, cellHeight),
                 )
             }
         layout(width, height) {
             placeables.forEachIndexed { index, placeable ->
                 val cell = cells.getOrNull(index)
-                val hour = cell?.hour ?: (index / 12)
-                val slot = cell?.slot ?: (index % 12)
+                val hour = cell?.hour ?: (index / gridRows)
+                val slot = cell?.slot ?: (index % gridRows)
                 placeable.placeRelative(
-                    x = hour * (cellSize + gapPx),
-                    y = slot * (cellSize + gapPx),
+                    x = hour * (cellWidth + gapPx),
+                    y = slot * (cellHeight + gapPx),
                 )
             }
         }
@@ -1520,9 +1874,10 @@ private fun RhythmHeatCellBox(
 ) {
     val fillColor =
         if (cell.usageMillis <= 0L) {
-            Color.White
+            MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.76f)
         } else {
-            cell.color?.copy(alpha = rhythmCellOpacity(cell.usageMillis)) ?: Color.White
+            cell.color?.copy(alpha = rhythmCellOpacity(cell.usageMillis))
+                ?: MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.76f)
         }
     Box(
         modifier =
@@ -1584,10 +1939,19 @@ private fun RhythmLegendPill(
     color: Color,
     label: String,
     packageName: String? = null,
+    selected: Boolean = false,
     muted: Boolean = false,
     borderColor: Color? = null,
+    onClick: (() -> Unit)? = null,
 ) {
     Row(
+        modifier =
+            onClick?.let {
+                Modifier
+                    .clip(RoundedCornerShape(6.dp))
+                    .clickable(onClick = it)
+                    .padding(horizontal = 2.dp, vertical = 1.dp)
+            } ?: Modifier,
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(6.dp),
     ) {
@@ -1598,18 +1962,23 @@ private fun RhythmLegendPill(
                     .clip(RoundedCornerShape(4.dp))
                     .background(color.copy(alpha = if (muted) 0.48f else 1f))
                     .then(
-                        borderColor?.let { Modifier.border(0.5.dp, it, RoundedCornerShape(4.dp)) } ?: Modifier,
+                        when {
+                            selected -> Modifier.border(1.5.dp, color, RoundedCornerShape(4.dp))
+                            borderColor != null -> Modifier.border(0.5.dp, borderColor, RoundedCornerShape(4.dp))
+                            else -> Modifier
+                        },
                     ),
             contentAlignment = Alignment.Center,
         ) {
             packageName?.let {
-                RhythmLegendAppIcon(packageName = it)
+                RhythmLegendAppIcon(packageName = it, muted = muted)
             }
         }
         Text(
             text = label,
             style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = if (muted) 0.46f else 1f),
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
         )
@@ -1619,6 +1988,7 @@ private fun RhythmLegendPill(
 @Composable
 private fun RhythmLegendAppIcon(
     packageName: String,
+    muted: Boolean,
 ) {
     val context = LocalContext.current
     val icon = remember(context, packageName) {
@@ -1632,10 +2002,12 @@ private fun RhythmLegendAppIcon(
             bitmap = bitmap,
             contentDescription = null,
             contentScale = ContentScale.Fit,
+            colorFilter = if (muted) behaviorMapDisabledColorFilter() else null,
             modifier =
                 Modifier
                     .size(RhythmLegendSwatchSize * RhythmLegendIconScale)
-                    .clip(RoundedCornerShape(3.dp)),
+                    .clip(RoundedCornerShape(3.dp))
+                    .graphicsLayer { alpha = if (muted) 0.42f else 1f },
         )
     }
 }
@@ -1652,10 +2024,12 @@ private data class MockRhythmHeatCell(
     val color: Color?,
     val intensity: Float,
     val usageMillis: Long,
+    val totalMillis: Long = usageMillis,
 )
 
 private fun buildMockRhythmHeatCells(
     buckets: List<DailyTimelineBucket>,
+    cellsPerHour: Int,
     legend: List<DailyTimelineAppLegendItem>,
     colors: Map<String, Color>,
 ): List<MockRhythmHeatCell> {
@@ -1665,7 +2039,7 @@ private fun buildMockRhythmHeatCells(
         val activeSlots =
             when {
                 bucket.deviceMillis <= 0L -> 0
-                else -> ceil(hourFillRatio * 12f).toInt().coerceIn(1, 12)
+                else -> ceil(hourFillRatio * cellsPerHour.toFloat()).toInt().coerceIn(1, cellsPerHour)
             }
         val segments =
             bucket.appSegments
@@ -1673,14 +2047,15 @@ private fun buildMockRhythmHeatCells(
                 .sortedByDescending { it.millis }
                 .ifEmpty { bucket.appSegments.filter { it.millis > 0L }.sortedByDescending { it.millis } }
         val packageForSlot = buildSlotPackageSequence(segments, activeSlots)
-        val activeSlotIndexes = buildMockActiveSlotIndexes(bucket, activeSlots)
-        (0 until 12).map { slot ->
+        val activeSlotIndexes = buildMockActiveSlotIndexes(bucket, activeSlots, cellsPerHour)
+        (0 until cellsPerHour).map { slot ->
             val activeIndex = activeSlotIndexes.indexOf(slot)
             val packageName = activeIndex.takeIf { it >= 0 }?.let { packageForSlot.getOrNull(it) }
             val slotFill =
                 activeIndex.takeIf { it >= 0 }?.let {
-                    val remainingMillis = bucket.deviceMillis - it * 5L * 60_000L
-                    (remainingMillis.toFloat() / (5L * 60_000L).toFloat()).coerceIn(0.18f, 1f)
+                    val slotMillis = (60L * 60_000L) / cellsPerHour
+                    val remainingMillis = bucket.deviceMillis - it * slotMillis
+                    (remainingMillis.toFloat() / slotMillis.toFloat()).coerceIn(0.18f, 1f)
                 } ?: 0f
             MockRhythmHeatCell(
                 hour = bucket.hour,
@@ -1688,7 +2063,7 @@ private fun buildMockRhythmHeatCells(
                 packageName = packageName,
                 color = packageName?.let { colors[it] ?: colors[TIMELINE_OTHER_APPS_PACKAGE_NAME] },
                 intensity = slotFill,
-                usageMillis = (slotFill * 5L * 60_000L).toLong(),
+                usageMillis = (slotFill * ((60L * 60_000L) / cellsPerHour)).toLong(),
             )
         }
     }
@@ -1696,19 +2071,24 @@ private fun buildMockRhythmHeatCells(
 
 private fun buildRhythmHeatCellsFromSlices(
     sliceCells: List<DailyTimelineSliceCell>,
+    gridRows: Int,
+    sliceCellsAreGridOrdered: Boolean,
     colors: Map<String, Color>,
     fallbackColor: Color,
 ): List<MockRhythmHeatCell> {
     val cellByIndex = sliceCells.associateBy { it.sliceIndex }
-    return (0 until 288).map { sliceIndex ->
+    return (0 until 24 * gridRows).map { sliceIndex ->
         val cell = cellByIndex[sliceIndex]
+        val hour = if (sliceCellsAreGridOrdered) sliceIndex % 24 else sliceIndex / 12
+        val slot = if (sliceCellsAreGridOrdered) sliceIndex / 24 else sliceIndex % 12
         MockRhythmHeatCell(
-            hour = sliceIndex / 12,
-            slot = sliceIndex % 12,
+            hour = hour,
+            slot = slot,
             packageName = cell?.packageName,
             color = cell?.packageName?.let { colors[it] ?: colors[TIMELINE_OTHER_APPS_PACKAGE_NAME] ?: fallbackColor },
             intensity = cell?.millis?.let { (it.toFloat() / (5L * 60_000L).toFloat()).coerceIn(0.12f, 1f) } ?: 0f,
             usageMillis = cell?.millis ?: 0L,
+            totalMillis = cell?.totalMillis ?: 0L,
         )
     }
 }
@@ -1716,9 +2096,10 @@ private fun buildRhythmHeatCellsFromSlices(
 private fun buildMockActiveSlotIndexes(
     bucket: DailyTimelineBucket,
     activeSlots: Int,
+    cellsPerHour: Int,
 ): List<Int> {
     if (activeSlots <= 0) return emptyList()
-    if (activeSlots >= 12) return (0 until 12).toList()
+    if (activeSlots >= cellsPerHour) return (0 until cellsPerHour).toList()
     val seed =
         bucket.hour * 37 +
             bucket.deviceMillis.toInt() / 60_000 +
@@ -1732,11 +2113,11 @@ private fun buildMockActiveSlotIndexes(
     val candidates =
         buildList {
             var cursor = preferredStart
-            repeat(12) {
+        repeat(cellsPerHour) {
                 add(cursor)
                 cursor = (cursor + step) % 12
             }
-            addAll(0 until 12)
+            addAll(0 until cellsPerHour)
         }
     return candidates
         .distinct()
@@ -1837,6 +2218,196 @@ private fun DailyRhythmInsightStrip(
     ) {
         insights.forEach { insight ->
             RhythmInsightChip(insight)
+        }
+    }
+}
+
+@Composable
+private fun WeeklyRhythmSortToggle(
+    sortByOpens: Boolean,
+    onSortByOpensChange: (Boolean) -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .clip(RoundedCornerShape(10.dp))
+            .background(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.72f))
+            .padding(2.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        listOf(
+            true to AppText.t("stats_app_focus_sort_opens"),
+            false to AppText.t("stats_app_focus_sort_usage"),
+        ).forEach { (byOpens, label) ->
+            Surface(
+                modifier = Modifier
+                    .clip(RoundedCornerShape(8.dp))
+                    .clickable { onSortByOpensChange(byOpens) },
+                shape = RoundedCornerShape(8.dp),
+                color = if (sortByOpens == byOpens) {
+                    MaterialTheme.colorScheme.surface
+                } else {
+                    Color.Transparent
+                },
+            ) {
+                Text(
+                    text = label,
+                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (sortByOpens == byOpens) {
+                        MaterialTheme.colorScheme.onSurface
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                    maxLines = 1,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun WeeklyRhythmAppFocusSection(
+    days: List<WeeklyAppFocusDay>,
+    sortByOpens: Boolean,
+    selectedPackageName: String?,
+    onPackageClick: (String) -> Unit,
+) {
+    if (days.size <= 7) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            days.forEach { day ->
+                WeeklyRhythmAppFocusDayColumn(
+                    modifier = Modifier.weight(1f),
+                    day = day,
+                    sortByOpens = sortByOpens,
+                    selectedPackageName = selectedPackageName,
+                    onPackageClick = onPackageClick,
+                )
+            }
+        }
+    } else {
+        Row(
+            modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            days.forEach { day ->
+                WeeklyRhythmAppFocusDayColumn(
+                    modifier = Modifier.width(44.dp),
+                    day = day,
+                    sortByOpens = sortByOpens,
+                    selectedPackageName = selectedPackageName,
+                    onPackageClick = onPackageClick,
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun WeeklyRhythmAppFocusDayColumn(
+    modifier: Modifier,
+    day: WeeklyAppFocusDay,
+    sortByOpens: Boolean,
+    selectedPackageName: String?,
+    onPackageClick: (String) -> Unit,
+) {
+    val apps = remember(day, sortByOpens) {
+        day.apps
+            .sortedWith(
+                compareByDescending<WeeklyAppFocusItem> { if (sortByOpens) it.openCount else it.usageMillis }
+                    .thenByDescending { it.usageMillis },
+            )
+            .take(7)
+    }
+    val maxMetric = apps.maxOfOrNull { if (sortByOpens) it.openCount.toLong() else it.usageMillis }
+        ?.coerceAtLeast(1L) ?: 1L
+    val appColors = rememberAppChartColors(apps.map { it.packageName })
+    Column(
+        modifier = modifier,
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(5.dp),
+    ) {
+        Text(
+            text = day.dayCode,
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+        )
+        repeat(7) { index ->
+            val app = apps.getOrNull(index)
+            if (app == null) {
+                Box(modifier = Modifier.size(40.dp))
+            } else {
+                val metric = if (sortByOpens) app.openCount.toLong() else app.usageMillis
+                val ratio = (metric.toFloat() / maxMetric.toFloat()).coerceIn(0f, 1f)
+                val size = (20f + ratio * 20f).dp
+                WeeklyRhythmAppFocusIcon(
+                    packageName = app.packageName,
+                    appLabel = app.label,
+                    size = size,
+                    accent = appColors[app.packageName] ?: MaterialTheme.colorScheme.primary,
+                    selected = selectedPackageName == app.packageName,
+                    muted = selectedPackageName != null && selectedPackageName != app.packageName,
+                    onClick = { onPackageClick(app.packageName) },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun WeeklyRhythmAppFocusIcon(
+    packageName: String,
+    appLabel: String,
+    size: Dp,
+    accent: Color,
+    selected: Boolean,
+    muted: Boolean,
+    onClick: () -> Unit,
+) {
+    val context = LocalContext.current
+    val icon = remember(packageName) { AppVisualCache.getIcon(context, packageName) }
+    val iconBitmap =
+        remember(icon) {
+            icon
+                ?.toBitmap(width = 96, height = 96, config = Bitmap.Config.ARGB_8888)
+                ?.copy(Bitmap.Config.ARGB_8888, false)
+                ?.asImageBitmap()
+        }
+    val mutedColor = MaterialTheme.colorScheme.onSurfaceVariant
+    Box(
+        modifier =
+            Modifier
+                .size(40.dp)
+                .clip(RoundedCornerShape(13.dp))
+                .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Surface(
+            modifier = Modifier.size(size),
+            shape = RoundedCornerShape(size / 3),
+            color = (if (muted) mutedColor else accent).copy(alpha = if (selected) 0.18f else 0.12f),
+            border =
+                BorderStroke(
+                    if (selected) 2.dp else 1.dp,
+                    (if (muted) mutedColor else accent).copy(alpha = if (selected) 0.72f else 0.22f),
+                ),
+        ) {
+            if (iconBitmap != null) {
+                Image(
+                    bitmap = iconBitmap,
+                    contentDescription = appLabel,
+                    colorFilter = if (muted) behaviorMapDisabledColorFilter() else null,
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(size * 0.12f)
+                        .clip(RoundedCornerShape(size / 4))
+                        .graphicsLayer { alpha = if (muted) 0.38f else 1f },
+                    contentScale = ContentScale.Fit,
+                )
+            }
         }
     }
 }
@@ -2474,11 +3045,11 @@ internal fun DailyBehaviorProfileCard(
         Column(
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            SectionHeader(
-                icon = Icons.Default.Insights,
+            DailyReportSectionHeader(
+                icon = Icons.Default.Analytics,
                 title = AppText.t("stats_behavior_analysis"),
                 subtitle = AppText.t("stats_behavior_structure_description"),
-                trailing = heroData?.summary?.capturedAt?.takeIf { it.isNotBlank() },
+                accent = themeColors.base,
             )
             when {
                 behaviorState == SectionState.Loading -> {
@@ -2578,10 +3149,11 @@ internal fun DailyInsightCard(
         Column(
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
-            SectionHeader(
-                icon = Icons.Default.BarChart,
+            DailyReportSectionHeader(
+                icon = Icons.Default.ScatterPlot,
                 title = AppText.t("stats_behavior_map_title"),
                 subtitle = AppText.t("stats_behavior_map_description"),
+                accent = LocalThemeColors.current.base,
             )
             when (behaviorMapState) {
                 SectionState.Loading -> {
@@ -3271,7 +3843,7 @@ private fun BehaviorMapMatrixCard(
     val borderColor = if (point == null) emptyColor.copy(alpha = 0.40f) else roleColor
     val borderWidth = if (point == null) 1.dp else 2.dp
     Surface(
-        modifier = modifier.aspectRatio(1f),
+        modifier = modifier.aspectRatio(0.86f),
         shape = RoundedCornerShape(12.dp),
         color = cardColor,
         border = BorderStroke(borderWidth, borderColor),
@@ -3290,7 +3862,7 @@ private fun BehaviorMapMatrixCard(
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurface,
                 textAlign = TextAlign.Center,
-                maxLines = 1,
+                maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
             if (point == null) {
@@ -3318,7 +3890,7 @@ private fun BehaviorMapMatrixCard(
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 textAlign = TextAlign.Center,
-                maxLines = 1,
+                maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
@@ -3331,7 +3903,7 @@ private fun BehaviorMapMatrixCard(
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.86f),
                 textAlign = TextAlign.Center,
-                maxLines = 1,
+                maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
         }
@@ -3928,7 +4500,7 @@ private fun BehaviorCenteredTotalMetric(
     }
 }
 
-private fun formatBehaviorMetricMinutes(durationMillis: Long): String {
+internal fun formatBehaviorMetricMinutes(durationMillis: Long): String {
     if (durationMillis <= 0L) return "0"
     return ((durationMillis + 59_999L) / 60_000L).toString()
 }

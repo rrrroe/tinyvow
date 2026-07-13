@@ -10,7 +10,7 @@ internal object AppVisualCache {
 
     @Synchronized
     fun getIcon(context: Context, packageName: String): Drawable? {
-        iconCache.get(packageName)?.let { return it }
+        iconCache.get(packageName)?.let { return it.independentCopy(context) }
         if (packageName in missingIcons) return null
         val icon =
             runCatching {
@@ -24,6 +24,12 @@ internal object AppVisualCache {
         } else {
             iconCache.put(packageName, icon)
         }
-        return icon
+        return icon?.independentCopy(context)
     }
+
+    private fun Drawable.independentCopy(context: Context): Drawable =
+        constantState
+            ?.newDrawable(context.resources)
+            ?.mutate()
+            ?: mutate()
 }

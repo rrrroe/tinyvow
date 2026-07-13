@@ -43,36 +43,36 @@
     <string name="notification_encourage_completed_title">Today\'s focus landed</string>
     <string name="notification_encourage_completed_body">%1$s has enough time for today. That time was not wasted.</string>
     <string-array name="notification_encourage_progress_messages">
-        <item>Give %2$s %1$d more minutes and today will feel about right.</item>
-        <item>%2$s is only %1$d minutes away now.</item>
-        <item>Let the next %1$d minutes belong to %2$s.</item>
-        <item>Another %1$d minutes will settle %2$s for today.</item>
-        <item>If you start now, %2$s can reach the line in %1$d minutes.</item>
-        <item>Add these %1$d minutes to %2$s and today will feel steadier.</item>
-        <item>Stay with %2$s for %1$d more minutes and that may be enough.</item>
-        <item>%2$s only needs a little more time: %1$d minutes.</item>
-        <item>Keep this %1$d minutes for %2$s first.</item>
-        <item>In %1$d minutes, %2$s can have enough for today.</item>
-        <item>%2$s only needs these last %1$d minutes. No rush.</item>
-        <item>A small %1$d minute block is enough to lift %2$s forward.</item>
-        <item>It is not too late to give %2$s %1$d more minutes.</item>
-        <item>Hold onto these %1$d minutes and %2$s will feel settled today.</item>
-        <item>Stay focused for %1$d minutes and you can put %2$s down for today.</item>
-        <item>%1$d minutes is enough to move %2$s a little further.</item>
-        <item>There are still %1$d minutes you wanted to leave for %2$s today.</item>
-        <item>Keep %2$s company for %1$d minutes and the day will feel more complete.</item>
-        <item>%2$s just needs %1$d more minutes to feel about right today.</item>
-        <item>Add %1$d minutes and %2$s will land more gently.</item>
-        <item>Use these %1$d minutes to carry %2$s a little further.</item>
-        <item>%2$s is %1$d minutes away from being easy to set down today.</item>
-        <item>Stay with %2$s for %1$d minutes and it should reach the line today.</item>
-        <item>The next %1$d minutes fit %2$s well.</item>
-        <item>%2$s is in the last short stretch: %1$d minutes to go.</item>
-        <item>Save these %1$d minutes for %2$s and today will feel steadier.</item>
-        <item>%2$s will be in place today after %1$d more minutes.</item>
-        <item>Today, %2$s still needs about %1$d minutes. Just a little more.</item>
-        <item>Give %2$s %1$d more minutes and it should be enough for today.</item>
-        <item>Let %2$s have the next %1$d minutes, then see how it feels.</item>
+        <item>Give %2$s %1$d more min and today will feel about right.</item>
+        <item>%2$s is only %1$d min away now.</item>
+        <item>Let the next %1$d min belong to %2$s.</item>
+        <item>Another %1$d min will settle %2$s for today.</item>
+        <item>If you start now, %2$s can reach the line in %1$d min.</item>
+        <item>Add these %1$d min to %2$s and today will feel steadier.</item>
+        <item>Stay with %2$s for %1$d more min and that may be enough.</item>
+        <item>%2$s only needs a little more time: %1$d min.</item>
+        <item>Keep this %1$d min for %2$s first.</item>
+        <item>In %1$d min, %2$s can have enough for today.</item>
+        <item>%2$s only needs these last %1$d min. No rush.</item>
+        <item>A small %1$d-min block is enough to lift %2$s forward.</item>
+        <item>It is not too late to give %2$s %1$d more min.</item>
+        <item>Hold onto these %1$d min and %2$s will feel settled today.</item>
+        <item>Stay focused for %1$d min and you can put %2$s down for today.</item>
+        <item>%1$d min is enough to move %2$s a little further.</item>
+        <item>There are still %1$d min you wanted to leave for %2$s today.</item>
+        <item>Keep %2$s company for %1$d min and the day will feel more complete.</item>
+        <item>%2$s just needs %1$d more min to feel about right today.</item>
+        <item>Add %1$d min and %2$s will land more gently.</item>
+        <item>Use these %1$d min to carry %2$s a little further.</item>
+        <item>%2$s is %1$d min away from being easy to set down today.</item>
+        <item>Stay with %2$s for %1$d min and it should reach the line today.</item>
+        <item>The next %1$d min fit %2$s well.</item>
+        <item>%2$s is in the last short stretch: %1$d min to go.</item>
+        <item>Save these %1$d min for %2$s and today will feel steadier.</item>
+        <item>%2$s will be in place today after %1$d more min.</item>
+        <item>Today, %2$s still needs about %1$d min. Just a little more.</item>
+        <item>Give %2$s %1$d more min and it should be enough for today.</item>
+        <item>Let %2$s have the next %1$d min, then see how it feels.</item>
     </string-array>
     <string name="notification_settings_title">Notification reminders</string>
     <string name="day_boundary_settings_title">Day boundary</string>
@@ -94,7 +94,7 @@
     <string name="notification_settings_permission_needed">Turn on notification permission before reminders can show up.</string>
     <string name="notification_settings_schedule">Reminder rhythm</string>
     <string name="notification_settings_control_threshold">Remind me when this much time is left</string>
-    <string name="notification_settings_control_threshold_hint">Enter 1-120 minutes.</string>
+    <string name="notification_settings_control_threshold_hint">Enter 1-120 min.</string>
     <string name="notification_settings_encourage_times">Focus reminder times</string>
     <string name="notification_settings_encourage_times_hint">Add or tap a time to choose when unfinished focus items should nudge you.</string>
     <string name="notification_settings_add_encourage_time">Add time</string>
@@ -148,11 +148,11 @@
     <string name="ledger_redeemed_time_pack">Redeemed time pack</string>
     <string name="lab_add_points">+%1$d</string>
     <string name="redeem_success_custom_reward">Redeemed %1$s, -%2$s PT</string>
-    <string name="redeem_success_time_pack">Redeemed %1$s, -%2$s PT, %3$s +%4$s minutes</string>
+    <string name="redeem_success_time_pack">Redeemed %1$s, -%2$s PT, %3$s +%4$s min</string>
     <string name="reward_offline_treat_description">Treat yourself offline.</string>
     <string name="reward_offline_treat_title">Offline Treat</string>
-    <string name="reward_time_pack_30_description">Get 30 extra minutes immediately.</string>
-    <string name="reward_time_pack_30_title">30-minute Time Pass</string>
+    <string name="reward_time_pack_30_description">Get 30 extra min immediately.</string>
+    <string name="reward_time_pack_30_title">30-min Time Pass</string>
     <string name="reward_time_pack_60_description">Get 1 extra hour immediately.</string>
     <string name="reward_time_pack_60_title">1-hour Free Browsing Pass</string>
     <string name="selected_language_en">English</string>
@@ -176,9 +176,9 @@
     <string name="selected_language_title">Language</string>
     <string name="selected_language_zh_cn">Simplified Chinese</string>
     <string name="achievement_bronze_points_title">Starlet Gatherer</string>
-    <string name="achievement_bronze_points_desc">Earn 1,000 points</string>
+    <string name="achievement_bronze_points_desc">Earn 1,000 PT</string>
     <string name="achievement_bronze_redeem_title">First Keepsake</string>
-    <string name="achievement_bronze_redeem_desc">Spend 1,000 points</string>
+    <string name="achievement_bronze_redeem_desc">Spend 1,000 PT</string>
     <string name="achievement_bronze_ctrl_days_title">Grain of Promise</string>
     <string name="achievement_bronze_ctrl_days_desc">Keep every vow for 10 total days</string>
     <string name="achievement_bronze_ctrl_streak_title">Three Dawns</string>
@@ -188,9 +188,9 @@
     <string name="achievement_bronze_enc_streak_title">Threefold Gleam</string>
     <string name="achievement_bronze_enc_streak_desc">Earn gains from focus for 3 days in a row</string>
     <string name="achievement_silver_points_title">Moonlight Seeker</string>
-    <string name="achievement_silver_points_desc">Earn 3,000 points</string>
+    <string name="achievement_silver_points_desc">Earn 3,000 PT</string>
     <string name="achievement_silver_redeem_title">Silver Wish</string>
-    <string name="achievement_silver_redeem_desc">Spend 3,000 points</string>
+    <string name="achievement_silver_redeem_desc">Spend 3,000 PT</string>
     <string name="achievement_silver_ctrl_days_title">Verdant Stone</string>
     <string name="achievement_silver_ctrl_days_desc">Keep every vow for 30 total days</string>
     <string name="achievement_silver_ctrl_streak_title">Tenfold Dawn</string>
@@ -200,9 +200,9 @@
     <string name="achievement_silver_enc_streak_title">Ten Rays Aligned</string>
     <string name="achievement_silver_enc_streak_desc">Earn gains from focus for 10 days in a row</string>
     <string name="achievement_gold_points_title">Solar Chaser</string>
-    <string name="achievement_gold_points_desc">Earn 10,000 points</string>
+    <string name="achievement_gold_points_desc">Earn 10,000 PT</string>
     <string name="achievement_gold_redeem_title">Golden Seal</string>
-    <string name="achievement_gold_redeem_desc">Spend 10,000 points</string>
+    <string name="achievement_gold_redeem_desc">Spend 10,000 PT</string>
     <string name="achievement_gold_ctrl_days_title">Rampart Builder</string>
     <string name="achievement_gold_ctrl_days_desc">Keep every vow for 100 total days</string>
     <string name="achievement_gold_ctrl_streak_title">Balanced Moon</string>
@@ -212,9 +212,9 @@
     <string name="achievement_gold_enc_streak_title">Unfading Moonlight</string>
     <string name="achievement_gold_enc_streak_desc">Earn gains from focus for 30 days in a row</string>
     <string name="achievement_diamond_points_title">River of Stars</string>
-    <string name="achievement_diamond_points_desc">Earn 30,000 points</string>
+    <string name="achievement_diamond_points_desc">Earn 30,000 PT</string>
     <string name="achievement_diamond_redeem_title">Crystal Keybearer</string>
-    <string name="achievement_diamond_redeem_desc">Spend 30,000 points</string>
+    <string name="achievement_diamond_redeem_desc">Spend 30,000 PT</string>
     <string name="achievement_diamond_ctrl_days_title">Crystal Citadel</string>
     <string name="achievement_diamond_ctrl_days_desc">Keep every vow for 365 total days</string>
     <string name="achievement_diamond_ctrl_streak_title">Hundred Days True</string>
@@ -224,9 +224,9 @@
     <string name="achievement_diamond_enc_streak_title">Crown of Hundred Rays</string>
     <string name="achievement_diamond_enc_streak_desc">Earn gains from focus for 100 days in a row</string>
     <string name="achievement_legend_points_title">Celestial Ascendant</string>
-    <string name="achievement_legend_points_desc">Earn 100,000 points</string>
+    <string name="achievement_legend_points_desc">Earn 100,000 PT</string>
     <string name="achievement_legend_redeem_title">Vault of Wonders</string>
-    <string name="achievement_legend_redeem_desc">Spend 100,000 points</string>
+    <string name="achievement_legend_redeem_desc">Spend 100,000 PT</string>
     <string name="achievement_legend_ctrl_days_title">Eternal Peak</string>
     <string name="achievement_legend_ctrl_days_desc">Keep every vow for 1,000 total days</string>
     <string name="achievement_legend_ctrl_streak_title">Yearbound Oath</string>
@@ -236,8 +236,8 @@
     <string name="achievement_legend_enc_streak_title">Everlasting Radiance</string>
     <string name="achievement_legend_enc_streak_desc">Earn gains from focus for 365 days in a row</string>
     <string name="accessibility_take_a_deep_breath_right_now">Take a deep breath right now</string>
-    <string name="accessibility_value_minutes_done_value_minute_target">%1$s minutes done / %2$s minute target</string>
-    <string name="accessibility_value_pts_min">+%1$s pts/min</string>
+    <string name="accessibility_value_minutes_done_value_minute_target">%1$s min done / %2$s min target</string>
+    <string name="accessibility_value_pts_min">+%1$s PT/min</string>
     <string name="accessibility_you_have_used_value_today_over_by_value">You have used %1$s today, %2$s over your vow.\nThis is not a punishment; it is time returned to what matters.</string>
     <string name="achievement_a_legend_forged_you_are_the_legend_itself">A legend forged; you are the legend itself</string>
     <string name="achievement_bronze">Bronze</string>
@@ -295,8 +295,8 @@
     <string name="group_label_2">Label</string>
     <string name="group_label_3">Label</string>
     <string name="group_last_30_days">Last 30 days</string>
-    <string name="group_minutes">minutes</string>
-    <string name="group_minutes_2">Minutes</string>
+    <string name="group_minutes">min</string>
+    <string name="group_minutes_2">min</string>
     <string name="group_monthly">Monthly</string>
     <string name="group_monthly_target">Monthly</string>
     <string name="group_move_down">Move down</string>
@@ -334,7 +334,7 @@
     <string name="history_not_completed">Not completed</string>
     <string name="history_base_limit_minutes">Base limit %1$d min</string>
     <string name="history_bonus_minutes">Bonus %1$d min</string>
-    <string name="history_points_rate_per_minute">Rate %1$s / min</string>
+    <string name="history_points_rate_per_minute">Rate %1$s PT/min</string>
     <string name="history_daily_usage">Usage on this day</string>
     <string name="history_period_total">Period total</string>
     <string name="history_remaining_limit">Remaining limit</string>
@@ -370,9 +370,9 @@
     <string name="history_period">Period</string>
     <string name="history_24_hour_distribution">24-hour distribution</string>
     <string name="history_ungrouped_apps">Ungrouped apps</string>
-    <string name="history_ungrouped_apps_description">Only ungrouped apps used for more than 1 minute on that day are archived.</string>
+    <string name="history_ungrouped_apps_description">Only ungrouped apps used for more than 1 min that day are archived.</string>
     <string name="history_ungrouped_apps_empty_title">No ungrouped apps on this day</string>
-    <string name="history_ungrouped_apps_empty_body">Ungrouped apps used for less than 1 minute are not included in long-term archives.</string>
+    <string name="history_ungrouped_apps_empty_body">Ungrouped apps used for less than 1 min are not included in long-term archives.</string>
     <string name="history_app_count">App count</string>
     <string name="history_sort_recent">Recent</string>
     <string name="history_sort_usage">Usage</string>
@@ -404,7 +404,7 @@
     <string name="history_tag_exceeded">Exceeded %1$d</string>
     <string name="history_tag_saved">Saved %1$s</string>
     <string name="history_tag_achieved">Achieved %1$d</string>
-    <string name="history_tag_earned_points">Earned +%1$s</string>
+    <string name="history_tag_earned_points">Earned +%1$s PT</string>
     <string name="history_card_headline_all">Control %1$d completed / focus %2$d achieved</string>
     <string name="history_card_headline_control">Completed %1$d / exceeded %2$d</string>
     <string name="history_card_headline_encourage">Achieved %1$d / earned +%2$s</string>
@@ -418,9 +418,9 @@
     <string name="group_no_groups_yet">No vows yet</string>
     <string name="group_over_by">Past by</string>
     <string name="group_over_by_value">Past by %1$s</string>
-    <string name="group_points">Points</string>
+    <string name="group_points">PT</string>
     <string name="group_points_target">Points target</string>
-    <string name="group_pts">pts</string>
+    <string name="group_pts">PT</string>
     <string name="group_metric_app_usage">App time</string>
     <string name="group_metric_steps">Steps</string>
     <string name="group_steps_unit">steps</string>
@@ -458,10 +458,10 @@
     <string name="group_value_days_4">%1$s days</string>
     <string name="group_value_days_5">%1$s days</string>
     <string name="group_value_min">%1$s min</string>
-    <string name="group_value_minutes">%1$s minutes</string>
+    <string name="group_value_minutes">%1$s min</string>
     <string name="group_value_times">%1$s times</string>
     <string name="group_value_value_value_min">%1$s %2$s/%3$s min</string>
-    <string name="group_value_value_value_min_value_pts_min">%1$s %2$s/%3$s min · %4$s pts/min</string>
+    <string name="group_value_value_value_min_value_pts_min">%1$s %2$s/%3$s min · %4$s PT/min</string>
     <string name="group_usage_value_limit_minutes">%1$s/%2$s min</string>
     <string name="group_usage_value_limit_minutes_with_period">%1$s/%2$s min/%3$s</string>
     <string name="group_daily_short">day</string>
@@ -508,16 +508,17 @@
     <string name="home_background_start">Background start</string>
     <string name="home_balance_score">Vow Score</string>
     <string name="home_balance_score_message">Keep your phone use intentional today.</string>
-    <string name="home_battle_control_left_value">%1$d m left</string>
-    <string name="home_battle_control_over_value">%1$d m over</string>
+    <string name="home_battle_control_left_value">%1$d min left</string>
+    <string name="home_battle_control_over_value">%1$d min over</string>
     <string name="home_battle_action_hint_separator"> · </string>
     <string name="home_battle_group_name_separator"> · </string>
     <string name="home_battle_group_name_more">%1$s +%2$d</string>
     <string name="home_battle_control_subtitle">Tap to check the limit</string>
-    <string name="home_battle_control_groups_half">%1$s past halfway · streak %2$d days</string>
-    <string name="home_battle_control_groups_near_limit">%1$s near the line · streak %2$d days</string>
-    <string name="home_battle_control_groups_depleted">%1$s used up · streak %2$d days</string>
-    <string name="home_battle_control_groups_over_limit">%1$s over limit</string>
+    <string name="home_battle_control_groups_half">Keep %1$s · streak %2$d</string>
+    <string name="home_battle_control_groups_near_limit">Keep %1$s · streak %2$d</string>
+    <string name="home_battle_control_groups_depleted">Keep %1$s · streak %2$d</string>
+    <string name="home_battle_control_groups_over_limit">Keep %1$s · streak %2$d</string>
+    <string name="home_battle_streak_compact">streak %1$d</string>
     <string name="home_battle_control_steady_title">In control</string>
     <string name="home_battle_control_streak_title">Keep going to extend the streak to %1$d days</string>
     <string name="home_battle_control_half_title">Know the limit</string>
@@ -532,20 +533,20 @@
     <string name="home_battle_create_title">Set today up</string>
     <string name="home_battle_create_value">Create</string>
     <string name="home_battle_encourage_done_value">Done</string>
-    <string name="home_battle_encourage_left_value">%1$d m to go</string>
+    <string name="home_battle_encourage_left_value">%1$d min to go</string>
     <string name="home_battle_encourage_subtitle">Tap to finish the target</string>
     <string name="home_battle_encourage_perfect_title">Perfect!</string>
     <string name="home_battle_encourage_perfect_subtitle">All focus done</string>
     <string name="home_battle_encourage_title_done">Target finished</string>
-    <string name="home_battle_encourage_title_points">About +%1$s pts waiting</string>
-    <string name="home_battle_group_usage_format">%1$s · %2$d/%3$d m</string>
+    <string name="home_battle_encourage_title_points">About +%1$s PT waiting</string>
+    <string name="home_battle_group_usage_format">%1$s · %2$d/%3$d min</string>
     <string name="home_battle_anomaly_clear_subtitle">Nothing near the limit</string>
     <string name="home_battle_anomaly_clear_value">Clear</string>
     <string name="home_battle_anomaly_title">Overlimit risk</string>
     <string name="home_battle_shortcut_done_title">Shortcut cleared</string>
-    <string name="home_battle_shortcut_complete_group_subtitle">Complete %1$s · streak %2$d days</string>
+    <string name="home_battle_shortcut_complete_group_subtitle">Complete %1$s · streak %2$d</string>
     <string name="home_battle_shortcut_points_title">Press on!</string>
-    <string name="home_battle_shortcut_points_subtitle">%1$s · +%2$s pts · streak %3$d days</string>
+    <string name="home_battle_shortcut_points_subtitle">Complete %1$s +%2$s PT</string>
     <string name="home_battle_shortcut_streak_title">Keep at it!</string>
     <string name="home_battle_shortcut_streak_subtitle">%1$s · can extend to %2$d days</string>
     <string name="home_battle_shortcut_title">Today shortcut</string>
@@ -555,9 +556,9 @@
     <string name="home_battle_permission_usage_body">Enable usage access</string>
     <string name="home_battle_permission_usage_title">Usage is hidden</string>
     <string name="home_battle_reward_active_effects">%1$d reward effects active</string>
-    <string name="home_battle_reward_points_value">%1$s pts</string>
+    <string name="home_battle_reward_points_value">%1$s PT</string>
     <string name="home_battle_reward_subtitle">Redeem rewards</string>
-    <string name="home_battle_reward_today_points">Today earned +%1$s pts</string>
+    <string name="home_battle_reward_today_points">Today earned +%1$s PT</string>
     <string name="home_battle_reward_title">Reward store</string>
     <string name="home_battery_allowlist">Battery allowlist</string>
     <string name="home_battery_allowlist_disclosure">Battery allowlist disclosure</string>
@@ -565,6 +566,38 @@
     <string name="home_confirmed_enabled">Confirmed enabled</string>
     <string name="home_contact_tiny_vow">Contact Tiny Vow</string>
     <string name="home_commitment_panel">Vow</string>
+    <string name="home_overview_detail_control_title">Vow details</string>
+    <string name="home_overview_detail_encourage_title">Focus details</string>
+    <string name="home_overview_detail_status">%1$d/%2$d met</string>
+    <string name="home_overview_detail_saved_today">Saved today</string>
+    <string name="home_overview_detail_earned_today">Earned today</string>
+    <string name="home_overview_detail_control_empty_body">Add a vow to see its current-period usage and remaining time here.</string>
+    <string name="home_overview_detail_encourage_empty_body">Add a focus goal to see its current-period progress here.</string>
+    <string name="home_overview_detail_control_all_met_body">All %1$d vows are within plan.</string>
+    <string name="home_overview_detail_encourage_all_met_body">All %1$d focus goals are met.</string>
+    <string name="home_overview_detail_control_progress_body">%1$d of %2$d vows are within plan.</string>
+    <string name="home_overview_detail_encourage_progress_body">%1$d of %2$d focus goals are met.</string>
+    <string name="home_overview_detail_control_streak">Vow streak</string>
+    <string name="home_overview_detail_encourage_streak">Focus streak</string>
+    <string name="home_overview_detail_days_value">%1$d d</string>
+    <string name="home_overview_detail_total_saved">Total saved</string>
+    <string name="home_overview_detail_current_balance">Current balance</string>
+    <string name="home_overview_detail_period_control">Current-period vows</string>
+    <string name="home_overview_detail_period_encourage">Current-period focus</string>
+    <string name="home_overview_detail_control_empty_title">No vows yet</string>
+    <string name="home_overview_detail_encourage_empty_title">No focus goals yet</string>
+    <string name="home_overview_detail_total_earned_value">Total earned %1$s PT</string>
+    <string name="home_overview_detail_group_hint">Tap a group for full details</string>
+    <string name="home_overview_detail_over_value">%1$d min over</string>
+    <string name="home_overview_detail_remaining_value">%1$d min left</string>
+    <string name="home_overview_detail_limit_used">No time left</string>
+    <string name="home_overview_detail_more_needed_value">%1$d min to go</string>
+    <string name="home_overview_detail_met">Met</string>
+    <string name="home_overview_detail_points_rate">%1$s PT/min</string>
+    <string name="home_overview_detail_metadata_separator"> · </string>
+    <string name="home_overview_detail_usage_value">%1$d / %2$d min</string>
+    <string name="home_overview_detail_points_value">%1$s PT</string>
+    <string name="home_overview_detail_extra_minutes">+%1$d min</string>
     <string name="home_commitment_progress_value">%1$s/%2$s kept</string>
     <string name="home_control_streak">Kept-vow streak</string>
     <string name="home_control_streak_value">%1$s d streak</string>
@@ -576,9 +609,9 @@
     <string name="home_encourage_streak_value">%1$s d streak</string>
     <string name="home_encouragement_panel">Focus</string>
     <string name="home_encouragement_progress_value">%1$s/%2$s reached</string>
-    <string name="home_group_effect_extra_minutes">+%1$d m</string>
+    <string name="home_group_effect_extra_minutes">+%1$d min</string>
     <string name="home_group_effect_period_pass">Pass</string>
-    <string name="home_points_multiplier_badge">points ×%1$s</string>
+    <string name="home_points_multiplier_badge">PT ×%1$s</string>
     <string name="home_streak_pending_value">%1$d/%2$d streak</string>
     <string name="home_streak_value">%1$d d streak</string>
     <string name="home_score_status_stage1_01">Easy Start</string>
@@ -837,11 +870,11 @@
     <string name="home_steps_title">Steps</string>
     <string name="home_today_steps_value">Today\'s steps %1$s</string>
     <string name="home_steps_plain_value">%1$s steps</string>
-    <string name="home_step_points_value">Points earned %1$s</string>
-    <string name="home_step_points_plus_value">Points +%1$d</string>
+    <string name="home_step_points_value">Earned %1$s PT</string>
+    <string name="home_step_points_plus_value">+%1$d PT</string>
     <string name="home_step_points_settings_title">Step points</string>
-    <string name="home_step_points_estimate">Points earned</string>
-    <string name="home_step_points_rate_label">Points per step</string>
+    <string name="home_step_points_estimate">PT earned</string>
+    <string name="home_step_points_rate_label">PT per step</string>
     <string name="home_step_points_reward_progress_label">Reward progress</string>
     <string name="home_step_points_reward_progress_value">%1$s / %2$s</string>
     <string name="home_step_points_reward_progress_summary">Steps %1$s / %2$s</string>
@@ -867,8 +900,8 @@
     <string name="home_value_hour">%1$s h</string>
     <string name="home_value_min">%1$s min</string>
     <string name="home_value_month">%1$s mo</string>
-    <string name="home_value_minutes">%1$s minutes</string>
-    <string name="home_value_pts">+%1$.1f pts</string>
+    <string name="home_value_minutes">%1$s min</string>
+    <string name="home_value_pts">+%1$.1f PT</string>
     <string name="home_value_streak_days">%1$s d</string>
     <string name="home_value_year">%1$s y</string>
     <string name="home_well_done_yesterday_your_strong_will_saved_this">Well done. Yesterday, your vows saved this much time:</string>
@@ -948,6 +981,54 @@
     <string name="diagnostics_accessibility_heartbeat_minutes_ago">%1$d min ago</string>
     <string name="diagnostics_version_value">%1$s (%2$d)</string>
     <string name="lab_points_simulation">Points simulation</string>
+    <string name="lab_health_steps_title">Health Connect step probe</string>
+    <string name="lab_health_steps_description">Debug only. Reads today’s calendar-day steps from Health Connect, never falls back to the phone sensor, and never writes the existing step database. Only verified Xiaomi-source snapshots from the latest 7 calendar days are kept locally.</string>
+    <string name="lab_health_steps_health_connect_status">Health Connect</string>
+    <string name="lab_health_steps_permission_status">Step read access</string>
+    <string name="lab_health_steps_xiaomi_total">Xiaomi source total</string>
+    <string name="lab_health_steps_system_total">All-source aggregate</string>
+    <string name="lab_health_steps_selected_source">Selected source</string>
+    <string name="lab_health_steps_source_totals">Xiaomi source subtotals</string>
+    <string name="lab_health_steps_source_total_value">%1$s: %2$s steps</string>
+    <string name="lab_health_steps_origins">Data origins</string>
+    <string name="lab_health_steps_raw_records">Raw record check</string>
+    <string name="lab_health_steps_raw_records_value">%1$d Xiaomi / %2$d total · %3$s</string>
+    <string name="lab_health_steps_records_complete">complete</string>
+    <string name="lab_health_steps_records_truncated">truncated</string>
+    <string name="lab_health_steps_recording_methods">Recording methods</string>
+    <string name="lab_health_steps_latest_record_end">Latest Xiaomi interval end</string>
+    <string name="lab_health_steps_latest_modified">Latest Xiaomi record change</string>
+    <string name="lab_health_steps_query_window">Query window</string>
+    <string name="lab_health_steps_query_window_value">%1$s – %2$s</string>
+    <string name="lab_health_steps_extension_version">U SDK extension</string>
+    <string name="lab_health_steps_last_query">Last query</string>
+    <string name="lab_health_steps_cache">Local test cache</string>
+    <string name="lab_health_steps_cache_value">%1$d / 7 days</string>
+    <string name="lab_health_steps_sync_note">The record-change time is Health Connect metadata, not confirmation that Xiaomi cloud sync has finished.</string>
+    <string name="lab_health_steps_request_permission">Allow step access</string>
+    <string name="lab_health_steps_refresh">Read today</string>
+    <string name="lab_health_steps_open_settings">Open Health Connect</string>
+    <string name="lab_health_steps_value">%1$s steps</string>
+    <string name="lab_health_steps_source_none">No verified source</string>
+    <string name="lab_health_steps_not_available_value">—</string>
+    <string name="lab_health_steps_reading">Reading…</string>
+    <string name="lab_health_steps_status_error">Read failed</string>
+    <string name="lab_health_steps_status_unavailable">Health Connect unavailable</string>
+    <string name="lab_health_steps_status_permission_required">Read access required</string>
+    <string name="lab_health_steps_status_not_queried">Not queried yet</string>
+    <string name="lab_health_steps_status_xiaomi_found">Xiaomi source detected</string>
+    <string name="lab_health_steps_status_diagnostics_incomplete">Xiaomi data found; record check incomplete</string>
+    <string name="lab_health_steps_status_manual_records">Xiaomi source includes manual records</string>
+    <string name="lab_health_steps_status_multiple_sources">Multiple Xiaomi sources detected</string>
+    <string name="lab_health_steps_status_system_only">Other Health Connect data only</string>
+    <string name="lab_health_steps_status_no_records">No step records today</string>
+    <string name="lab_health_steps_method_active">active</string>
+    <string name="lab_health_steps_method_automatic">automatic</string>
+    <string name="lab_health_steps_method_manual">manual</string>
+    <string name="lab_health_steps_method_unknown">unknown</string>
+    <string name="lab_health_steps_cache_corrupt_reset">The local probe cache was invalid and has been reset. Live Health Connect reading continued.</string>
+    <string name="lab_health_steps_cache_write_failed">Today’s live result was read, but the local probe cache could not be saved.</string>
+    <string name="lab_health_steps_failed">Read failed: %1$s</string>
     <string name="lab_achievement_test">Achievement popup test</string>
     <string name="lab_achievement_test_description">Triggers the same achievement banner used by the home screen so you can inspect icon, motion, layout, and copy.</string>
     <string name="lab_trigger_achievement_popup">Trigger achievement popup</string>
@@ -1033,7 +1114,7 @@
     <string name="lab_xiaoyuzhou_event_service">Service</string>
     <string name="lab_xiaoyuzhou_event_media_session">MediaSession</string>
     <string name="lab_xiaoyuzhou_event_notification">Notification</string>
-    <string name="lab_xiaoyuzhou_monitor_note">This only measures Xiaoyuzhou playback on this device. Playback is trusted only while the listener keeps receiving confirmations; any gap over 30 minutes is not counted as trusted playback.</string>
+    <string name="lab_xiaoyuzhou_monitor_note">This only measures Xiaoyuzhou playback on this device. Playback is trusted only while the listener keeps receiving confirmations; gaps over 30 min are not counted.</string>
     <string name="lab_xiaoyuzhou_open_notification_listener">Open listener access</string>
     <string name="lab_xiaoyuzhou_refresh">Refresh</string>
     <string name="lab_xiaoyuzhou_reset_today">Reset today playback test</string>
@@ -1047,7 +1128,7 @@
     <string name="lab_behavior_ring_test_description">Enter four minute values to verify the daily overview ring position and gradient logic.</string>
     <string name="lab_behavior_ring_ratio">Total %1$d · Invested %2$d · Vow %3$d · Saved %4$d</string>
     <string name="lab_block_overlay_preview_group_name">Short video detox</string>
-    <string name="lab_block_overlay_preview_exceeded_text">27 minutes</string>
+    <string name="lab_block_overlay_preview_exceeded_text">27 min</string>
 <string name="lab_pro_debug">Pro debug</string>
     <string name="lab_pro_debug_description">Debug builds only. Adds local Pro time for any channel without changing real Google Play or activation records.</string>
     <string name="lab_super_mode_debug">Super Mode debug</string>
@@ -1218,8 +1299,8 @@
     <string name="me_progress_days_value">%1$d days</string>
     <string name="me_progress_minutes_value">%1$s min</string>
     <string name="me_progress_steps_value">%1$s steps</string>
-    <string name="me_progress_minutes_unit">Minutes</string>
-    <string name="me_progress_points_unit">Points</string>
+    <string name="me_progress_minutes_unit">min</string>
+    <string name="me_progress_points_unit">PT</string>
     <string name="me_progress_empty_title">No progress data in this range</string>
     <string name="me_progress_empty_body">Archived saved time and earned point records will appear here after you keep using Tiny Vow.</string>
     <string name="me_progress_saved_empty_title">No saved-minute data in this range</string>
@@ -1256,7 +1337,7 @@
     <string name="me_progress_spent_records_title">Spent point records</string>
     <string name="me_progress_spent_records_empty">No spent point records in this range.</string>
     <string name="me_progress_spent_record_default">Point spend</string>
-    <string name="me_progress_spent_record_points">-%1$s</string>
+    <string name="me_progress_spent_record_points">-%1$s PT</string>
     <string name="me_progress_date_picker_confirm">Apply</string>
     <string name="me_progress_date_picker_cancel">Cancel</string>
     <string name="checkin_overview_title">Daily check-in</string>
@@ -1378,18 +1459,19 @@
     <string name="redeem_no_history_yet">No redemption history yet.</string>
     <string name="redeem_offline_reward">🎁 Offline reward</string>
     <string name="redeem_recent_redemptions">Recent redemptions</string>
+    <string name="redeem_recent_redemptions_short">Purchases</string>
     <string name="redeem_required_points">Required points</string>
     <string name="redeem_stock_left_value">Stock left: %1$s</string>
     <string name="redeem_stock_quantity">Stock quantity</string>
     <string name="redeem_stock_unlimited">Stock: unlimited</string>
     <string name="redeem_target_group">Target vow</string>
-    <string name="redeem_time_capsule_value_minutes">✨ Time capsule: +%1$s minutes</string>
+    <string name="redeem_time_capsule_value_minutes">✨ Time capsule: +%1$s min</string>
     <string name="redeem_time_pack_expiry_daily">Valid until the end of today.</string>
     <string name="redeem_time_pack_expiry_monthly">Valid until the end of this month.</string>
     <string name="redeem_time_pack_expiry_weekly">Valid through the 7-day window starting today.</string>
     <string name="redeem_time_pack_period_hint">Time packs follow the selected vow period and extend its limit.</string>
     <string name="redeem_unlimited_stock">Unlimited stock</string>
-    <string name="redeem_value_value_minutes">%1$s +%2$s minutes</string>
+    <string name="redeem_value_value_minutes">%1$s +%2$s min</string>
     <string name="redeem_weekly_time_pack_groups">Weekly vows</string>
     <string name="settings_custom_theme">Custom theme</string>
     <string name="stats_24_hour_distribution">24-hour distribution</string>
@@ -1408,7 +1490,7 @@
     <string name="stats_average">Average</string>
     <string name="stats_average_session">Average session</string>
     <string name="stats_behavior_analysis">Key data</string>
-    <string name="stats_bonus_points_value">Bonus %1$s</string>
+    <string name="stats_bonus_points_value">Bonus %1$s PT</string>
     <string name="stats_bonus_time_value">Bonus +%1$s</string>
     <string name="stats_behavior_structure_description">Shows how total use contains invested and vow time, with saved time outside it.</string>
     <string name="stats_behavior_corner_usage">Total use</string>
@@ -1419,8 +1501,8 @@
     <string name="stats_behavior_total_score">Total score</string>
     <string name="stats_behavior_unit_minutes">min</string>
     <string name="stats_behavior_unit_minutes_short">(min)</string>
-    <string name="stats_behavior_unit_points">pts</string>
-    <string name="stats_behavior_unit_score">pts</string>
+    <string name="stats_behavior_unit_points">PT</string>
+    <string name="stats_behavior_unit_score">PT</string>
     <string name="stats_behavior_fragmentation">Fragmentation</string>
     <string name="stats_behavior_app_concentration">App concentration</string>
     <string name="stats_behavior_active_span">Active span</string>
@@ -1510,7 +1592,7 @@
     <string name="home_activity_ring_detail_period_pass">Period reminder skip</string>
     <string name="home_activity_ring_detail_group_count">%1$d groups</string>
     <string name="home_activity_ring_detail_duration_pair">%1$s / %2$s</string>
-    <string name="home_activity_ring_detail_points_pair">%1$s / %2$s pts</string>
+    <string name="home_activity_ring_detail_points_pair">%1$s / %2$s PT</string>
     <string name="home_activity_ring_detail_no_data">Create a matching group to start this ring.</string>
     <string name="home_activity_ring_control_formula">Vow uses only the vow group\'s base limit; extra-time cards, emergency buffers, and period reminder skips do not count. Before 20:00, Vow = progress toward the 20:00 close × vow health. Vow health stays at 100% while usage is no higher than the on-pace allowance; when usage runs ahead, it is reduced by on-pace usage ÷ actual usage. After 20:00, the ring is closed if usage stays within the base limit; over-limit usage becomes base limit ÷ actual usage. Multiple groups are averaged.</string>
     <string name="home_activity_ring_encourage_formula">Focus = each focus group\'s current-period usage ÷ its target time, averaged across groups.</string>
@@ -1543,7 +1625,7 @@
     <string name="ring_settings_color_custom">Custom</string>
     <string name="ring_settings_custom_color_label">Custom color (#RRGGBB)</string>
     <string name="ring_settings_save_color">Save color</string>
-    <string name="ring_settings_focus_daily_target_label">Daily focus target minutes</string>
+    <string name="ring_settings_focus_daily_target_label">Daily focus target (min)</string>
     <string name="ring_settings_save_steps">Save step settings</string>
     <string name="ring_settings_save_focus">Save focus target</string>
     <string name="ring_settings_saved">Ring settings saved</string>
@@ -1552,7 +1634,7 @@
     <string name="media_app_settings_list_subtitle">Merge trusted playback with foreground usage for these apps.</string>
     <string name="media_app_status_configured_count">%1$d added</string>
     <string name="media_app_settings_description">These apps often play while the screen is locked or in the background. After you add one, Tiny Vow combines confirmed playback intervals with foreground usage, then removes overlaps before using the result on the home page, limits, points, and stats.</string>
-    <string name="media_app_settings_limit_note">Background playback can be interrupted by battery saving, app cleanup, or turning off notification access. Gaps without confirmation for more than 30 minutes are not counted as trusted playback.</string>
+    <string name="media_app_settings_limit_note">Battery saving, app cleanup, or disabled notification access can interrupt tracking. Unconfirmed gaps over 30 min are not counted.</string>
     <string name="media_app_permission_title">Notification access</string>
     <string name="media_app_permission_enabled">On. Background playback records will be more stable.</string>
     <string name="media_app_permission_disabled">Off. Tiny Vow cannot reliably detect background play and pause.</string>
@@ -1645,6 +1727,7 @@
     <string name="stats_hours">Hours</string>
     <string name="stats_next_day">Next day</string>
     <string name="stats_next">Next</string>
+    <string name="stats_next_symbol">&gt;</string>
     <string name="stats_refresh_day">Refresh this day</string>
     <string name="stats_previous_day">Previous day</string>
     <string name="stats_label">Best vow</string>
@@ -1677,9 +1760,9 @@
     <string name="stats_morning">Morning</string>
     <string name="stats_near_normal">Near normal</string>
     <string name="stats_net_points">Net points</string>
-    <string name="stats_net_points_value">Net points +%1$s</string>
-    <string name="stats_net_points_value_2">Net points %1$s</string>
-    <string name="stats_net_points_value_3">Net points %1$s</string>
+    <string name="stats_net_points_value">Net +%1$s PT</string>
+    <string name="stats_net_points_value_2">Net %1$s PT</string>
+    <string name="stats_net_points_value_3">Net %1$s PT</string>
     <string name="stats_next_month">Next month</string>
     <string name="stats_night">Night</string>
     <string name="stats_night_top_app">Night top app</string>
@@ -1715,6 +1798,7 @@
     <string name="stats_preview_share_poster">Preview share poster</string>
     <string name="stats_preview_the_poster_then_share_it_with_friends">Preview the poster, then share it with friends or keep it as a record.</string>
     <string name="stats_previous">Previous</string>
+    <string name="stats_previous_symbol">&lt;</string>
     <string name="stats_seven_day">7d</string>
     <string name="stats_redemption">Redeem</string>
     <string name="stats_reference_value">Reference %1$s</string>
@@ -1728,6 +1812,11 @@
     <string name="stats_share">Share</string>
     <string name="stats_share_preview">Share preview</string>
     <string name="stats_share_report">Share report</string>
+    <string name="stats_share_period_day">%1$d %2$s %3$d</string>
+    <string name="stats_share_period_week">%1$d Week %2$d</string>
+    <string name="stats_share_period_week_range">%1$d %2$s %3$d - %4$d %5$s %6$d</string>
+    <string name="stats_share_period_month">%1$d %2$s</string>
+    <string name="stats_share_period_year">%1$d</string>
     <string name="stats_share_download_slogan">Return time to yourself</string>
     <string name="stats_share_download_tagline">Tiny Vow · Return time to yourself</string>
     <string name="stats_share_modules">Share modules</string>
@@ -1756,6 +1845,10 @@
     <string name="stats_tab_weekly">Weekly report</string>
     <string name="stats_tab_monthly">Monthly report</string>
     <string name="stats_tab_yearly">Yearly report</string>
+    <string name="stats_tab_daily_compact">D</string>
+    <string name="stats_tab_weekly_compact">W</string>
+    <string name="stats_tab_monthly_compact">M</string>
+    <string name="stats_tab_yearly_compact">Y</string>
     <string name="stats_sun">Sun</string>
     <string name="stats_target_complete">Target complete</string>
     <string name="stats_target_value">Target %1$s</string>
@@ -1770,7 +1863,14 @@
     <string name="stats_thu">Thu</string>
     <string name="stats_time_heatmap">Time heatmap</string>
     <string name="stats_time_flow">Time Marks</string>
-    <string name="stats_time_flow_description">Each square is 5 minutes taken by an app during the day.</string>
+    <string name="stats_time_flow_description">Each square is 5 min of app use.</string>
+    <string name="stats_weekly_time_flow_description">Each square is one hour from this week.</string>
+    <string name="stats_monthly_time_flow_description">Each row is one day of this month, with 24 hourly points.</string>
+    <string name="stats_rhythm_top_usage_title">Usage TOP 8 this period</string>
+    <string name="stats_rhythm_top_opens_title">Opens TOP 8 this period</string>
+    <string name="stats_rhythm_open_count_value">%1$d opens</string>
+    <string name="stats_app_focus_sort_opens">Opens</string>
+    <string name="stats_app_focus_sort_usage">Time</string>
     <string name="stats_time_tide_title">Time Tide</string>
     <string name="stats_time_tide_badge">Day-night rhythm</string>
     <string name="stats_time_tide_description">Three tide lines compare this day, the previous archive, and the recent average.</string>
@@ -1942,8 +2042,8 @@
     <string name="group_name_placeholder">Vow name (for example: games, video)</string>
     <string name="group_edit_name_required">Enter a vow name before the save checkmark becomes available.</string>
     <string name="group_edit_limit_required">Goal / limit must be a minute value from 1 to 1440.</string>
-    <string name="group_edit_points_required">Points per minute must be a number, for example 0.1.</string>
-    <string name="group_points_value">%1$s pts</string>
+    <string name="group_edit_points_required">PT/min must be a number, for example 0.1.</string>
+    <string name="group_points_value">%1$s PT</string>
     <string name="group_record_days_label">Recorded days</string>
     <string name="group_target_limit_label">Goal / limit</string>
     <string name="group_week_total_label">This week total</string>
@@ -2025,11 +2125,11 @@
     <string name="stats_behavior_map_quadrant_ungrouped_long_use">Drift away</string>
     <string name="stats_behavior_map_quadrant_ungrouped_fragment">Fleeting skim</string>
     <string name="stats_behavior_map_quadrant_ungrouped_low_impact">Low impact</string>
-    <string name="stats_behavior_map_matrix_high_freq_low_time">High frequency, low time</string>
-    <string name="stats_behavior_map_matrix_low_freq_high_time">Low frequency, high time</string>
-    <string name="stats_behavior_map_matrix_high_freq_high_time">High frequency, high time</string>
+    <string name="stats_behavior_map_matrix_high_freq_low_time">High freq · Low time</string>
+    <string name="stats_behavior_map_matrix_low_freq_high_time">Low freq · High time</string>
+    <string name="stats_behavior_map_matrix_high_freq_high_time">High freq · High time</string>
     <string name="stats_behavior_map_matrix_meta">%1$s · %2$s</string>
-    <string name="stats_behavior_map_matrix_value">%1$d launches · %2$s</string>
+    <string name="stats_behavior_map_matrix_value">%1$d opens · %2$s</string>
     <string name="stats_behavior_map_matrix_empty">No matching app</string>
     <string name="stats_archive_date_value">Archive date %1$s</string>
     <string name="stats_archive_window_not_enough_peak_samples">This archive window does not have enough samples to identify a peak.</string>
@@ -2251,14 +2351,18 @@
     <string name="redeem_store_manual_use_hint">Buy now, use when needed</string>
     <string name="redeem_store_purchase_action">Buy</string>
     <string name="redeem_store_purchase">Buy · %1$d PT</string>
-    <string name="redeem_store_stock_owned_unlimited">Store unlimited · Owned %1$d</string>
-    <string name="redeem_store_stock_owned_value">Store %1$d · Owned %2$d</string>
+    <string name="redeem_store_stock_owned_unlimited">Unlimited · Owned %1$d</string>
+    <string name="redeem_store_stock_owned_value">Stock %1$d · Owned %2$d</string>
     <string name="redeem_store_stock_owned_daily_limit">%1$s · Today %2$d/1</string>
+    <string name="redeem_store_stock_owned_monthly_limit">%1$s · This month %2$d/1</string>
     <string name="redeem_store_daily_limit_reached">Already bought today.</string>
+    <string name="redeem_error_monthly_limit_reached">You already bought this streak shield this month.</string>
     <string name="redeem_no_encourage_group_for_double_points">Create a focus first.</string>
     <string name="redeem_inventory_pending_title">Need your choice</string>
     <string name="redeem_inventory_empty">No items yet.</string>
     <string name="redeem_inventory_status_line">Owned %1$d · Guarding %2$d</string>
+    <string name="redeem_inventory_shield_available_date">Can restore the streak for %1$s</string>
+    <string name="redeem_inventory_shield_unavailable">Only a streak broken yesterday or the day before can be restored</string>
     <string name="redeem_inventory_use">Use</string>
     <string name="redeem_inventory_overlay_only">Use when a vow reminder appears.</string>
     <string name="redeem_inventory_waiting_for_review">Use to offset a streak break.</string>
@@ -2280,16 +2384,16 @@
     <string name="redeem_error_period_pass_already_active">This vow already has a pass for this period.</string>
     <string name="redeem_error_double_points_already_active">This focus already has double points today.</string>
     <string name="redeem_error_already_completed">Already completed this period.</string>
-    <string name="redeem_effect_pending_time_add">%1$s will gain +%2$d minutes.</string>
+    <string name="redeem_effect_pending_time_add">%1$s will gain +%2$d min.</string>
     <string name="redeem_effect_pending_period_pass">%1$s will skip over-limit reminders for this period, while usage is still recorded.</string>
     <string name="redeem_effect_pending_double_points_day">%1$s will earn double points today.</string>
     <string name="redeem_effect_undo">Undo</string>
     <string name="redeem_effect_confirmed">Item effect confirmed.</string>
     <string name="redeem_effect_canceled">Item use undone.</string>
-    <string name="redeem_use_success_time_add">%1$s gained +%2$d minutes.</string>
+    <string name="redeem_use_success_time_add">%1$s gained +%2$d min.</string>
     <string name="redeem_use_success_period_pass">%1$s will skip over-limit reminders this period. Usage is still recorded.</string>
     <string name="redeem_use_success_double_points_day">%1$s earns double points today.</string>
-    <string name="redeem_use_success_emergency_unlock">%1$s received a %2$d-minute buffer.</string>
+    <string name="redeem_use_success_emergency_unlock">%1$s received a %2$d-min buffer.</string>
     <string name="redeem_rule_bind_control_group">Use on 1 vow.</string>
     <string name="redeem_rule_current_period_manual_use">Skip over-limit reminders this period; stats still record usage.</string>
     <string name="redeem_rule_overlay_use_only">Use once when a vow reminder appears.</string>
@@ -2305,6 +2409,7 @@
     <string name="redeem_history_streak_shield">Streak shield item</string>
     <string name="redeem_history_purchase_double_points_day">Bought daily double points</string>
     <string name="redeem_use_history_title">Use records</string>
+    <string name="redeem_use_history_short">Uses</string>
     <string name="redeem_use_history_empty">No item has been used yet.</string>
     <string name="redeem_use_history_used">Used</string>
     <string name="redeem_use_history_time_add">%1$s +%2$d min</string>
@@ -2334,16 +2439,16 @@
     <string name="redeem_effects_unknown_reward">Item effect</string>
     <string name="history_reward_effect_benefits">Item benefits</string>
     <string name="redeem_overlay_use_emergency_unlock">Use temporary buffer</string>
-    <string name="reward_time_add_15_title">Extra 15 minutes</string>
+    <string name="reward_time_add_15_title">Extra 15 min</string>
     <string name="reward_time_add_15_description">Add time to 1 vow.</string>
-    <string name="reward_time_add_30_title">Extra 30 minutes</string>
+    <string name="reward_time_add_30_title">Extra 30 min</string>
     <string name="reward_time_add_30_description">Add time to 1 vow.</string>
-    <string name="reward_time_add_60_title">Extra 60 minutes</string>
+    <string name="reward_time_add_60_title">Extra 60 min</string>
     <string name="reward_time_add_60_description">Add time to 1 vow.</string>
-    <string name="reward_period_pass_title">Period Reminder Skip</string>
-    <string name="reward_period_pass_description">Skip over-limit reminders for 1 vow this period. Usage and stats are still recorded.</string>
+    <string name="reward_period_pass_title">Period Pass</string>
+    <string name="reward_period_pass_description">Skip reminders for 1 vow this period. Usage still counts.</string>
     <string name="reward_emergency_unlock_10_title">Temporary buffer 10 min</string>
-    <string name="reward_emergency_unlock_10_description">When a vow reminder appears, give yourself a 10-minute buffer.</string>
+    <string name="reward_emergency_unlock_10_description">Get a 10-min buffer when a vow reminder appears.</string>
     <string name="reward_streak_shield_control_title">Save Vow Streak</string>
     <string name="reward_streak_shield_control_description">Save 1 vow streak break.</string>
     <string name="reward_streak_shield_encourage_title">Save Gains Streak</string>
@@ -2362,7 +2467,7 @@
     <string name="super_mode_current_time_label">Current local time</string>
     <string name="super_mode_window_label">Daily action window</string>
     <string name="super_mode_auto_exit_label">Auto exit</string>
-    <string name="super_mode_auto_exit_summary">Exits after 5 idle minutes, app backgrounding, or leaving the allowed window</string>
+    <string name="super_mode_auto_exit_summary">Exits after 5 min idle, app backgrounding, or leaving the allowed window</string>
     <string name="super_mode_recovery_question_label">Recovery question</string>
     <string name="super_mode_recovery_answer_label">Recovery answer</string>
     <string name="super_mode_configure_action">Configure Super Mode</string>
@@ -2386,8 +2491,8 @@
     <string name="super_mode_fill_all_required">Fill in every required field before saving.</string>
     <string name="super_mode_enter_title">Super Mode password</string>
     <string name="super_mode_enter_hint">Enter your preset Super Mode password.</string>
-    <string name="super_mode_enter_for_action">This action is protected by Super Mode: %1$s. Enter the password to start a 5-minute session.</string>
-    <string name="super_mode_enter_for_settings">Enter your Super Mode password to start a 5-minute session before changing key settings.</string>
+    <string name="super_mode_enter_for_action">This action is protected by Super Mode: %1$s. Enter the password to start a 5-min session.</string>
+    <string name="super_mode_enter_for_settings">Enter your Super Mode password to start a 5-min session before changing key settings.</string>
     <string name="super_mode_enter_from_home">Enter your Super Mode password to temporarily unlock protected key actions.</string>
     <string name="super_mode_enter_to_edit_credentials">Enter Super Mode to change the password or recovery question.</string>
     <string name="super_mode_enter_to_edit_window">Enter Super Mode to edit the allowed window.</string>
@@ -2470,7 +2575,7 @@
     <string name="special_app_list_description">Configure app-specific data sources and report visuals. These settings stay on this device.</string>
     <string name="special_app_weread_list_subtitle">Use WeRead reading-duration buckets for limits, points, and reports.</string>
     <string name="special_app_status_configured">Configured</string>
-    <string name="special_app_status_not_configured">Not configured</string>
+    <string name="special_app_status_not_configured">Not set</string>
     <string name="special_app_list_future_hint">More app-level tools can be added here later without changing the WeRead setup flow.</string>
     <string name="app_color_settings_title">App colors</string>
     <string name="app_color_settings_description">Choose app colors used by report heatmaps and legends.</string>
@@ -2619,12 +2724,30 @@
     <string name="offline_focus_start">Start focus</string>
     <string name="offline_focus_start_short">Start</string>
     <string name="offline_focus_start_button_format">Start %1$d min %2$s</string>
+    <string name="offline_focus_start_button_unlimited_format">Start open-ended %1$s focus</string>
     <string name="offline_focus_choose_category_duration">Choose category and duration</string>
     <string name="offline_focus_rhythm_presets">Rhythm presets</string>
     <string name="offline_focus_rhythm_preset_format">%1$d / %2$d break</string>
     <string name="offline_focus_running_format">%1$s · %2$s left</string>
     <string name="offline_focus_elapsed_total_format">%1$s/%2$s</string>
+    <string name="offline_focus_elapsed_unlimited_format">%1$s focused · open-ended</string>
     <string name="offline_focus_details">Details</string>
+    <string name="offline_focus_today_detail_title">Today\'s focus</string>
+    <string name="offline_focus_today_target_progress">Goal %1$d%%</string>
+    <string name="offline_focus_today_target_value">Today\'s goal %1$d min</string>
+    <string name="offline_focus_today_summary_minutes">Focused</string>
+    <string name="offline_focus_today_summary_sessions">Completed</string>
+    <string name="offline_focus_today_summary_points">Earned</string>
+    <string name="offline_focus_report_summary_duration">Focus time</string>
+    <string name="offline_focus_report_summary_sessions">Sessions</string>
+    <string name="offline_focus_report_summary_points">Points earned</string>
+    <string name="offline_focus_today_minutes_value">%1$d min</string>
+    <string name="offline_focus_today_sessions_value">%1$d sessions</string>
+    <string name="offline_focus_today_points_value">+%1$d PT</string>
+    <string name="offline_focus_today_categories_title">By type</string>
+    <string name="offline_focus_today_recent_title">Recent completions</string>
+    <string name="offline_focus_today_empty_title">No focus completed today</string>
+    <string name="offline_focus_today_empty_body">Start when you are ready. Completed sessions will appear here with their time and PT.</string>
     <string name="offline_focus_active_title">Current focus</string>
     <string name="offline_focus_active_running">Running</string>
     <string name="offline_focus_active_paused">Paused</string>
@@ -2632,15 +2755,17 @@
     <string name="offline_focus_active_remaining">Remaining</string>
     <string name="offline_focus_active_progress_hint">Keep this page open for full controls, or return home and use the compact card.</string>
     <string name="offline_focus_paused_by_app">Paused because %1$s is not in the whitelist.</string>
-    <string name="offline_focus_points_after_complete_format">Finish to earn up to +%1$d points.</string>
+    <string name="offline_focus_points_after_complete_format">Finish to earn up to +%1$d PT.</string>
     <string name="offline_focus_finish_early">Finish</string>
     <string name="offline_focus_end">End</string>
     <string name="offline_focus_abandon">Give up</string>
-    <string name="offline_focus_today_minutes">Minutes</string>
+    <string name="offline_focus_today_minutes">min</string>
     <string name="offline_focus_today_sessions">Sessions</string>
-    <string name="offline_focus_today_points">Points</string>
+    <string name="offline_focus_today_points">PT</string>
     <string name="offline_focus_minutes_format">%1$d min</string>
-    <string name="offline_focus_completion_title">+%1$d points earned</string>
+    <string name="offline_focus_minutes_short_format">%1$dmin</string>
+    <string name="offline_focus_unlimited">∞</string>
+    <string name="offline_focus_completion_title">+%1$d PT earned</string>
     <string name="offline_focus_completion_body">%1$s · %2$d min completed</string>
     <string name="offline_focus_start_sheet_title">Start focus</string>
     <string name="offline_focus_duration">Duration</string>
@@ -2649,11 +2774,17 @@
     <string name="offline_focus_color_picker_title">Pick focus color</string>
     <string name="offline_focus_daily_title">Focus</string>
     <string name="offline_focus_daily_empty">No focus sessions in this report yet.</string>
+    <string name="offline_focus_weekly_empty">No focus sessions in this weekly report yet.</string>
+    <string name="offline_focus_monthly_empty">No focus sessions in this monthly report yet.</string>
     <string name="offline_focus_daily_quote">Some serious effort does not happen on a screen.</string>
     <string name="offline_focus_timeline">Focus timeline</string>
     <string name="offline_focus_rhythm_title">Focus rhythm</string>
+    <string name="offline_focus_weekly_pebbles_title">Grain by grain</string>
+    <string name="offline_focus_weekly_pebbles_subtitle">Each focus session becomes a pebble, placed in its day’s glass jar and scaled by duration.</string>
+    <string name="offline_focus_weekly_category_count">%1$d times</string>
+    <string name="offline_focus_weekly_category_points">Earned %1$d PT</string>
     <string name="offline_focus_rhythm_subtitle">A day-long time band that shows where serious effort happened.</string>
-    <string name="offline_focus_marks_title">Focus Traces</string>
+    <string name="offline_focus_marks_title">Focus Collection</string>
     <string name="offline_focus_marks_subtitle">Focus moments that truly belong to you.</string>
     <string name="offline_focus_rhythm_longest_focus">Longest focus</string>
     <string name="offline_focus_rhythm_active_hours">Active hours</string>
@@ -2669,6 +2800,9 @@
     <string name="offline_focus_notification_body">%1$s remaining</string>
     <string name="offline_focus_notification_paused_body">Paused · %1$s remaining</string>
     <string name="offline_focus_notification_detail">%1$s/%2$s focused · %3$s remaining</string>
+    <string name="offline_focus_notification_unlimited_body">Focused for %1$s · open-ended</string>
+    <string name="offline_focus_notification_unlimited_paused_body">Paused · focused for %1$s</string>
+    <string name="offline_focus_notification_unlimited_detail">Open-ended focus · %1$s elapsed</string>
     <string name="offline_focus_completed_channel_name">Focus finished</string>
     <string name="offline_focus_completed_channel_desc">Persistent sound and vibration when a focus session reaches its planned end.</string>
     <string name="offline_focus_completed_notification_title">Focus finished</string>
@@ -2684,7 +2818,7 @@
     <string name="offline_focus_completed_rest_hint">The session is saved. Let the rest timer run, adjust the end time, or start the same focus again.</string>
     <string name="offline_focus_ended_early_rest_hint">This session was recorded but did not reach the completion threshold, so no points were added.</string>
     <string name="offline_focus_completed_metric_duration">Focused</string>
-    <string name="offline_focus_completed_metric_points">Points</string>
+    <string name="offline_focus_completed_metric_points">PT</string>
     <string name="offline_focus_completed_metric_mode">Mode</string>
     <string name="offline_focus_completed_metric_end">Ended</string>
     <string name="offline_focus_start_again">Start again</string>
@@ -2790,7 +2924,7 @@
     <string name="offline_focus_whitelist">Whitelist</string>
     <string name="offline_focus_whitelist_desc">In Normal mode, these apps count as focus helpers and will not pause the session. Do not add distracting apps.</string>
     <string name="offline_focus_duration_custom">Custom minutes</string>
-    <string name="offline_focus_duration_custom_desc">Enter %1$d-%2$d minutes.</string>
+    <string name="offline_focus_duration_custom_desc">Enter %1$d-%2$d min.</string>
     <string name="offline_focus_save_custom_duration">Save custom duration</string>
     <string name="offline_focus_category_last_defaults">Last used for this type: %1$d min · %2$s</string>
     <string name="offline_focus_accessibility_warning_title">Auto-pause needs Accessibility</string>
@@ -2801,10 +2935,12 @@
     <string name="offline_focus_whitelist_empty">No whitelist apps yet.</string>
     <string name="offline_focus_whitelist_search_hint">Search apps</string>
     <string name="offline_focus_category_name">Type name</string>
+    <string name="offline_focus_category_name_required">Enter a type name.</string>
     <string name="offline_focus_category_icon">Default icon</string>
-    <string name="offline_focus_points_per_minute">Points per minute</string>
+    <string name="offline_focus_points_per_minute">PT/min</string>
     <string name="offline_focus_points_per_minute_desc">Each type can set its own points. The daily cap still applies.</string>
-    <string name="offline_focus_points_per_minute_value">%1$s pts/min</string>
+    <string name="offline_focus_points_per_minute_invalid">Enter a rate from 0 to 20 PT/min.</string>
+    <string name="offline_focus_points_per_minute_value">%1$s PT/min</string>
     <string name="offline_focus_category_add">Add type</string>
     <string name="offline_focus_category_save">Save type</string>
     <string name="offline_focus_category_upload_icon">Upload</string>
@@ -2816,4 +2952,36 @@
     <string name="offline_focus_icon_focus_icon_meditation">Meditation</string>
     <string name="offline_focus_icon_focus_icon_create">Create</string>
     <string name="pro_upsell_focus_mode">Focus is a Tiny Vow Pro feature for serious time away from your phone, with points based on the focus type rules you set.</string>
+    <string name="stats_weekly_points_trajectory">Points journey</string>
+    <string name="stats_weekly_points_trajectory_description">Daily earnings, spending, and balance changes</string>
+    <string name="stats_weekly_points_earned">Earned</string>
+    <string name="stats_weekly_points_spent">Spent</string>
+    <string name="stats_weekly_points_net">Net change</string>
+    <string name="stats_weekly_points_balance">Balance</string>
+    <string name="stats_weekly_points_day_detail">%1$s · %2$s details</string>
+    <string name="stats_weekly_points_day_empty">No point changes on this day.</string>
+    <string name="stats_weekly_points_group_unassigned">Other sources</string>
+    <string name="stats_weekly_points_detail_focus">Focus</string>
+    <string name="stats_weekly_points_detail_groups">Groups</string>
+    <string name="stats_weekly_points_detail_spends">Spending</string>
+    <string name="stats_weekly_points_session_count">%1$d sessions</string>
+    <string name="stats_weekly_points_group_completed">Met</string>
+    <string name="stats_weekly_points_group_not_completed">Not met</string>
+    <string name="stats_weekly_points_spend_purchase">Buy %1$s</string>
+    <string name="stats_weekly_points_entry_usage">Usage reward</string>
+    <string name="stats_weekly_points_entry_target_bonus">Goal reward</string>
+    <string name="stats_weekly_points_entry_offline_focus">Focus reward</string>
+    <string name="stats_weekly_points_entry_reward_spend">Reward redemption</string>
+    <string name="stats_weekly_points_entry_manual">Manual adjustment</string>
+    <string name="stats_weekly_points_income">Income</string>
+    <string name="stats_weekly_points_expense">Spent</string>
+    <string name="stats_weekly_points_cumulative">Cumulative points</string>
+    <string name="stats_weekly_points_daily_net_axis">Daily net change (PT)</string>
+    <string name="stats_weekly_points_cumulative_axis">Cumulative (PT)</string>
+    <string name="stats_weekly_points_net_gain">Income exceeded spending this week, for a net gain of %1$s PT 🎉</string>
+    <string name="stats_weekly_points_net_loss">Spending exceeded income this week, for a net change of %1$s PT</string>
+    <string name="stats_monthly_points_net_gain">Income exceeded spending this month, for a net gain of %1$s PT 🎉</string>
+    <string name="stats_monthly_points_net_loss">Spending exceeded income this month, for a net change of %1$s PT</string>
+    <string name="lab_health_steps_permission_not_granted">Step read access was not granted. Check Tiny Vow under Health Connect &gt; App permissions.</string>
+    <string name="lab_health_steps_permission_launch_failed">Could not open the step permission screen: %1$s</string>
 </resources>

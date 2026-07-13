@@ -19,6 +19,7 @@ import com.rrrrz.tinyvow.data.db.GroupType
 import com.rrrrz.tinyvow.data.db.LimitPeriod
 import com.rrrrz.tinyvow.data.db.PointLedgerEntity
 import com.rrrrz.tinyvow.data.db.PointLedgerEntryType
+import com.rrrrz.tinyvow.data.db.PointLedgerDailyStats
 import com.rrrrz.tinyvow.data.db.RewardEffectBenefitEntity
 import com.rrrrz.tinyvow.data.db.RewardEffectBenefitType
 import com.rrrrz.tinyvow.data.db.RewardType
@@ -77,6 +78,14 @@ class DailyArchiveRepository(
     fun getArchivesByRange(from: String, to: String): Flow<List<DailyArchiveEntity>> =
         dailyArchiveDao.getByDateRange(from, to)
 
+    suspend fun getPointLedgerDailyStatsByRange(from: String, to: String): List<PointLedgerDailyStats> =
+        pointLedgerDao.getDailyStatsByRange(from, to)
+
+    suspend fun getPointLedgerEntriesByRange(from: String, to: String): List<PointLedgerEntity> =
+        pointLedgerDao.getEntriesByDateRange(from, to)
+
+    suspend fun getPointBalanceBeforeDate(date: String): Double = pointLedgerDao.sumNetBeforeDate(date)
+
     fun getGroupArchivesByDate(date: String): Flow<List<DailyGroupArchiveEntity>> = dailyGroupArchiveDao.getByDate(date)
 
     fun getGroupArchivesByRange(from: String, to: String): Flow<List<DailyGroupArchiveEntity>> =
@@ -86,6 +95,9 @@ class DailyArchiveRepository(
 
     fun getAppTimeSliceArchivesByDate(date: String): Flow<List<DailyAppTimeSliceArchiveEntity>> =
         dailyAppTimeSliceArchiveDao.getByDate(date)
+
+    suspend fun getAppTimeSliceArchivesByRange(from: String, to: String): List<DailyAppTimeSliceArchiveEntity> =
+        dailyAppTimeSliceArchiveDao.getByDateRangeSync(from, to)
 
     fun getRewardEffectBenefitsByDate(date: String): Flow<List<RewardEffectBenefitEntity>> =
         rewardEffectBenefitDao.observeByDate(date)
@@ -116,6 +128,234 @@ class DailyArchiveRepository(
         groupId: String? = null,
         limit: Int = 10,
     ): Flow<List<TopAppArchiveSummary>> = dailyAppArchiveDao.getTopAppsByRange(groupId, from, to, limit)
+
+    /**
+     * Builds today's report rows without persisting them or triggering archive-only side effects.
+     * Yesterday and earlier remain exclusively backed by the immutable archive tables.
+     */
+    suspend fun buildLiveDayReportSnapshot(
+        nowMillis: Long = System.currentTimeMillis(),
+    ): LiveDayReportSnapshot =
+        withContext(Dispatchers.IO) {
+            val dayStartHour = preferences.getDayBoundaryHourOnce()
+            val today = ArchiveDateUtils.localDateAt(nowMillis, zoneId, dayStartHour)
+            val archiveDate = ArchiveDateUtils.formatDate(today)
+            val dayStart = ArchiveDateUtils.startOfDayMillis(today, zoneId, dayStartHour)
+            val rangeEnd = nowMillis.coerceAtLeast(dayStart + 1L)
+            val groups = groupDao.getAllGroupsSync()
+            val crossRefs = crossRefDao.getAllValidCrossRefsSync()
+            val dailyUsageByType =
+                mapOf(
+                    GroupType.CONTROL to usageRepository.getUsageStats(dayStart, rangeEnd, GroupType.CONTROL),
+                    GroupType.ENCOURAGE to usageRepository.getUsageStats(dayStart, rangeEnd, GroupType.ENCOURAGE),
+                )
+            val dailyUsageByPackage = usageRepository.getUsageStats(dayStart, rangeEnd)
+            val dailyOpenCountByPackage = usageRepository.getAppOpenCount(dayStart, rangeEnd)
+            val groupedPackageNames = crossRefs.mapTo(linkedSetOf()) { it.packageName }
+            val launchablePackageNames = loadLaunchablePackageNames()
+            val ungroupedLaunchablePackages =
+                selectUngroupedLaunchablePackages(
+                    activePackageNames =
+                        dailyUsageByPackage
+                            .filterValues { it >= MIN_UNGROUPED_APP_ARCHIVE_USAGE_MILLIS }
+                            .keys,
+                    groupedPackageNames = groupedPackageNames,
+                    launchablePackageNames = launchablePackageNames,
+                )
+            val packagesToReport = selectPackagesToArchive(groupedPackageNames, ungroupedLaunchablePackages)
+            val sessionsByPackage =
+                usageRepository
+                    .getUsageSessions(dayStart, rangeEnd)
+                    .groupBy { it.packageName }
+            val packageLabels = packagesToReport.associateWith(::resolveAppLabel)
+            val groupConfigs =
+                buildArchiveGroupConfigs(
+                    currentGroups = groups,
+                    currentCrossRefs = crossRefs,
+                    existingGroupSnapshots = emptyList(),
+                    existingGroupedAppsByGroup = emptyMap(),
+                    dayStart = dayStart,
+                    dayEnd = rangeEnd,
+                )
+            val periodUsageByStart =
+                groupConfigs
+                    .map { ArchiveDateUtils.periodStart(today, it.limitPeriod) to it.type }
+                    .distinct()
+                    .associateWith { (periodStart, groupType) ->
+                        usageRepository.getUsageStats(
+                            ArchiveDateUtils.startOfDayMillis(periodStart, zoneId, dayStartHour),
+                            rangeEnd,
+                            groupType,
+                        )
+                    }
+            val periodUsageBeforeDayByStart =
+                groupConfigs
+                    .map { ArchiveDateUtils.periodStart(today, it.limitPeriod) to it.type }
+                    .distinct()
+                    .associateWith { (periodStart, groupType) ->
+                        val periodStartMillis = ArchiveDateUtils.startOfDayMillis(periodStart, zoneId, dayStartHour)
+                        if (periodStartMillis >= dayStart) {
+                            emptyMap()
+                        } else {
+                            usageRepository.getUsageStats(periodStartMillis, dayStart, groupType)
+                        }
+                    }
+            val groupBuildResults =
+                groupConfigs.mapIndexed { index, group ->
+                    buildGroupArchive(
+                        date = today,
+                        archiveDate = archiveDate,
+                        group = group,
+                        dayStart = dayStart,
+                        dayEnd = rangeEnd,
+                        nextDayStart = rangeEnd,
+                        archiveTime = nowMillis,
+                        sortOrder = index,
+                        dailyUsageByPackage = dailyUsageByType[group.type].orEmpty(),
+                        periodUsageByPackage =
+                            periodUsageByStart[ArchiveDateUtils.periodStart(today, group.limitPeriod) to group.type].orEmpty(),
+                        periodUsageBeforeDayByPackage =
+                            periodUsageBeforeDayByStart[
+                                ArchiveDateUtils.periodStart(today, group.limitPeriod) to group.type
+                            ].orEmpty(),
+                        sessionsByPackage = sessionsByPackage,
+                        blockEventCount = blockEventDao.countByDateAndGroup(archiveDate, group.id),
+                    )
+                }
+            val groupSnapshots = groupBuildResults.map { it.archive }
+            val groupedAppArchives =
+                groupBuildResults.flatMap { groupResult ->
+                    val allocatedEarnedPoints =
+                        allocateGroupEarnedPoints(
+                            totalPoints = pointLedgerDao.sumEarnedByDateAndGroup(archiveDate, groupResult.archive.groupId),
+                            packageNames = groupResult.packageNames,
+                            usageByPackage = groupResult.dailyUsageByPackage,
+                        )
+                    groupResult.packageNames.map { packageName ->
+                        val behaviorSummary =
+                            summarizeAppBehavior(
+                                sessions = sessionsByPackage[packageName].orEmpty(),
+                                dayStart = dayStart,
+                                nextDayStart = rangeEnd,
+                            )
+                        buildDailyAppArchive(
+                            archiveDate = archiveDate,
+                            packageName = packageName,
+                            appLabel = packageLabels[packageName] ?: packageName,
+                            groupArchive = groupResult.archive,
+                            behaviorSummary = behaviorSummary,
+                            dailyUsageMillis = groupResult.dailyUsageByPackage[packageName] ?: 0L,
+                            openCount = dailyOpenCountByPackage[packageName] ?: 0,
+                            earnedPoints = allocatedEarnedPoints[packageName] ?: 0.0,
+                            usageSource =
+                                specialAppUsageRepository.usageSourceForDate(
+                                    packageName = packageName,
+                                    date = archiveDate,
+                                    groupType = groupResult.archive.groupType,
+                                ),
+                            archiveTime = nowMillis,
+                        )
+                    }
+                }
+            val ungroupedAppArchives =
+                ungroupedLaunchablePackages.map { packageName ->
+                    val behaviorSummary =
+                        summarizeAppBehavior(
+                            sessions = sessionsByPackage[packageName].orEmpty(),
+                            dayStart = dayStart,
+                            nextDayStart = rangeEnd,
+                        )
+                    buildDailyAppArchive(
+                        archiveDate = archiveDate,
+                        packageName = packageName,
+                        appLabel = packageLabels[packageName] ?: packageName,
+                        groupArchive = null,
+                        behaviorSummary = behaviorSummary,
+                        dailyUsageMillis = dailyUsageByPackage[packageName] ?: 0L,
+                        openCount = dailyOpenCountByPackage[packageName] ?: 0,
+                        earnedPoints = 0.0,
+                        usageSource =
+                            specialAppUsageRepository.usageSourceForDate(
+                                packageName = packageName,
+                                date = archiveDate,
+                                groupType = null,
+                            ),
+                        archiveTime = nowMillis,
+                    )
+                }
+            val appArchives = groupedAppArchives + ungroupedAppArchives
+            val pointsEarned = pointLedgerDao.sumEarnedByDate(archiveDate)
+            val pointsSpent = pointLedgerDao.sumSpentByDate(archiveDate)
+            val activityRings =
+                buildActivityRingProgressSnapshot(
+                    groupSnapshots = groupSnapshots,
+                    pointsEarned = pointsEarned,
+                )
+            val controlPackageNames =
+                groupConfigs
+                    .filter { it.type == GroupType.CONTROL }
+                    .flatMap { it.packageNames }
+                    .distinct()
+            val encouragePackageNames =
+                groupConfigs
+                    .filter { it.type == GroupType.ENCOURAGE }
+                    .flatMap { it.packageNames }
+                    .distinct()
+            LiveDayReportSnapshot(
+                archive =
+                    DailyArchiveEntity(
+                        id = "live:$archiveDate",
+                        archiveDate = archiveDate,
+                        dayStartAt = dayStart,
+                        dayEndAt = rangeEnd,
+                        controlUsageMillis =
+                            controlPackageNames.sumOf { packageName ->
+                                dailyUsageByType[GroupType.CONTROL]?.get(packageName) ?: 0L
+                            },
+                        encourageUsageMillis =
+                            encouragePackageNames.sumOf { packageName ->
+                                dailyUsageByType[GroupType.ENCOURAGE]?.get(packageName) ?: 0L
+                            },
+                        totalUsageMillis = packagesToReport.sumOf { packageName -> dailyUsageByPackage[packageName] ?: 0L },
+                        savedMillis = 0L,
+                        controlExceededGroupCount =
+                            groupSnapshots.count {
+                                it.groupType == GroupType.CONTROL && isControlTimeoutForStats(it.exceededMillisAtClose)
+                            },
+                        controlBlockEventCount = blockEventDao.countByDate(archiveDate),
+                        controlCompletedGroupCount =
+                            groupSnapshots.count { it.groupType == GroupType.CONTROL && it.completed },
+                        encourageCompletedGroupCount =
+                            groupSnapshots.count { it.groupType == GroupType.ENCOURAGE && it.completed },
+                        pointsEarned = pointsEarned,
+                        pointsSpent = pointsSpent,
+                        pointsNet = pointsEarned - pointsSpent,
+                        redemptionCount = redemptionHistoryDao.countInRange(dayStart, rangeEnd),
+                        activityControlProgress = activityRings.controlProgress,
+                        activityEncourageProgress = activityRings.encourageProgress,
+                        activityGrowthProgress = activityRings.growthProgress,
+                        activityControlAvailable = activityRings.controlAvailable,
+                        activityEncourageAvailable = activityRings.encourageAvailable,
+                        activityGrowthAvailable = activityRings.growthAvailable,
+                        activityGrowthTargetPoints = activityRings.growthTargetPoints,
+                        activityRingsCompleted = activityRings.ringsCompleted,
+                        archiveVersion = SYSTEM_USAGE_ARCHIVE_VERSION,
+                        createdAt = nowMillis,
+                        updatedAt = nowMillis,
+                    ),
+                groupArchives = groupSnapshots,
+                appArchives = appArchives,
+                timeSliceArchives =
+                    buildDailyAppTimeSliceArchives(
+                        archiveDate = archiveDate,
+                        packageNames = packagesToReport,
+                        sessionsByPackage = sessionsByPackage,
+                        dayStart = dayStart,
+                        nextDayStart = rangeEnd,
+                    ),
+                capturedAt = nowMillis,
+            )
+        }
 
     suspend fun refreshArchiveForDate(date: String) {
         withContext(Dispatchers.IO) {

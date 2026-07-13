@@ -1307,6 +1307,10 @@ internal fun OfflineCategoryEditor(
     var pointsDraft by remember(category?.id, category?.pointsPerMinute) {
         mutableStateOf(formatPointsRate(category?.pointsPerMinute ?: 1.0))
     }
+    var saveAttempted by remember(category?.id) { mutableStateOf(false) }
+    val parsedPoints = pointsDraft.toDoubleOrNull()
+    val nameInvalid = nameDraft.isBlank()
+    val pointsInvalid = parsedPoints == null || parsedPoints !in 0.0..20.0
     val importIconLauncher =
         rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
             if (uri != null) {
@@ -1393,6 +1397,13 @@ internal fun OfflineCategoryEditor(
                 value = nameDraft,
                 onValueChange = { nameDraft = it.take(24) },
                 label = { Text(AppText.t("offline_focus_category_name")) },
+                isError = saveAttempted && nameInvalid,
+                supportingText =
+                    if (saveAttempted && nameInvalid) {
+                        { Text(AppText.t("offline_focus_category_name_required")) }
+                    } else {
+                        null
+                    },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
@@ -1400,7 +1411,18 @@ internal fun OfflineCategoryEditor(
                 value = pointsDraft,
                 onValueChange = { value -> pointsDraft = value.filter { it.isDigit() || it == '.' }.take(5) },
                 label = { Text(AppText.t("offline_focus_points_per_minute")) },
-                supportingText = { Text(AppText.t("offline_focus_points_per_minute_desc")) },
+                isError = saveAttempted && pointsInvalid,
+                supportingText = {
+                    Text(
+                        AppText.t(
+                            if (saveAttempted && pointsInvalid) {
+                                "offline_focus_points_per_minute_invalid"
+                            } else {
+                                "offline_focus_points_per_minute_desc"
+                            },
+                        ),
+                    )
+                },
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
@@ -1470,14 +1492,17 @@ internal fun OfflineCategoryEditor(
                 TinyVowButton(
                     text = if (category == null) AppText.t("offline_focus_category_add") else AppText.t("offline_focus_category_save"),
                     onClick = {
-                        onSave(
-                            category?.id,
-                            nameDraft,
-                            iconDraft,
-                            customIconPathDraft,
-                            colorDraft,
-                            pointsDraft.toDoubleOrNull() ?: 1.0,
-                        )
+                        saveAttempted = true
+                        if (!nameInvalid && !pointsInvalid) {
+                            onSave(
+                                category?.id,
+                                nameDraft.trim(),
+                                iconDraft,
+                                customIconPathDraft,
+                                colorDraft,
+                                requireNotNull(parsedPoints),
+                            )
+                        }
                     },
                     tone = TinyVowButtonTone.Primary,
                     modifier = Modifier.weight(1f),
@@ -1656,7 +1681,11 @@ private val offlineFocusSettingsPalette =
     listOf(
         0xFF6F4B39.toInt(),
         0xFFCDA783.toInt(),
+        0xFFE2B13C.toInt(),
+        0xFFF1C84B.toInt(),
         0xFF39A6E8.toInt(),
+        0xFF4F7FC7.toInt(),
+        0xFF5C7080.toInt(),
         0xFF2FAE9C.toInt(),
         0xFF2F9471.toInt(),
         0xFF62BD76.toInt(),

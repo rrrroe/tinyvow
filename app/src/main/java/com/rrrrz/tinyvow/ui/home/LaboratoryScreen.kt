@@ -107,6 +107,10 @@ fun LaboratoryScreen(
                 .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
+            HealthConnectStepsLabPanel()
+
+            HorizontalDivider()
+
             Text(
                 AppText.t("lab_points_simulation"),
                 style = MaterialTheme.typography.titleMedium,

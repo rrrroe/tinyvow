@@ -53,19 +53,45 @@ class UsageStatsUsageRepository(
 
     override suspend fun getAppOpenCount(startMillis: Long, endMillis: Long): Map<String, Int> =
         withContext(Dispatchers.Default) {
+            if (endMillis <= startMillis) return@withContext emptyMap()
             val usageStatsManager =
                 context.getSystemService(Context.USAGE_STATS_SERVICE) as UsageStatsManager
-            val counts = mutableMapOf<String, Int>()
-            val events = usageStatsManager.queryEvents(startMillis, endMillis)
+            val lookbackStart = (startMillis - SESSION_LOOKBACK_MS).coerceAtLeast(0L)
+            val events = usageStatsManager.queryEvents(lookbackStart, endMillis)
             val event = android.app.usage.UsageEvents.Event()
-            
+            val transitions = mutableListOf<AppForegroundTransition>()
+
             while (events.hasNextEvent()) {
                 events.getNextEvent(event)
-                if (event.eventType == android.app.usage.UsageEvents.Event.ACTIVITY_RESUMED) {
-                    counts[event.packageName] = counts.getOrDefault(event.packageName, 0) + 1
+                when (event.eventType) {
+                    android.app.usage.UsageEvents.Event.ACTIVITY_RESUMED -> {
+                        val packageName = event.packageName ?: continue
+                        transitions.add(
+                            AppForegroundTransition(
+                                packageName = packageName,
+                                timeStamp = event.timeStamp,
+                                type = AppForegroundTransitionType.RESUMED,
+                            ),
+                        )
+                    }
+                    android.app.usage.UsageEvents.Event.SCREEN_NON_INTERACTIVE,
+                    android.app.usage.UsageEvents.Event.KEYGUARD_SHOWN,
+                    android.app.usage.UsageEvents.Event.DEVICE_SHUTDOWN -> {
+                        transitions.add(
+                            AppForegroundTransition(
+                                packageName = null,
+                                timeStamp = event.timeStamp,
+                                type = AppForegroundTransitionType.FOREGROUND_CLEARED,
+                            ),
+                        )
+                    }
                 }
             }
-            counts
+            countAppForegroundEntries(
+                transitions = transitions,
+                rangeStart = startMillis,
+                rangeEnd = endMillis,
+            )
         }
 
     private fun queryUsageSessions(startMillis: Long, endMillis: Long): List<AppSession> {
@@ -126,6 +152,56 @@ internal fun aggregateUsageFromSessions(sessions: List<AppSession>): Map<String,
             put(session.packageName, (get(session.packageName) ?: 0L) + (session.endTime - session.startTime))
         }
     }
+
+internal enum class AppForegroundTransitionType {
+    RESUMED,
+    FOREGROUND_CLEARED,
+}
+
+internal data class AppForegroundTransition(
+    val packageName: String?,
+    val timeStamp: Long,
+    val type: AppForegroundTransitionType,
+)
+
+/**
+ * Counts app-level foreground entries rather than Activity resume callbacks.
+ *
+ * Android reports ACTIVITY_RESUMED for every Activity. Keeping the last foreground package means
+ * same-package Activity switches and duplicate resume events remain one app open. Transitions from
+ * the lookback window establish the state at [rangeStart] but are not counted in the result.
+ */
+internal fun countAppForegroundEntries(
+    transitions: List<AppForegroundTransition>,
+    rangeStart: Long,
+    rangeEnd: Long,
+): Map<String, Int> {
+    if (rangeEnd <= rangeStart) return emptyMap()
+    val counts = mutableMapOf<String, Int>()
+    var foregroundPackage: String? = null
+
+    transitions
+        .sortedBy { it.timeStamp }
+        .forEach { transition ->
+            if (transition.timeStamp >= rangeEnd) return@forEach
+            when (transition.type) {
+                AppForegroundTransitionType.RESUMED -> {
+                    val packageName = transition.packageName ?: return@forEach
+                    if (packageName != foregroundPackage) {
+                        if (transition.timeStamp >= rangeStart) {
+                            counts[packageName] = counts.getOrDefault(packageName, 0) + 1
+                        }
+                        foregroundPackage = packageName
+                    }
+                }
+                AppForegroundTransitionType.FOREGROUND_CLEARED -> {
+                    foregroundPackage = null
+                }
+            }
+        }
+
+    return counts
+}
 
 internal enum class UsageEventTransitionType {
     RESUMED,

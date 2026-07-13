@@ -8,16 +8,17 @@ import org.junit.Test
 class StatsFormattersTest {
     @Test
     fun formatDuration_usesCompactHourMinuteLabels() {
-        assertEquals("0m", formatDuration(0L))
-        assertEquals("1m", formatDuration(60_000L))
+        assertEquals("0min", formatDuration(0L))
+        assertEquals("1min", formatDuration(60_000L))
         assertEquals("2h", formatDuration(120 * 60_000L))
-        assertEquals("2h 5m", formatDuration(125 * 60_000L))
+        assertEquals("2h 5min", formatDuration(125 * 60_000L))
     }
 
     @Test
     fun parseDisplayDuration_readsFormattedDurationBackToMillis() {
-        assertEquals(60_000L, parseDisplayDuration("1m"))
+        assertEquals(60_000L, parseDisplayDuration("1min"))
         assertEquals(2 * 60 * 60_000L, parseDisplayDuration("2h"))
+        assertEquals(125 * 60_000L, parseDisplayDuration("2h 5min"))
         assertEquals(125 * 60_000L, parseDisplayDuration("2h 5m"))
     }
 

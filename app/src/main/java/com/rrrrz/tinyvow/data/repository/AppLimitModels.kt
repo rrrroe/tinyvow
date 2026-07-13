@@ -35,8 +35,14 @@ data class RewardStoreItem(
     val reward: RedemptionEntity,
     val ownedQuantity: Int,
     val isManualUse: Boolean,
-    val purchasedTodayCount: Int,
+    val purchasedInLimitPeriodCount: Int,
+    val purchaseLimitPeriod: RewardPurchaseLimitPeriod,
 )
+
+enum class RewardPurchaseLimitPeriod {
+    DAILY,
+    MONTHLY,
+}
 
 enum class RewardStoreUnavailableReason {
     OUT_OF_STOCK,
@@ -82,7 +88,7 @@ fun evaluateRewardStoreAvailability(
     return RewardStoreAvailability(
         canAfford = userPoints >= reward.pointCost,
         inStock = reward.stock == -1 || reward.stock > 0,
-        dailyLimitReached = reward.builtinKey != null && item.purchasedTodayCount >= 1,
+        dailyLimitReached = reward.builtinKey != null && item.purchasedInLimitPeriodCount >= 1,
         needsControlGroups = needsControlGroups,
         needsEncourageGroups = needsEncourageGroups,
     )
@@ -93,6 +99,7 @@ data class InventoryRewardItem(
     val quantity: Int,
     val activeCount: Int,
     val pendingCount: Int,
+    val shieldTarget: StreakShieldTarget? = null,
 )
 
 data class PendingStreakShieldItem(
@@ -120,6 +127,8 @@ sealed interface PurchaseRewardResult {
     data object OutOfStock : PurchaseRewardResult
 
     data object DailyLimitReached : PurchaseRewardResult
+
+    data object MonthlyLimitReached : PurchaseRewardResult
 
     data object InvalidReward : PurchaseRewardResult
 }

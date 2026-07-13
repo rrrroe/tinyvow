@@ -153,6 +153,14 @@ class OfflineFocusRepository(
             buildSummary(sessionDao.getSessionsOverlapping(dayStartMillis, dayEndMillis), dayStartMillis, dayEndMillis)
         }
 
+    suspend fun getSessionsForRange(
+        startMillis: Long,
+        endMillis: Long,
+    ): List<OfflineFocusSessionEntity> =
+        withContext(Dispatchers.IO) {
+            sessionDao.getSessionsOverlapping(startMillis, endMillis)
+        }
+
     suspend fun ensureBuiltInCategories() {
         withContext(Dispatchers.IO) {
             val now = System.currentTimeMillis()
@@ -188,10 +196,14 @@ class OfflineFocusRepository(
             sessionDao.getActiveSession()?.let(::toSession)?.let { return@withContext it }
             val category = resolveCategory(categoryId) ?: return@withContext null
             val normalizedMinutes =
-                durationMinutes.coerceIn(
-                    ManagedAppPreferences.MIN_OFFLINE_FOCUS_DURATION_MINUTES,
-                    ManagedAppPreferences.MAX_OFFLINE_FOCUS_DURATION_MINUTES,
-                )
+                if (durationMinutes == ManagedAppPreferences.UNLIMITED_OFFLINE_FOCUS_DURATION_MINUTES) {
+                    ManagedAppPreferences.UNLIMITED_OFFLINE_FOCUS_DURATION_MINUTES
+                } else {
+                    durationMinutes.coerceIn(
+                        ManagedAppPreferences.MIN_OFFLINE_FOCUS_DURATION_MINUTES,
+                        ManagedAppPreferences.MAX_OFFLINE_FOCUS_DURATION_MINUTES,
+                    )
+                }
             val session =
                 OfflineFocusSessionEntity(
                     id = UUID.randomUUID().toString(),
@@ -212,8 +224,10 @@ class OfflineFocusRepository(
                 )
             sessionDao.insert(session)
             preferences.setOfflineFocusDefaultCategoryId(category.id)
-            preferences.setOfflineFocusDefaultDurationMinutes(normalizedMinutes)
-            preferences.setOfflineFocusCategoryDefaults(category.id, normalizedMinutes, focusMode)
+            if (normalizedMinutes != ManagedAppPreferences.UNLIMITED_OFFLINE_FOCUS_DURATION_MINUTES) {
+                preferences.setOfflineFocusDefaultDurationMinutes(normalizedMinutes)
+                preferences.setOfflineFocusCategoryDefaults(category.id, normalizedMinutes, focusMode)
+            }
             toSession(session)
         }
     }
@@ -935,13 +949,14 @@ class OfflineFocusRepository(
                     }
 
                     val actualMillis = elapsedMillis(current, nowMillis)
+                    val isUnlimited = current.plannedDurationMillis <= 0L
                     val completionRatio =
                         if (current.plannedDurationMillis <= 0L) {
                             0f
                         } else {
                             actualMillis.toFloat() / current.plannedDurationMillis.toFloat()
                         }
-                    val shouldAward = forceComplete || completionRatio >= EARLY_COMPLETE_THRESHOLD
+                    val shouldAward = forceComplete || isUnlimited || completionRatio >= EARLY_COMPLETE_THRESHOLD
                     if (!shouldAward) {
                         val abandoned =
                             current.copy(
@@ -961,7 +976,9 @@ class OfflineFocusRepository(
                     }
 
                     val actualForPoints =
-                        if (forceComplete) {
+                        if (isUnlimited) {
+                            actualMillis
+                        } else if (forceComplete) {
                             current.plannedDurationMillis.coerceAtMost(actualMillis.coerceAtLeast(current.plannedDurationMillis))
                         } else {
                             actualMillis
@@ -1046,7 +1063,12 @@ class OfflineFocusRepository(
                 nowMillis
             }
         val end = maxOf(referenceNow, session.startedAt)
-        return (end - session.startedAt).coerceIn(0L, session.plannedDurationMillis)
+        val elapsed = (end - session.startedAt).coerceAtLeast(0L)
+        return if (session.plannedDurationMillis <= 0L) {
+            elapsed
+        } else {
+            elapsed.coerceAtMost(session.plannedDurationMillis)
+        }
     }
 
     private fun buildSummary(

@@ -317,6 +317,7 @@ class AppLimitRepository(
         ) { rewards, inventory, history, dayStartHour ->
             val ownedMap = inventory.associateBy { it.rewardId }
             val today = ArchiveDateUtils.localDateAt(System.currentTimeMillis(), zoneId, dayStartHour)
+            val month = today.year to today.monthValue
             val todayHistoryByBuiltinKey =
                 history
                     .filter { record ->
@@ -325,14 +326,30 @@ class AppLimitRepository(
                     }
                     .groupingBy { it.rewardBuiltinKey.orEmpty() }
                     .eachCount()
+            val monthHistoryByBuiltinKey =
+                history
+                    .filter { record ->
+                        val date = ArchiveDateUtils.localDateAt(record.redeemedAt, zoneId, dayStartHour)
+                        (date.year to date.monthValue) == month && !record.rewardBuiltinKey.isNullOrBlank()
+                    }
+                    .groupingBy { it.rewardBuiltinKey.orEmpty() }
+                    .eachCount()
             rewards
                 .filter(::isRewardVisibleInStore)
                 .map { reward ->
+                    val purchaseLimitPeriod =
+                        if (reward.rewardType == RewardType.STREAK_SHIELD) RewardPurchaseLimitPeriod.MONTHLY
+                        else RewardPurchaseLimitPeriod.DAILY
                     RewardStoreItem(
                         reward = reward,
                         ownedQuantity = ownedMap[reward.id]?.quantity ?: 0,
                         isManualUse = rewardNeedsManualUse(reward.rewardType),
-                        purchasedTodayCount = reward.builtinKey?.let { todayHistoryByBuiltinKey[it] ?: 0 } ?: 0,
+                        purchasedInLimitPeriodCount =
+                            reward.builtinKey?.let {
+                                if (purchaseLimitPeriod == RewardPurchaseLimitPeriod.MONTHLY) monthHistoryByBuiltinKey[it] ?: 0
+                                else todayHistoryByBuiltinKey[it] ?: 0
+                            } ?: 0,
+                        purchaseLimitPeriod = purchaseLimitPeriod,
                     )
                 }
         }
@@ -343,8 +360,11 @@ class AppLimitRepository(
             rewardInventoryDao.observeAll(),
             activeRewardEffectDao.observeAll(),
             streakShieldPendingDao.observePending(),
-        ) { rewards, inventory, effects, pending ->
+            preferences.dayBoundaryHour,
+        ) { rewards, inventory, effects, pending, dayStartHour ->
             val now = System.currentTimeMillis()
+            val today = ArchiveDateUtils.localDateAt(now, zoneId, dayStartHour)
+            val eligibleShieldDates = setOf(today.minusDays(1).toString(), today.minusDays(2).toString())
             val rewardById = rewards.associateBy { it.id }
             inventory.mapNotNull { item ->
                 if (item.quantity <= 0) return@mapNotNull null
@@ -360,6 +380,7 @@ class AppLimitRepository(
                     if (reward.rewardType == RewardType.STREAK_SHIELD) {
                         pending.count { pendingItem ->
                             pendingItem.status == StreakShieldPendingStatus.PENDING &&
+                                pendingItem.archiveDate in eligibleShieldDates &&
                                 pendingItem.shieldTarget == reward.payload().shieldTarget
                         }
                     } else {
@@ -370,6 +391,7 @@ class AppLimitRepository(
                     quantity = item.quantity,
                     activeCount = activeCount,
                     pendingCount = pendingCount,
+                    shieldTarget = reward.payload().shieldTarget,
                 )
             }.sortedByDescending { it.reward.updatedAt }
         }
@@ -383,14 +405,17 @@ class AppLimitRepository(
             streakShieldPendingDao.observePending(),
             rewardInventoryDao.observeAll(),
             redemptionDao.getAllActiveRedemptions(),
-        ) { pendingItems, inventoryItems, rewards ->
+            preferences.dayBoundaryHour,
+        ) { pendingItems, inventoryItems, rewards, dayStartHour ->
+            val today = ArchiveDateUtils.localDateAt(System.currentTimeMillis(), zoneId, dayStartHour)
+            val eligibleDates = setOf(today.minusDays(1).toString(), today.minusDays(2).toString())
             val ownedByType =
                 inventoryItems.associate { inventory ->
                     val reward = rewards.firstOrNull { it.id == inventory.rewardId }
                     val shieldTarget = reward?.payload()?.shieldTarget
                     shieldTarget to inventory.quantity
                 }
-            pendingItems.map { pending ->
+            pendingItems.filter { it.archiveDate in eligibleDates }.map { pending ->
                 PendingStreakShieldItem(
                     pending = pending,
                     title =
@@ -441,9 +466,15 @@ class AppLimitRepository(
                 if (reward.builtinKey == EMERGENCY_UNLOCK_REWARD_KEY) return@withLock PurchaseRewardResult.InvalidReward
                 if (reward.stock == 0) return@withLock PurchaseRewardResult.OutOfStock
                 reward.builtinKey?.let { builtinKey ->
-                    val (todayStart, tomorrowStart) = currentDayPurchaseWindow()
-                    if (redemptionHistoryDao.countBuiltinPurchasesInRange(builtinKey, todayStart, tomorrowStart) >= 1) {
-                        return@withLock PurchaseRewardResult.DailyLimitReached
+                    val (limitStart, limitEnd) =
+                        if (reward.rewardType == RewardType.STREAK_SHIELD) currentMonthPurchaseWindow()
+                        else currentDayPurchaseWindow()
+                    if (redemptionHistoryDao.countBuiltinPurchasesInRange(builtinKey, limitStart, limitEnd) >= 1) {
+                        return@withLock if (reward.rewardType == RewardType.STREAK_SHIELD) {
+                            PurchaseRewardResult.MonthlyLimitReached
+                        } else {
+                            PurchaseRewardResult.DailyLimitReached
+                        }
                     }
                 }
                 if (preferences.userPoints.first() < reward.pointCost) {
@@ -678,6 +709,12 @@ class AppLimitRepository(
                 if (pending.status != StreakShieldPendingStatus.PENDING) {
                     return@withLock UseRewardResult.InvalidReward
                 }
+                val dayStartHour = preferences.getDayBoundaryHourOnce()
+                val today = ArchiveDateUtils.localDateAt(System.currentTimeMillis(), zoneId, dayStartHour)
+                val pendingDate = runCatching { LocalDate.parse(pending.archiveDate) }.getOrNull()
+                if (pendingDate != today.minusDays(1) && pendingDate != today.minusDays(2)) {
+                    return@withLock UseRewardResult.InvalidReward
+                }
                 val now = System.currentTimeMillis()
                 if (!useShield) {
                     streakShieldPendingDao.upsert(
@@ -891,7 +928,10 @@ class AppLimitRepository(
     suspend fun refreshStreakShieldPending() {
         withContext(Dispatchers.IO) {
             val archives = dailyArchiveDao.getAllAsc()
-            val latestArchive = archives.lastOrNull() ?: return@withContext
+            if (archives.isEmpty()) return@withContext
+            val dayStartHour = preferences.getDayBoundaryHourOnce()
+            val today = ArchiveDateUtils.localDateAt(System.currentTimeMillis(), zoneId, dayStartHour)
+            val eligibleDates = setOf(today.minusDays(1), today.minusDays(2))
             val groupArchives = dailyGroupArchiveDao.getAllAsc()
             val rewards = redemptionDao.getAllActiveRedemptionsSync()
             val inventory = rewardInventoryDao.getAllSync()
@@ -899,32 +939,28 @@ class AppLimitRepository(
                 streakShieldPendingDao
                     .getAllSync()
                     .filter { it.status == StreakShieldPendingStatus.USED }
-            syncPendingForTarget(
-                latestArchiveDate = latestArchive.archiveDate,
-                groupArchives = groupArchives,
-                rewards = rewards,
-                inventory = inventory,
-                usedShieldPendings = usedShieldPendings,
-                target = StreakShieldTarget.CONTROL_STREAK,
-                groupType = GroupType.CONTROL,
-            )
-            syncPendingForTarget(
-                latestArchiveDate = latestArchive.archiveDate,
-                groupArchives = groupArchives,
-                rewards = rewards,
-                inventory = inventory,
-                usedShieldPendings = usedShieldPendings,
-                target = StreakShieldTarget.ENCOURAGE_STREAK,
-                groupType = GroupType.ENCOURAGE,
-            )
+            archives.filter { runCatching { LocalDate.parse(it.archiveDate) }.getOrNull() in eligibleDates }.forEach { archive ->
+                syncPendingForTarget(
+                    latestArchiveDate = archive.archiveDate,
+                    groupArchives = groupArchives,
+                    usedShieldPendings = usedShieldPendings,
+                    target = StreakShieldTarget.CONTROL_STREAK,
+                    groupType = GroupType.CONTROL,
+                )
+                syncPendingForTarget(
+                    latestArchiveDate = archive.archiveDate,
+                    groupArchives = groupArchives,
+                    usedShieldPendings = usedShieldPendings,
+                    target = StreakShieldTarget.ENCOURAGE_STREAK,
+                    groupType = GroupType.ENCOURAGE,
+                )
+            }
         }
     }
 
     private suspend fun syncPendingForTarget(
         latestArchiveDate: String,
         groupArchives: List<DailyGroupArchiveEntity>,
-        rewards: List<RedemptionEntity>,
-        inventory: List<RewardInventoryEntity>,
         usedShieldPendings: List<StreakShieldPendingEntity>,
         target: StreakShieldTarget,
         groupType: GroupType,
@@ -952,12 +988,6 @@ class AppLimitRepository(
                 shieldedDates = shieldedDates,
             )
         if (previousStreak <= 0) return
-        val shieldReward =
-            rewards.firstOrNull {
-                it.rewardType == RewardType.STREAK_SHIELD && it.payload().shieldTarget == target
-            } ?: return
-        val ownedQuantity = inventory.firstOrNull { it.rewardId == shieldReward.id }?.quantity ?: 0
-        if (ownedQuantity <= 0) return
         streakShieldPendingDao.upsert(
             StreakShieldPendingEntity(
                 id = UUID.randomUUID().toString(),
@@ -1216,6 +1246,17 @@ class AppLimitRepository(
         val today = ArchiveDateUtils.localDateAt(now, zoneId, dayStartHour)
         return ArchiveDateUtils.startOfDayMillis(today, zoneId, dayStartHour) to
             ArchiveDateUtils.nextDayStartMillis(today, zoneId, dayStartHour)
+    }
+
+    private suspend fun currentMonthPurchaseWindow(
+        now: Long = System.currentTimeMillis(),
+    ): Pair<Long, Long> {
+        val dayStartHour = preferences.getDayBoundaryHourOnce()
+        val today = ArchiveDateUtils.localDateAt(now, zoneId, dayStartHour)
+        val monthStart = today.withDayOfMonth(1)
+        val nextMonthStart = monthStart.plusMonths(1)
+        return ArchiveDateUtils.startOfDayMillis(monthStart, zoneId, dayStartHour) to
+            ArchiveDateUtils.startOfDayMillis(nextMonthStart, zoneId, dayStartHour)
     }
 
     private suspend fun insertRewardHistoryAndLedger(

@@ -1,6 +1,7 @@
 ﻿package com.rrrrz.tinyvow.ui.home
 
 import com.rrrrz.tinyvow.data.apps.ManagedApp
+import com.rrrrz.tinyvow.data.db.PointLedgerEntryType
 import com.rrrrz.tinyvow.i18n.AppText
 import com.rrrrz.tinyvow.ui.home.BehaviorScoreMetricDetail
 import java.time.LocalDate
@@ -13,6 +14,16 @@ internal enum class ReportTab(private val labelKey: String) {
     YEAR("stats_tab_yearly");
 
     fun label(): String = AppText.t(labelKey)
+
+    fun compactLabel(): String =
+        AppText.t(
+            when (this) {
+                DAY -> "stats_tab_daily_compact"
+                WEEK -> "stats_tab_weekly_compact"
+                MONTH -> "stats_tab_monthly_compact"
+                YEAR -> "stats_tab_yearly_compact"
+            },
+        )
 }
 
 internal data class InstalledAppsState(
@@ -51,6 +62,7 @@ internal data class DailyTimelineSliceCell(
     val sliceIndex: Int,
     val packageName: String?,
     val millis: Long,
+    val totalMillis: Long = millis,
 )
 
 internal data class DailyReportSummary(
@@ -148,6 +160,11 @@ internal data class TimelineSectionData(
     val nightUsageMillis: Long,
     val targetMillisPerBucket: Long? = null,
     val sliceCells: List<DailyTimelineSliceCell> = emptyList(),
+    val appSliceCells: List<DailyTimelineSliceCell> = emptyList(),
+    val cellsPerHour: Int = 12,
+    val gridRows: Int = 12,
+    val sliceCellsAreGridOrdered: Boolean = false,
+    val gridRowLabels: List<String> = emptyList(),
 )
 
 internal data class TopAppsSectionData(
@@ -407,6 +424,53 @@ internal data class TrendSectionData(
     val summary: List<DailyFocusMetric>,
 )
 
+internal data class WeeklyPointsDay(
+    val label: String,
+    val dateLabel: String,
+    val earnedPoints: Double,
+    val spentPoints: Double,
+    val closingBalance: Double,
+    val entries: List<WeeklyPointsLedgerEntry> = emptyList(),
+    val focusSummaries: List<WeeklyPointsFocusSummary> = emptyList(),
+    val groupSummaries: List<WeeklyPointsGroupSummary> = emptyList(),
+    val rewardSpends: List<WeeklyPointsRewardSpend> = emptyList(),
+)
+
+internal data class WeeklyPointsLedgerEntry(
+    val occurredAt: Long,
+    val deltaPoints: Double,
+    val entryType: PointLedgerEntryType,
+    val groupName: String? = null,
+    val rewardTitle: String? = null,
+    val note: String = "",
+)
+
+internal data class WeeklyPointsFocusSummary(
+    val name: String,
+    val durationMillis: Long,
+    val sessionCount: Int,
+    val pointDelta: Double,
+)
+
+internal data class WeeklyPointsGroupSummary(
+    val name: String,
+    val durationMillis: Long,
+    val completed: Boolean,
+    val pointDelta: Double,
+)
+
+internal data class WeeklyPointsRewardSpend(
+    val rewardTitle: String,
+    val pointDelta: Double,
+)
+
+internal data class WeeklyPointsSectionData(
+    val days: List<WeeklyPointsDay>,
+    val earnedPoints: Double,
+    val spentPoints: Double,
+    val netPoints: Double,
+)
+
 internal enum class PeriodTone {
     PRIMARY,
     POSITIVE,
@@ -478,6 +542,18 @@ internal data class AppFocusSectionData(
     val weeklyTopAppRows: List<WeeklyTopAppsRow> = emptyList(),
 )
 
+internal data class WeeklyAppFocusItem(
+    val packageName: String,
+    val label: String,
+    val usageMillis: Long,
+    val openCount: Int,
+)
+
+internal data class WeeklyAppFocusDay(
+    val dayCode: String,
+    val apps: List<WeeklyAppFocusItem>,
+)
+
 internal data class MonthlyWeekSummary(
     val label: String,
     val totalUsageMillis: Long,
@@ -517,6 +593,14 @@ internal data class PeriodReportData(
     val comparison: ComparisonSectionData?,
     val monthStructure: MonthlyWeekStructureData? = null,
     val quarterSection: YearQuarterSectionData? = null,
+    val timeline: TimelineSectionData? = null,
+    val behaviorMap: BehaviorMapSectionData? = null,
+    val totalUsageMillis: Long = 0L,
+    val controlUsageMillis: Long = 0L,
+    val encourageUsageMillis: Long = 0L,
+    val savedMillis: Long = 0L,
+    val weeklyAppFocusDays: List<WeeklyAppFocusDay> = emptyList(),
+    val weeklyPoints: WeeklyPointsSectionData? = null,
 )
 
 internal data class PeriodBounds(

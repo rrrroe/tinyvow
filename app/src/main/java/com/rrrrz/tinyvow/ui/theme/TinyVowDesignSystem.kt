@@ -167,14 +167,13 @@ fun TinyVowSectionHeader(
             }
             Text(
                 text = title,
-                modifier = Modifier.weight(1f, fill = false),
+                modifier = Modifier.weight(1f),
                 style = MaterialTheme.typography.titleLarge,
                 color = themeColors.inkStrong,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
             if (trailing != null) {
-                Spacer(modifier = Modifier.weight(1f))
                 trailing()
             }
         }

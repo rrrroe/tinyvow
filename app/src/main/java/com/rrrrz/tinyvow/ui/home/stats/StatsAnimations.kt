@@ -152,7 +152,7 @@ internal fun animateMetricDisplayText(
 ): String {
     if (!STAT_ANIMATIONS_ENABLED) return rawText
 
-    val durationMatch = Regex("""(\d+)h(?: (\d+)m)?|(\d+)m""").find(rawText)
+    val durationMatch = Regex("""(\d+)h(?: (\d+)m(?:in)?)?|(\d+)m(?:in)?""").find(rawText)
     if (durationMatch != null) {
         val animatedDuration = animateLongValue(
             targetValue = parseDisplayDuration(durationMatch.value),

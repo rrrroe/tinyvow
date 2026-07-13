@@ -137,7 +137,8 @@ class RewardStoreAvailabilityTest {
             reward = reward(rewardType = rewardType, stock = stock, pointCost = pointCost, builtinKey = builtinKey),
             ownedQuantity = 0,
             isManualUse = true,
-            purchasedTodayCount = purchasedTodayCount,
+            purchasedInLimitPeriodCount = purchasedTodayCount,
+            purchaseLimitPeriod = RewardPurchaseLimitPeriod.DAILY,
         )
 
     private fun reward(
