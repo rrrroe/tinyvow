@@ -2086,6 +2086,7 @@ internal fun ProMembershipPage(
     val isActive = entitlement.status == ProEntitlementStatus.ACTIVE
     val showSubscriptionActions = isPlayBillingEnabled && !isLocalActivationEnabled
     val plans = proPricePlans(offers, isLocalActivationEnabled)
+    val directChinaPaymentAvailable = isLocalActivationEnabled && plans.any { it.offer != null }
     var showPurchaseContactDialog by remember { mutableStateOf(false) }
 
     MeDetailPageScaffold(
@@ -2129,22 +2130,31 @@ internal fun ProMembershipPage(
             plans.forEach { plan ->
                 ProPricePlanCard(
                     plan = plan,
-                    showPurchaseButton = false,
+                    showPurchaseButton = directChinaPaymentAvailable,
                     onPurchase = { plan.offer?.let(onPurchasePro) },
                 )
             }
-            Button(
-                onClick = { showPurchaseContactDialog = true },
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text(
-                    when {
-                        isLocalActivationEnabled && isActive -> AppText.t("pro_renew_early_bird_membership")
-                        isLocalActivationEnabled -> AppText.t("pro_buy_early_bird_membership")
-                        isActive -> AppText.t("pro_renew_membership")
-                        else -> AppText.t("pro_buy_membership")
-                    },
-                )
+            if (!directChinaPaymentAvailable) {
+                Button(
+                    onClick = { showPurchaseContactDialog = true },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(
+                        when {
+                            isLocalActivationEnabled && isActive -> AppText.t("pro_renew_early_bird_membership")
+                            isLocalActivationEnabled -> AppText.t("pro_buy_early_bird_membership")
+                            isActive -> AppText.t("pro_renew_membership")
+                            else -> AppText.t("pro_buy_membership")
+                        },
+                    )
+                }
+            } else {
+                TextButton(
+                    onClick = { showPurchaseContactDialog = true },
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(AppText.t("pro_purchase_help"))
+                }
             }
             if (showSubscriptionActions) {
                 TextButton(onClick = onRestorePurchases, modifier = Modifier.fillMaxWidth()) {
@@ -2328,22 +2338,28 @@ private fun ProPurchaseContactRow(
 
 private fun proPricePlans(offers: List<SubscriptionOffer>, isLocalActivationEnabled: Boolean): List<ProPricePlan> {
     if (isLocalActivationEnabled) {
+        val monthlyOffer = offers.firstOrNull { it.productId == "tinyvow_pro_monthly" }
+        val yearlyOffer = offers.firstOrNull { it.productId == "tinyvow_pro_yearly" }
+        val lifetimeOffer = offers.firstOrNull { it.productId == "tinyvow_pro_lifetime" }
         return listOf(
             ProPricePlan(
                 title = AppText.t("pro_price_monthly"),
-                price = AppText.t("pro_price_china_monthly"),
+                price = monthlyOffer?.price ?: AppText.t("pro_price_china_monthly"),
                 note = AppText.t("pro_price_china_monthly_note"),
+                offer = monthlyOffer,
             ),
             ProPricePlan(
                 title = AppText.t("pro_price_yearly"),
-                price = AppText.t("pro_price_china_yearly"),
+                price = yearlyOffer?.price ?: AppText.t("pro_price_china_yearly"),
                 note = AppText.t("pro_price_china_yearly_note"),
+                offer = yearlyOffer,
                 highlighted = true,
             ),
             ProPricePlan(
                 title = AppText.t("pro_price_lifetime"),
-                price = AppText.t("pro_price_china_lifetime"),
+                price = lifetimeOffer?.price ?: AppText.t("pro_price_china_lifetime"),
                 note = AppText.t("pro_price_china_lifetime_note"),
+                offer = lifetimeOffer,
             ),
         )
     }

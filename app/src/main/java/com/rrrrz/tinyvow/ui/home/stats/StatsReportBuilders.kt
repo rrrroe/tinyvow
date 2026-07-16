@@ -180,15 +180,14 @@ internal suspend fun buildArchivedWindowReportUiState(
     val currentTo = ArchiveDateUtils.formatDate(periodBounds.endDate)
     val previousFrom = ArchiveDateUtils.formatDate(periodBounds.previousStartDate)
     val previousTo = ArchiveDateUtils.formatDate(periodBounds.previousEndDate)
+    val liveSnapshotInRange = liveDaySnapshot?.takeIf { it.archive.archiveDate in currentFrom..currentTo }
     val currentArchives =
-        (
-            archiveRepository.getArchivesByRange(currentFrom, currentTo).first() +
-                listOfNotNull(
-                    liveDaySnapshot
-                        ?.archive
-                        ?.takeIf { it.archiveDate in currentFrom..currentTo },
-                )
-        ).distinctBy { it.archiveDate }
+        mergeLiveDayRows(
+            archivedRows = archiveRepository.getArchivesByRange(currentFrom, currentTo).first(),
+            liveDate = liveSnapshotInRange?.archive?.archiveDate,
+            liveRows = listOfNotNull(liveSnapshotInRange?.archive),
+            archiveDateOf = { it.archiveDate },
+        )
     val pointStats =
         if (selectedTab == ReportTab.WEEK || selectedTab == ReportTab.MONTH) {
             archiveRepository.getPointLedgerDailyStatsByRange(currentFrom, currentTo)
@@ -209,28 +208,31 @@ internal suspend fun buildArchivedWindowReportUiState(
         }
     val previousArchives = archiveRepository.getArchivesByRange(previousFrom, previousTo).first()
     val currentAppArchives =
-        archiveRepository.getAppArchivesByRange(currentFrom, currentTo).first() +
-            liveDaySnapshot
-                ?.takeIf { it.archive.archiveDate in currentFrom..currentTo }
-                ?.appArchives
-                .orEmpty()
+        mergeLiveDayRows(
+            archivedRows = archiveRepository.getAppArchivesByRange(currentFrom, currentTo).first(),
+            liveDate = liveSnapshotInRange?.archive?.archiveDate,
+            liveRows = liveSnapshotInRange?.appArchives.orEmpty(),
+            archiveDateOf = { it.archiveDate },
+        )
     val currentTimeSliceArchives =
         if (selectedTab == ReportTab.WEEK || selectedTab == ReportTab.MONTH) {
-            archiveRepository.getAppTimeSliceArchivesByRange(currentFrom, currentTo) +
-                liveDaySnapshot
-                    ?.takeIf { it.archive.archiveDate in currentFrom..currentTo }
-                    ?.timeSliceArchives
-                    .orEmpty()
+            mergeLiveDayRows(
+                archivedRows = archiveRepository.getAppTimeSliceArchivesByRange(currentFrom, currentTo),
+                liveDate = liveSnapshotInRange?.archive?.archiveDate,
+                liveRows = liveSnapshotInRange?.timeSliceArchives.orEmpty(),
+                archiveDateOf = { it.archiveDate },
+            )
         } else {
             emptyList()
         }
     val previousAppArchives = archiveRepository.getAppArchivesByRange(previousFrom, previousTo).first()
     val currentGroupArchives =
-        archiveRepository.getGroupArchivesByRange(currentFrom, currentTo).first() +
-            liveDaySnapshot
-                ?.takeIf { it.archive.archiveDate in currentFrom..currentTo }
-                ?.groupArchives
-                .orEmpty()
+        mergeLiveDayRows(
+            archivedRows = archiveRepository.getGroupArchivesByRange(currentFrom, currentTo).first(),
+            liveDate = liveSnapshotInRange?.archive?.archiveDate,
+            liveRows = liveSnapshotInRange?.groupArchives.orEmpty(),
+            archiveDateOf = { it.archiveDate },
+        )
     val currentSnapshots = mergeArchivedAppSnapshots(currentAppArchives)
     val previousSnapshots = mergeArchivedAppSnapshots(previousAppArchives)
     val currentMetrics = buildArchivedWindowMetrics(currentSnapshots)

@@ -9,6 +9,7 @@ import com.rrrrz.tinyvow.data.auth.LocalAuthRepository
 import com.rrrrz.tinyvow.data.db.AppDatabase
 import com.rrrrz.tinyvow.data.repository.FocusIconStorage
 import com.rrrrz.tinyvow.data.repository.RewardIconStorage
+import com.rrrrz.tinyvow.data.server.BackendSubscriptionStore
 import com.rrrrz.tinyvow.data.settings.ManagedAppPreferences
 import com.rrrrz.tinyvow.data.special.WeReadApiKeyStore
 import com.rrrrz.tinyvow.data.steps.HealthConnectStepProbe
@@ -133,6 +134,7 @@ class LocalDataManager(
             preferences.clearAll()
             LocalAuthRepository.clearStoredSession(context)
             LocalActivationSubscriptionRepository.clearStoredActivationData(context)
+            BackendSubscriptionStore.clearStoredData(context)
             RewardIconStorage.fromContext(context).clearAll()
             FocusIconStorage.fromContext(context).clearAll()
             HealthConnectStepProbe.clearStoredHistory(context)
@@ -179,6 +181,7 @@ class LocalDataManager(
             "managed_app_preferences",
             "auth_preferences",
             "activation_preferences",
+            "backend_subscription_preferences",
         )
         return names.map { dataStoreFile(context, it) }.filter { it.exists() && it.isFile }
     }
@@ -224,6 +227,7 @@ class LocalDataManager(
             "managed_app_preferences.preferences_pb",
             "auth_preferences.preferences_pb",
             "activation_preferences.preferences_pb",
+            "backend_subscription_preferences.preferences_pb",
         ).forEach { name ->
             File(targetDir, name).delete()
             val source = File(unzipRoot, "datastore/$name")
@@ -364,6 +368,10 @@ class LocalDataManager(
                 "activation_preferences",
                 "DataStore preferences for domestic activation status, used code IDs, and wall-clock rollback checks.",
             ) { context -> dataStoreFile(context, "activation_preferences") },
+            LocalDataStore(
+                "backend_subscription_preferences",
+                "DataStore preferences for the domestic backend anonymous session and cached Pro entitlement.",
+            ) { context -> dataStoreFile(context, "backend_subscription_preferences") },
             LocalDataStore(
                 "reward_icons",
                 "Imported custom reward icon files managed inside Tiny Vow app storage.",

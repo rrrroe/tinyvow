@@ -14,6 +14,40 @@ import org.junit.Test
 
 class StatsPeriodReportBuildersTest {
     @Test
+    fun liveDayRowsReplaceAnyArchivedRowsForTheSameDate() {
+        data class Row(val date: String, val value: String)
+
+        val merged =
+            mergeLiveDayRows(
+                archivedRows =
+                    listOf(
+                        Row("2026-07-12", "yesterday"),
+                        Row("2026-07-13", "stale-today"),
+                    ),
+                liveDate = "2026-07-13",
+                liveRows = listOf(Row("2026-07-13", "live-today")),
+                archiveDateOf = Row::date,
+            )
+
+        assertEquals(listOf("yesterday", "live-today"), merged.map(Row::value))
+    }
+
+    @Test
+    fun emptyLiveDayRowsStillRemoveStaleArchivedRowsForToday() {
+        data class Row(val date: String)
+
+        val merged =
+            mergeLiveDayRows(
+                archivedRows = listOf(Row("2026-07-12"), Row("2026-07-13")),
+                liveDate = "2026-07-13",
+                liveRows = emptyList(),
+                archiveDateOf = Row::date,
+            )
+
+        assertEquals(listOf("2026-07-12"), merged.map(Row::date))
+    }
+
+    @Test
     fun currentPeriodBoundsIncludeTodayAndCompareAgainstAFullPreviousWindow() {
         val zoneId = ZoneId.systemDefault()
         val today = BusinessDay.today(zoneId, BusinessDay.cachedStartHour())

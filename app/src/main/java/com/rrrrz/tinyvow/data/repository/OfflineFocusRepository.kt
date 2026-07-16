@@ -196,14 +196,12 @@ class OfflineFocusRepository(
             sessionDao.getActiveSession()?.let(::toSession)?.let { return@withContext it }
             val category = resolveCategory(categoryId) ?: return@withContext null
             val normalizedMinutes =
-                if (durationMinutes == ManagedAppPreferences.UNLIMITED_OFFLINE_FOCUS_DURATION_MINUTES) {
-                    ManagedAppPreferences.UNLIMITED_OFFLINE_FOCUS_DURATION_MINUTES
-                } else {
-                    durationMinutes.coerceIn(
-                        ManagedAppPreferences.MIN_OFFLINE_FOCUS_DURATION_MINUTES,
-                        ManagedAppPreferences.MAX_OFFLINE_FOCUS_DURATION_MINUTES,
-                    )
-                }
+                OfflineFocusSettlementPolicy.normalizeDurationMinutes(
+                    durationMinutes = durationMinutes,
+                    unlimitedDurationMinutes = ManagedAppPreferences.UNLIMITED_OFFLINE_FOCUS_DURATION_MINUTES,
+                    minDurationMinutes = ManagedAppPreferences.MIN_OFFLINE_FOCUS_DURATION_MINUTES,
+                    maxDurationMinutes = ManagedAppPreferences.MAX_OFFLINE_FOCUS_DURATION_MINUTES,
+                )
             val session =
                 OfflineFocusSessionEntity(
                     id = UUID.randomUUID().toString(),
@@ -949,14 +947,12 @@ class OfflineFocusRepository(
                     }
 
                     val actualMillis = elapsedMillis(current, nowMillis)
-                    val isUnlimited = current.plannedDurationMillis <= 0L
-                    val completionRatio =
-                        if (current.plannedDurationMillis <= 0L) {
-                            0f
-                        } else {
-                            actualMillis.toFloat() / current.plannedDurationMillis.toFloat()
-                        }
-                    val shouldAward = forceComplete || isUnlimited || completionRatio >= EARLY_COMPLETE_THRESHOLD
+                    val shouldAward =
+                        OfflineFocusSettlementPolicy.shouldAward(
+                            plannedDurationMillis = current.plannedDurationMillis,
+                            actualDurationMillis = actualMillis,
+                            forceComplete = forceComplete,
+                        )
                     if (!shouldAward) {
                         val abandoned =
                             current.copy(
@@ -976,13 +972,11 @@ class OfflineFocusRepository(
                     }
 
                     val actualForPoints =
-                        if (isUnlimited) {
-                            actualMillis
-                        } else if (forceComplete) {
-                            current.plannedDurationMillis.coerceAtMost(actualMillis.coerceAtLeast(current.plannedDurationMillis))
-                        } else {
-                            actualMillis
-                        }
+                        OfflineFocusSettlementPolicy.actualDurationForPoints(
+                            plannedDurationMillis = current.plannedDurationMillis,
+                            actualDurationMillis = actualMillis,
+                            forceComplete = forceComplete,
+                        )
                     val sourceRefId = sourceRefId(sessionId)
                     val existingLedger = pointLedgerDao.getBySourceRefId(sourceRefId)
                     val ledgerId = existingLedger?.id ?: UUID.randomUUID().toString()
@@ -1195,7 +1189,6 @@ class OfflineFocusRepository(
     companion object {
         const val DEFAULT_CATEGORY_ID = "offline_focus_reading"
         private const val MINUTE_MILLIS = 60_000L
-        private const val EARLY_COMPLETE_THRESHOLD = 0.8f
         private const val MIN_POINTS_PER_MINUTE = 0.0
         private const val MAX_POINTS_PER_MINUTE = 20.0
         private const val DEFAULT_CUSTOM_ICON_KEY = "custom"

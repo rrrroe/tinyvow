@@ -103,6 +103,7 @@ android {
             buildConfigField("Boolean", "ENABLE_PLAY_BILLING", "true")
             buildConfigField("Boolean", "ENABLE_LOCAL_ACTIVATION", "false")
             buildConfigField("String", "ACTIVATION_PUBLIC_KEY_BASE64", "\"\"")
+            buildConfigField("String", "TINYVOW_BACKEND_BASE_URL", "\"\"")
             resValue("string", "accessibility_settings_activity", "com.rrrrz.tinyvow.MainActivity")
         }
 
@@ -118,6 +119,7 @@ android {
             buildConfigField("Boolean", "ENABLE_PLAY_BILLING", "false")
             buildConfigField("Boolean", "ENABLE_LOCAL_ACTIVATION", "true")
             buildConfigField("String", "ACTIVATION_PUBLIC_KEY_BASE64", "\"$activationPublicKeyBase64\"")
+            buildConfigField("String", "TINYVOW_BACKEND_BASE_URL", "\"https://api.tinyvow.rorolo.com\"")
             resValue("string", "accessibility_settings_activity", "com.rrrrz.tinyvow.cn.MainActivity")
         }
     }
@@ -205,5 +207,6 @@ dependencies {
     implementation(libs.androidx.palette)
     implementation(libs.material.color.utilities)
     implementation(libs.androidx.health.connect.client)
+    "chinaImplementation"("com.alipay.sdk:alipaysdk-android:15.8.42")
     ksp(libs.androidx.room.compiler)
 }

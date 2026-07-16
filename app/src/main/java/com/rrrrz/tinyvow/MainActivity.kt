@@ -100,6 +100,7 @@ class MainActivity : ComponentActivity() {
                     themeSeed = themeSeed
                 ) {
                     HomeRoute(
+                        hostActivity = this@MainActivity,
                         completedOfflineFocusSessionId = offlineFocusCompletionSessionId.value,
                         offlineFocusDetailRequestToken = offlineFocusDetailRequestToken.value,
                         onCompletedOfflineFocusConsumed = {

@@ -132,6 +132,7 @@ import androidx.lifecycle.repeatOnLifecycle
 import androidx.core.content.FileProvider
 import com.rrrrz.tinyvow.BuildConfig
 import com.rrrrz.tinyvow.R
+import com.rrrrz.tinyvow.data.activation.ChinaSubscriptionRepository
 import com.rrrrz.tinyvow.data.activation.LocalActivationSubscriptionRepository
 import com.rrrrz.tinyvow.data.auth.LocalAuthRepository
 import com.rrrrz.tinyvow.data.billing.NoopSubscriptionRepository
@@ -287,13 +288,6 @@ private data class PendingSuperModeRequest(
     val onAllowed: (() -> Unit)?,
 )
 
-private data class BottomNavDestination(
-    val screen: Screen,
-    val label: String,
-    val selectedIcon: ImageVector,
-    val unselectedIcon: ImageVector,
-)
-
 private enum class CoachmarkBubbleAlignment {
     Top,
     Center,
@@ -308,119 +302,6 @@ private data class FirstRunCoachmarkStep(
     val alignment: CoachmarkBubbleAlignment,
 )
 
-@Composable
-private fun QuietBottomNavigation(
-    currentScreen: Screen,
-    onSelect: (Screen) -> Unit,
-) {
-    val themeColors = LocalThemeColors.current
-    val destinations =
-        listOf(
-            BottomNavDestination(Screen.HOME, AppText.t("home_home"), Icons.Filled.Home, Icons.Outlined.Home),
-            BottomNavDestination(Screen.STATS, AppText.t("home_report"), Icons.Filled.BarChart, Icons.Outlined.BarChart),
-            BottomNavDestination(Screen.REWARDS, AppText.t("home_rewards"), Icons.Filled.CardGiftcard, Icons.Outlined.CardGiftcard),
-            BottomNavDestination(Screen.ME, AppText.t("home_me"), Icons.Filled.Person, Icons.Outlined.Person),
-        )
-    val selectedIndex = destinations.indexOfFirst { it.screen == currentScreen }.coerceAtLeast(0)
-
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        color = themeColors.surfaceGlass,
-        tonalElevation = 0.dp,
-        shadowElevation = TinyVowElevation.Card,
-    ) {
-        Column {
-            HorizontalDivider(
-                color = themeColors.dividerSoft.copy(alpha = 0.80f),
-                thickness = 0.5.dp,
-            )
-            BoxWithConstraints(
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .height(64.dp)
-                        .padding(horizontal = 22.dp, vertical = 7.dp),
-            ) {
-                val itemWidth = maxWidth / destinations.size
-                val indicatorWidth = 28.dp
-                val indicatorOffset by animateDpAsState(
-                    targetValue = itemWidth * selectedIndex.toFloat() + (itemWidth - indicatorWidth) / 2f,
-                    animationSpec = tween(durationMillis = 220, easing = FastOutSlowInEasing),
-                    label = "bottomNavIndicatorOffset",
-                )
-
-                Box(
-                    modifier =
-                        Modifier
-                            .align(Alignment.BottomStart)
-                            .offset(x = indicatorOffset)
-                            .size(width = indicatorWidth, height = 3.dp)
-                            .clip(RoundedCornerShape(100.dp))
-                            .background(themeColors.base.copy(alpha = 0.86f)),
-                )
-
-                Row(
-                    modifier = Modifier.fillMaxSize(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    destinations.forEach { destination ->
-                        val selected = currentScreen == destination.screen
-                        QuietBottomNavigationItem(
-                            destination = destination,
-                            selected = selected,
-                            selectedColor = themeColors.base,
-                            unselectedColor = themeColors.navUnselected,
-                            modifier = Modifier.width(itemWidth),
-                            onClick = { onSelect(destination.screen) },
-                        )
-                    }
-                }
-            }
-            Spacer(Modifier.windowInsetsBottomHeight(WindowInsets.navigationBars))
-        }
-    }
-}
-
-@Composable
-private fun QuietBottomNavigationItem(
-    destination: BottomNavDestination,
-    selected: Boolean,
-    selectedColor: Color,
-    unselectedColor: Color,
-    modifier: Modifier = Modifier,
-    onClick: () -> Unit,
-) {
-    val contentColor by animateColorAsState(
-        targetValue = if (selected) selectedColor else unselectedColor,
-        animationSpec = tween(durationMillis = 180),
-        label = "bottomNavContentColor",
-    )
-    Column(
-        modifier =
-            modifier
-                .fillMaxHeight()
-                .clip(RoundedCornerShape(18.dp))
-                .background(
-                    if (selected) {
-                        LocalThemeColors.current.navSelectedContainer.copy(alpha = 0.70f)
-                    } else {
-                        Color.Transparent
-                    },
-                )
-                .clickable(onClick = onClick)
-                .padding(vertical = 4.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
-    ) {
-        Icon(
-            imageVector = if (selected) destination.selectedIcon else destination.unselectedIcon,
-            contentDescription = destination.label,
-            modifier = Modifier.size(28.dp),
-            tint = contentColor,
-        )
-    }
-}
 private object PermissionPromptIds {
     const val USAGE_ACCESS = "usage_access"
     const val ACCESSIBILITY = "accessibility"
@@ -797,6 +678,7 @@ private fun groupProtectionSnapshot(
 
 @Composable
 fun HomeRoute(
+    hostActivity: androidx.activity.ComponentActivity? = null,
     completedOfflineFocusSessionId: String? = null,
     offlineFocusDetailRequestToken: Int = 0,
     onCompletedOfflineFocusConsumed: () -> Unit = {},
@@ -822,11 +704,20 @@ fun HomeRoute(
             null
         }
     }
+    val chinaSubscriptionRepository = remember(context, localActivationRepository) {
+        localActivationRepository?.let { localRepository ->
+            ChinaSubscriptionRepository(
+                context = context,
+                localRepository = localRepository,
+                backendBaseUrl = BuildConfig.TINYVOW_BACKEND_BASE_URL,
+            )
+        }
+    }
     val subscriptionRepository: SubscriptionRepository = remember(context) {
         if (BuildConfig.ENABLE_PLAY_BILLING) {
             PlayBillingSubscriptionRepository(context)
         } else {
-            localActivationRepository ?: NoopSubscriptionRepository()
+            chinaSubscriptionRepository ?: NoopSubscriptionRepository()
         }
     }
     
@@ -1644,15 +1535,15 @@ fun HomeRoute(
     LaunchedEffect(BuildConfig.ENABLE_LOCAL_ACTIVATION) {
         if (BuildConfig.ENABLE_LOCAL_ACTIVATION) {
             val session = authRepository.ensureLocalSession(
-                preferredUserId = localActivationRepository?.restorableUserId(),
+                preferredUserId = chinaSubscriptionRepository?.restorableUserId(),
             )
-            localActivationRepository?.bindUser(session.userId)
+            chinaSubscriptionRepository?.bindUser(session.userId)
         }
     }
 
     LaunchedEffect(BuildConfig.ENABLE_LOCAL_ACTIVATION, userSession?.userId) {
         if (BuildConfig.ENABLE_LOCAL_ACTIVATION && userSession?.userId != null) {
-            localActivationRepository?.bindUser(userSession?.userId)
+            chinaSubscriptionRepository?.bindUser(userSession?.userId)
         }
     }
 
@@ -2277,7 +2168,7 @@ fun HomeRoute(
                         onNavigateToDataPrivacy = { currentScreen = Screen.ME_DATA_PRIVACY },
                         onNavigateToVersionInfo = { currentScreen = Screen.ME_VERSION },
                         onSignInWithGoogle = {
-                            val activity = context as? androidx.activity.ComponentActivity
+                            val activity = hostActivity
                             if (activity == null) {
                                 coroutineScope.launch {
                                     snackbarHostState.showSnackbar(AppText.t("home_google_sign_in_cannot_start_from_this_screen"))
@@ -2302,10 +2193,12 @@ fun HomeRoute(
                         },
                         onDeleteAccount = { clearLocalData ->
                             coroutineScope.launch {
-                                authRepository.deleteAccount()
-                                if (BuildConfig.ENABLE_LOCAL_ACTIVATION) {
-                                    localActivationRepository?.clearActivationData()
+                                val backendDeletion = chinaSubscriptionRepository?.deleteAccount()
+                                if (backendDeletion?.isFailure == true) {
+                                    snackbarHostState.showSnackbar(AppText.t("home_account_deletion_failed"))
+                                    return@launch
                                 }
+                                authRepository.deleteAccount()
                                 if (clearLocalData) {
                                     localDataManager.clearLocalData()
                                 }
@@ -2315,14 +2208,17 @@ fun HomeRoute(
                             }
                         },
                         onPurchasePro = { offer ->
-                            val activity = context as? android.app.Activity
+                            val activity = hostActivity
                             if (activity == null) {
                                 coroutineScope.launch {
-                                    snackbarHostState.showSnackbar(AppText.t("home_google_play_purchase_cannot_start_from_this_screen"))
+                                    snackbarHostState.showSnackbar(AppText.t("home_purchase_cannot_start_from_this_screen"))
                                 }
                             } else {
                                 coroutineScope.launch {
                                     subscriptionRepository.purchase(activity, offer, userSession?.userId)
+                                        .onSuccess {
+                                            snackbarHostState.showSnackbar(AppText.t("payment_pro_activated"))
+                                        }
                                         .onFailure {
                                             snackbarHostState.showSnackbar(it.message ?: AppText.t("home_failed_to_start_pro_subscription"))
                                         }
@@ -2346,13 +2242,15 @@ fun HomeRoute(
                         onActivateProCode = { code ->
                             coroutineScope.launch {
                                 val localUserId = userSession?.userId ?: authRepository.ensureLocalSession().userId
-                                localActivationRepository
+                                chinaSubscriptionRepository
                                     ?.activate(localUserId, code)
                                     ?.onSuccess {
                                         snackbarHostState.showSnackbar(AppText.t("activation_pro_activated"))
                                     }
                                     ?.onFailure {
-                                        snackbarHostState.showSnackbar(AppText.t("activation_code_invalid"))
+                                        snackbarHostState.showSnackbar(
+                                            it.message ?: AppText.t("activation_code_invalid"),
+                                        )
                                     }
                             }
                         },
@@ -2368,14 +2266,17 @@ fun HomeRoute(
                         localUserId = userSession?.userId,
                         onBack = { currentScreen = Screen.ME },
                         onPurchasePro = { offer ->
-                            val activity = context as? android.app.Activity
+                            val activity = hostActivity
                             if (activity == null) {
                                 coroutineScope.launch {
-                                    snackbarHostState.showSnackbar(AppText.t("home_google_play_purchase_cannot_start_from_this_screen"))
+                                    snackbarHostState.showSnackbar(AppText.t("home_purchase_cannot_start_from_this_screen"))
                                 }
                             } else {
                                 coroutineScope.launch {
                                     subscriptionRepository.purchase(activity, offer, userSession?.userId)
+                                        .onSuccess {
+                                            snackbarHostState.showSnackbar(AppText.t("payment_pro_activated"))
+                                        }
                                         .onFailure {
                                             snackbarHostState.showSnackbar(it.message ?: AppText.t("home_failed_to_start_pro_subscription"))
                                         }
@@ -2399,13 +2300,15 @@ fun HomeRoute(
                         onActivateProCode = { code ->
                             coroutineScope.launch {
                                 val localUserId = userSession?.userId ?: authRepository.ensureLocalSession().userId
-                                localActivationRepository
+                                chinaSubscriptionRepository
                                     ?.activate(localUserId, code)
                                     ?.onSuccess {
                                         snackbarHostState.showSnackbar(AppText.t("activation_pro_activated"))
                                     }
                                     ?.onFailure {
-                                        snackbarHostState.showSnackbar(AppText.t("activation_code_invalid"))
+                                        snackbarHostState.showSnackbar(
+                                            it.message ?: AppText.t("activation_code_invalid"),
+                                        )
                                     }
                             }
                         },

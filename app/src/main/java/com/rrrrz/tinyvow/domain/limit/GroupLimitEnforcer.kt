@@ -39,7 +39,8 @@ class GroupLimitEnforcer(context: Context) {
 
         for (group in groups) {
             val activeEffects = activeRewardEffectDao.getActiveForGroup(group.id, currentTimeMillis)
-            if (activeEffects.any { it.effectType == RewardType.PERIOD_PASS }) {
+            val hasPeriodPass = activeEffects.any { it.effectType == RewardType.PERIOD_PASS }
+            if (ControlGroupLimitPolicy.shouldBypass(hasPeriodPass)) {
                 continue
             }
             val effectBonusMillis =
@@ -48,19 +49,21 @@ class GroupLimitEnforcer(context: Context) {
                     .sumOf { parseRewardPayload(it.payloadJson).minutes * 60_000L }
             val baseLimitMillis = group.limitMinutes * 60_000L
             val bonusMillis = getSyncBonusTimeMillis(group.id, currentTimeMillis) + effectBonusMillis
-            val totalLimitMillis = baseLimitMillis + bonusMillis
-
             val totalUsedMillis = getCachedGroupUsage(group.id, group.limitPeriod, now)
-
-            val exceededMillis = totalUsedMillis - totalLimitMillis
-            if (isControlOverLimit(exceededMillis)) {
+            val decision =
+                ControlGroupLimitPolicy.evaluate(
+                    totalUsedMillis = totalUsedMillis,
+                    baseLimitMillis = baseLimitMillis,
+                    bonusMillis = bonusMillis,
+                )
+            if (decision != null) {
                 return GroupExceededResult(
                     groupName = group.name,
                     groupId = group.id,
                     groupType = group.type,
                     limitMinutes = group.limitMinutes + (bonusMillis / 60_000).toInt(),
                     totalUsedMillis = totalUsedMillis,
-                    exceededMillis = exceededMillis,
+                    exceededMillis = decision.exceededMillis,
                 )
             }
         }

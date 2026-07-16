@@ -309,7 +309,12 @@
 - 可恢复备份不导出微信读书 Key 明文；`managed_app_preferences` 里可能带上旧的加密 Key 字段，但导入恢复不会恢复 Android Keystore 里的 `tinyvow_weread_api_key` 密钥材料。`backup_manifest.json` 会用 `requiresWeReadKeyReentry` 标记恢复后是否需要提示用户去特殊应用里重新填写 WeRead Key。
 - 导入备份会校验 `backup_manifest.json` 中的 `format`、`schemaVersion`、`packageName` 和 `appVersionCode`，恢复数据库 / DataStore / 奖励图标后立即重启应用；涉及这条链路的改动要手动验证“导入成功提示 + 重启 + 重启后状态恢复”。
 - 隐私导出表清单要覆盖当前 Room 本地数据，包括奖励库存、主动效果、连胜保护待处理、奖励使用历史和保护事件；新增本地表时同步 `LocalDataManager.localDataTables`。
-- 国内版账号是 `LocalAuthRepository.ensureLocalSession()` 生成的本地用户 ID；`LocalActivationSubscriptionRepository` 将激活码绑定到该 ID，并用 `activation_preferences` 记录激活状态、已用 codeId 和最后一次墙钟时间。
+- 国内版账号以 `LocalAuthRepository.ensureLocalSession()` 生成的本地用户 ID 为匿名安装标识；后端会话还使用 `BackendSubscriptionStore` 生成并保存的随机设备凭据，服务端只保存其加 pepper 哈希，不能退回到仅凭安装标识即可认领账号。
+- 国内版后端固定使用 `https://api.tinyvow.rorolo.com`。`TVB1` 激活码通过 `ChinaSubscriptionRepository` 创建匿名服务端会话并兑换；已有 `TVA1` 本地签名激活码继续由 `LocalActivationSubscriptionRepository` 离线验证，两类权益取有效期更长者，不能破坏旧激活记录。
+- 匿名后端只接收本地用户 ID 作为安装标识、随机设备凭据，以及 Android 平台、设备厂商/型号、应用版本和渠道；支付时另处理商品、订单、金额、渠道交易号和必要的去标识化回调审计字段。不得上传使用记录、分组、限额、积分、步数、专注、微信读书或媒体播放等 local-first 数据。会话、设备凭据与缓存保存在 `backend_subscription_preferences`，需要纳入手动备份、本地清理和隐私报告摘要。
+- 国内版支付宝购买必须由后端创建签名订单；App 的同步支付结果只触发服务端订单轮询，不能直接解锁 PRO。后端收到支付宝异步通知后必须完成验签、app ID、seller ID、商户订单号和金额核对，再以订单 ID 幂等发放权益。应用私钥只保存在服务器环境变量中。
+- 国内版创建订单后要把待确认订单 ID 保存到 `backend_subscription_preferences`；App 启动、回前台和“恢复购买”都应继续向后端查单。支付成功或订单进入 `CLOSED / FAILED / REFUNDED` 后清除待确认记录，网络中断或确认超时不能提前清除。
+- 删除已创建的匿名服务端账号必须先调用 `DELETE /v1/me`，成功后再清本机会话；失败时保留本地状态并提示用户重试，不能只清本地却显示服务端账号已删除。
 - 账号删除、隐私说明相关改动要同步检查 `docs/account-delete.html`、`docs/privacy.html` 和应用内支持页文案。
 - 导出/清理本地数据时必须覆盖 Room 数据、`managed_app_preferences`、国内 `auth_preferences` / `activation_preferences`、奖励导入图标、专注分类导入图标、分享缓存和 WeRead Key 的 Keystore 材料等用户能感知的本地状态；不要误删应用安装外部数据。
 - 不要把 Android Auto Backup / device transfer 当成本地备份恢复方案：Manifest 当前虽然开启了 `allowBackup`，但 `backup_rules.xml` / `data_extraction_rules.xml` 已排除数据库、DataStore、`share` 缓存、导入奖励图标、导入专注图标和待恢复微信读书 Key 文件，核心恢复仍应以 `LocalDataManager` 的手动备份导入导出为准。
@@ -460,6 +465,9 @@ Get-Content -Raw -Encoding UTF8 AGENTS.md
 - 渠道版本规则见“版本管理和发布维护”；不要在渠道逻辑里另起一套版本号。
 - Google Play 版使用 `com.rrrrz.tinyvow`，只上传 `:app:bundleGooglePlayRelease` 到 Play Console。
 - 国内版使用 `com.rrrrz.tinyvow.cn`，用于国内测试和后续激活码能力，可与 Google Play 版同时安装，但本地数据不互通。
+- 支付宝开放平台的国内版 Android 应用包名填写 `com.rrrrz.tinyvow.cn`；当前国内发布证书的应用签名 MD5 是 `43af31f58bb1e26592a255c749fd4821`（32 位小写、无冒号）。这是 APK 证书摘要，不是支付宝 RSA2 应用公钥。
+- 国内版支付宝应用 `AppID` 是 `2021006172687041`，收款账号 ID / seller ID 是 `2088212325078165`。两者属于公开配置；应用私钥和支付宝公钥正文仍只保存在服务器环境文件，不写入仓库。
+- 用户于 2026-07-15 明确要求开启支付宝生产真实下单，后端当前已启用生产支付；App 内购买会进入真实支付宝收银台，只有明确的调试入口才可绕过，不能把生产购买流程改成客户端直接发放权益。
 - release 归档产物默认放到根目录 `dist/`，不要散落在别的目录；产物名必须保留渠道、`versionName` 和 `versionCode` 方便后续归档。
 - 国内版启动时会确保存在本地账号，并在“我的 > Tiny Vow Pro”显示用户 ID 复制与激活码输入入口。
 - 日常 debug 默认使用国内版：优先运行 `:app:assembleChinaDebug` 或 `:app:installChinaDebug`。
@@ -467,10 +475,11 @@ Get-Content -Raw -Encoding UTF8 AGENTS.md
 - 安装后如需启动国内 debug 包，使用 `adb shell am start -n com.rrrrz.tinyvow.cn/com.rrrrz.tinyvow.MainActivity`，不要用 Monkey 启动。
 - 不要把国内激活码、国内支付或外部购买入口显示在 `googlePlay` flavor 中。
 - 不要在 `china` flavor 中触发 Google 登录、Play Billing 购买、恢复购买或管理订阅流程。
-- 国内版 `SubscriptionRepository` 应使用 `LocalActivationSubscriptionRepository`；Google Play 版使用 `PlayBillingSubscriptionRepository`；其他禁用渠道才用 `NoopSubscriptionRepository`。
+- 国内版 `SubscriptionRepository` 使用 `ChinaSubscriptionRepository`，合并服务端商品/支付宝支付/`TVB1` 服务端激活码和旧 `TVA1` 本地激活权益；Google Play 版使用 `PlayBillingSubscriptionRepository`；其他禁用渠道才用 `NoopSubscriptionRepository`。
 - `:app:assembleDebug` 会构建多个 debug flavor，速度更慢，不作为日常默认命令。
 - 国内版本地 Pro 激活使用 `tools/activation/ActivationCodeTool.java` 生成激活码；私钥文件 `tools/activation/private_key.pkcs8` 只留在本机，不能提交。
 - 激活码绑定国内版本地 `userId`，支持自定义天数；无后端时只能防普通伪造和简单时间回拨，不能替代服务器时间。
+- 国内版服务端商品价以分为单位：月付 `90`、年付 `990`、永久 `2990`，App 展示必须读取 `/v1/products`，不要在购买流程另写一套价格。
 
 ## PRO 权益规则
 
