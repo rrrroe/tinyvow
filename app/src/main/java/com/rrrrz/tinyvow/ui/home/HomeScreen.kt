@@ -134,6 +134,7 @@ import com.rrrrz.tinyvow.BuildConfig
 import com.rrrrz.tinyvow.R
 import com.rrrrz.tinyvow.data.activation.ChinaSubscriptionRepository
 import com.rrrrz.tinyvow.data.activation.LocalActivationSubscriptionRepository
+import com.rrrrz.tinyvow.data.account.BackendAccountRepository
 import com.rrrrz.tinyvow.data.auth.LocalAuthRepository
 import com.rrrrz.tinyvow.data.billing.NoopSubscriptionRepository
 import com.rrrrz.tinyvow.data.billing.PlayBillingSubscriptionRepository
@@ -177,12 +178,16 @@ import com.rrrrz.tinyvow.data.repository.RewardStoreItem
 import com.rrrrz.tinyvow.data.repository.RewardSaveResult
 import com.rrrrz.tinyvow.data.repository.RewardSaveValidationError
 import com.rrrrz.tinyvow.data.repository.UseRewardResult
+import com.rrrrz.tinyvow.data.settings.AppTextSize
 import com.rrrrz.tinyvow.data.settings.HomeActivityRingColorPreference
 import com.rrrrz.tinyvow.data.settings.HomeActivityRingColorPreferences
 import com.rrrrz.tinyvow.data.settings.HomeActivityRingColorSource
 import com.rrrrz.tinyvow.data.settings.HomeActivityRingMetric
 import com.rrrrz.tinyvow.data.settings.HomeActivityRingPreferences
 import com.rrrrz.tinyvow.data.settings.ManagedAppPreferences
+import com.rrrrz.tinyvow.data.server.BackendSubscriptionStore
+import com.rrrrz.tinyvow.data.server.HttpTinyVowBackendApi
+import com.rrrrz.tinyvow.data.server.TinyVowBackendException
 import com.rrrrz.tinyvow.data.settings.OfflineFocusCategoryDefaults
 import com.rrrrz.tinyvow.data.special.SpecialAppUsageRepository
 import com.rrrrz.tinyvow.data.steps.HealthConnectStepDataSource
@@ -272,11 +277,37 @@ import com.rrrrz.tinyvow.ui.theme.TinyVowSnackbarHost
 import com.rrrrz.tinyvow.ui.theme.TinyVowStatusPill
 import com.rrrrz.tinyvow.ui.theme.selectedThemeDisplayName
 
-enum class Screen { HOME, REWARDS, STATS, ME, HOME_STEP_PROGRESS_STATS, CHECK_IN_OVERVIEW, ME_SAVED_PROGRESS_STATS, ME_POINTS_PROGRESS_STATS, ME_PRO, ME_PERMISSIONS, ME_NOTIFICATIONS, ME_DAY_BOUNDARY, ME_OFFLINE_FOCUS, ME_APPEARANCE, ME_RING_SETTINGS, ME_DATA_PRIVACY, ME_VERSION, SUPER_MODE, LABORATORY, LAB_FOCUS_HISTORY_EDITOR, HISTORY, THEME, LANGUAGE, HELP_FEEDBACK, CONTACT_US, SPECIAL_APPS, WEREAD_SPECIAL_APP, MEDIA_APPS, LOCK_SCREEN_TIMER_APPS, APP_COLOR_DEBUG, PERMISSION_DIAGNOSTICS }
+enum class Screen { HOME, REWARDS, STATS, ME, HOME_STEP_PROGRESS_STATS, CHECK_IN_OVERVIEW, ME_ACCOUNT, ME_SAVED_PROGRESS_STATS, ME_POINTS_PROGRESS_STATS, ME_PRO, ME_PERMISSIONS, ME_NOTIFICATIONS, ME_DAY_BOUNDARY, ME_OFFLINE_FOCUS, ME_APPEARANCE, ME_RING_SETTINGS, ME_DATA_PRIVACY, ME_VERSION, SUPER_MODE, LABORATORY, LAB_FOCUS_HISTORY_EDITOR, HISTORY, THEME, LANGUAGE, HELP_FEEDBACK, CONTACT_US, SPECIAL_APPS, WEREAD_SPECIAL_APP, MEDIA_APPS, LOCK_SCREEN_TIMER_APPS, APP_COLOR_DEBUG, PERMISSION_DIAGNOSTICS }
 enum class RewardsSection { STORE, INVENTORY, ACHIEVEMENTS }
 
 private const val CONTACT_EMAIL = "rrrr.zhao@qq.com"
 private const val WEREAD_AUTO_SYNC_DEBOUNCE_MS = 60_000L
+
+private fun accountErrorMessage(error: Throwable): String {
+    val code =
+        when (error) {
+            is TinyVowBackendException -> error.errorCode
+            else -> error.message
+        }
+    return when (code) {
+        "email_already_registered" -> AppText.t("account_error_email_registered")
+        "email_invalid" -> AppText.t("account_error_email_invalid")
+        "credentials_invalid" -> AppText.t("account_error_credentials_invalid")
+        "login_rate_limited" -> AppText.t("account_error_rate_limited")
+        "device_limit_reached" -> AppText.t("account_error_device_limit")
+        "account_switch_requires_sign_out" -> AppText.t("account_error_switch_requires_sign_out")
+        "avatar_too_large" -> AppText.t("account_error_avatar_too_large")
+        "avatar_type_unsupported" -> AppText.t("account_error_avatar_type")
+        "avatar_content_invalid" -> AppText.t("account_error_avatar_content")
+        "account_registration_required" -> AppText.t("account_error_registration_required")
+        "email_delivery_unavailable" -> AppText.t("account_error_email_delivery_unavailable")
+        "email_delivery_failed" -> AppText.t("account_error_email_delivery_failed")
+        "email_code_send_too_frequent" -> AppText.t("account_error_code_too_frequent")
+        "email_code_invalid" -> AppText.t("account_error_code_invalid")
+        "email_code_expired" -> AppText.t("account_error_code_expired")
+        else -> error.message ?: AppText.t("account_error_backend_unavailable")
+    }
+}
 private const val HOME_STEP_REFRESH_INTERVAL_MS = 60_000L
 private const val HOME_CONTROL_TOLERANCE_MINUTES = 5L
 private const val HOME_OVERVIEW_DATA_REVEAL_MILLIS = 1_440
@@ -697,6 +728,33 @@ fun HomeRoute(
     val powerManager = remember(context) { context.getSystemService(android.content.Context.POWER_SERVICE) as PowerManager }
     var isIgnoringBattery by remember { mutableStateOf(powerManager.isIgnoringBatteryOptimizations(context.packageName)) }
     val authRepository = remember(context) { LocalAuthRepository(context) }
+    val backendStore = remember(context) {
+        BuildConfig.TINYVOW_BACKEND_BASE_URL
+            .takeIf { it.isNotBlank() }
+            ?.let { BackendSubscriptionStore(context) }
+    }
+    val backendApi = remember(context) {
+        BuildConfig.TINYVOW_BACKEND_BASE_URL
+            .takeIf { it.isNotBlank() }
+            ?.let { baseUrl ->
+                HttpTinyVowBackendApi(
+                    baseUrl = baseUrl,
+                    deviceName = listOf(Build.MANUFACTURER, Build.MODEL)
+                        .filter { it.isNotBlank() }
+                        .joinToString(" ")
+                        .takeIf { it.isNotBlank() },
+                    appVersion = BuildConfig.VERSION_NAME,
+                    channel = BuildConfig.STORE_CHANNEL,
+                )
+            }
+    }
+    val backendAccountRepository = remember(backendApi, backendStore) {
+        if (backendApi != null && backendStore != null) {
+            BackendAccountRepository(backendApi, backendStore)
+        } else {
+            null
+        }
+    }
     val localActivationRepository = remember(context) {
         if (BuildConfig.ENABLE_LOCAL_ACTIVATION) {
             LocalActivationSubscriptionRepository(context, BuildConfig.ACTIVATION_PUBLIC_KEY_BASE64)
@@ -704,16 +762,20 @@ fun HomeRoute(
             null
         }
     }
-    val chinaSubscriptionRepository = remember(context, localActivationRepository) {
-        localActivationRepository?.let { localRepository ->
+    val chinaSubscriptionRepository = remember(context, localActivationRepository, backendApi, backendStore) {
+        if (localActivationRepository != null && backendApi != null && backendStore != null) {
             ChinaSubscriptionRepository(
                 context = context,
-                localRepository = localRepository,
+                localRepository = localActivationRepository,
                 backendBaseUrl = BuildConfig.TINYVOW_BACKEND_BASE_URL,
+                store = backendStore,
+                api = backendApi,
             )
+        } else {
+            null
         }
     }
-    val subscriptionRepository: SubscriptionRepository = remember(context) {
+    val subscriptionRepository: SubscriptionRepository = remember(context, chinaSubscriptionRepository) {
         if (BuildConfig.ENABLE_PLAY_BILLING) {
             PlayBillingSubscriptionRepository(context)
         } else {
@@ -836,6 +898,10 @@ fun HomeRoute(
     val selectedThemeId by preferences.selectedThemeId.collectAsStateWithLifecycle(initialValue = DefaultThemeSeed.id, lifecycle = lifecycle)
     val customThemes by preferences.customThemes.collectAsStateWithLifecycle(initialValue = emptyList(), lifecycle = lifecycle)
     val selectedAppLanguage by preferences.selectedAppLanguage.collectAsStateWithLifecycle(initialValue = com.rrrrz.tinyvow.i18n.AppLanguage.SYSTEM, lifecycle = lifecycle)
+    val selectedAppTextSize by preferences.selectedAppTextSize.collectAsStateWithLifecycle(
+        initialValue = AppTextSize.STANDARD,
+        lifecycle = lifecycle,
+    )
     val dayBoundaryHour by preferences.dayBoundaryHour.collectAsStateWithLifecycle(
         initialValue = BusinessDay.DEFAULT_START_HOUR,
         lifecycle = lifecycle,
@@ -941,6 +1007,10 @@ fun HomeRoute(
     )
     val superModeStoredState by preferences.superModeState.collectAsStateWithLifecycle(initialValue = SuperModeStoredState(), lifecycle = lifecycle)
     val userSession by authRepository.session.collectAsStateWithLifecycle(initialValue = null, lifecycle = lifecycle)
+    val backendAccountFlow = remember(backendAccountRepository) {
+        backendAccountRepository?.account ?: flowOf(null)
+    }
+    val backendAccount by backendAccountFlow.collectAsStateWithLifecycle(initialValue = null, lifecycle = lifecycle)
     val subscriptionEntitlement by subscriptionRepository.entitlement.collectAsStateWithLifecycle(lifecycle = lifecycle)
     val subscriptionOffers by subscriptionRepository.offers.collectAsStateWithLifecycle(lifecycle = lifecycle)
     val debugProExpiresAtMillis by preferences.debugProExpiresAtMillis.collectAsStateWithLifecycle(initialValue = null, lifecycle = lifecycle)
@@ -982,6 +1052,7 @@ fun HomeRoute(
     }
 
     var currentScreen by remember { mutableStateOf(Screen.HOME) }
+    var accountOperationInProgress by remember { mutableStateOf(false) }
     var lastOfflineFocusActiveSessionId by remember { mutableStateOf<String?>(null) }
     var homeOverviewAnimationReplayToken by remember { mutableIntStateOf(0) }
     var statsAnimationReplayToken by remember { mutableIntStateOf(0) }
@@ -1519,7 +1590,7 @@ fun HomeRoute(
                 currentScreen = when (currentScreen) {
                     Screen.WEREAD_SPECIAL_APP, Screen.MEDIA_APPS, Screen.LOCK_SCREEN_TIMER_APPS, Screen.APP_COLOR_DEBUG -> Screen.SPECIAL_APPS
                     Screen.HOME_STEP_PROGRESS_STATS, Screen.PERMISSION_DIAGNOSTICS -> Screen.HOME
-                    Screen.CHECK_IN_OVERVIEW, Screen.ME_SAVED_PROGRESS_STATS, Screen.ME_POINTS_PROGRESS_STATS, Screen.ME_PRO, Screen.ME_PERMISSIONS, Screen.ME_NOTIFICATIONS, Screen.ME_DAY_BOUNDARY, Screen.ME_OFFLINE_FOCUS, Screen.ME_APPEARANCE, Screen.ME_RING_SETTINGS, Screen.ME_DATA_PRIVACY, Screen.ME_VERSION, Screen.SUPER_MODE, Screen.LABORATORY, Screen.HISTORY, Screen.THEME, Screen.LANGUAGE, Screen.HELP_FEEDBACK, Screen.CONTACT_US, Screen.SPECIAL_APPS -> Screen.ME
+                    Screen.CHECK_IN_OVERVIEW, Screen.ME_ACCOUNT, Screen.ME_SAVED_PROGRESS_STATS, Screen.ME_POINTS_PROGRESS_STATS, Screen.ME_PRO, Screen.ME_PERMISSIONS, Screen.ME_NOTIFICATIONS, Screen.ME_DAY_BOUNDARY, Screen.ME_OFFLINE_FOCUS, Screen.ME_APPEARANCE, Screen.ME_RING_SETTINGS, Screen.ME_DATA_PRIVACY, Screen.ME_VERSION, Screen.SUPER_MODE, Screen.LABORATORY, Screen.HISTORY, Screen.THEME, Screen.LANGUAGE, Screen.HELP_FEEDBACK, Screen.CONTACT_US, Screen.SPECIAL_APPS -> Screen.ME
                     else -> Screen.HOME
                 }
             }
@@ -1532,16 +1603,26 @@ fun HomeRoute(
         }
     }
 
-    LaunchedEffect(BuildConfig.ENABLE_LOCAL_ACTIVATION) {
+    LaunchedEffect(
+        BuildConfig.ENABLE_LOCAL_ACTIVATION,
+        authRepository,
+        backendAccountRepository,
+        chinaSubscriptionRepository,
+    ) {
         if (BuildConfig.ENABLE_LOCAL_ACTIVATION) {
             val session = authRepository.ensureLocalSession(
                 preferredUserId = chinaSubscriptionRepository?.restorableUserId(),
             )
+            backendAccountRepository?.initialize(session.userId)
             chinaSubscriptionRepository?.bindUser(session.userId)
         }
     }
 
-    LaunchedEffect(BuildConfig.ENABLE_LOCAL_ACTIVATION, userSession?.userId) {
+    LaunchedEffect(
+        BuildConfig.ENABLE_LOCAL_ACTIVATION,
+        userSession?.userId,
+        chinaSubscriptionRepository,
+    ) {
         if (BuildConfig.ENABLE_LOCAL_ACTIVATION && userSession?.userId != null) {
             chinaSubscriptionRepository?.bindUser(userSession?.userId)
         }
@@ -2045,6 +2126,8 @@ fun HomeRoute(
                     ) {
                         MeScreen(
                         userSession = userSession,
+                        backendAccount = backendAccount,
+                        isBackendAccountEnabled = backendAccountRepository != null,
                         isGoogleSignInEnabled = BuildConfig.ENABLE_GOOGLE_LOGIN,
                         isGoogleSignInConfigured = authRepository.isGoogleSignInConfigured,
                         isPlayBillingEnabled = BuildConfig.ENABLE_PLAY_BILLING,
@@ -2063,6 +2146,7 @@ fun HomeRoute(
                         superModeStatus = superModeStatus,
                         isDebugBuild = BuildConfig.DEBUG,
                         selectedAppLanguage = selectedAppLanguage,
+                        selectedAppTextSize = selectedAppTextSize,
                         dayBoundaryHour = dayBoundaryHour,
                         notificationRemindersEnabled = notificationRemindersEnabled,
                         controlRemainingReminderMinutes = ReminderPolicy.effectiveSettings(
@@ -2080,27 +2164,13 @@ fun HomeRoute(
                         openBenefitsDialog = openMeProBenefitsDialog,
                         onBenefitsDialogOpened = { openMeProBenefitsDialog = false },
                         onNavigateToProMembership = { currentScreen = Screen.ME_PRO },
+                        onNavigateToAccount = { currentScreen = Screen.ME_ACCOUNT },
                         usageAccessGranted = effectiveUsageAccessStatus == UsageAccessStatus.GRANTED,
                         accessibilityServiceEnabled = effectiveAccessibilityServiceEnabled,
                         isAutoStartDismissed = isAutoStartDismissed,
                         isIgnoringBattery = isIgnoringBattery,
                         notificationPermissionGranted = notificationPermissionGranted,
                         dismissedPermissionPrompts = dismissedPermissionPrompts,
-                        onUpdateProfileName = { displayName ->
-                            coroutineScope.launch {
-                                preferences.setProfileDisplayName(displayName)
-                            }
-                        },
-                        onUpdateProfileAvatar = { avatarUri ->
-                            coroutineScope.launch {
-                                preferences.setProfileAvatarUri(avatarUri)
-                            }
-                        },
-                        onClearProfileAvatar = {
-                            coroutineScope.launch {
-                                preferences.setProfileAvatarUri(null)
-                            }
-                        },
                         onSelectTheme = { themeId ->
                             coroutineScope.launch {
                                 preferences.setSelectedThemeId(themeId)
@@ -2187,17 +2257,33 @@ fun HomeRoute(
                         },
                         onSignOut = {
                             coroutineScope.launch {
-                                authRepository.signOut()
-                                snackbarHostState.showSnackbar(AppText.t("home_signed_out"))
+                                if (backendAccount?.isRegistered == true) {
+                                    backendAccountRepository
+                                        ?.signOut()
+                                        ?.onSuccess {
+                                            preferences.setProfileDisplayName(null)
+                                            preferences.setProfileAvatarUri(null)
+                                            snackbarHostState.showSnackbar(AppText.t("home_signed_out"))
+                                        }
+                                        ?.onFailure { error ->
+                                            snackbarHostState.showSnackbar(accountErrorMessage(error))
+                                        }
+                                } else {
+                                    authRepository.signOut()
+                                    snackbarHostState.showSnackbar(AppText.t("home_signed_out"))
+                                }
                             }
                         },
                         onDeleteAccount = { clearLocalData ->
                             coroutineScope.launch {
-                                val backendDeletion = chinaSubscriptionRepository?.deleteAccount()
+                                val backendDeletion =
+                                    backendAccountRepository?.deleteAccount()
+                                        ?: chinaSubscriptionRepository?.deleteAccount()
                                 if (backendDeletion?.isFailure == true) {
                                     snackbarHostState.showSnackbar(AppText.t("home_account_deletion_failed"))
                                     return@launch
                                 }
+                                chinaSubscriptionRepository?.clearLocalState()
                                 authRepository.deleteAccount()
                                 if (clearLocalData) {
                                     localDataManager.clearLocalData()
@@ -2256,6 +2342,207 @@ fun HomeRoute(
                         },
                         )
                     }
+                }
+                Screen.ME_ACCOUNT -> {
+                    AccountCenterScreen(
+                        account = backendAccount,
+                        profileDisplayName = profileDisplayName,
+                        profileAvatarUri = profileAvatarUri,
+                        isBusy = accountOperationInProgress,
+                        onBack = { currentScreen = Screen.ME },
+                        onRegister = { email, password, displayName ->
+                            val repository = backendAccountRepository
+                            if (repository != null) {
+                                coroutineScope.launch {
+                                    accountOperationInProgress = true
+                                    repository.register(email, password, displayName)
+                                        .onSuccess { account ->
+                                            preferences.setProfileDisplayName(account.displayName)
+                                            preferences.setProfileAvatarUri(account.avatarUrl)
+                                            subscriptionRepository.refresh()
+                                            snackbarHostState.showSnackbar(AppText.t("account_register_success"))
+                                        }
+                                        .onFailure { error ->
+                                            snackbarHostState.showSnackbar(accountErrorMessage(error))
+                                        }
+                                    accountOperationInProgress = false
+                                }
+                            }
+                        },
+                        onLogin = { email, password ->
+                            val repository = backendAccountRepository
+                            if (repository != null) {
+                                coroutineScope.launch {
+                                    accountOperationInProgress = true
+                                    repository.login(email, password)
+                                        .onSuccess { account ->
+                                            preferences.setProfileDisplayName(account.displayName)
+                                            preferences.setProfileAvatarUri(account.avatarUrl)
+                                            subscriptionRepository.refresh()
+                                            snackbarHostState.showSnackbar(AppText.t("account_login_success"))
+                                        }
+                                        .onFailure { error ->
+                                            snackbarHostState.showSnackbar(accountErrorMessage(error))
+                                        }
+                                    accountOperationInProgress = false
+                                }
+                            }
+                        },
+                        onRequestEmailVerification = {
+                            val repository = backendAccountRepository
+                            if (repository != null) {
+                                coroutineScope.launch {
+                                    accountOperationInProgress = true
+                                    repository.requestEmailVerification()
+                                        .onSuccess {
+                                            snackbarHostState.showSnackbar(
+                                                AppText.t("account_verification_code_sent"),
+                                            )
+                                        }
+                                        .onFailure { error ->
+                                            snackbarHostState.showSnackbar(accountErrorMessage(error))
+                                        }
+                                    accountOperationInProgress = false
+                                }
+                            }
+                        },
+                        onConfirmEmailVerification = { code ->
+                            val repository = backendAccountRepository
+                            if (repository != null) {
+                                coroutineScope.launch {
+                                    accountOperationInProgress = true
+                                    repository.confirmEmailVerification(code)
+                                        .onSuccess {
+                                            snackbarHostState.showSnackbar(
+                                                AppText.t("account_email_verified_success"),
+                                            )
+                                        }
+                                        .onFailure { error ->
+                                            snackbarHostState.showSnackbar(accountErrorMessage(error))
+                                        }
+                                    accountOperationInProgress = false
+                                }
+                            }
+                        },
+                        onRequestPasswordReset = { email ->
+                            val repository = backendAccountRepository
+                            if (repository != null) {
+                                coroutineScope.launch {
+                                    accountOperationInProgress = true
+                                    repository.requestPasswordReset(email)
+                                        .onSuccess {
+                                            snackbarHostState.showSnackbar(
+                                                AppText.t("account_reset_request_accepted"),
+                                            )
+                                        }
+                                        .onFailure { error ->
+                                            snackbarHostState.showSnackbar(accountErrorMessage(error))
+                                        }
+                                    accountOperationInProgress = false
+                                }
+                            }
+                        },
+                        onConfirmPasswordReset = { email, code, newPassword ->
+                            val repository = backendAccountRepository
+                            if (repository != null) {
+                                coroutineScope.launch {
+                                    accountOperationInProgress = true
+                                    repository.confirmPasswordReset(email, code, newPassword)
+                                        .onSuccess {
+                                            snackbarHostState.showSnackbar(
+                                                AppText.t("account_password_reset_success"),
+                                            )
+                                        }
+                                        .onFailure { error ->
+                                            snackbarHostState.showSnackbar(accountErrorMessage(error))
+                                        }
+                                    accountOperationInProgress = false
+                                }
+                            }
+                        },
+                        onUpdateProfileName = { displayName ->
+                            coroutineScope.launch {
+                                if (backendAccount?.isRegistered == true) {
+                                    val repository = backendAccountRepository ?: return@launch
+                                    accountOperationInProgress = true
+                                    repository.updateDisplayName(displayName)
+                                        .onSuccess { account ->
+                                            preferences.setProfileDisplayName(account.displayName)
+                                        }
+                                        .onFailure { error ->
+                                            snackbarHostState.showSnackbar(accountErrorMessage(error))
+                                        }
+                                    accountOperationInProgress = false
+                                } else {
+                                    preferences.setProfileDisplayName(displayName.trim())
+                                }
+                            }
+                        },
+                        onUpdateProfileAvatar = { avatarUri ->
+                            coroutineScope.launch {
+                                if (backendAccount?.isRegistered == true) {
+                                    val repository = backendAccountRepository ?: return@launch
+                                    accountOperationInProgress = true
+                                    repository.uploadAvatar(context.contentResolver, Uri.parse(avatarUri))
+                                        .onSuccess { account ->
+                                            preferences.setProfileAvatarUri(account.avatarUrl)
+                                        }
+                                        .onFailure { error ->
+                                            snackbarHostState.showSnackbar(accountErrorMessage(error))
+                                        }
+                                    accountOperationInProgress = false
+                                } else {
+                                    preferences.setProfileAvatarUri(avatarUri)
+                                }
+                            }
+                        },
+                        onSignOut = {
+                            val repository = backendAccountRepository
+                            if (repository != null) {
+                                coroutineScope.launch {
+                                    accountOperationInProgress = true
+                                    repository.signOut()
+                                        .onSuccess {
+                                            preferences.setProfileDisplayName(null)
+                                            preferences.setProfileAvatarUri(null)
+                                            subscriptionRepository.refresh()
+                                            snackbarHostState.showSnackbar(AppText.t("home_signed_out"))
+                                        }
+                                        .onFailure { error ->
+                                            snackbarHostState.showSnackbar(accountErrorMessage(error))
+                                        }
+                                    accountOperationInProgress = false
+                                }
+                            }
+                        },
+                        onDeleteAccount = {
+                            val repository = backendAccountRepository
+                            if (repository != null) {
+                                coroutineScope.launch {
+                                    accountOperationInProgress = true
+                                    repository.deleteAccount()
+                                        .onSuccess {
+                                            chinaSubscriptionRepository?.clearLocalState()
+                                            authRepository.deleteAccount()
+                                            val replacementSession = authRepository.ensureLocalSession()
+                                            repository.initialize(replacementSession.userId)
+                                                .onFailure { error ->
+                                                    snackbarHostState.showSnackbar(accountErrorMessage(error))
+                                                }
+                                            chinaSubscriptionRepository?.bindUser(replacementSession.userId)
+                                            preferences.setProfileDisplayName(null)
+                                            preferences.setProfileAvatarUri(null)
+                                            currentScreen = Screen.ME
+                                            snackbarHostState.showSnackbar(AppText.t("home_account_deleted"))
+                                        }
+                                        .onFailure { error ->
+                                            snackbarHostState.showSnackbar(accountErrorMessage(error))
+                                        }
+                                    accountOperationInProgress = false
+                                }
+                            }
+                        },
+                    )
                 }
                 Screen.ME_PRO -> {
                     ProMembershipPage(
@@ -2596,7 +2883,13 @@ fun HomeRoute(
                 Screen.ME_APPEARANCE -> {
                     AppearanceSettingsScreen(
                         isProActive = proEntitlement.isProActive,
+                        selectedAppTextSize = selectedAppTextSize,
                         onBack = { currentScreen = Screen.ME },
+                        onSelectAppTextSize = { textSize ->
+                            coroutineScope.launch {
+                                preferences.setSelectedAppTextSize(textSize)
+                            }
+                        },
                         onOpenRingSettings = { currentScreen = Screen.ME_RING_SETTINGS },
                         onShowProUpsell = { proUpsellSource = it },
                     )
@@ -7088,12 +7381,6 @@ private fun HomeOverviewWingPanel(
                         maxLines = 2,
                         overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f),
-                    )
-                    Icon(
-                        imageVector = Icons.Default.ChevronRight,
-                        contentDescription = null,
-                        tint = contentColor.copy(alpha = 0.54f),
-                        modifier = Modifier.size(17.dp),
                     )
                     if (!isLeft) {
                         Spacer(modifier = Modifier.width(7.dp))

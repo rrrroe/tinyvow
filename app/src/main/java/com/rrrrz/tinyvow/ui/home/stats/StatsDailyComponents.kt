@@ -9,7 +9,9 @@ import android.graphics.Bitmap
 import android.graphics.RectF
 import android.provider.Settings
 import android.widget.Toast
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
@@ -73,6 +75,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -82,6 +85,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
@@ -2227,33 +2231,61 @@ private fun WeeklyRhythmSortToggle(
     sortByOpens: Boolean,
     onSortByOpensChange: (Boolean) -> Unit,
 ) {
-    Row(
+    val segmentWidth = 46.dp
+    val indicatorOffset by animateDpAsState(
+        targetValue = if (sortByOpens) 0.dp else segmentWidth,
+        animationSpec = tween(
+            durationMillis = 420,
+            easing = FastOutSlowInEasing,
+        ),
+        label = "weekly_rhythm_sort_indicator",
+    )
+    Box(
         modifier = Modifier
+            .width(segmentWidth * 2 + 4.dp)
+            .height(28.dp)
             .clip(RoundedCornerShape(10.dp))
             .background(MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.72f))
             .padding(2.dp),
-        verticalAlignment = Alignment.CenterVertically,
     ) {
+        Surface(
+            modifier = Modifier
+                .offset(x = indicatorOffset)
+                .width(segmentWidth)
+                .fillMaxHeight(),
+            shape = RoundedCornerShape(8.dp),
+            color = MaterialTheme.colorScheme.surface,
+            shadowElevation = 1.dp,
+        ) {}
         listOf(
             true to AppText.t("stats_app_focus_sort_opens"),
             false to AppText.t("stats_app_focus_sort_usage"),
-        ).forEach { (byOpens, label) ->
-            Surface(
+        ).forEachIndexed { index, (byOpens, label) ->
+            val selected = sortByOpens == byOpens
+            val labelAlpha by animateFloatAsState(
+                targetValue = if (selected) 1f else 0.62f,
+                animationSpec = tween(durationMillis = 180),
+                label = "weekly_rhythm_sort_label_$index",
+            )
+            Box(
                 modifier = Modifier
+                    .offset(x = segmentWidth * index)
+                    .width(segmentWidth)
+                    .fillMaxHeight()
                     .clip(RoundedCornerShape(8.dp))
                     .clickable { onSortByOpensChange(byOpens) },
-                shape = RoundedCornerShape(8.dp),
-                color = if (sortByOpens == byOpens) {
-                    MaterialTheme.colorScheme.surface
-                } else {
-                    Color.Transparent
-                },
+                contentAlignment = Alignment.Center,
             ) {
                 Text(
                     text = label,
-                    modifier = Modifier.padding(horizontal = 7.dp, vertical = 4.dp),
+                    modifier = Modifier.graphicsLayer {
+                        alpha = labelAlpha
+                        scaleX = if (selected) 1f else 0.96f
+                        scaleY = if (selected) 1f else 0.96f
+                    },
                     style = MaterialTheme.typography.labelSmall,
-                    color = if (sortByOpens == byOpens) {
+                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                    color = if (selected) {
                         MaterialTheme.colorScheme.onSurface
                     } else {
                         MaterialTheme.colorScheme.onSurfaceVariant
@@ -2313,17 +2345,29 @@ private fun WeeklyRhythmAppFocusDayColumn(
     selectedPackageName: String?,
     onPackageClick: (String) -> Unit,
 ) {
-    val apps = remember(day, sortByOpens) {
+    val opensRanking = remember(day) {
         day.apps
             .sortedWith(
-                compareByDescending<WeeklyAppFocusItem> { if (sortByOpens) it.openCount else it.usageMillis }
+                compareByDescending<WeeklyAppFocusItem> { it.openCount }
                     .thenByDescending { it.usageMillis },
             )
-            .take(7)
     }
-    val maxMetric = apps.maxOfOrNull { if (sortByOpens) it.openCount.toLong() else it.usageMillis }
+    val usageRanking = remember(day) {
+        day.apps
+            .sortedWith(
+                compareByDescending<WeeklyAppFocusItem> { it.usageMillis }
+                    .thenByDescending { it.usageMillis },
+            )
+    }
+    val selectedRanking = if (sortByOpens) opensRanking else usageRanking
+    val animatedApps = remember(opensRanking, usageRanking) {
+        (opensRanking.take(7) + usageRanking.take(7)).distinctBy { it.packageName }
+    }
+    val maxMetric = selectedRanking.firstOrNull()
+        ?.let { if (sortByOpens) it.openCount.toLong() else it.usageMillis }
         ?.coerceAtLeast(1L) ?: 1L
-    val appColors = rememberAppChartColors(apps.map { it.packageName })
+    val appColors = rememberAppChartColors(day.apps.map { it.packageName })
+    val rankStep = 45.dp
     Column(
         modifier = modifier,
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -2335,23 +2379,66 @@ private fun WeeklyRhythmAppFocusDayColumn(
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             maxLines = 1,
         )
-        repeat(7) { index ->
-            val app = apps.getOrNull(index)
-            if (app == null) {
-                Box(modifier = Modifier.size(40.dp))
-            } else {
-                val metric = if (sortByOpens) app.openCount.toLong() else app.usageMillis
-                val ratio = (metric.toFloat() / maxMetric.toFloat()).coerceIn(0f, 1f)
-                val size = (20f + ratio * 20f).dp
-                WeeklyRhythmAppFocusIcon(
-                    packageName = app.packageName,
-                    appLabel = app.label,
-                    size = size,
-                    accent = appColors[app.packageName] ?: MaterialTheme.colorScheme.primary,
-                    selected = selectedPackageName == app.packageName,
-                    muted = selectedPackageName != null && selectedPackageName != app.packageName,
-                    onClick = { onPackageClick(app.packageName) },
-                )
+        Box(
+            modifier = Modifier
+                .height(rankStep * 7 - 5.dp)
+                .fillMaxWidth()
+                .clipToBounds(),
+        ) {
+            animatedApps.forEach { app ->
+                key(app.packageName) {
+                    val targetRank = selectedRanking.indexOfFirst { it.packageName == app.packageName }
+                    val visible = targetRank in 0..6
+                    val targetY = if (visible) rankStep * targetRank else rankStep * 7
+                    val metric = if (sortByOpens) app.openCount.toLong() else app.usageMillis
+                    val ratio = (metric.toFloat() / maxMetric.toFloat()).coerceIn(0f, 1f)
+                    val targetSize = (20f + ratio * 20f).dp
+                    val animatedY by animateDpAsState(
+                        targetValue = targetY,
+                        animationSpec = tween(
+                            durationMillis = 560,
+                            easing = FastOutSlowInEasing,
+                        ),
+                        label = "weekly_rhythm_rank_y_${day.dayCode}_${app.packageName}",
+                    )
+                    val animatedSize by animateDpAsState(
+                        targetValue = targetSize,
+                        animationSpec = tween(
+                            durationMillis = 560,
+                            easing = FastOutSlowInEasing,
+                        ),
+                        label = "weekly_rhythm_rank_size_${day.dayCode}_${app.packageName}",
+                    )
+                    val animatedAlpha by animateFloatAsState(
+                        targetValue = if (visible) 1f else 0f,
+                        animationSpec = tween(
+                            durationMillis = 360,
+                            easing = FastOutSlowInEasing,
+                        ),
+                        label = "weekly_rhythm_rank_alpha_${day.dayCode}_${app.packageName}",
+                    )
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .offset(y = animatedY)
+                            .size(40.dp)
+                            .graphicsLayer { alpha = animatedAlpha }
+                            .zIndex(if (visible) (7 - targetRank).toFloat() else 0f),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        WeeklyRhythmAppFocusIcon(
+                            packageName = app.packageName,
+                            appLabel = app.label,
+                            size = animatedSize,
+                            accent = appColors[app.packageName] ?: MaterialTheme.colorScheme.primary,
+                            selected = selectedPackageName == app.packageName,
+                            muted =
+                                selectedPackageName != null &&
+                                    selectedPackageName != app.packageName,
+                            onClick = { onPackageClick(app.packageName) },
+                        )
+                    }
+                }
             }
         }
     }

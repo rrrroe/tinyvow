@@ -117,6 +117,7 @@ class ManagedAppPreferences(
         val welcomeIntroCompleted = booleanPreferencesKey("welcome_intro_completed")
         val firstRunCoachmarkCompleted = booleanPreferencesKey("first_run_coachmark_completed")
         val selectedAppLanguage = stringPreferencesKey("selected_app_language")
+        val selectedAppTextSize = stringPreferencesKey("selected_app_text_size")
         val dayBoundaryHour = intPreferencesKey("day_boundary_hour")
         val profileDisplayName = stringPreferencesKey("profile_display_name")
         val profileAvatarUri = stringPreferencesKey("profile_avatar_uri")
@@ -262,6 +263,10 @@ class ManagedAppPreferences(
 
     val selectedAppLanguage: Flow<AppLanguage> = context.managedAppDataStore.data.map { preferences ->
         AppLanguage.fromStorageValue(preferences[Keys.selectedAppLanguage])
+    }
+
+    val selectedAppTextSize: Flow<AppTextSize> = context.managedAppDataStore.data.map { preferences ->
+        AppTextSize.fromStorageValue(preferences[Keys.selectedAppTextSize])
     }
 
     val dayBoundaryHour: Flow<Int> = context.managedAppDataStore.data.map { preferences ->
@@ -586,6 +591,12 @@ class ManagedAppPreferences(
     suspend fun setSelectedAppLanguage(language: AppLanguage) {
         context.managedAppDataStore.edit { preferences ->
             preferences[Keys.selectedAppLanguage] = language.storageValue
+        }
+    }
+
+    suspend fun setSelectedAppTextSize(textSize: AppTextSize) {
+        context.managedAppDataStore.edit { preferences ->
+            preferences[Keys.selectedAppTextSize] = textSize.storageValue
         }
     }
 

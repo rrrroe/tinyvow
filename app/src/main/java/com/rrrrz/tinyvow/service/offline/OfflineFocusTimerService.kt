@@ -28,6 +28,7 @@ import com.rrrrz.tinyvow.data.repository.OfflineFocusRepository
 import com.rrrrz.tinyvow.data.repository.OfflineFocusSession
 import com.rrrrz.tinyvow.data.settings.ManagedAppPreferences
 import com.rrrrz.tinyvow.i18n.AppText
+import com.rrrrz.tinyvow.widget.OfflineFocusWidgetProvider
 import java.util.Locale
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -63,19 +64,21 @@ class OfflineFocusTimerService : Service() {
                 if (sessionId != null) {
                     val showCompletionAlert = intent.getBooleanExtra(EXTRA_SHOW_COMPLETION_ALERT, true)
                     serviceScope.launch {
-                        repository.stopSessionEarly(sessionId)?.let { completedSession ->
+                        val completedSession = repository.stopSessionEarly(sessionId)
+                        OfflineFocusWidgetProvider.updateAllWidgets(this@OfflineFocusTimerService)
+                        completedSession?.let {
                             if (
                                 showCompletionAlert &&
                                 (
-                                    completedSession.status == OfflineFocusSessionStatus.COMPLETED ||
-                                        completedSession.status == OfflineFocusSessionStatus.SETTLED ||
+                                    it.status == OfflineFocusSessionStatus.COMPLETED ||
+                                        it.status == OfflineFocusSessionStatus.SETTLED ||
                                         (
-                                            completedSession.status == OfflineFocusSessionStatus.ABANDONED &&
-                                                completedSession.abandonedReason == OfflineFocusAbandonReason.BELOW_THRESHOLD
+                                            it.status == OfflineFocusSessionStatus.ABANDONED &&
+                                                it.abandonedReason == OfflineFocusAbandonReason.BELOW_THRESHOLD
                                         )
                                 )
                             ) {
-                                sendCompletionAlert(completedSession)
+                                sendCompletionAlert(it)
                                 return@launch
                             }
                         }
@@ -91,6 +94,7 @@ class OfflineFocusTimerService : Service() {
                     serviceScope.launch {
                         clearCompletionAlert()
                         repository.abandonSession(sessionId)
+                        OfflineFocusWidgetProvider.updateAllWidgets(this@OfflineFocusTimerService)
                         stopForegroundCompat()
                         stopSelf()
                     }
@@ -115,6 +119,7 @@ class OfflineFocusTimerService : Service() {
                 if (sessionId != null) {
                     serviceScope.launch {
                         repository.pauseSession(sessionId)
+                        OfflineFocusWidgetProvider.updateAllWidgets(this@OfflineFocusTimerService)
                     }
                 }
                 return START_STICKY
@@ -124,6 +129,7 @@ class OfflineFocusTimerService : Service() {
                 if (sessionId != null) {
                     serviceScope.launch {
                         repository.resumeSession(sessionId)
+                        OfflineFocusWidgetProvider.updateAllWidgets(this@OfflineFocusTimerService)
                     }
                 }
                 return START_STICKY
@@ -142,6 +148,7 @@ class OfflineFocusTimerService : Service() {
                         ),
                     )
                     startTimerLoop(sessionId)
+                    OfflineFocusWidgetProvider.updateAllWidgets(this)
                 }
             }
             else -> {
@@ -160,6 +167,7 @@ class OfflineFocusTimerService : Service() {
         clearCompletionAlert()
         unregisterScreenReceiver()
         serviceScope.cancel()
+        OfflineFocusWidgetProvider.updateAllWidgets(this)
         super.onDestroy()
     }
 
@@ -170,6 +178,7 @@ class OfflineFocusTimerService : Service() {
                 while (isActive) {
                     val session = repository.getActiveSessionOnce()
                     if (session == null || session.id != sessionId) {
+                        OfflineFocusWidgetProvider.updateAllWidgets(this@OfflineFocusTimerService)
                         stopForegroundCompat()
                         stopSelf()
                         return@launch
@@ -213,6 +222,7 @@ class OfflineFocusTimerService : Service() {
                     )
                     if (session.plannedDurationMillis > 0L && remaining <= 0L) {
                         repository.completeSession(sessionId, now)?.let { completedSession ->
+                            OfflineFocusWidgetProvider.updateAllWidgets(this@OfflineFocusTimerService)
                             unregisterScreenReceiver()
                             sendCompletionAlert(completedSession)
                         }

@@ -12,15 +12,16 @@ import androidx.compose.ui.unit.Density
 fun TinyVowTheme(
     themeSeed: ThemeSeed = DefaultThemeSeed,
     darkTheme: Boolean = isSystemInDarkTheme(),
+    appFontScale: Float = 1f,
     content: @Composable () -> Unit,
 ) {
     val tokens = themeTokensFromSeed(themeSeed)
     val reportColors = reportColorsFromTokens(tokens)
     val systemDensity = LocalDensity.current
-    val appDensity = remember(systemDensity.density) {
+    val appDensity = remember(systemDensity.density, appFontScale) {
         Density(
             density = systemDensity.density,
-            fontScale = APP_FONT_SCALE,
+            fontScale = appFontScale,
         )
     }
 
@@ -36,6 +37,3 @@ fun TinyVowTheme(
         )
     }
 }
-
-// Keep the product typography consistent across devices regardless of the system font-size setting.
-private const val APP_FONT_SCALE = 1f

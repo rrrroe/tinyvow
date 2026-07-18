@@ -17,10 +17,10 @@ interface CrossRefDao {
     @Query("UPDATE group_app_cross_ref SET is_deleted = 1, updated_at = :updatedAt WHERE group_id = :groupId")
     suspend fun softDeleteAllForGroup(groupId: String, updatedAt: Long)
 
-    @Query("SELECT * FROM group_app_cross_ref WHERE is_deleted = 0")
+    @Query("SELECT * FROM group_app_cross_ref WHERE is_deleted = 0 ORDER BY group_id, sort_order, package_name")
     fun getAllValidCrossRefs(): Flow<List<GroupAppCrossRef>>
 
-    @Query("SELECT * FROM group_app_cross_ref WHERE is_deleted = 0")
+    @Query("SELECT * FROM group_app_cross_ref WHERE is_deleted = 0 ORDER BY group_id, sort_order, package_name")
     fun getAllValidCrossRefsSync(): List<GroupAppCrossRef>
 
     /** 同步查询：给定 packageName，返回它所属的所有 groupId */
@@ -28,6 +28,6 @@ interface CrossRefDao {
     fun getGroupIdsForPackageSync(packageName: String): List<String>
 
     /** 同步查询：给定 groupId，返回组内所有 packageName */
-    @Query("SELECT DISTINCT package_name FROM group_app_cross_ref WHERE group_id = :groupId AND is_deleted = 0")
+    @Query("SELECT package_name FROM group_app_cross_ref WHERE group_id = :groupId AND is_deleted = 0 ORDER BY sort_order, package_name")
     fun getPackageNamesForGroupSync(groupId: String): List<String>
 }

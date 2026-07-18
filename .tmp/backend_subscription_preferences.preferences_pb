@@ -1,0 +1,27 @@
+
+>
+device_secret-*+tgZazJqRjX0iPLTs2Ml4uUEyJtxs3BpEV8Cw4FKDaiU
+4
+
+install_id&*$b86796a9-ac4a-4139-99d5-65c8d95ed7b4
+ö
+access_tokenâ*ÜeyJhbGciOiJIUzI1NiIsInR5cCI6IlRWSldUIn0.eyJ1c2VySWQiOiI2YzRkMzBhYy01N2JiLTQxYzEtOGZhNy1lMTUzNTI4NmM2MTciLCJkZXZpY2VJZCI6IjEwMWE3ZTg3LTUzYzQtNGYzYi04ZGRlLTZlMzdlNjA1OTNlYyIsImlhdCI6MTc4NDA4NDM0MCwiZXhwIjoxNzk5NjM2MzQwfQ.F1OCc818BaLQlSMF_15eNyexiqlsy8NmOA3cWMBGy7M
+8
+server_user_id&*$6c4d30ac-57bb-41c1-8fa7-e1535286c617
+3
+	device_id&*$101a7e87-53c4-4f3b-8dde-6e37e60593ec
+
+entitlement_status*FREE
+
+
+product_id*tinyvow_pro
+:
+pending_order_id&*$b2f7134d-f18e-4c3f-9f33-8ef5ef9986ff
++
+pending_product_id*tinyvow_pro_monthly
+
+pending_provider*ALIPAY
+$
+pending_created_at_millis ±π⁄ùˆ3
+é
+account_json˝*˙{"userId":"6c4d30ac-57bb-41c1-8fa7-e1535286c617","accountType":"ANONYMOUS","emailVerified":false,"createdAtMillis":1784084340162,"totalSpentCents":0,"paidOrderCount":0,"recentLogins":[],"entitlementStatus":"FREE","entitlementProductId":"tinyvow_pro"}

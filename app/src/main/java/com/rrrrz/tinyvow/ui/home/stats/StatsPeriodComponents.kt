@@ -106,6 +106,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.graphics.drawable.toBitmap
@@ -725,7 +726,7 @@ private fun WeeklyPointsTrajectoryChart(
         val step = if (days.size <= 1) plotWidth else plotWidth / (days.size - 1).toFloat()
         val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
             color = labelColor.toArgb()
-            textSize = 10.dp.toPx()
+            textSize = 10.sp.toPx()
         }
         repeat(3) { index ->
             val y = top + plotHeight * index / 2f
@@ -803,7 +804,7 @@ private fun WeeklyPointsTrajectoryChart(
             drawContext.canvas.nativeCanvas.apply {
                 textPaint.textAlign = Paint.Align.CENTER
                 if (isMonthly) {
-                    textPaint.textSize = 9.dp.toPx()
+                    textPaint.textSize = 9.sp.toPx()
                     textPaint.isFakeBoldText = true
                     if (index == maxEarnedDayIndex) {
                         textPaint.color = earnedColor.toArgb()
@@ -816,11 +817,11 @@ private fun WeeklyPointsTrajectoryChart(
                     textPaint.isFakeBoldText = false
                 } else {
                     textPaint.color = earnedColor.toArgb()
-                    textPaint.textSize = 9.dp.toPx()
+                    textPaint.textSize = 9.sp.toPx()
                     textPaint.isFakeBoldText = true
                     drawText(formatSignedPointsLocal(day.earnedPoints - day.spentPoints), x, zeroY - earnedHeight - 7.dp.toPx(), textPaint)
                     textPaint.isFakeBoldText = false
-                    textPaint.textSize = 8.dp.toPx()
+                    textPaint.textSize = 8.sp.toPx()
                     if (day.earnedPoints > 0.0) drawText(formatPointsChart(day.earnedPoints), x, zeroY - earnedHeight / 2f + 3.dp.toPx(), textPaint)
                     textPaint.color = spentColor.toArgb()
                     if (day.spentPoints > 0.0) drawText(formatPointsChart(day.spentPoints), x, zeroY + spentHeight + 11.dp.toPx(), textPaint)
@@ -843,7 +844,7 @@ private fun WeeklyPointsTrajectoryChart(
                     drawContext.canvas.nativeCanvas.apply {
                         textPaint.textAlign = Paint.Align.CENTER
                         textPaint.color = balanceColor.toArgb()
-                        textPaint.textSize = 9.dp.toPx()
+                        textPaint.textSize = 9.sp.toPx()
                         textPaint.isFakeBoldText = true
                         val isMaximum = index == maxEntry?.first
                         val labelY =

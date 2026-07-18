@@ -39,10 +39,18 @@ class AppDatabaseMigrationTest {
         assertTrue(indexExists("index_daily_app_archives_is_grouped_archive_date"))
         assertTrue(indexExists("index_point_ledger_source_ref_id"))
         assertTrue(indexExists("index_block_events_group_id_event_date"))
+        assertTrue(columnExists("group_app_cross_ref", "sort_order"))
         assertTrue(tableRowCount("daily_app_archives") == 0)
         assertEquals(0, intValue("SELECT sort_order FROM app_groups WHERE id = 'control-new'"))
         assertEquals(1, intValue("SELECT sort_order FROM app_groups WHERE id = 'control-old'"))
         assertEquals(0, intValue("SELECT sort_order FROM app_groups WHERE id = 'encourage-new'"))
+        assertEquals(
+            "z.example.app",
+            stringValue(
+                "SELECT package_name FROM group_app_cross_ref " +
+                    "WHERE group_id = 'control-old' ORDER BY sort_order LIMIT 1",
+            ),
+        )
 
         database.close()
     }
@@ -153,6 +161,18 @@ class AppDatabaseMigrationTest {
                 ('control-old', 'Control Old', 'CONTROL', 'DAILY', 30, 0.0, 100, 100, 0, 0),
                 ('control-new', 'Control New', 'CONTROL', 'DAILY', 30, 0.0, 200, 200, 0, 0),
                 ('encourage-new', 'Encourage New', 'ENCOURAGE', 'DAILY', 30, 1.0, 150, 150, 0, 0)
+            """.trimIndent()
+        )
+        sqliteDatabase.execSQL(
+            """
+            INSERT INTO group_app_cross_ref (
+                package_name,
+                group_id,
+                updated_at,
+                is_deleted
+            ) VALUES
+                ('z.example.app', 'control-old', 100, 0),
+                ('a.example.app', 'control-old', 100, 0)
             """.trimIndent()
         )
         sqliteDatabase.execSQL(

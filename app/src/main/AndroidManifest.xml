@@ -115,6 +115,19 @@
             </intent-filter>
         </service>
 
+        <receiver
+            android:name=".widget.OfflineFocusWidgetProvider"
+            android:exported="false"
+            android:label="@string/offline_focus_widget_name">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/offline_focus_widget_info" />
+        </receiver>
+
         <service
             android:name=".service.offline.OfflineFocusTimerService"
             android:exported="false"

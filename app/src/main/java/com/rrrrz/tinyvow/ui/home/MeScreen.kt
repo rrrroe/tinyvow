@@ -2,7 +2,6 @@ package com.rrrrz.tinyvow.ui.home
 
 import com.rrrrz.tinyvow.i18n.AppText
 
-import android.content.Intent
 import com.rrrrz.tinyvow.BuildConfig
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
@@ -41,7 +40,6 @@ import androidx.compose.material.icons.filled.AccessTime
 import androidx.compose.material.icons.filled.Apps
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Info
@@ -76,8 +74,6 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TimePicker
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberTimePickerState
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -110,12 +106,14 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.rrrrz.tinyvow.R
 import com.rrrrz.tinyvow.data.auth.UserSession
+import com.rrrrz.tinyvow.data.account.BackendAccount
 import com.rrrrz.tinyvow.data.billing.ProEntitlementState
 import com.rrrrz.tinyvow.data.billing.ProEntitlementStatus
 import com.rrrrz.tinyvow.data.billing.SubscriptionOffer
 import com.rrrrz.tinyvow.data.pro.ProFeatureGate
 import com.rrrrz.tinyvow.data.repository.DailyCheckInDayState
 import com.rrrrz.tinyvow.data.repository.DailyCheckInMonthState
+import com.rrrrz.tinyvow.data.settings.AppTextSize
 import com.rrrrz.tinyvow.data.settings.HomeActivityRingColorPreference
 import com.rrrrz.tinyvow.data.settings.HomeActivityRingColorPreferences
 import com.rrrrz.tinyvow.data.settings.HomeActivityRingColorSource
@@ -155,6 +153,8 @@ import kotlin.math.roundToLong
 @Composable
 fun MeScreen(
     userSession: UserSession?,
+    backendAccount: BackendAccount?,
+    isBackendAccountEnabled: Boolean,
     isGoogleSignInEnabled: Boolean,
     isGoogleSignInConfigured: Boolean,
     isPlayBillingEnabled: Boolean,
@@ -173,6 +173,7 @@ fun MeScreen(
     superModeStatus: SuperModeStatus,
     isDebugBuild: Boolean,
     selectedAppLanguage: AppLanguage,
+    selectedAppTextSize: AppTextSize,
     dayBoundaryHour: Int,
     notificationRemindersEnabled: Boolean,
     controlRemainingReminderMinutes: Int,
@@ -180,15 +181,13 @@ fun MeScreen(
     openBenefitsDialog: Boolean,
     onBenefitsDialogOpened: () -> Unit,
     onNavigateToProMembership: () -> Unit,
+    onNavigateToAccount: () -> Unit,
     usageAccessGranted: Boolean,
     accessibilityServiceEnabled: Boolean,
     isAutoStartDismissed: Boolean,
     isIgnoringBattery: Boolean,
     notificationPermissionGranted: Boolean,
     dismissedPermissionPrompts: Set<String>,
-    onUpdateProfileName: (String?) -> Unit,
-    onUpdateProfileAvatar: (String) -> Unit,
-    onClearProfileAvatar: () -> Unit,
     onSelectTheme: (String) -> Unit,
     onSaveCustomTheme: (ThemeSeed) -> Unit,
     onDeleteCustomTheme: (String) -> Unit,
@@ -229,29 +228,16 @@ fun MeScreen(
     val context = LocalContext.current
     val clipboard = LocalClipboardManager.current
     val themeColors = LocalThemeColors.current
-    val avatarPickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.OpenDocument(),
-    ) { uri ->
-        uri ?: return@rememberLauncherForActivityResult
-        runCatching {
-            context.contentResolver.takePersistableUriPermission(
-                uri,
-                Intent.FLAG_GRANT_READ_URI_PERMISSION,
-            )
-        }
-        onUpdateProfileAvatar(uri.toString())
-    }
-
     var showDeleteAccountConfirm by remember { mutableStateOf(false) }
-    var showProfileEditor by remember { mutableStateOf(false) }
 
-    val effectiveAvatar = profileAvatarUri ?: userSession?.avatarUrl
+    val effectiveAvatar = backendAccount?.avatarUrl ?: profileAvatarUri ?: userSession?.avatarUrl
     val canTapToSignIn = isGoogleSignInEnabled && userSession == null && isGoogleSignInConfigured
     val isProMember = isProActive
     val appUsageDays = remember(context) { calculateInstalledDays(context) }
     val currentThemeName = selectedThemeDisplayName(selectedThemeId, customThemes)
     val displayName =
-        profileDisplayName
+        backendAccount?.displayName
+            ?: profileDisplayName
             ?: userSession?.displayName
             ?: if (isLocalActivationEnabled) {
                 AppText.t("me_local_account_default_name")
@@ -260,6 +246,7 @@ fun MeScreen(
             }
     val subtitle: String? =
         when {
+            backendAccount?.isRegistered == true -> backendAccount.email
             !userSession?.email.isNullOrBlank() -> userSession?.email.orEmpty()
             isLocalActivationEnabled -> AppText.t("me_local_user")
             isGoogleSignInEnabled -> null
@@ -295,7 +282,16 @@ fun MeScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(20.dp))
-                        .clickable(enabled = canTapToSignIn, onClick = onSignInWithGoogle)
+                        .clickable(
+                            enabled = isBackendAccountEnabled || canTapToSignIn,
+                            onClick = {
+                                if (isBackendAccountEnabled) {
+                                    onNavigateToAccount()
+                                } else {
+                                    onSignInWithGoogle()
+                                }
+                            },
+                        )
                         .padding(vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -326,13 +322,6 @@ fun MeScreen(
                                 color = themeColors.onBase.copy(alpha = 0.78f),
                             )
                         }
-                    }
-                    IconButton(onClick = { showProfileEditor = true }) {
-                        Icon(
-                            imageVector = Icons.Default.Edit,
-                            contentDescription = AppText.t("me_edit_profile"),
-                            tint = themeColors.onBase,
-                        )
                     }
                 }
                 when {
@@ -494,6 +483,7 @@ fun MeScreen(
                 MeMenuItem(
                     icon = Icons.Default.Settings,
                     title = AppText.t("appearance_settings_title"),
+                    trailingText = selectedAppTextSize.displayName(),
                     onClick = onNavigateToAppearanceSettings,
                 )
                 SettingsDivider()
@@ -589,19 +579,6 @@ fun MeScreen(
         )
     }
 
-    if (showProfileEditor) {
-        ProfileEditorDialog(
-            initialDisplayName = profileDisplayName ?: userSession?.displayName.orEmpty(),
-            avatar = effectiveAvatar,
-            onPickAvatar = { avatarPickerLauncher.launch(arrayOf("image/*")) },
-            onClearAvatar = onClearProfileAvatar,
-            onSave = {
-                onUpdateProfileName(it)
-                showProfileEditor = false
-            },
-            onDismiss = { showProfileEditor = false },
-        )
-    }
 }
 
 private fun AppLanguage.displayName(): String =
@@ -611,10 +588,20 @@ private fun AppLanguage.displayName(): String =
         AppLanguage.EN -> AppText.t("selected_language_en")
     }
 
+private fun AppTextSize.displayName(): String =
+    when (this) {
+        AppTextSize.EXTRA_SMALL -> AppText.t("appearance_text_size_extra_small")
+        AppTextSize.SMALL -> AppText.t("appearance_text_size_small")
+        AppTextSize.STANDARD -> AppText.t("appearance_text_size_standard")
+        AppTextSize.LARGE -> AppText.t("appearance_text_size_large")
+    }
+
 @Composable
 fun AppearanceSettingsScreen(
     isProActive: Boolean,
+    selectedAppTextSize: AppTextSize,
     onBack: () -> Unit,
+    onSelectAppTextSize: (AppTextSize) -> Unit,
     onOpenRingSettings: () -> Unit,
     onShowProUpsell: (ProUpsellSource) -> Unit,
 ) {
@@ -623,6 +610,61 @@ fun AppearanceSettingsScreen(
         description = AppText.t("appearance_settings_description"),
         onBack = onBack,
     ) {
+        MeSettingsCard(title = AppText.t("appearance_text_size_title")) {
+            Text(
+                text = AppText.t("appearance_text_size_description"),
+                style = MaterialTheme.typography.bodySmall,
+                color = LocalThemeColors.current.inkMuted,
+            )
+            AppTextSize.entries.forEachIndexed { index, textSize ->
+                val supportingText =
+                    when (textSize) {
+                        AppTextSize.EXTRA_SMALL -> AppText.t("appearance_text_size_extra_small_hint")
+                        AppTextSize.STANDARD -> AppText.t("appearance_text_size_default")
+                        else -> null
+                    }
+                if (index > 0) {
+                    SettingsDivider()
+                }
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onSelectAppTextSize(textSize) }
+                        .padding(vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Column(
+                        modifier = Modifier.weight(1f),
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                    ) {
+                        Text(
+                            text = textSize.displayName(),
+                            style = MaterialTheme.typography.bodyLarge,
+                            fontWeight =
+                                if (textSize == selectedAppTextSize) {
+                                    FontWeight.SemiBold
+                                } else {
+                                    FontWeight.Normal
+                                },
+                            color = LocalThemeColors.current.inkStrong,
+                        )
+                        supportingText?.let {
+                            Text(
+                                text = it,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = LocalThemeColors.current.inkMuted,
+                            )
+                        }
+                    }
+                    RadioButton(
+                        selected = textSize == selectedAppTextSize,
+                        onClick = { onSelectAppTextSize(textSize) },
+                    )
+                }
+            }
+        }
+
         MeSettingsCard {
             MeMenuItem(
                 icon = Icons.Default.Settings,
@@ -1000,13 +1042,14 @@ private fun SettingsDivider() {
 }
 
 @Composable
-private fun ProfileAvatar(
+internal fun ProfileAvatar(
     avatar: String?,
     contentDescription: String,
     size: androidx.compose.ui.unit.Dp,
+    modifier: Modifier = Modifier,
 ) {
     Surface(
-        modifier = Modifier.size(size),
+        modifier = modifier.size(size),
         shape = CircleShape,
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
     ) {
@@ -1046,77 +1089,6 @@ fun ProMemberBadge(
         ),
         contentDescription = null,
         modifier = modifier.size(20.dp),
-    )
-}
-
-@Composable
-private fun ProfileEditorDialog(
-    initialDisplayName: String,
-    avatar: String?,
-    onPickAvatar: () -> Unit,
-    onClearAvatar: () -> Unit,
-    onSave: (String?) -> Unit,
-    onDismiss: () -> Unit,
-) {
-    var displayName by remember(initialDisplayName) { mutableStateOf(initialDisplayName) }
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(AppText.t("me_edit_profile"), style = MaterialTheme.typography.titleLarge) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(16.dp),
-                ) {
-                    ProfileAvatar(
-                        avatar = avatar,
-                        contentDescription = AppText.t("me_profile_avatar"),
-                        size = 72.dp,
-                    )
-                    Column(
-                        modifier = Modifier.weight(1f),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        OutlinedButton(
-                            onClick = onPickAvatar,
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Text(AppText.t("me_profile_choose_avatar"))
-                        }
-                        if (!avatar.isNullOrBlank()) {
-                            TextButton(
-                                onClick = onClearAvatar,
-                                modifier = Modifier.fillMaxWidth(),
-                            ) {
-                                Text(
-                                    AppText.t("me_profile_remove_avatar"),
-                                    color = MaterialTheme.colorScheme.error,
-                                )
-                            }
-                        }
-                    }
-                }
-                OutlinedTextField(
-                    value = displayName,
-                    onValueChange = { displayName = it },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                    label = { Text(AppText.t("me_profile_name")) },
-                    placeholder = { Text(AppText.t("me_profile_name_placeholder")) },
-                )
-            }
-        },
-        confirmButton = {
-            Button(onClick = { onSave(displayName) }) {
-                Text(AppText.t("group_save"))
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text(AppText.t("group_cancel"))
-            }
-        },
     )
 }
 
@@ -2131,7 +2103,13 @@ internal fun ProMembershipPage(
                 ProPricePlanCard(
                     plan = plan,
                     showPurchaseButton = directChinaPaymentAvailable,
-                    onPurchase = { plan.offer?.let(onPurchasePro) },
+                    onPurchase = {
+                        if (isLocalActivationEnabled) {
+                            showPurchaseContactDialog = true
+                        } else {
+                            plan.offer?.let(onPurchasePro)
+                        }
+                    },
                 )
             }
             if (!directChinaPaymentAvailable) {

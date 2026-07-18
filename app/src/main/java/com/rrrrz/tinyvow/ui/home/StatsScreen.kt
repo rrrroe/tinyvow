@@ -2882,7 +2882,9 @@ private fun ReportPageSharePreviewDialog(
     val exportDensity = remember(baseDensity, exportScale) {
         Density(
             density = baseDensity.density * exportScale,
-            fontScale = baseDensity.fontScale,
+            // Keep exported posters at their designed typography regardless of
+            // the reader's in-app text-size preference.
+            fontScale = 1f,
         )
     }
     val storageKey = remember(state.selectedTab) { state.selectedTab.sharePosterStorageKey() }

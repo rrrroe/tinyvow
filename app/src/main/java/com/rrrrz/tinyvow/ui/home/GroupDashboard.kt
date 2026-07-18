@@ -10,11 +10,24 @@ import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.Drawable
 import android.view.Window
 import android.view.WindowManager
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibilityScope
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.SharedTransitionLayout
+import androidx.compose.animation.SharedTransitionScope
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -34,7 +47,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -49,7 +66,6 @@ import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Search
-import androidx.compose.material3.Checkbox
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -67,6 +83,8 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -83,9 +101,13 @@ import androidx.compose.ui.graphics.compositeOver
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -1876,7 +1898,7 @@ private fun GroupEditDialog(
     var searchQuery by remember { mutableStateOf("") }
     var showOnlyUsedInSevenDays by remember { mutableStateOf(true) }
     var selectedPackages by remember(group) {
-        mutableStateOf(group?.packageNames?.toSet().orEmpty())
+        mutableStateOf(group?.packageNames?.distinct().orEmpty())
     }
     var showDeleteConfirm by remember { mutableStateOf(false) }
     val appLimit = ProFeatureGate.limits(isProActive).appsPerGroupLimit
@@ -1889,7 +1911,7 @@ private fun GroupEditDialog(
     val appCountAllowed = ProFeatureGate.canSaveGroupApps(isProActive, savedPackageCount)
     val canSave = canSaveBase && appCountAllowed
 
-    val visibleApps = remember(installedApps, excludedPackages, showOnlyUsedInSevenDays, selectedPackages, searchQuery) {
+    val filteredApps = remember(installedApps, excludedPackages, showOnlyUsedInSevenDays, selectedPackages, searchQuery) {
         installedApps
             .asSequence()
             .filterNot { it.packageName in excludedPackages }
@@ -2069,47 +2091,38 @@ private fun GroupEditDialog(
                     )
                 }
 
-                HorizontalDivider(color = editAccent.copy(alpha = 0.24f))
-                Text(
-                    text = AppText.t("pro_group_app_limit_status", selectedPackages.size, appLimit),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = if (selectedPackages.size > appLimit) {
-                        MaterialTheme.colorScheme.error
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
+                AppSelectionGrid(
+                    selectedPackages = selectedPackages,
+                    filteredApps = filteredApps,
+                    installedApps = installedApps,
+                    appIconCache = appIconCache,
+                    onIconLoaded = onAppIconLoaded,
+                    accent = editAccent,
+                    appLimit = appLimit,
+                    onSelect = { packageName ->
+                        if (selectedPackages.size >= appLimit) {
+                            onShowProUpsell(ProUpsellSource.GROUP_APPS)
+                        } else if (packageName !in selectedPackages) {
+                            selectedPackages = selectedPackages + packageName
+                        }
                     },
-                )
-
-                LazyColumn(
-                    modifier = Modifier.weight(1f),
-                    contentPadding = PaddingValues(bottom = 56.dp),
-                    verticalArrangement = Arrangement.spacedBy(1.dp)
-                ) {
-                    items(
-                        items = visibleApps,
-                        key = { it.packageName }
-                    ) { app ->
-                        AppSelectionItem(
-                            app = app,
-                            checked = app.packageName in selectedPackages,
-                            icon = appIconCache[app.packageName],
-                            onIconLoaded = onAppIconLoaded,
-                            accent = editAccent,
-                            onCheckedChange = { checked ->
-                                selectedPackages = if (checked) {
-                                    if (selectedPackages.size >= appLimit) {
-                                        onShowProUpsell(ProUpsellSource.GROUP_APPS)
-                                        selectedPackages
-                                    } else {
-                                        selectedPackages + app.packageName
-                                    }
-                                } else {
-                                    selectedPackages - app.packageName
+                    onRemove = { packageName ->
+                        selectedPackages = selectedPackages.filterNot { it == packageName }
+                    },
+                    onMove = { packageName, direction ->
+                        val currentIndex = selectedPackages.indexOf(packageName)
+                        if (currentIndex >= 0) {
+                            val targetIndex = (currentIndex + direction).coerceIn(selectedPackages.indices)
+                            if (currentIndex != targetIndex) {
+                                selectedPackages = selectedPackages.toMutableList().apply {
+                                    val movedPackage = removeAt(currentIndex)
+                                    add(targetIndex, movedPackage)
                                 }
                             }
-                        )
-                    }
-                }
+                        }
+                    },
+                    modifier = Modifier.weight(1f),
+                )
             }
         }
     }
@@ -2135,6 +2148,343 @@ private fun GroupEditDialog(
                 }
             }
         )
+    }
+}
+
+@OptIn(ExperimentalSharedTransitionApi::class)
+@Composable
+private fun AppSelectionGrid(
+    selectedPackages: List<String>,
+    filteredApps: List<ManagedApp>,
+    installedApps: List<ManagedApp>,
+    appIconCache: Map<String, Drawable>,
+    onIconLoaded: (String, Drawable) -> Unit,
+    accent: Color,
+    appLimit: Int,
+    onSelect: (String) -> Unit,
+    onRemove: (String) -> Unit,
+    onMove: (String, Int) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    SharedTransitionLayout(modifier = modifier) {
+        val sharedTransitionScope = this
+        AnimatedContent(
+            targetState = selectedPackages,
+            modifier = Modifier.fillMaxSize(),
+            transitionSpec = {
+                fadeIn(animationSpec = tween(140)) togetherWith
+                    fadeOut(animationSpec = tween(90))
+            },
+            label = "group_app_selection",
+        ) { displayedSelectedPackages ->
+            val animatedVisibilityScope = this
+            val displayedSelectedSet = displayedSelectedPackages.toSet()
+            val availableApps = filteredApps.filterNot { it.packageName in displayedSelectedSet }
+
+            Column(
+                modifier = Modifier.fillMaxSize(),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                with(sharedTransitionScope) {
+                    SelectedAppsRow(
+                        selectedPackages = displayedSelectedPackages,
+                        installedApps = installedApps,
+                        appIconCache = appIconCache,
+                        onIconLoaded = onIconLoaded,
+                        accent = accent,
+                        animatedVisibilityScope = animatedVisibilityScope,
+                        onRemove = onRemove,
+                        onMove = onMove,
+                    )
+                }
+
+                HorizontalDivider(color = accent.copy(alpha = 0.24f))
+                Text(
+                    text = AppText.t(
+                        "pro_group_app_limit_status",
+                        displayedSelectedPackages.size,
+                        appLimit,
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (displayedSelectedPackages.size > appLimit) {
+                        MaterialTheme.colorScheme.error
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                )
+
+                if (availableApps.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            text = AppText.t("group_available_apps_empty"),
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.outline,
+                            textAlign = TextAlign.Center,
+                        )
+                    }
+                } else {
+                    LazyVerticalGrid(
+                        columns = GridCells.Adaptive(minSize = 68.dp),
+                        modifier = Modifier.weight(1f),
+                        contentPadding = PaddingValues(bottom = 56.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp),
+                    ) {
+                        gridItems(
+                            items = availableApps,
+                            key = { it.packageName },
+                        ) { app ->
+                            with(sharedTransitionScope) {
+                                AvailableAppGridItem(
+                                    app = app,
+                                    icon = appIconCache[app.packageName],
+                                    onIconLoaded = onIconLoaded,
+                                    accent = accent,
+                                    animatedVisibilityScope = animatedVisibilityScope,
+                                    onClick = { onSelect(app.packageName) },
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalSharedTransitionApi::class)
+@Composable
+private fun SharedTransitionScope.SelectedAppsRow(
+    selectedPackages: List<String>,
+    installedApps: List<ManagedApp>,
+    appIconCache: Map<String, Drawable>,
+    onIconLoaded: (String, Drawable) -> Unit,
+    accent: Color,
+    animatedVisibilityScope: AnimatedVisibilityScope,
+    onRemove: (String) -> Unit,
+    onMove: (String, Int) -> Unit,
+) {
+    val appsByPackage = remember(installedApps) { installedApps.associateBy { it.packageName } }
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(48.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(10.dp),
+    ) {
+        Row(
+            modifier = Modifier
+                .weight(1f)
+                .horizontalScroll(rememberScrollState()),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            if (selectedPackages.isEmpty()) {
+                Text(
+                    text = AppText.t("group_selected_apps_empty"),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.outline,
+                )
+            } else {
+                selectedPackages.forEach { packageName ->
+                    key(packageName) {
+                        SelectedAppIcon(
+                            app = appsByPackage[packageName],
+                            packageName = packageName,
+                            icon = appIconCache[packageName],
+                            onIconLoaded = onIconLoaded,
+                            accent = accent,
+                            onRemove = { onRemove(packageName) },
+                            onMove = { direction -> onMove(packageName, direction) },
+                            modifier = Modifier.sharedElement(
+                                state = rememberSharedContentState(
+                                    key = "group_app_$packageName",
+                                ),
+                                animatedVisibilityScope = animatedVisibilityScope,
+                                boundsTransform = { _, _ ->
+                                    spring(
+                                        dampingRatio = 0.58f,
+                                        stiffness = Spring.StiffnessMediumLow,
+                                    )
+                                },
+                            ),
+                        )
+                    }
+                }
+            }
+        }
+        Text(
+            text = AppText.t("group_selected_apps_hint"),
+            modifier = Modifier.width(112.dp),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.End,
+            maxLines = 2,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+@OptIn(ExperimentalSharedTransitionApi::class)
+@Composable
+private fun SharedTransitionScope.AvailableAppGridItem(
+    app: ManagedApp,
+    icon: Drawable?,
+    onIconLoaded: (String, Drawable) -> Unit,
+    accent: Color,
+    animatedVisibilityScope: AnimatedVisibilityScope,
+    onClick: () -> Unit,
+) {
+    val context = LocalContext.current
+
+    LaunchedEffect(app.packageName, icon) {
+        if (icon != null) return@LaunchedEffect
+        val loadedIcon = withContext(Dispatchers.IO) {
+            AppVisualCache.getIcon(context, app.packageName)
+        }
+        if (loadedIcon != null) {
+            onIconLoaded(app.packageName, loadedIcon)
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .clickable(onClick = onClick)
+            .semantics {
+                contentDescription = AppText.t("group_available_app_select", app.appName)
+            }
+            .padding(horizontal = 4.dp, vertical = 6.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.spacedBy(5.dp),
+    ) {
+        Surface(
+            modifier = Modifier
+                .sharedElement(
+                    state = rememberSharedContentState(
+                        key = "group_app_${app.packageName}",
+                    ),
+                    animatedVisibilityScope = animatedVisibilityScope,
+                    boundsTransform = { _, _ ->
+                        spring(
+                            dampingRatio = 0.58f,
+                            stiffness = Spring.StiffnessMediumLow,
+                        )
+                    },
+                )
+                .size(56.dp),
+            shape = RoundedCornerShape(17.dp),
+            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.48f),
+            border = BorderStroke(1.dp, accent.copy(alpha = 0.12f)),
+        ) {
+            if (icon != null) {
+                AsyncImage(
+                    model = icon,
+                    contentDescription = null,
+                    modifier = Modifier.padding(7.dp),
+                )
+            } else {
+                Box(contentAlignment = Alignment.Center) {
+                    Text(
+                        text = app.appName.firstOrNull()?.uppercaseChar()?.toString().orEmpty(),
+                        style = MaterialTheme.typography.titleSmall,
+                        color = accent,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+            }
+        }
+        Text(
+            text = app.appName,
+            modifier = Modifier.fillMaxWidth(),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+        )
+    }
+}
+
+@Composable
+private fun SelectedAppIcon(
+    app: ManagedApp?,
+    packageName: String,
+    icon: Drawable?,
+    onIconLoaded: (String, Drawable) -> Unit,
+    accent: Color,
+    onRemove: () -> Unit,
+    onMove: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val context = LocalContext.current
+    val density = LocalDensity.current
+    val dragThresholdPx = with(density) { 52.dp.toPx() }
+    val appName = app?.appName ?: packageName.substringAfterLast('.')
+    var dragOffset by remember(packageName) { mutableFloatStateOf(0f) }
+
+    LaunchedEffect(packageName, icon) {
+        if (icon != null) return@LaunchedEffect
+        val loadedIcon = withContext(Dispatchers.IO) {
+            AppVisualCache.getIcon(context, packageName)
+        }
+        if (loadedIcon != null) {
+            onIconLoaded(packageName, loadedIcon)
+        }
+    }
+
+    Surface(
+        onClick = onRemove,
+        modifier = modifier
+            .size(44.dp)
+            .graphicsLayer { translationX = dragOffset }
+            .zIndex(if (dragOffset != 0f) 1f else 0f)
+            .pointerInput(packageName) {
+                detectDragGesturesAfterLongPress(
+                    onDragEnd = { dragOffset = 0f },
+                    onDragCancel = { dragOffset = 0f },
+                ) { change, dragAmount ->
+                    change.consume()
+                    dragOffset += dragAmount.x
+                    while (dragOffset >= dragThresholdPx) {
+                        onMove(1)
+                        dragOffset -= dragThresholdPx
+                    }
+                    while (dragOffset <= -dragThresholdPx) {
+                        onMove(-1)
+                        dragOffset += dragThresholdPx
+                    }
+                }
+            }
+            .semantics {
+                contentDescription = AppText.t("group_selected_app_remove", appName)
+            },
+        shape = RoundedCornerShape(12.dp),
+        color = accent.copy(alpha = 0.12f),
+        border = BorderStroke(1.dp, accent.copy(alpha = 0.24f)),
+    ) {
+        if (icon != null) {
+            AsyncImage(
+                model = icon,
+                contentDescription = null,
+                modifier = Modifier.padding(5.dp),
+            )
+        } else {
+            Box(contentAlignment = Alignment.Center) {
+                Text(
+                    text = appName.firstOrNull()?.uppercaseChar()?.toString().orEmpty(),
+                    style = MaterialTheme.typography.labelLarge,
+                    color = accent,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+        }
     }
 }
 
@@ -2323,78 +2673,6 @@ private fun CompactFilterButton(
             },
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-        )
-    }
-}
-
-@Composable
-private fun AppSelectionItem(
-    app: ManagedApp,
-    checked: Boolean,
-    icon: Drawable?,
-    onIconLoaded: (String, Drawable) -> Unit,
-    accent: Color,
-    onCheckedChange: (Boolean) -> Unit
-) {
-    val context = LocalContext.current
-    // 异步加载图标，避免同步 Binder IPC 阻塞主线程
-    LaunchedEffect(app.packageName, icon) {
-        if (icon != null) return@LaunchedEffect
-        val loadedIcon = withContext(Dispatchers.IO) {
-            AppVisualCache.getIcon(context, app.packageName)
-        }
-        if (loadedIcon != null) {
-            onIconLoaded(app.packageName, loadedIcon)
-        }
-    }
-
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(20.dp))
-            .background(if (checked) accent.copy(alpha = 0.08f) else Color.Transparent)
-            .clickable { onCheckedChange(!checked) }
-            .padding(vertical = 4.dp, horizontal = 8.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        Surface(
-            modifier = Modifier.size(52.dp),
-            shape = RoundedCornerShape(16.dp),
-            color = if (checked) accent.copy(alpha = 0.12f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-        ) {
-            if (icon != null) {
-                AsyncImage(
-                    model = icon,
-                    contentDescription = null,
-                    modifier = Modifier.padding(6.dp)
-                )
-            }
-        }
-
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = app.appName,
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = MaterialTheme.colorScheme.onSurface,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis
-            )
-            Text(
-                text = formatUsageDuration(app.usageTimeInMs),
-                style = MaterialTheme.typography.labelMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f)
-            )
-        }
-
-        Checkbox(
-            checked = checked,
-            onCheckedChange = null, // Controlled by Row click
-            colors = androidx.compose.material3.CheckboxDefaults.colors(
-                checkedColor = accent,
-                uncheckedColor = MaterialTheme.colorScheme.outline
-            )
         )
     }
 }

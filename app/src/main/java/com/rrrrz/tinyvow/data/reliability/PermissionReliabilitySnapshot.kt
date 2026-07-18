@@ -41,11 +41,11 @@ data class PermissionReliabilitySnapshot(
     val primaryStep: StartupReliabilityStep
         get() =
             when {
-                !hasAnyVow -> StartupReliabilityStep.CREATE_FIRST_VOW
                 !usageAccessGranted -> StartupReliabilityStep.ENABLE_USAGE_ACCESS
                 !accessibilityDisclosureAccepted -> StartupReliabilityStep.ACCEPT_ACCESSIBILITY_DISCLOSURE
                 !accessibilityServiceEnabled -> StartupReliabilityStep.ENABLE_ACCESSIBILITY_SERVICE
                 !accessibilityHeartbeatHealthy -> StartupReliabilityStep.CHECK_ACCESSIBILITY_HEALTH
+                !hasAnyVow -> StartupReliabilityStep.CREATE_FIRST_VOW
                 else -> StartupReliabilityStep.READY
             }
 

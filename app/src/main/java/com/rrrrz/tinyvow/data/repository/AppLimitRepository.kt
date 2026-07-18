@@ -225,6 +225,7 @@ class AppLimitRepository(
                     packageNames =
                         crossRefs
                             .filter { it.groupId == group.id }
+                            .sortedWith(compareBy<GroupAppCrossRef> { it.sortOrder }.thenBy { it.packageName })
                             .map { it.packageName }
                             .distinct(),
                 )
@@ -294,11 +295,12 @@ class AppLimitRepository(
             crossRefDao.softDeleteAllForGroup(groupId, now)
             if (distinctPackageNames.isNotEmpty()) {
                 crossRefDao.insertCrossRefs(
-                    distinctPackageNames.map {
+                    distinctPackageNames.mapIndexed { index, packageName ->
                         GroupAppCrossRef(
-                            packageName = it,
+                            packageName = packageName,
                             groupId = groupId,
                             updatedAt = now,
+                            sortOrder = index,
                         )
                     },
                 )

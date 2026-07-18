@@ -20,6 +20,9 @@ data class GroupAppCrossRef(
     
     @ColumnInfo(name = "updated_at")
     val updatedAt: Long,
+
+    @ColumnInfo(name = "sort_order")
+    val sortOrder: Int = 0,
     
     @ColumnInfo(name = "is_deleted")
     val isDeleted: Boolean = false

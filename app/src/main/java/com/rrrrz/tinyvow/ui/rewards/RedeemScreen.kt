@@ -86,7 +86,6 @@ import com.rrrrz.tinyvow.ui.theme.LocalThemeColors
 import com.rrrrz.tinyvow.ui.theme.TinyVowButton
 import com.rrrrz.tinyvow.ui.theme.TinyVowButtonTone
 import com.rrrrz.tinyvow.ui.theme.TinyVowCard
-import com.rrrrz.tinyvow.ui.theme.TinyVowEmptyState
 import com.rrrrz.tinyvow.ui.theme.TinyVowPageBackground
 import com.rrrrz.tinyvow.ui.theme.TinyVowRadius
 import com.rrrrz.tinyvow.ui.theme.TinyVowSectionHeader
@@ -752,7 +751,27 @@ private fun RewardSectionTitle(title: String) {
 
 @Composable
 private fun EmptyRewardsCard(text: String) {
-    TinyVowEmptyState(title = text)
+    val themeColors = LocalThemeColors.current
+    TinyVowCard(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(TinyVowRadius.ItemCard),
+        color = themeColors.surfaceSoft,
+        borderAlpha = 0.36f,
+        shadowElevation = 0.dp,
+    ) {
+        Text(
+            text = text,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(
+                    horizontal = TinyVowSpacing.CardHorizontal,
+                    vertical = TinyVowSpacing.CardVertical,
+                ),
+            style = MaterialTheme.typography.bodySmall,
+            color = themeColors.inkMuted,
+            textAlign = TextAlign.Center,
+        )
+    }
 }
 
 @Composable
@@ -808,13 +827,16 @@ private fun StoreRewardItemCard(
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
-                Text(
-                    text = reward.localizedDescription(),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = themeColors.inkMuted,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                val description = reward.localizedDescription()
+                if (description.isNotBlank()) {
+                    Text(
+                        text = description,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = themeColors.inkMuted,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
                 Text(
                     text = storeStockText,
                     style = MaterialTheme.typography.labelSmall,

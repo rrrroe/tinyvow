@@ -10,8 +10,13 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.rrrrz.tinyvow.data.settings.AppTextSize
+import com.rrrrz.tinyvow.data.settings.ManagedAppPreferences
 import com.rrrrz.tinyvow.i18n.AppText
 import com.rrrrz.tinyvow.ui.theme.TinyVowButton
 import com.rrrrz.tinyvow.ui.theme.TinyVowButtonTone
@@ -23,8 +28,12 @@ class HealthConnectRationaleActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         AppText.attach(this)
         setContent {
+            val preferences = remember { ManagedAppPreferences(this@HealthConnectRationaleActivity) }
+            val selectedAppTextSize by preferences.selectedAppTextSize.collectAsStateWithLifecycle(
+                initialValue = AppTextSize.STANDARD,
+            )
             CompositionLocalProvider(LocalContext provides AppText.localizedContext(this, AppText.currentLanguage())) {
-                TinyVowTheme {
+                TinyVowTheme(appFontScale = selectedAppTextSize.fontScale) {
                     Column(
                         modifier =
                             Modifier

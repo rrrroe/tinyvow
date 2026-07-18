@@ -1218,6 +1218,26 @@ object AppDatabaseMigrations {
             }
         }
 
+    val MIGRATION_31_32 =
+        object : Migration(31, 32) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `group_app_cross_ref` ADD COLUMN `sort_order` INTEGER NOT NULL DEFAULT 0")
+                db.execSQL(
+                    """
+                    UPDATE `group_app_cross_ref`
+                    SET `sort_order` = (
+                        SELECT COUNT(*)
+                        FROM `group_app_cross_ref` AS `earlier`
+                        WHERE `earlier`.`group_id` = `group_app_cross_ref`.`group_id`
+                            AND `earlier`.`is_deleted` = 0
+                            AND `earlier`.`rowid` < `group_app_cross_ref`.`rowid`
+                    )
+                    WHERE `is_deleted` = 0
+                    """.trimIndent(),
+                )
+            }
+        }
+
     val ALL: Array<Migration> = arrayOf(
         MIGRATION_9_10,
         MIGRATION_10_11,
@@ -1241,5 +1261,6 @@ object AppDatabaseMigrations {
         MIGRATION_28_29,
         MIGRATION_29_30,
         MIGRATION_30_31,
+        MIGRATION_31_32,
     )
 }

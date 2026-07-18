@@ -54,6 +54,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -131,6 +132,7 @@ internal fun OfflineFocusHomeCard(
     var showTodayDetailSheet by remember { mutableStateOf(false) }
     var pendingFinishSessionId by remember { mutableStateOf<String?>(null) }
     var pendingAbandonSessionId by remember { mutableStateOf<String?>(null) }
+    var handledExternalRequestToken by rememberSaveable { mutableIntStateOf(0) }
     val themeColors = LocalThemeColors.current
     val defaultCategory =
         remember(categories, defaultCategoryId) {
@@ -150,9 +152,14 @@ internal fun OfflineFocusHomeCard(
     }
     val accent = Color((activeSession?.colorArgb ?: defaultCategory?.colorArgb) ?: 0xFF3F7CAC.toInt())
     LaunchedEffect(detailRequestToken, activeSession?.id) {
-        if (detailRequestToken > 0 && activeSession != null) {
+        if (detailRequestToken > handledExternalRequestToken) {
+            handledExternalRequestToken = detailRequestToken
             showTodayDetailSheet = false
-            showActiveDetailSheet = true
+            if (activeSession == null) {
+                showStartSheet = true
+            } else {
+                showActiveDetailSheet = true
+            }
         }
         if (activeSession != null) {
             showTodayDetailSheet = false

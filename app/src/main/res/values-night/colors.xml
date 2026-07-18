@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="widget_focus_surface">#FF202420</color>
+    <color name="widget_focus_border">#FF3B433B</color>
+    <color name="widget_focus_text">#FFF1F4F0</color>
+    <color name="widget_focus_text_muted">#FFB7C0B7</color>
+    <color name="widget_focus_accent">#FFA9C6A5</color>
+    <color name="widget_focus_accent_soft">#FF303B30</color>
+    <color name="widget_focus_accent_border">#FF526552</color>
+    <color name="widget_focus_on_accent">#FF1A241A</color>
+</resources>

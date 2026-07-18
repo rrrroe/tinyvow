@@ -38,7 +38,7 @@
 - 无障碍服务：监听前台窗口变化，显示全屏阻断 overlay，并承担一部分积分结算。
 - 奖励/库存/使用/成就：Room 持久化，积分通过 ledger 记录来源。
 - 统计页：基于每日归档和当前 UsageStats 前台 session 口径展示日报、趋势、热力图、分享图等。
-- 外观主题：预设主题 + 自定义三色主题，DataStore 保存。
+- 外观设置：预设主题 + 自定义三色主题，以及最小/较小/标准/较大四档应用页面文字大小，DataStore 保存；原始字号对应第三档“标准”。
 - 多语言：支持系统语言、简体中文、英文。
 - 订阅/权益：Google Play 版走 Play Billing；国内版走本地激活码。Google Play 配置不完整时要有可理解的错误文案。
 
@@ -48,7 +48,7 @@
 
 - `TinyVowApplication` 调用 `AppText.attach(...)`，让服务、Worker、通知等非 Compose 代码也能读取应用文案。
 - `MainActivity` 开启 edge-to-edge，创建通知渠道，监听主题和语言偏好，并挂载 `HomeRoute`。
-- `ManagedAppPreferences` 通过 DataStore Preferences 保存积分、今日积分、主题、语言、业务日分割点、用户资料、权限 disclosure 状态、权限提示 dismissed 状态、提醒设置、App 颜色偏好、首页圆环偏好、离线专注默认项、超我模式状态、旧单 App 限额兼容字段等全局状态。
+- `ManagedAppPreferences` 通过 DataStore Preferences 保存积分、今日积分、主题、应用页面文字大小、语言、业务日分割点、用户资料、权限 disclosure 状态、权限提示 dismissed 状态、提醒设置、App 颜色偏好、首页圆环偏好、离线专注默认项、超我模式状态、旧单 App 限额兼容字段等全局状态。
 - 主题通过 `resolveThemeSeed(...)` 选择预设或自定义三色主题；阻断 overlay 和统计分享图也要跟随当前主题。
 - 语言通过 `AppText.localizedContext(...)` 注入 `LocalContext`，同时用 `AppText.setLanguage(...)` 更新全局文案上下文。
 
@@ -200,7 +200,7 @@
 - `service/media`：通知监听服务和 MediaSession 播放状态监听。
 - `service/offline`：离线专注前台计时服务。
 - `data/usage`：UsageStats 权限与用量读取。
-- `data/settings/ManagedAppPreferences.kt`：DataStore 偏好，包含积分、主题、权限引导状态、语言等。
+- `data/settings/ManagedAppPreferences.kt`：DataStore 偏好，包含积分、主题、应用页面文字大小、权限引导状态、语言等。
 - `data/notification`、`data/reminder`：通知渠道和提醒 Worker。
 - `ui/home`：主导航、首页、统计、我的、实验室、主题、支持页面。
 - `ui/rewards`：成就和兑换。
@@ -348,13 +348,28 @@
 .\gradlew.bat assembleDefaultDebug
 ```
 
-涉及安装验证时再运行：
+## 真实设备、安装与验收边界
+
+- 用户正在实际使用、保存真实数据的手机默认视为生产设备。实际使用验收由用户本人完成；Agent 默认只做到代码检查、单元测试、构建验证和必要的只读诊断，不代替用户操作真实业务流程。
+- 用户明确要求安装，或已经同意当前任务包含安装时，可以把 APK 安装到真实手机；但安装必须是保留原应用和全部数据的安全升级。“继续”“做到彻底完成”“部署生产环境”等任务描述不构成卸载、清除数据、真机 UI 自动化、修改输入法或系统设置的授权。
+- 用户明确表示“验收我自己来”或同等意思后，严禁再执行真机自动化、界面点击或实际使用验收；只报告构建结果和需要用户手动检查的项目。
+- 在任何真实设备上安装 APK 前，必须先完成并确认以下事项，缺一项就停止安装：
+  - 用户已明确同意本次安装；设备中有真实数据时，优先确认已有可验证的 Tiny Vow 手动备份。
+  - 记录设备上原应用的包名、版本、签名证书摘要和首次安装时间。
+  - 对比待安装 APK 的 application ID 和签名证书，确认它能安全升级现有安装。
+  - 如果签名不同、应用无法原地升级，或安装器要求先卸载原应用，立即停止安装；改用相同签名的升级包或独立测试包名，不得继续确认卸载重装。
+- 严禁为了安装新版执行 `adb uninstall`、`pm uninstall`、`pm clear`、先卸载后安装，或确认厂商安装器提供的“卸载原应用后安装”选项。不得把 `adb install -r` 当成数据一定安全的保证；签名不兼容、厂商安装器确认流程或渠道包差异都可能造成卸载重装和应用私有数据永久丢失。
+- 自动化测试必须优先使用模拟器、专用测试设备或独立测试包名，并使用一次性测试账号。不得在用户真实使用的包名和真实数据上执行注册、删除账号、清数据、数据库迁移破坏性验证等流程。
+- Android Auto Backup 不能替代安装前手动备份。Tiny Vow 的核心数据恢复以应用内 `tinyvow-local-backup-*.zip` 导出并验证可读为准。
+- 安装完成后不代替用户执行实际使用验收。向用户提供构建结果和人工验收清单，由用户本人检查真实业务流程；只有用户另行明确要求时，才做非破坏性的启动或只读诊断。
+
+仅当用户明确要求安装验证、已经确认备份与签名兼容，并授权操作当前设备时，才运行：
 
 ```powershell
 .\gradlew.bat installDefaultDebug
 ```
 
-安装成功后默认立即启动应用，方便人工检查成果；日常国内 debug 包使用确定性启动命令：
+仅当用户同时明确授权启动应用时，才使用确定性启动命令：
 
 ```powershell
 adb shell am start -n com.rrrrz.tinyvow.cn/com.rrrrz.tinyvow.MainActivity
@@ -362,7 +377,7 @@ adb shell am start -n com.rrrrz.tinyvow.cn/com.rrrrz.tinyvow.MainActivity
 
 不要用 `adb shell monkey -p com.rrrrz.tinyvow.cn 1` 作为日常启动命令；部分设备上 Monkey 事件可能影响系统方向锁定/自动旋转状态。
 
-修改后进行编译测试，并安装应用，不需要自动实机测试，修改较大或风险较高时提醒人工真机验证，尤其是：
+修改后默认进行编译测试，不默认安装应用，也不执行自动实机测试。修改较大或风险较高时提醒用户自行进行人工真机验证，尤其是：
 
 - 首次权限引导。
 - Usage Access / Accessibility 开关后返回刷新。

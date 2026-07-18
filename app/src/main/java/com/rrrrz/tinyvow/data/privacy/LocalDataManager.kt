@@ -370,7 +370,7 @@ class LocalDataManager(
             ) { context -> dataStoreFile(context, "activation_preferences") },
             LocalDataStore(
                 "backend_subscription_preferences",
-                "DataStore preferences for the domestic backend anonymous session and cached Pro entitlement.",
+                "DataStore preferences for the domestic backend device session, cached account profile, pending orders, and Pro entitlement. Login passwords are never stored here.",
             ) { context -> dataStoreFile(context, "backend_subscription_preferences") },
             LocalDataStore(
                 "reward_icons",

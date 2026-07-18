@@ -22,6 +22,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import com.rrrrz.tinyvow.data.settings.AppTextSize
 import com.rrrrz.tinyvow.data.settings.ManagedAppPreferences
 import com.rrrrz.tinyvow.data.reminder.ReminderScheduler
 import com.rrrrz.tinyvow.data.time.BusinessDay
@@ -65,6 +66,10 @@ class MainActivity : ComponentActivity() {
             }
             val loadedAppLanguage by selectedAppLanguageFlow.collectAsStateWithLifecycle(initialValue = null, lifecycle = lifecycle)
             val selectedAppLanguage = loadedAppLanguage ?: AppText.currentLanguage()
+            val selectedAppTextSize by prefs.selectedAppTextSize.collectAsStateWithLifecycle(
+                initialValue = AppTextSize.STANDARD,
+                lifecycle = lifecycle,
+            )
             val localizedContext = remember(selectedAppLanguage) {
                 AppText.localizedContext(this@MainActivity, selectedAppLanguage)
             }
@@ -97,7 +102,8 @@ class MainActivity : ComponentActivity() {
                 LocalActivityResultRegistryOwner provides this@MainActivity,
             ) {
                 TinyVowTheme(
-                    themeSeed = themeSeed
+                    themeSeed = themeSeed,
+                    appFontScale = selectedAppTextSize.fontScale,
                 ) {
                     HomeRoute(
                         hostActivity = this@MainActivity,
@@ -137,6 +143,9 @@ class MainActivity : ComponentActivity() {
             ACTION_OFFLINE_FOCUS_ACTIVE -> {
                 offlineFocusDetailRequestToken.value += 1
             }
+            ACTION_OFFLINE_FOCUS_START -> {
+                offlineFocusDetailRequestToken.value += 1
+            }
         }
     }
 
@@ -170,6 +179,7 @@ class MainActivity : ComponentActivity() {
         const val ACTION_OFFLINE_FOCUS_COMPLETED = "com.rrrrz.tinyvow.offline_focus.COMPLETED"
         const val ACTION_OFFLINE_FOCUS_COMPLETED_CLICK = "com.rrrrz.tinyvow.offline_focus.COMPLETED_CLICK"
         const val ACTION_OFFLINE_FOCUS_ACTIVE = "com.rrrrz.tinyvow.offline_focus.ACTIVE"
+        const val ACTION_OFFLINE_FOCUS_START = "com.rrrrz.tinyvow.offline_focus.START_PICKER"
         const val EXTRA_OFFLINE_FOCUS_SESSION_ID = "offline_focus_session_id"
     }
 }
