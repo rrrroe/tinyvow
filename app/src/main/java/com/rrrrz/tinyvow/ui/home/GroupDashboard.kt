@@ -10,19 +10,12 @@ import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.Drawable
 import android.view.Window
 import android.view.WindowManager
-import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.AnimatedVisibilityScope
-import androidx.compose.animation.ExperimentalSharedTransitionApi
-import androidx.compose.animation.SharedTransitionLayout
-import androidx.compose.animation.SharedTransitionScope
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
@@ -86,10 +79,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import androidx.compose.runtime.LaunchedEffect
 import kotlinx.coroutines.withContext
 import androidx.compose.ui.Alignment
@@ -102,7 +97,15 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.drawscope.DrawScope
+import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
+import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.boundsInRoot
+import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
@@ -122,6 +125,7 @@ import androidx.compose.ui.zIndex
 import androidx.core.view.WindowCompat
 import coil.compose.AsyncImage
 import com.rrrrz.tinyvow.data.apps.ManagedApp
+import com.rrrrz.tinyvow.data.apps.matchesSearchQuery
 import com.rrrrz.tinyvow.data.db.ActiveRewardEffectEntity
 import com.rrrrz.tinyvow.data.db.DailyAppArchiveEntity
 import com.rrrrz.tinyvow.data.db.DailyGroupArchiveEntity
@@ -153,10 +157,38 @@ import java.time.LocalDate
 import java.time.ZoneId
 import java.time.temporal.TemporalAdjusters
 import java.util.Locale
+import kotlin.math.roundToInt
 
 private val DialogHorizontalPadding = 28.dp
 private val CompactFieldHeight = 50.dp
 private val CompactFieldShape = RoundedCornerShape(16.dp)
+
+private class StableDrawablePainter(
+    private val drawable: Drawable,
+) : Painter() {
+    override val intrinsicSize: Size =
+        if (drawable.intrinsicWidth > 0 && drawable.intrinsicHeight > 0) {
+            Size(drawable.intrinsicWidth.toFloat(), drawable.intrinsicHeight.toFloat())
+        } else {
+            Size.Unspecified
+        }
+
+    override fun DrawScope.onDraw() {
+        val width = size.width.roundToInt().coerceAtLeast(1)
+        val height = size.height.roundToInt().coerceAtLeast(1)
+        drawIntoCanvas { canvas ->
+            drawable.setBounds(0, 0, width, height)
+            drawable.draw(canvas.nativeCanvas)
+        }
+    }
+}
+
+@Composable
+private fun rememberStableDrawablePainter(drawable: Drawable): Painter =
+    remember(drawable) {
+        val stableDrawable = drawable.constantState?.newDrawable()?.mutate() ?: drawable
+        StableDrawablePainter(stableDrawable)
+    }
 
 @Composable
 fun GroupDashboard(
@@ -1924,8 +1956,7 @@ private fun GroupEditDialog(
                 if (searchQuery.isBlank()) {
                     true
                 } else {
-                    it.appName.contains(searchQuery, ignoreCase = true) ||
-                        it.packageName.contains(searchQuery, ignoreCase = true)
+                    it.matchesSearchQuery(searchQuery)
                 }
             }
             .sortedByDescending { it.usageTimeInMs }
@@ -2151,7 +2182,24 @@ private fun GroupEditDialog(
     }
 }
 
-@OptIn(ExperimentalSharedTransitionApi::class)
+private enum class AppIconArea {
+    SELECTED,
+    AVAILABLE,
+}
+
+private data class AppIconPositionKey(
+    val packageName: String,
+    val area: AppIconArea,
+)
+
+private data class AppIconMoveRequest(
+    val packageName: String,
+    val appName: String,
+    val icon: Drawable?,
+    val startBounds: Rect,
+    val targetArea: AppIconArea,
+)
+
 @Composable
 private fun AppSelectionGrid(
     selectedPackages: List<String>,
@@ -2166,106 +2214,205 @@ private fun AppSelectionGrid(
     onMove: (String, Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    SharedTransitionLayout(modifier = modifier) {
-        val sharedTransitionScope = this
-        AnimatedContent(
-            targetState = selectedPackages,
-            modifier = Modifier.fillMaxSize(),
-            transitionSpec = {
-                fadeIn(animationSpec = tween(140)) togetherWith
-                    fadeOut(animationSpec = tween(90))
-            },
-            label = "group_app_selection",
-        ) { displayedSelectedPackages ->
-            val animatedVisibilityScope = this
-            val displayedSelectedSet = displayedSelectedPackages.toSet()
-            val availableApps = filteredApps.filterNot { it.packageName in displayedSelectedSet }
+    val appsByPackage = remember(installedApps) { installedApps.associateBy { it.packageName } }
+    val iconBounds = remember { mutableStateMapOf<AppIconPositionKey, Rect>() }
+    val moveProgress = remember { Animatable(1f) }
+    var containerBounds by remember { mutableStateOf<Rect?>(null) }
+    var moveRequest by remember { mutableStateOf<AppIconMoveRequest?>(null) }
+    val selectedSet = remember(selectedPackages) { selectedPackages.toSet() }
+    val availableApps = remember(filteredApps, selectedSet) {
+        filteredApps.filterNot { it.packageName in selectedSet }
+    }
+    val targetBounds = moveRequest?.let { request ->
+        iconBounds[AppIconPositionKey(request.packageName, request.targetArea)]
+    }
 
-            Column(
-                modifier = Modifier.fillMaxSize(),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                with(sharedTransitionScope) {
-                    SelectedAppsRow(
-                        selectedPackages = displayedSelectedPackages,
-                        installedApps = installedApps,
-                        appIconCache = appIconCache,
-                        onIconLoaded = onIconLoaded,
-                        accent = accent,
-                        animatedVisibilityScope = animatedVisibilityScope,
-                        onRemove = onRemove,
-                        onMove = onMove,
+    LaunchedEffect(moveRequest, targetBounds) {
+        val request = moveRequest ?: return@LaunchedEffect
+        val destination = targetBounds ?: return@LaunchedEffect
+        moveProgress.snapTo(0f)
+        moveProgress.animateTo(
+            targetValue = 1f,
+            animationSpec = spring(
+                dampingRatio = 0.78f,
+                stiffness = Spring.StiffnessMedium,
+            ),
+        )
+        if (moveRequest == request) {
+            moveRequest = null
+        }
+    }
+
+    LaunchedEffect(moveRequest) {
+        val request = moveRequest ?: return@LaunchedEffect
+        delay(250)
+        val destination = iconBounds[AppIconPositionKey(request.packageName, request.targetArea)]
+        if (moveRequest == request && destination == null) {
+            moveRequest = null
+        }
+    }
+
+    fun beginMove(
+        packageName: String,
+        sourceArea: AppIconArea,
+        targetArea: AppIconArea,
+        commit: () -> Unit,
+    ) {
+        val start = iconBounds[AppIconPositionKey(packageName, sourceArea)]
+        iconBounds.remove(AppIconPositionKey(packageName, targetArea))
+        moveRequest = start?.let {
+            AppIconMoveRequest(
+                packageName = packageName,
+                appName = appsByPackage[packageName]?.appName ?: packageName.substringAfterLast('.'),
+                icon = appIconCache[packageName],
+                startBounds = it,
+                targetArea = targetArea,
+            )
+        }
+        commit()
+    }
+
+    fun recordIconBounds(
+        packageName: String,
+        area: AppIconArea,
+        bounds: Rect,
+    ) {
+        val key = AppIconPositionKey(packageName, area)
+        if (iconBounds[key] != bounds) {
+            iconBounds[key] = bounds
+        }
+    }
+
+    Box(
+        modifier = modifier.onGloballyPositioned { coordinates ->
+            val bounds = coordinates.boundsInRoot()
+            if (containerBounds != bounds) {
+                containerBounds = bounds
+            }
+        },
+    ) {
+        Column(
+            modifier = Modifier.fillMaxSize(),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            SelectedAppsRow(
+                selectedPackages = selectedPackages,
+                installedApps = installedApps,
+                appIconCache = appIconCache,
+                onIconLoaded = onIconLoaded,
+                accent = accent,
+                hiddenPackageName = moveRequest?.packageName,
+                onIconPositioned = { packageName, bounds ->
+                    recordIconBounds(packageName, AppIconArea.SELECTED, bounds)
+                },
+                onRemove = { packageName ->
+                    beginMove(
+                        packageName = packageName,
+                        sourceArea = AppIconArea.SELECTED,
+                        targetArea = AppIconArea.AVAILABLE,
+                    ) {
+                        onRemove(packageName)
+                    }
+                },
+                onMove = onMove,
+            )
+
+            HorizontalDivider(color = accent.copy(alpha = 0.24f))
+            Text(
+                text = AppText.t(
+                    "pro_group_app_limit_status",
+                    selectedPackages.size,
+                    appLimit,
+                ),
+                style = MaterialTheme.typography.bodySmall,
+                color = if (selectedPackages.size > appLimit) {
+                    MaterialTheme.colorScheme.error
+                } else {
+                    MaterialTheme.colorScheme.onSurfaceVariant
+                },
+            )
+
+            if (availableApps.isEmpty()) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .weight(1f),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = AppText.t("group_available_apps_empty"),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.outline,
+                        textAlign = TextAlign.Center,
                     )
                 }
-
-                HorizontalDivider(color = accent.copy(alpha = 0.24f))
-                Text(
-                    text = AppText.t(
-                        "pro_group_app_limit_status",
-                        displayedSelectedPackages.size,
-                        appLimit,
-                    ),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = if (displayedSelectedPackages.size > appLimit) {
-                        MaterialTheme.colorScheme.error
-                    } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
-                    },
-                )
-
-                if (availableApps.isEmpty()) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(1f),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(
-                            text = AppText.t("group_available_apps_empty"),
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.outline,
-                            textAlign = TextAlign.Center,
-                        )
-                    }
-                } else {
-                    LazyVerticalGrid(
-                        columns = GridCells.Adaptive(minSize = 68.dp),
-                        modifier = Modifier.weight(1f),
-                        contentPadding = PaddingValues(bottom = 56.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp),
-                    ) {
-                        gridItems(
-                            items = availableApps,
-                            key = { it.packageName },
-                        ) { app ->
-                            with(sharedTransitionScope) {
-                                AvailableAppGridItem(
-                                    app = app,
-                                    icon = appIconCache[app.packageName],
-                                    onIconLoaded = onIconLoaded,
-                                    accent = accent,
-                                    animatedVisibilityScope = animatedVisibilityScope,
-                                    onClick = { onSelect(app.packageName) },
+            } else {
+                LazyVerticalGrid(
+                    columns = GridCells.Adaptive(minSize = 54.dp),
+                    modifier = Modifier.weight(1f),
+                    contentPadding = PaddingValues(bottom = 56.dp),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    gridItems(
+                        items = availableApps,
+                        key = { it.packageName },
+                    ) { app ->
+                        AvailableAppGridItem(
+                            app = app,
+                            icon = appIconCache[app.packageName],
+                            onIconLoaded = onIconLoaded,
+                            accent = accent,
+                            hidden = app.packageName == moveRequest?.packageName,
+                            iconModifier = Modifier.onGloballyPositioned { coordinates ->
+                                recordIconBounds(
+                                    app.packageName,
+                                    AppIconArea.AVAILABLE,
+                                    coordinates.boundsInRoot(),
                                 )
-                            }
-                        }
+                            },
+                            onClick = {
+                                if (selectedPackages.size >= appLimit) {
+                                    onSelect(app.packageName)
+                                } else {
+                                    beginMove(
+                                        packageName = app.packageName,
+                                        sourceArea = AppIconArea.AVAILABLE,
+                                        targetArea = AppIconArea.SELECTED,
+                                    ) {
+                                        onSelect(app.packageName)
+                                    }
+                                }
+                            },
+                        )
                     }
                 }
             }
         }
+
+        val request = moveRequest
+        val container = containerBounds
+        if (request != null && container != null) {
+            MovingAppIcon(
+                request = request,
+                targetBounds = targetBounds ?: request.startBounds,
+                containerBounds = container,
+                progress = { moveProgress.value },
+                accent = accent,
+            )
+        }
     }
 }
 
-@OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
-private fun SharedTransitionScope.SelectedAppsRow(
+private fun SelectedAppsRow(
     selectedPackages: List<String>,
     installedApps: List<ManagedApp>,
     appIconCache: Map<String, Drawable>,
     onIconLoaded: (String, Drawable) -> Unit,
     accent: Color,
-    animatedVisibilityScope: AnimatedVisibilityScope,
+    hiddenPackageName: String?,
+    onIconPositioned: (String, Rect) -> Unit,
     onRemove: (String) -> Unit,
     onMove: (String, Int) -> Unit,
 ) {
@@ -2301,18 +2448,13 @@ private fun SharedTransitionScope.SelectedAppsRow(
                             accent = accent,
                             onRemove = { onRemove(packageName) },
                             onMove = { direction -> onMove(packageName, direction) },
-                            modifier = Modifier.sharedElement(
-                                state = rememberSharedContentState(
-                                    key = "group_app_$packageName",
-                                ),
-                                animatedVisibilityScope = animatedVisibilityScope,
-                                boundsTransform = { _, _ ->
-                                    spring(
-                                        dampingRatio = 0.58f,
-                                        stiffness = Spring.StiffnessMediumLow,
-                                    )
+                            modifier = Modifier
+                                .onGloballyPositioned { coordinates ->
+                                    onIconPositioned(packageName, coordinates.boundsInRoot())
+                                }
+                                .graphicsLayer {
+                                    alpha = if (packageName == hiddenPackageName) 0f else 1f
                                 },
-                            ),
                         )
                     }
                 }
@@ -2330,14 +2472,14 @@ private fun SharedTransitionScope.SelectedAppsRow(
     }
 }
 
-@OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
-private fun SharedTransitionScope.AvailableAppGridItem(
+private fun AvailableAppGridItem(
     app: ManagedApp,
     icon: Drawable?,
     onIconLoaded: (String, Drawable) -> Unit,
     accent: Color,
-    animatedVisibilityScope: AnimatedVisibilityScope,
+    hidden: Boolean,
+    iconModifier: Modifier,
     onClick: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -2352,63 +2494,112 @@ private fun SharedTransitionScope.AvailableAppGridItem(
         }
     }
 
-    Column(
+    Box(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(16.dp))
+            .graphicsLayer { alpha = if (hidden) 0f else 1f }
+            .clip(RoundedCornerShape(14.dp))
             .clickable(onClick = onClick)
             .semantics {
                 contentDescription = AppText.t("group_available_app_select", app.appName)
             }
-            .padding(horizontal = 4.dp, vertical = 6.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.spacedBy(5.dp),
+            .padding(2.dp),
+        contentAlignment = Alignment.Center,
     ) {
-        Surface(
-            modifier = Modifier
-                .sharedElement(
-                    state = rememberSharedContentState(
-                        key = "group_app_${app.packageName}",
-                    ),
-                    animatedVisibilityScope = animatedVisibilityScope,
-                    boundsTransform = { _, _ ->
-                        spring(
-                            dampingRatio = 0.58f,
-                            stiffness = Spring.StiffnessMediumLow,
-                        )
-                    },
+        AvailableAppIconSurface(
+            app = app,
+            icon = icon,
+            accent = accent,
+            modifier = iconModifier,
+        )
+    }
+}
+
+@Composable
+private fun MovingAppIcon(
+    request: AppIconMoveRequest,
+    targetBounds: Rect,
+    containerBounds: Rect,
+    progress: () -> Float,
+    accent: Color,
+) {
+    val density = LocalDensity.current
+    val baseSize = 50.dp
+    val baseSizePx = with(density) { baseSize.toPx() }
+    val start = request.startBounds
+    val startX = start.left - containerBounds.left
+    val startY = start.top - containerBounds.top
+    val targetX = targetBounds.left - containerBounds.left
+    val targetY = targetBounds.top - containerBounds.top
+
+    Surface(
+        modifier = Modifier
+            .size(baseSize)
+            .graphicsLayer {
+                val fraction = progress()
+                val currentX = startX + (targetX - startX) * fraction
+                val currentY = startY + (targetY - startY) * fraction
+                val currentWidth = start.width + (targetBounds.width - start.width) * fraction
+                val currentHeight = start.height + (targetBounds.height - start.height) * fraction
+                translationX = currentX
+                translationY = currentY
+                scaleX = currentWidth / baseSizePx
+                scaleY = currentHeight / baseSizePx
+                transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0f)
+            }
+            .zIndex(10f),
+        shape = RoundedCornerShape(15.dp),
+        color = accent.copy(alpha = 0.12f),
+        border = BorderStroke(1.dp, accent.copy(alpha = 0.24f)),
+    ) {
+        request.icon?.let { icon ->
+            Image(
+                painter = rememberStableDrawablePainter(icon),
+                contentDescription = null,
+                modifier = Modifier.padding(6.dp),
+            )
+        } ?: run {
+            Box(contentAlignment = Alignment.Center) {
+                Text(
+                    text = request.appName.firstOrNull()?.uppercaseChar()?.toString().orEmpty(),
+                    style = MaterialTheme.typography.titleSmall,
+                    color = accent,
+                    fontWeight = FontWeight.Bold,
                 )
-                .size(56.dp),
-            shape = RoundedCornerShape(17.dp),
-            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.48f),
-            border = BorderStroke(1.dp, accent.copy(alpha = 0.12f)),
-        ) {
-            if (icon != null) {
-                AsyncImage(
-                    model = icon,
-                    contentDescription = null,
-                    modifier = Modifier.padding(7.dp),
-                )
-            } else {
-                Box(contentAlignment = Alignment.Center) {
-                    Text(
-                        text = app.appName.firstOrNull()?.uppercaseChar()?.toString().orEmpty(),
-                        style = MaterialTheme.typography.titleSmall,
-                        color = accent,
-                        fontWeight = FontWeight.Bold,
-                    )
-                }
             }
         }
-        Text(
-            text = app.appName,
-            modifier = Modifier.fillMaxWidth(),
-            style = MaterialTheme.typography.labelSmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            textAlign = TextAlign.Center,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
+    }
+}
+
+@Composable
+private fun AvailableAppIconSurface(
+    app: ManagedApp,
+    icon: Drawable?,
+    accent: Color,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier.size(50.dp),
+        shape = RoundedCornerShape(15.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.48f),
+        border = BorderStroke(1.dp, accent.copy(alpha = 0.12f)),
+    ) {
+        icon?.let { drawable ->
+            Image(
+                painter = rememberStableDrawablePainter(drawable),
+                contentDescription = null,
+                modifier = Modifier.padding(6.dp),
+            )
+        } ?: run {
+            Box(contentAlignment = Alignment.Center) {
+                Text(
+                    text = app.appName.firstOrNull()?.uppercaseChar()?.toString().orEmpty(),
+                    style = MaterialTheme.typography.titleSmall,
+                    color = accent,
+                    fontWeight = FontWeight.Bold,
+                )
+            }
+        }
     }
 }
 
@@ -2469,13 +2660,13 @@ private fun SelectedAppIcon(
         color = accent.copy(alpha = 0.12f),
         border = BorderStroke(1.dp, accent.copy(alpha = 0.24f)),
     ) {
-        if (icon != null) {
-            AsyncImage(
-                model = icon,
+        icon?.let { drawable ->
+            Image(
+                painter = rememberStableDrawablePainter(drawable),
                 contentDescription = null,
                 modifier = Modifier.padding(5.dp),
             )
-        } else {
+        } ?: run {
             Box(contentAlignment = Alignment.Center) {
                 Text(
                     text = appName.firstOrNull()?.uppercaseChar()?.toString().orEmpty(),

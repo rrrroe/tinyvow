@@ -1,0 +1,255 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Tiny Vow S01 · Editorial v2</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 1080px;
+        height: 1920px;
+        margin: 0;
+        overflow: hidden;
+      }
+
+      body {
+        font-family: "Microsoft YaHei", "Noto Sans CJK SC", "PingFang SC", sans-serif;
+        color: #f4efe7;
+        background: #152720;
+      }
+
+      .poster {
+        position: relative;
+        width: 1080px;
+        height: 1920px;
+        overflow: hidden;
+        isolation: isolate;
+        background: #152720;
+      }
+
+      .background {
+        position: absolute;
+        z-index: -3;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+
+      .poster::before {
+        content: "";
+        position: absolute;
+        z-index: -2;
+        inset: 0;
+        background:
+          linear-gradient(180deg, rgba(6, 15, 12, 0.04) 0%, rgba(6, 15, 12, 0.22) 54%, rgba(6, 15, 12, 0.68) 100%),
+          radial-gradient(circle at 18% 42%, rgba(243, 126, 121, 0.08), transparent 30%);
+      }
+
+      .rail {
+        position: absolute;
+        z-index: 1;
+        left: 62px;
+        top: 84px;
+        width: 4px;
+        height: 506px;
+        border-radius: 4px;
+        background: linear-gradient(180deg, #f5817d 0 44%, rgba(112, 215, 171, 0.82) 44% 100%);
+      }
+
+      .header {
+        position: absolute;
+        z-index: 3;
+        left: 96px;
+        right: 74px;
+        top: 78px;
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 18px;
+        height: 46px;
+        color: rgba(244, 239, 231, 0.72);
+        font-size: 19px;
+        font-weight: 700;
+        letter-spacing: 4.1px;
+      }
+
+      .brand-mark {
+        width: 34px;
+        height: 34px;
+        border: 1px solid rgba(244, 239, 231, 0.46);
+        border-radius: 50%;
+        display: grid;
+        place-items: center;
+      }
+
+      .brand-mark::before {
+        content: "";
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+        background: #70d7ab;
+        box-shadow: 10px 0 0 #f5817d;
+        transform: translateX(-5px);
+      }
+
+      h1 {
+        margin: 56px 0 0;
+        max-width: 910px;
+        font-size: 84px;
+        line-height: 1.16;
+        font-weight: 720;
+        letter-spacing: -4.5px;
+        color: #f4efe7;
+      }
+
+      h1 span {
+        color: #dfe9df;
+      }
+
+      .subtitle {
+        margin-top: 30px;
+        width: 810px;
+        font-size: 31px;
+        line-height: 1.55;
+        font-weight: 450;
+        letter-spacing: 0.5px;
+        color: rgba(230, 237, 229, 0.72);
+      }
+
+      .app-window {
+        position: absolute;
+        z-index: 2;
+        left: 80px;
+        top: 640px;
+        width: 920px;
+        height: 1125px;
+        overflow: hidden;
+        border: 1px solid rgba(255, 255, 255, 0.28);
+        border-radius: 52px;
+        background: #f3f8fc;
+        box-shadow:
+          0 70px 130px rgba(0, 0, 0, 0.44),
+          0 24px 48px rgba(0, 0, 0, 0.24),
+          0 0 0 10px rgba(255, 255, 255, 0.025);
+      }
+
+      .app-window::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        box-shadow:
+          inset 0 1px 0 rgba(255, 255, 255, 0.92),
+          inset 0 0 0 1px rgba(22, 46, 38, 0.05);
+        pointer-events: none;
+      }
+
+      .app-shot {
+        position: absolute;
+        left: 0;
+        top: -90px;
+        width: 920px;
+        height: auto;
+        display: block;
+      }
+
+      .proof {
+        position: absolute;
+        z-index: 3;
+        left: 96px;
+        right: 80px;
+        top: 1800px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+
+      .proof-line {
+        display: flex;
+        align-items: center;
+        gap: 26px;
+        color: rgba(244, 239, 231, 0.72);
+        font-size: 22px;
+        font-weight: 620;
+        letter-spacing: 1px;
+      }
+
+      .proof-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .proof-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+      }
+
+      .proof-dot.vow {
+        background: #f5817d;
+      }
+
+      .proof-dot.effort {
+        background: #70d7ab;
+      }
+
+      .signature {
+        color: rgba(244, 239, 231, 0.45);
+        font-size: 18px;
+        font-weight: 600;
+        letter-spacing: 2px;
+      }
+
+      .baseline {
+        position: absolute;
+        z-index: 3;
+        left: 96px;
+        right: 80px;
+        bottom: 48px;
+        height: 1px;
+        background: rgba(244, 239, 231, 0.16);
+      }
+    </style>
+  </head>
+  <body>
+    <main class="poster">
+      <img class="background" src="../generated/bg-deep-forest-editorial-v2.png" alt="" />
+      <div class="rail" aria-hidden="true"></div>
+
+      <header class="header">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true"></span>
+          <span>TINY VOW · 小约定</span>
+        </div>
+        <h1>把时间，留给<br /><span>真正想做的事</span></h1>
+        <div class="subtitle">用约定减少无意识消耗，也让每一次投入被看见。</div>
+      </header>
+
+      <section class="app-window" aria-label="Tiny Vow 首页真实界面">
+        <img
+          class="app-shot"
+          src="../screenshots/raw/zh-CN/S01_home_overview_zh-CN.png"
+          alt="Tiny Vow 首页今日总览"
+        />
+      </section>
+
+      <footer class="proof">
+        <div class="proof-line">
+          <span class="proof-item"><span class="proof-dot vow"></span>温和约定</span>
+          <span class="proof-item"><span class="proof-dot effort"></span>正向投入</span>
+        </div>
+        <span class="signature">揉揉喽出品 · BY ROROLO</span>
+      </footer>
+      <div class="baseline" aria-hidden="true"></div>
+    </main>
+  </body>
+</html>

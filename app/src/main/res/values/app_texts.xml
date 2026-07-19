@@ -291,7 +291,7 @@
     <string name="group_delete">Delete</string>
     <string name="group_delete_group">Delete vow</string>
     <string name="group_history">History</string>
-    <string name="group_search_apps">Search apps</string>
+    <string name="group_search_apps">Search app name or package</string>
     <string name="group_selected_apps_empty">No apps selected</string>
     <string name="group_selected_apps_hint">Tap to remove · Hold to reorder</string>
     <string name="group_selected_app_remove">Remove %1$s</string>

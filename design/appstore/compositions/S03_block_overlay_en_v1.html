@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Tiny Vow S03 · Gentle interruption v1</title>
+    <style>
+      * { box-sizing: border-box; }
+
+      html,
+      body {
+        width: 1080px;
+        height: 1920px;
+        margin: 0;
+        overflow: hidden;
+      }
+
+      body {
+        font-family: "Noto Sans SC", "Microsoft YaHei", sans-serif;
+        color: #263a35;
+        background: #f7f3ec;
+      }
+
+      .poster {
+        position: relative;
+        width: 1080px;
+        height: 1920px;
+        overflow: hidden;
+        isolation: isolate;
+        background: #f7f3ec;
+      }
+
+      .background {
+        position: absolute;
+        inset: 0;
+        z-index: -4;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+
+      .pause-ring {
+        position: absolute;
+        z-index: -2;
+        top: 235px;
+        left: 50%;
+        width: 900px;
+        height: 900px;
+        border: 2px solid rgba(242, 124, 127, 0.2);
+        border-radius: 50%;
+        transform: translateX(-50%);
+        box-shadow:
+          0 0 0 46px rgba(242, 124, 127, 0.035),
+          0 0 0 94px rgba(104, 209, 166, 0.025);
+      }
+
+      .header {
+        position: absolute;
+        z-index: 6;
+        top: 42px;
+        left: 46px;
+        right: 46px;
+        text-align: center;
+      }
+
+      h1 {
+        margin: 0;
+        color: #203b33;
+        font-size: 62px;
+        line-height: 1.08;
+        font-weight: 800;
+        letter-spacing: -4px;
+        white-space: nowrap;
+      }
+
+      .subtitle {
+        margin-top: 17px;
+        color: #667a72;
+        font-size: 35px;
+        line-height: 1.4;
+        font-weight: 580;
+      }
+
+      .overlay-screen {
+        position: absolute;
+        z-index: 1;
+        top: 300px;
+        left: 175px;
+        width: 730px;
+        height: 1550px;
+        overflow: hidden;
+        border: 1px solid rgba(54, 76, 69, 0.15);
+        border-radius: 46px;
+        background: #f4f8fb;
+        box-shadow:
+          0 52px 108px rgba(58, 76, 68, 0.23),
+          0 16px 38px rgba(58, 76, 68, 0.12),
+          inset 0 1px 0 rgba(255, 255, 255, 0.9);
+      }
+
+      .overlay-screen::after {
+        content: "";
+        position: absolute;
+        z-index: 3;
+        inset: 0;
+        border-radius: inherit;
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.78);
+        pointer-events: none;
+      }
+
+      .overlay-shot {
+        position: absolute;
+        top: -84px;
+        left: 0;
+        display: block;
+        width: 730px;
+        height: auto;
+      }
+
+      .tag-row {
+        position: absolute;
+        z-index: 7;
+        top: 1245px;
+        left: 20px;
+        width: 1040px;
+        height: 230px;
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 18px;
+      }
+
+      .tag-row::before {
+        content: "";
+        position: absolute;
+        z-index: -1;
+        left: 48px;
+        right: 48px;
+        bottom: -24px;
+        height: 82px;
+        border-radius: 999px;
+        background: rgba(55, 72, 65, 0.16);
+        filter: blur(30px);
+      }
+
+      .tag-card {
+        position: relative;
+        min-width: 0;
+        height: 230px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+        border: 1px solid rgba(61, 79, 72, 0.13);
+        border-radius: 34px;
+        background: rgba(255, 255, 255, 0.96);
+        box-shadow:
+          0 30px 62px rgba(52, 72, 63, 0.22),
+          0 9px 22px rgba(52, 72, 63, 0.12),
+          inset 0 1px 0 rgba(255, 255, 255, 1);
+        backdrop-filter: blur(18px);
+      }
+
+      .tag-card::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        left: 0;
+        width: 10px;
+      }
+
+      .tag-card.pause::before { background: #f27c7f; }
+      .tag-card.record::before { background: #68d1a6; }
+      .tag-card.choice::before { background: #7daee0; }
+
+      .tag-card::after {
+        content: "";
+        position: absolute;
+        top: -75px;
+        right: -58px;
+        width: 170px;
+        height: 170px;
+        border-radius: 50%;
+        opacity: 0.72;
+      }
+
+      .tag-card.pause::after { background: #fff0ef; }
+      .tag-card.record::after { background: #eaf9f2; }
+      .tag-card.choice::after { background: #edf5ff; }
+
+      .tag-key {
+        position: relative;
+        z-index: 1;
+        font-size: 31px;
+        line-height: 1.08;
+        font-weight: 820;
+        letter-spacing: -1px;
+        white-space: nowrap;
+      }
+
+      .pause .tag-key { color: #cc575c; }
+      .record .tag-key { color: #2f956d; }
+      .choice .tag-key { color: #5589bf; }
+
+      .tag-meta {
+        position: relative;
+        z-index: 1;
+        margin-top: 24px;
+        color: #60726b;
+        font-size: 27px;
+        line-height: 1.15;
+        font-weight: 680;
+        white-space: nowrap;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="poster">
+      <img class="background" src="../generated/bg-paper-olive-portrait-v1.png" alt="" />
+      <div class="pause-ring" aria-hidden="true"></div>
+
+      <header class="header">
+        <h1>Over your vow, still in control</h1>
+        <div class="subtitle">Pause gently, keep your progress, and choose what happens next.</div>
+      </header>
+
+      <section class="overlay-screen" aria-label="Tiny Vow English limit screen">
+        <img
+          class="overlay-shot"
+          src="../screenshots/edited/en/S03_block_overlay_encourage_en_localized.png"
+          alt="Limit screen with focus cards, a temporary buffer, and a home button"
+        />
+      </section>
+
+      <section class="tag-row" aria-label="Limit screen behavior">
+        <article class="tag-card pause">
+          <div class="tag-key">A gentle pause</div>
+          <div class="tag-meta">No shame</div>
+        </article>
+        <article class="tag-card record">
+          <div class="tag-key">Progress stays</div>
+          <div class="tag-meta">Records preserved</div>
+        </article>
+        <article class="tag-card choice">
+          <div class="tag-key">Two clear choices</div>
+          <div class="tag-meta">Buffer · Leave</div>
+        </article>
+      </section>
+    </main>
+  </body>
+</html>

@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Tiny Vow S05 · 手机使用追踪 v3</title>
+    <style>
+      * { box-sizing: border-box; }
+      html, body { width: 1080px; height: 1920px; margin: 0; overflow: hidden; }
+
+      body {
+        font-family: "Noto Sans SC", "Microsoft YaHei", sans-serif;
+        color: #263a35;
+        background: #f7f3ec;
+      }
+
+      .poster {
+        position: relative;
+        width: 1080px;
+        height: 1920px;
+        overflow: hidden;
+        isolation: isolate;
+        background: #f7f3ec;
+      }
+
+      .background {
+        position: absolute;
+        inset: 0;
+        z-index: -5;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+
+      .data-orbit {
+        position: absolute;
+        z-index: -3;
+        top: 220px;
+        left: 180px;
+        width: 880px;
+        height: 880px;
+        border: 2px solid rgba(125, 174, 224, 0.19);
+        border-radius: 50%;
+        box-shadow:
+          0 0 0 50px rgba(125, 174, 224, 0.032),
+          0 0 0 100px rgba(104, 209, 166, 0.022);
+      }
+
+      .header {
+        position: absolute;
+        z-index: 20;
+        top: 40px;
+        left: 34px;
+        right: 34px;
+        text-align: center;
+      }
+
+      h1 {
+        margin: 0;
+        color: #203b33;
+        font-size: 74px;
+        line-height: 1.08;
+        font-weight: 830;
+        letter-spacing: -4px;
+        white-space: nowrap;
+      }
+
+      .subtitle {
+        margin-top: 17px;
+        color: #667a72;
+        font-size: 33px;
+        line-height: 1.42;
+        font-weight: 600;
+      }
+
+      .report-card {
+        position: absolute;
+        overflow: hidden;
+        border: 0;
+        border-radius: 32px;
+        background: #f4f8fb;
+        box-shadow:
+          0 22px 48px rgba(55, 73, 65, 0.15),
+          0 6px 16px rgba(55, 73, 65, 0.07);
+        transform-origin: center center;
+      }
+
+      .key-card {
+        z-index: 2;
+        top: 280px;
+        left: 22px;
+        width: 600px;
+        height: 555px;
+        transform: rotate(-0.55deg);
+      }
+
+      .scatter-card {
+        z-index: 6;
+        top: 300px;
+        left: 438px;
+        width: 620px;
+        height: 540px;
+        transform: rotate(0.55deg);
+      }
+
+      .points-card {
+        z-index: 5;
+        top: 850px;
+        left: 22px;
+        width: 620px;
+        height: 520px;
+        transform: rotate(-0.5deg);
+      }
+
+      .daily-trace-card {
+        z-index: 8;
+        top: 870px;
+        left: 438px;
+        width: 620px;
+        height: 520px;
+        transform: rotate(0.5deg);
+      }
+
+      .weekly-trace-card {
+        z-index: 12;
+        top: 1390px;
+        left: 120px;
+        width: 840px;
+        height: 450px;
+        transform: rotate(-0.25deg);
+      }
+
+      .key-shot,
+      .scatter-shot,
+      .points-shot,
+      .daily-trace-shot,
+      .weekly-trace-shot {
+        position: absolute;
+        display: block;
+        height: auto;
+      }
+
+      .key-shot {
+        top: -155px;
+        left: -21px;
+        width: 648px;
+      }
+
+      .scatter-shot {
+        top: -263px;
+        left: -22px;
+        width: 663px;
+      }
+
+      .points-shot {
+        top: -263px;
+        left: -22px;
+        width: 663px;
+      }
+
+      .daily-trace-shot {
+        top: -795px;
+        left: -22px;
+        width: 663px;
+      }
+
+      .weekly-trace-shot {
+        top: -545px;
+        left: -29px;
+        width: 899px;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="poster">
+      <img class="background" src="../generated/bg-paper-olive-portrait-v1.png" alt="" />
+      <div class="data-orbit" aria-hidden="true"></div>
+
+      <header class="header">
+        <h1>手机怎么用，每天都有迹可循</h1>
+        <div class="subtitle">日报看当天细节，周报看一周节奏与积分变化。</div>
+      </header>
+
+      <section class="report-card key-card" aria-label="关键数据">
+        <img class="key-shot" src="../screenshots/raw/zh-CN/S06_daily_report_zh-CN.png" alt="关键数据" />
+      </section>
+
+      <section class="report-card scatter-card" aria-label="周报行为图谱散点，不包含九宫格">
+        <img class="scatter-shot" src="../screenshots/raw/zh-CN/S06_weekly_behavior_scatter_zh-CN.png" alt="周报行为图谱散点" />
+      </section>
+
+      <section class="report-card points-card" aria-label="周报积分轨迹">
+        <img class="points-shot" src="../screenshots/raw/zh-CN/S06_weekly_points_trajectory_zh-CN.png" alt="周报积分轨迹" />
+      </section>
+
+      <section class="report-card daily-trace-card" aria-label="周五日报时光刻痕">
+        <img class="daily-trace-shot" src="../screenshots/raw/zh-CN/S06_daily_time_trace_friday_zh-CN.png" alt="周五日报时光刻痕" />
+      </section>
+
+      <section class="report-card weekly-trace-card" aria-label="周报时光刻痕">
+        <img class="weekly-trace-shot" src="../screenshots/raw/zh-CN/S06_weekly_time_trace_zh-CN.png" alt="周报时光刻痕" />
+      </section>
+    </main>
+  </body>
+</html>

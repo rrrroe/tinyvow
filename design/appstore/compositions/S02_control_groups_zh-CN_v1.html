@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Tiny Vow S02 · 首页约定分组 v1</title>
+    <style>
+      * { box-sizing: border-box; }
+
+      html,
+      body {
+        width: 1080px;
+        height: 1920px;
+        margin: 0;
+        overflow: hidden;
+      }
+
+      body {
+        font-family: "Noto Sans SC", "Microsoft YaHei", sans-serif;
+        color: #263a35;
+        background: #f7f3ec;
+      }
+
+      .poster {
+        position: relative;
+        width: 1080px;
+        height: 1920px;
+        overflow: hidden;
+        isolation: isolate;
+        background: #f7f3ec;
+      }
+
+      .background {
+        position: absolute;
+        inset: 0;
+        z-index: -3;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+
+      .control-glow {
+        position: absolute;
+        z-index: -1;
+        top: 250px;
+        left: 50%;
+        width: 930px;
+        height: 930px;
+        border: 2px solid rgba(242, 124, 127, 0.23);
+        border-radius: 50%;
+        transform: translateX(-50%);
+        box-shadow:
+          0 0 0 44px rgba(242, 124, 127, 0.045),
+          0 0 0 92px rgba(242, 124, 127, 0.025);
+      }
+
+      .header {
+        position: absolute;
+        z-index: 5;
+        top: 50px;
+        left: 54px;
+        right: 54px;
+        text-align: center;
+      }
+
+      h1 {
+        margin: 0;
+        color: #203b33;
+        font-size: 88px;
+        line-height: 1.08;
+        font-weight: 790;
+        letter-spacing: -4px;
+      }
+
+      .subtitle {
+        margin-top: 18px;
+        color: #667a72;
+        font-size: 36px;
+        line-height: 1.38;
+        font-weight: 560;
+        letter-spacing: 0.2px;
+      }
+
+      .group-screen {
+        position: absolute;
+        z-index: 1;
+        top: 318px;
+        left: 116px;
+        width: 848px;
+        height: 1320px;
+        overflow: hidden;
+        border: 1px solid rgba(56, 82, 72, 0.16);
+        border-radius: 46px;
+        background: #f4f8fb;
+        box-shadow:
+          0 54px 106px rgba(61, 76, 68, 0.22),
+          0 16px 38px rgba(61, 76, 68, 0.12);
+      }
+
+      .group-screen::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.78);
+        pointer-events: none;
+      }
+
+      .home-shot {
+        position: absolute;
+        top: -2290px;
+        left: -55px;
+        display: block;
+        width: 1750px;
+        height: auto;
+      }
+
+      .tag-row {
+        position: absolute;
+        z-index: 6;
+        top: 1450px;
+        left: 20px;
+        width: 1040px;
+        height: 226px;
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 18px;
+      }
+
+      .tag-row::before {
+        content: "";
+        position: absolute;
+        z-index: -1;
+        left: 45px;
+        right: 45px;
+        bottom: -26px;
+        height: 82px;
+        border-radius: 999px;
+        background: rgba(55, 72, 65, 0.16);
+        filter: blur(30px);
+      }
+
+      .tag-card {
+        position: relative;
+        min-width: 0;
+        height: 226px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+        border: 1px solid rgba(61, 79, 72, 0.13);
+        border-radius: 34px;
+        background: rgba(255, 255, 255, 0.95);
+        box-shadow:
+          0 30px 62px rgba(52, 72, 63, 0.22),
+          0 9px 22px rgba(52, 72, 63, 0.12),
+          inset 0 1px 0 rgba(255, 255, 255, 1);
+        backdrop-filter: blur(18px);
+      }
+
+      .tag-card::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        left: 0;
+        width: 10px;
+        background: #f27c7f;
+      }
+
+      .tag-card::after {
+        content: "";
+        position: absolute;
+        top: -75px;
+        right: -58px;
+        width: 170px;
+        height: 170px;
+        border-radius: 50%;
+        background: #fff0ef;
+        opacity: 0.7;
+      }
+
+      .tag-key {
+        position: relative;
+        z-index: 1;
+        color: #c95459;
+        font-size: 39px;
+        line-height: 1.08;
+        font-weight: 820;
+        letter-spacing: -1px;
+        white-space: nowrap;
+      }
+
+      .tag-meta {
+        position: relative;
+        z-index: 1;
+        margin-top: 24px;
+        color: #60726b;
+        font-size: 31px;
+        line-height: 1.15;
+        font-weight: 680;
+        white-space: nowrap;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="poster">
+      <img class="background" src="../generated/bg-paper-olive-portrait-v1.png" alt="" />
+      <div class="control-glow" aria-hidden="true"></div>
+
+      <header class="header">
+        <h1>多个 App，一份约定</h1>
+        <div class="subtitle">日、周、月限额，一起计算使用时间。</div>
+      </header>
+
+      <section class="group-screen" aria-label="Tiny Vow 首页约定分组真机界面">
+        <img
+          class="home-shot"
+          src="../screenshots/raw/zh-CN/S02_home_control_groups_zh-CN.png"
+          alt="首页约定分组真机截图"
+        />
+      </section>
+
+      <section class="tag-row" aria-label="约定能力说明">
+        <article class="tag-card">
+          <div class="tag-key">多个 App</div>
+          <div class="tag-meta">一起管理</div>
+        </article>
+        <article class="tag-card">
+          <div class="tag-key">一个限额</div>
+          <div class="tag-meta">共同计算</div>
+        </article>
+        <article class="tag-card">
+          <div class="tag-key">日 · 周 · 月</div>
+          <div class="tag-meta">灵活设置</div>
+        </article>
+      </section>
+    </main>
+  </body>
+</html>

@@ -1,0 +1,409 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Tiny Vow S07 · Product characteristics v2</title>
+    <style>
+      * { box-sizing: border-box; }
+      html, body { width: 1080px; height: 1920px; margin: 0; overflow: hidden; }
+
+      body {
+        font-family: "Noto Sans SC", "Microsoft YaHei", sans-serif;
+        color: #263a35;
+        background: #f7f3ec;
+      }
+
+      .poster {
+        position: relative;
+        width: 1080px;
+        height: 1920px;
+        overflow: hidden;
+        isolation: isolate;
+      }
+
+      .background {
+        position: absolute;
+        inset: 0;
+        z-index: -10;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+
+      .wash {
+        position: absolute;
+        z-index: -8;
+        inset: 0;
+        background:
+          radial-gradient(circle at 13% 35%, rgba(95, 203, 164, 0.16), transparent 31%),
+          radial-gradient(circle at 87% 36%, rgba(105, 158, 225, 0.16), transparent 31%),
+          radial-gradient(circle at 18% 78%, rgba(210, 143, 87, 0.14), transparent 32%),
+          radial-gradient(circle at 84% 79%, rgba(234, 175, 66, 0.15), transparent 34%);
+      }
+
+      .header {
+        position: absolute;
+        z-index: 20;
+        top: 48px;
+        left: 34px;
+        right: 34px;
+        text-align: center;
+      }
+
+      h1 {
+        margin: 0;
+        color: #203b33;
+        font-size: 61px;
+        line-height: 1.1;
+        font-weight: 840;
+        letter-spacing: -3px;
+        white-space: nowrap;
+      }
+
+      .subtitle {
+        margin-top: 18px;
+        color: #667a72;
+        font-size: 31px;
+        line-height: 1.45;
+        font-weight: 620;
+      }
+
+      .grid {
+        position: absolute;
+        z-index: 5;
+        top: 300px;
+        left: 55px;
+        width: 970px;
+        display: grid;
+        grid-template-columns: repeat(2, 470px);
+        grid-auto-rows: 650px;
+        gap: 30px;
+      }
+
+      .feature-card {
+        position: relative;
+        overflow: hidden;
+        width: 470px;
+        height: 650px;
+        padding: 38px 38px 36px;
+        border-radius: 50px;
+        border: 1px solid rgba(255,255,255,0.82);
+        box-shadow:
+          0 27px 56px rgba(53,72,64,0.14),
+          0 8px 19px rgba(53,72,64,0.06),
+          inset 0 1px 0 rgba(255,255,255,0.95);
+      }
+
+      .feature-card::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(150deg, rgba(255,255,255,0.26), transparent 48%);
+        pointer-events: none;
+      }
+
+      .local-card { background: linear-gradient(145deg, rgba(246,255,251,0.96), rgba(216,245,233,0.90)); }
+      .super-card { background: linear-gradient(145deg, rgba(249,252,255,0.96), rgba(218,234,251,0.90)); }
+      .theme-card { background: linear-gradient(145deg, rgba(255,249,247,0.96), rgba(248,224,216,0.90)); }
+      .backup-card { background: linear-gradient(145deg, rgba(255,253,247,0.96), rgba(249,230,192,0.90)); }
+
+      .category {
+        position: relative;
+        z-index: 3;
+        display: inline-flex;
+        align-items: center;
+        gap: 10px;
+        height: 45px;
+        padding: 0 18px;
+        border-radius: 999px;
+        color: var(--accent-dark);
+        background: rgba(255,255,255,0.72);
+        border: 1px solid var(--accent-border);
+        font-size: 25px;
+        line-height: 1;
+        font-weight: 770;
+      }
+
+      .category b {
+        font-size: 22px;
+        opacity: 0.66;
+      }
+
+      .icon-area {
+        position: relative;
+        z-index: 2;
+        width: 220px;
+        height: 220px;
+        margin: 28px auto 0;
+        border-radius: 50%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: radial-gradient(circle, rgba(255,255,255,0.96), var(--icon-bg));
+        box-shadow:
+          0 22px 42px var(--icon-shadow),
+          inset 0 0 0 12px rgba(255,255,255,0.45);
+      }
+
+      .feature-title {
+        position: relative;
+        z-index: 3;
+        margin: 27px 0 0;
+        color: #29473e;
+        font-size: 43px;
+        line-height: 1.12;
+        font-weight: 830;
+        letter-spacing: -1px;
+        text-align: center;
+      }
+
+      .feature-copy {
+        position: relative;
+        z-index: 3;
+        margin: 18px auto 0;
+        max-width: 365px;
+        color: #61746d;
+        font-size: 28px;
+        line-height: 1.5;
+        font-weight: 590;
+        text-align: center;
+      }
+
+      .status {
+        position: absolute;
+        z-index: 3;
+        left: 38px;
+        right: 38px;
+        bottom: 34px;
+        min-height: 50px;
+        height: auto;
+        padding: 9px 14px;
+        border-radius: 999px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: var(--accent-dark);
+        background: rgba(255,255,255,0.70);
+        border: 1px solid var(--accent-border);
+        font-size: 21px;
+        line-height: 1.08;
+        text-align: center;
+        font-weight: 760;
+      }
+
+      .local-card {
+        --accent-dark: #2f705b;
+        --accent-border: rgba(58,145,112,0.18);
+        --icon-bg: rgba(111,211,173,0.54);
+        --icon-shadow: rgba(56,135,104,0.15);
+      }
+
+      .super-card {
+        --accent-dark: #3e6f9d;
+        --accent-border: rgba(71,121,174,0.18);
+        --icon-bg: rgba(122,174,227,0.50);
+        --icon-shadow: rgba(61,108,159,0.15);
+      }
+
+      .theme-card {
+        --accent-dark: #a45e4f;
+        --accent-border: rgba(190,104,85,0.17);
+        --icon-bg: rgba(239,155,135,0.46);
+        --icon-shadow: rgba(168,92,76,0.14);
+      }
+
+      .backup-card {
+        --accent-dark: #8a5b1b;
+        --accent-border: rgba(183,124,43,0.18);
+        --icon-bg: rgba(239,184,77,0.48);
+        --icon-shadow: rgba(166,108,29,0.14);
+      }
+
+      .phone {
+        position: relative;
+        width: 126px;
+        height: 172px;
+        border: 9px solid #397764;
+        border-radius: 30px;
+        background: rgba(255,255,255,0.72);
+      }
+
+      .phone::before {
+        content: "";
+        position: absolute;
+        left: 50%;
+        top: 12px;
+        width: 40px;
+        height: 6px;
+        border-radius: 99px;
+        background: rgba(57,119,100,0.30);
+        transform: translateX(-50%);
+      }
+
+      .db {
+        position: absolute;
+        left: 22px;
+        width: 82px;
+        height: 32px;
+        border-radius: 50%;
+        background: linear-gradient(180deg, #82d8b8, #48ad88);
+        border: 3px solid rgba(255,255,255,0.84);
+      }
+
+      .db-a { top: 55px; }
+      .db-b { top: 80px; }
+      .db-c { top: 105px; }
+
+      .lock {
+        position: relative;
+        width: 130px;
+        height: 122px;
+        margin-top: 32px;
+      }
+
+      .lock::before {
+        content: "";
+        position: absolute;
+        left: 27px;
+        top: -38px;
+        width: 76px;
+        height: 83px;
+        border: 13px solid #4b80b5;
+        border-bottom: 0;
+        border-radius: 45px 45px 0 0;
+      }
+
+      .lock::after {
+        content: "";
+        position: absolute;
+        inset: 20px 0 0;
+        border-radius: 25px;
+        background: linear-gradient(145deg, #71a9df, #4178aa);
+        box-shadow: 0 14px 24px rgba(56,99,141,0.20);
+      }
+
+      .keyhole {
+        position: absolute;
+        z-index: 2;
+        left: 57px;
+        top: 55px;
+        width: 16px;
+        height: 34px;
+        border-radius: 10px;
+        background: #eef7ff;
+      }
+
+      .palette {
+        position: relative;
+        width: 178px;
+        height: 178px;
+      }
+
+      .color-dot {
+        position: absolute;
+        width: 104px;
+        height: 104px;
+        border-radius: 50%;
+        box-shadow: 0 16px 26px rgba(75,83,78,0.14), inset 0 0 0 7px rgba(255,255,255,0.50);
+      }
+
+      .color-a { left: 7px; top: 12px; background: #ef9d88; }
+      .color-b { right: 5px; top: 15px; background: #74c9a9; }
+      .color-c { left: 39px; bottom: 3px; background: #7ca7dc; }
+
+      .file {
+        position: relative;
+        width: 110px;
+        height: 142px;
+        border-radius: 20px;
+        background: linear-gradient(145deg, #f5bd54, #d9942d);
+        box-shadow: 0 16px 27px rgba(172,111,29,0.19);
+      }
+
+      .file::before,
+      .file::after {
+        content: "";
+        position: absolute;
+        left: 23px;
+        right: 23px;
+        height: 8px;
+        border-radius: 99px;
+        background: rgba(255,255,255,0.78);
+      }
+
+      .file::before { top: 52px; }
+      .file::after { top: 80px; }
+
+      .round-arrow {
+        position: absolute;
+        width: 175px;
+        height: 175px;
+        border: 10px solid #e7a33b;
+        border-left-color: transparent;
+        border-radius: 50%;
+        transform: rotate(-34deg);
+      }
+
+      .round-arrow::after {
+        content: "";
+        position: absolute;
+        right: -2px;
+        top: 4px;
+        border-left: 18px solid #e7a33b;
+        border-top: 12px solid transparent;
+        border-bottom: 12px solid transparent;
+        transform: rotate(30deg);
+      }
+    </style>
+  </head>
+  <body>
+    <main class="poster">
+      <img class="background" src="../generated/bg-paper-olive-portrait-v1.png" alt="" />
+      <div class="wash"></div>
+
+      <header class="header">
+        <h1>From data to design, you decide</h1>
+        <div class="subtitle">Where records live, how rules are protected, how your app looks, and how data moves.</div>
+      </header>
+
+      <section class="grid" aria-label="Four product characteristics">
+        <article class="feature-card local-card">
+          <div class="category"><b>01</b> Data boundary</div>
+          <div class="icon-area" aria-hidden="true">
+            <div class="phone"><i class="db db-a"></i><i class="db db-b"></i><i class="db db-c"></i></div>
+          </div>
+          <h2 class="feature-title">Core records stay on device</h2>
+          <p class="feature-copy">Vows, focus sessions, and usage history are stored locally.</p>
+          <div class="status">Not uploaded by default</div>
+        </article>
+
+        <article class="feature-card super-card">
+          <div class="category"><b>02</b> Rule protection</div>
+          <div class="icon-area" aria-hidden="true"><div class="lock"><i class="keyhole"></i></div></div>
+          <h2 class="feature-title">Super Mode</h2>
+          <p class="feature-copy">A local password protects edits, deletion, and temporary bypasses.</p>
+          <div class="status">Protection window 06:00–10:00</div>
+        </article>
+
+        <article class="feature-card theme-card">
+          <div class="category"><b>03</b> Appearance</div>
+          <div class="icon-area" aria-hidden="true">
+            <div class="palette"><i class="color-dot color-a"></i><i class="color-dot color-b"></i><i class="color-dot color-c"></i></div>
+          </div>
+          <h2 class="feature-title">Preset &amp; custom themes</h2>
+          <p class="feature-copy">Choose a preset or build your own three-color theme.</p>
+          <div class="status">Presets + three custom colors</div>
+        </article>
+
+        <article class="feature-card backup-card">
+          <div class="category"><b>04</b> Data control</div>
+          <div class="icon-area" aria-hidden="true"><div class="file"></div><div class="round-arrow"></div></div>
+          <h2 class="feature-title">Back up, restore, or clear</h2>
+          <p class="feature-copy">Export a backup, restore your data, or clear local records.</p>
+          <div class="status">Export / Restore / Clear</div>
+        </article>
+      </section>
+    </main>
+  </body>
+</html>

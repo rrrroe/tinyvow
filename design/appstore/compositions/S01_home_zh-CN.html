@@ -1,0 +1,204 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Tiny Vow S01</title>
+    <style>
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 1080px;
+        height: 1920px;
+        margin: 0;
+        overflow: hidden;
+      }
+
+      body {
+        font-family: "Microsoft YaHei", "Noto Sans CJK SC", "PingFang SC", sans-serif;
+        color: #263a35;
+        background: #f7f3ec;
+      }
+
+      .poster {
+        position: relative;
+        width: 1080px;
+        height: 1920px;
+        overflow: hidden;
+        background: #f7f3ec;
+      }
+
+      .poster::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background:
+          linear-gradient(180deg, rgba(255, 255, 255, 0.28), transparent 24%),
+          linear-gradient(0deg, rgba(247, 243, 236, 0.38), transparent 18%);
+        pointer-events: none;
+      }
+
+      .background {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+
+      .header {
+        position: absolute;
+        z-index: 3;
+        left: 72px;
+        right: 72px;
+        top: 54px;
+        height: 268px;
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        height: 52px;
+        color: #526a61;
+        font-size: 22px;
+        font-weight: 700;
+        letter-spacing: 2.4px;
+      }
+
+      .brand-icon {
+        width: 46px;
+        height: 46px;
+        border-radius: 14px;
+        box-shadow: 0 6px 18px rgba(38, 58, 53, 0.12);
+      }
+
+      h1 {
+        margin: 24px 0 0;
+        font-size: 78px;
+        line-height: 1.14;
+        font-weight: 760;
+        letter-spacing: -3px;
+        color: #263a35;
+      }
+
+      .subtitle {
+        margin-top: 20px;
+        font-size: 34px;
+        line-height: 1.45;
+        font-weight: 500;
+        letter-spacing: 0.4px;
+        color: #6d7c76;
+      }
+
+      .app-window {
+        position: absolute;
+        z-index: 2;
+        left: 70px;
+        top: 348px;
+        width: 940px;
+        height: 1476px;
+        overflow: hidden;
+        border: 1px solid rgba(56, 82, 72, 0.14);
+        border-radius: 48px;
+        background: #f4f8fb;
+        box-shadow:
+          0 40px 92px rgba(61, 76, 68, 0.18),
+          0 12px 30px rgba(61, 76, 68, 0.1);
+      }
+
+      .app-window::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.62);
+        pointer-events: none;
+      }
+
+      .app-shot {
+        position: absolute;
+        left: 0;
+        top: -104px;
+        width: 940px;
+        height: auto;
+        display: block;
+      }
+
+      .footer {
+        position: absolute;
+        z-index: 3;
+        left: 72px;
+        right: 72px;
+        bottom: 30px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        color: #6f7d77;
+        font-size: 22px;
+        font-weight: 600;
+        letter-spacing: 1px;
+      }
+
+      .footer .vow {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+      }
+
+      .dot-control,
+      .dot-encourage {
+        width: 10px;
+        height: 10px;
+        border-radius: 50%;
+      }
+
+      .dot-control {
+        background: #f27c7f;
+      }
+
+      .dot-encourage {
+        background: #68d1a6;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="poster">
+      <img
+        class="background"
+        src="../generated/bg-paper-olive-portrait-v1.png"
+        alt=""
+      />
+
+      <header class="header">
+        <div class="brand">
+          <img class="brand-icon" src="../../app-icon-tiny-vow-preview.png" alt="" />
+          <span>TINY VOW · 小约定</span>
+        </div>
+        <h1>和手机好好相处</h1>
+        <div class="subtitle">约定少一点，投入多一点，每天都看得见。</div>
+      </header>
+
+      <section class="app-window" aria-label="Tiny Vow 首页真实界面">
+        <img
+          class="app-shot"
+          src="../screenshots/raw/zh-CN/S01_home_overview_zh-CN.png"
+          alt="Tiny Vow 首页今日总览"
+        />
+      </section>
+
+      <footer class="footer">
+        <div class="vow">
+          <span class="dot-control"></span>
+          <span>约定</span>
+          <span class="dot-encourage"></span>
+          <span>投入</span>
+        </div>
+        <span>揉揉喽出品</span>
+      </footer>
+    </main>
+  </body>
+</html>

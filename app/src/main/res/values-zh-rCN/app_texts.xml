@@ -291,7 +291,7 @@
     <string name="group_delete">删除</string>
     <string name="group_delete_group">删除约定</string>
     <string name="group_history">历史</string>
-    <string name="group_search_apps">搜索应用</string>
+    <string name="group_search_apps">搜索应用名或包名</string>
     <string name="group_selected_apps_empty">还没有选择 App</string>
     <string name="group_selected_apps_hint">点击删除 · 长按排序</string>
     <string name="group_selected_app_remove">移除 %1$s</string>

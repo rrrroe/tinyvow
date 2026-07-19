@@ -1,0 +1,364 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Tiny Vow S05 · 手机使用追踪 v1</title>
+    <style>
+      * { box-sizing: border-box; }
+      html, body { width: 1080px; height: 1920px; margin: 0; overflow: hidden; }
+
+      body {
+        font-family: "Noto Sans SC", "Microsoft YaHei", sans-serif;
+        color: #263a35;
+        background: #f7f3ec;
+      }
+
+      .poster {
+        position: relative;
+        width: 1080px;
+        height: 1920px;
+        overflow: hidden;
+        isolation: isolate;
+        background: #f7f3ec;
+      }
+
+      .background {
+        position: absolute;
+        inset: 0;
+        z-index: -5;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+
+      .data-orbit {
+        position: absolute;
+        z-index: -3;
+        top: 240px;
+        left: 190px;
+        width: 850px;
+        height: 850px;
+        border: 2px solid rgba(125, 174, 224, 0.2);
+        border-radius: 50%;
+        box-shadow:
+          0 0 0 50px rgba(125, 174, 224, 0.034),
+          0 0 0 100px rgba(104, 209, 166, 0.024);
+      }
+
+      .header {
+        position: absolute;
+        z-index: 15;
+        top: 40px;
+        left: 36px;
+        right: 36px;
+        text-align: center;
+      }
+
+      h1 {
+        margin: 0;
+        color: #203b33;
+        font-size: 74px;
+        line-height: 1.08;
+        font-weight: 830;
+        letter-spacing: -4px;
+        white-space: nowrap;
+      }
+
+      .subtitle {
+        margin-top: 17px;
+        color: #667a72;
+        font-size: 33px;
+        line-height: 1.42;
+        font-weight: 600;
+      }
+
+      .report-screen,
+      .report-crop {
+        position: absolute;
+        overflow: hidden;
+        border: 1px solid rgba(54, 76, 69, 0.15);
+        background: #f4f8fb;
+        box-shadow:
+          0 40px 84px rgba(55, 73, 65, 0.22),
+          0 12px 28px rgba(55, 73, 65, 0.11),
+          inset 0 1px 0 rgba(255, 255, 255, 0.96);
+      }
+
+      .report-screen::after,
+      .report-crop::after {
+        content: "";
+        position: absolute;
+        z-index: 6;
+        inset: 0;
+        border-radius: inherit;
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.82);
+        pointer-events: none;
+      }
+
+      .daily-screen {
+        z-index: 2;
+        top: 305px;
+        left: 24px;
+        width: 620px;
+        height: 1120px;
+        border-radius: 46px;
+        transform: rotate(-2.3deg);
+      }
+
+      .weekly-screen {
+        z-index: 5;
+        top: 372px;
+        left: 438px;
+        width: 620px;
+        height: 930px;
+        border-radius: 46px;
+        transform: rotate(2.3deg);
+      }
+
+      .daily-shot {
+        position: absolute;
+        top: -70px;
+        left: 0;
+        display: block;
+        width: 620px;
+        height: auto;
+      }
+
+      .weekly-shot {
+        position: absolute;
+        top: -72px;
+        left: 0;
+        display: block;
+        width: 620px;
+        height: auto;
+      }
+
+      .screen-label {
+        position: absolute;
+        z-index: 10;
+        top: 24px;
+        left: 24px;
+        display: inline-flex;
+        align-items: center;
+        gap: 12px;
+        min-height: 62px;
+        padding: 14px 21px;
+        border-radius: 23px;
+        font-size: 29px;
+        line-height: 1;
+        font-weight: 830;
+        box-shadow: 0 13px 28px rgba(65, 91, 116, 0.14);
+      }
+
+      .daily-screen .screen-label {
+        color: #568ac1;
+        background: rgba(237, 245, 255, 0.97);
+      }
+
+      .weekly-screen .screen-label {
+        color: #32976f;
+        background: rgba(234, 249, 242, 0.97);
+      }
+
+      .top-mask {
+        position: absolute;
+        z-index: 8;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 88px;
+        background: linear-gradient(180deg, #f4f8fb 74%, rgba(244, 248, 251, 0));
+      }
+
+      .report-shelf {
+        position: absolute;
+        z-index: 12;
+        top: 1320px;
+        left: 26px;
+        right: 26px;
+        height: 510px;
+        padding: 22px;
+        border: 1px solid rgba(58, 76, 68, 0.14);
+        border-radius: 42px;
+        background: rgba(255, 255, 255, 0.96);
+        box-shadow:
+          0 28px 62px rgba(55, 73, 65, 0.18),
+          0 8px 20px rgba(55, 73, 65, 0.08),
+          inset 0 1px 0 #fff;
+      }
+
+      .shelf-title {
+        position: absolute;
+        z-index: 8;
+        top: 24px;
+        left: 30px;
+        color: #284239;
+        font-size: 34px;
+        line-height: 1.1;
+        font-weight: 840;
+      }
+
+      .shelf-subtitle {
+        position: absolute;
+        z-index: 8;
+        top: 70px;
+        left: 30px;
+        color: #6b7c75;
+        font-size: 25px;
+        line-height: 1.2;
+        font-weight: 600;
+      }
+
+      .crop-label {
+        position: absolute;
+        z-index: 9;
+        top: 0;
+        left: 0;
+        right: 0;
+        display: flex;
+        align-items: center;
+        height: 78px;
+        padding: 0 18px;
+        border-radius: 0;
+        color: #34584d;
+        background: rgba(255, 255, 255, 0.97);
+        box-shadow: 0 8px 18px rgba(55, 73, 65, 0.1);
+        font-size: 24px;
+        line-height: 1;
+        font-weight: 820;
+      }
+
+      .vow-crop,
+      .gain-crop {
+        top: 116px;
+        height: 367px;
+        border-radius: 30px;
+        box-shadow: 0 15px 34px rgba(55, 73, 65, 0.14);
+      }
+
+      .points-crop {
+        top: 116px;
+        height: 240px;
+        border-radius: 30px;
+        box-shadow: 0 15px 34px rgba(55, 73, 65, 0.14);
+      }
+
+      .vow-crop { left: 22px; width: 292px; }
+      .gain-crop { left: 330px; width: 292px; }
+      .points-crop { left: 638px; width: 366px; }
+
+      .apps-crop {
+        top: 372px;
+        left: 638px;
+        width: 366px;
+        height: 111px;
+        border-radius: 24px;
+        box-shadow: 0 15px 34px rgba(55, 73, 65, 0.14);
+      }
+
+      .apps-crop .crop-label {
+        right: auto;
+        width: 132px;
+        height: 100%;
+        background: linear-gradient(90deg, #fff 82%, rgba(255, 255, 255, 0));
+      }
+
+      .vow-shot,
+      .gain-shot,
+      .points-shot,
+      .apps-shot {
+        position: absolute;
+        display: block;
+        height: auto;
+      }
+
+      .vow-shot {
+        top: -882px;
+        left: -24px;
+        width: 644px;
+      }
+
+      .gain-shot {
+        top: -882px;
+        left: -328px;
+        width: 644px;
+      }
+
+      .points-shot {
+        top: -580px;
+        left: -14px;
+        width: 394px;
+      }
+
+      .apps-shot {
+        top: -238px;
+        left: -14px;
+        width: 394px;
+      }
+
+      .closing {
+        position: absolute;
+        z-index: 14;
+        top: 1854px;
+        left: 30px;
+        right: 30px;
+        color: #526a61;
+        font-size: 30px;
+        line-height: 1.2;
+        font-weight: 670;
+        text-align: center;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="poster">
+      <img class="background" src="../generated/bg-paper-olive-portrait-v1.png" alt="" />
+      <div class="data-orbit" aria-hidden="true"></div>
+
+      <header class="header">
+        <h1>手机怎么用，每天都有迹可循</h1>
+        <div class="subtitle">从当天结构到一周节奏，把使用记录变成看得懂的报告。</div>
+      </header>
+
+      <section class="report-screen daily-screen" aria-label="日报关键数据">
+        <img class="daily-shot" src="../screenshots/raw/zh-CN/S06_daily_report_zh-CN.png" alt="日报关键数据" />
+        <div class="top-mask" aria-hidden="true"></div>
+        <div class="screen-label">日报 · 当天复盘</div>
+      </section>
+
+      <section class="report-screen weekly-screen" aria-label="周报使用节奏">
+        <img class="weekly-shot" src="../screenshots/raw/zh-CN/S06_weekly_report_zh-CN.png" alt="周报使用节奏" />
+        <div class="top-mask" aria-hidden="true"></div>
+        <div class="screen-label">周报 · 使用节奏</div>
+      </section>
+
+      <section class="report-shelf" aria-label="丰富的手机使用报表">
+        <div class="shelf-title">一份报告，多种观察角度</div>
+        <div class="shelf-subtitle">约定结果、投入进度、应用轨迹与积分变化</div>
+
+        <div class="report-crop vow-crop">
+          <div class="crop-label">守约成效</div>
+          <img class="vow-shot" src="../screenshots/raw/zh-CN/S06_daily_report_zh-CN.png" alt="守约成效" />
+        </div>
+
+        <div class="report-crop gain-crop">
+          <div class="crop-label">收获进度</div>
+          <img class="gain-shot" src="../screenshots/raw/zh-CN/S06_daily_report_zh-CN.png" alt="收获进度" />
+        </div>
+
+        <div class="report-crop points-crop">
+          <div class="crop-label">积分轨迹</div>
+          <img class="points-shot" src="../screenshots/raw/zh-CN/S06_weekly_report_zh-CN.png" alt="积分轨迹" />
+        </div>
+
+        <div class="report-crop apps-crop">
+          <div class="crop-label">应用轨迹</div>
+          <img class="apps-shot" src="../screenshots/raw/zh-CN/S06_weekly_report_zh-CN.png" alt="应用轨迹" />
+        </div>
+      </section>
+
+      <div class="closing">总用量 · 约定 · 投入 · 使用节奏 · 积分变化</div>
+    </main>
+  </body>
+</html>

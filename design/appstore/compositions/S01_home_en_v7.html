@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Tiny Vow S01 · English centered floating labels v7</title>
+    <style>
+      * { box-sizing: border-box; }
+
+      html,
+      body {
+        width: 1080px;
+        height: 1920px;
+        margin: 0;
+        overflow: hidden;
+      }
+
+      body {
+        font-family: "Noto Sans SC", "Microsoft YaHei", sans-serif;
+        color: #263a35;
+        background: #f7f3ec;
+      }
+
+      .poster {
+        position: relative;
+        width: 1080px;
+        height: 1920px;
+        overflow: hidden;
+        isolation: isolate;
+        background: #f7f3ec;
+      }
+
+      .background {
+        position: absolute;
+        inset: 0;
+        z-index: -2;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+
+      .header {
+        position: absolute;
+        z-index: 4;
+        top: 50px;
+        left: 54px;
+        right: 54px;
+        text-align: center;
+      }
+
+      h1 {
+        margin: 0;
+        color: #203b33;
+        font-size: 88px;
+        line-height: 1.08;
+        font-weight: 790;
+        letter-spacing: -4px;
+      }
+
+      .subtitle {
+        margin-top: 18px;
+        color: #667a72;
+        font-size: 36px;
+        line-height: 1.38;
+        font-weight: 560;
+        letter-spacing: 0.2px;
+      }
+
+      .device-screen {
+        position: absolute;
+        z-index: 1;
+        top: 318px;
+        left: 116px;
+        width: 848px;
+        height: 1794px;
+        overflow: hidden;
+        border: 1px solid rgba(56, 82, 72, 0.16);
+        border-radius: 46px;
+        background: #f4f8fb;
+        box-shadow:
+          0 54px 106px rgba(61, 76, 68, 0.22),
+          0 16px 38px rgba(61, 76, 68, 0.12);
+      }
+
+      .device-screen::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.75);
+        pointer-events: none;
+      }
+
+      .app-shot {
+        position: absolute;
+        top: -92px;
+        left: 0;
+        display: block;
+        width: 848px;
+        height: auto;
+      }
+
+      .tag-row {
+        position: absolute;
+        z-index: 5;
+        top: 1442px;
+        left: 20px;
+        width: 1040px;
+        height: 252px;
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 18px;
+      }
+
+      .tag-row::before {
+        content: "";
+        position: absolute;
+        z-index: -1;
+        left: 45px;
+        right: 45px;
+        bottom: -26px;
+        height: 82px;
+        border-radius: 999px;
+        background: rgba(55, 72, 65, 0.16);
+        filter: blur(30px);
+      }
+
+      .tag-card {
+        position: relative;
+        min-width: 0;
+        height: 252px;
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        padding: 28px 25px 25px 33px;
+        overflow: hidden;
+        border: 1px solid rgba(61, 79, 72, 0.13);
+        border-radius: 34px;
+        background: rgba(255, 255, 255, 0.94);
+        box-shadow:
+          0 30px 62px rgba(52, 72, 63, 0.22),
+          0 9px 22px rgba(52, 72, 63, 0.12),
+          inset 0 1px 0 rgba(255, 255, 255, 1);
+        backdrop-filter: blur(18px);
+      }
+
+      .tag-card::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        left: 0;
+        width: 10px;
+      }
+
+      .tag-card::after {
+        content: "";
+        position: absolute;
+        top: -70px;
+        right: -58px;
+        width: 170px;
+        height: 170px;
+        border-radius: 50%;
+        opacity: 0.62;
+        pointer-events: none;
+      }
+
+      .tag-card.control::before { background: #f27c7f; }
+      .tag-card.encourage::before { background: #68d1a6; }
+      .tag-card.focus::before { background: #7daee0; }
+
+      .tag-card.control::after { background: #fff0ef; }
+      .tag-card.encourage::after { background: #eaf9f2; }
+      .tag-card.focus::after { background: #edf5ff; }
+
+      .tag-heading {
+        position: relative;
+        z-index: 1;
+        display: flex;
+        align-items: flex-start;
+        justify-content: center;
+        flex-direction: column;
+        gap: 10px;
+        white-space: nowrap;
+      }
+
+      .tag-symbol {
+        min-width: 0;
+        height: 52px;
+        display: grid;
+        place-items: center;
+        padding: 0 16px;
+        border-radius: 18px;
+        font-size: 28px;
+        line-height: 1;
+        font-weight: 820;
+      }
+
+      .control .tag-symbol { color: #d45e62; background: #fff0ef; }
+      .encourage .tag-symbol { color: #369f76; background: #eaf9f2; }
+      .focus .tag-symbol { color: #568ac1; background: #edf5ff; }
+
+      .tag-title {
+        color: #284239;
+        font-size: 31px;
+        line-height: 1.12;
+        font-weight: 790;
+        letter-spacing: -1px;
+      }
+
+      .tag-meta {
+        position: relative;
+        z-index: 1;
+        margin-top: 18px;
+        color: #60726b;
+        font-size: 26px;
+        line-height: 1.2;
+        font-weight: 680;
+        text-align: center;
+        letter-spacing: 0.3px;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="poster">
+      <img class="background" src="../generated/bg-paper-olive-portrait-v1.png" alt="" />
+
+      <header class="header">
+        <h1>A kinder way to use your phone</h1>
+        <div class="subtitle">Set a few vows, reward your effort, and make focus visible.</div>
+      </header>
+
+      <section class="device-screen" aria-label="Tiny Vow home screen with the navigation bar extending beyond the poster">
+        <img
+          class="app-shot"
+          src="../screenshots/edited/en/S01_home_overview_en_localized.png"
+          alt="Tiny Vow home screen"
+        />
+      </section>
+
+      <section class="tag-row" aria-label="Vow, effort, and focus feature tags">
+        <article class="tag-card control">
+          <div class="tag-heading">
+            <span class="tag-symbol">Vow</span>
+            <span class="tag-title">Gentle limits</span>
+          </div>
+          <span class="tag-meta">Day · Week · Month</span>
+        </article>
+
+        <article class="tag-card encourage">
+          <div class="tag-heading">
+            <span class="tag-symbol">Effort</span>
+            <span class="tag-title">Positive progress</span>
+          </div>
+          <span class="tag-meta">Time · Points</span>
+        </article>
+
+        <article class="tag-card focus">
+          <div class="tag-heading">
+            <span class="tag-symbol">Focus</span>
+            <span class="tag-title">Offline focus</span>
+          </div>
+          <span class="tag-meta">Fixed · Open-ended</span>
+        </article>
+      </section>
+    </main>
+  </body>
+</html>

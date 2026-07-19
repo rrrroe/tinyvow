@@ -1,0 +1,399 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Tiny Vow S04 · 离线专注 v1</title>
+    <style>
+      * { box-sizing: border-box; }
+
+      html,
+      body {
+        width: 1080px;
+        height: 1920px;
+        margin: 0;
+        overflow: hidden;
+      }
+
+      body {
+        font-family: "Noto Sans SC", "Microsoft YaHei", sans-serif;
+        color: #263a35;
+        background: #f7f3ec;
+      }
+
+      .poster {
+        position: relative;
+        width: 1080px;
+        height: 1920px;
+        overflow: hidden;
+        isolation: isolate;
+        background: #f7f3ec;
+      }
+
+      .background {
+        position: absolute;
+        inset: 0;
+        z-index: -4;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+
+      .focus-rings {
+        position: absolute;
+        z-index: -2;
+        top: 215px;
+        left: 270px;
+        width: 760px;
+        height: 760px;
+        border: 2px solid rgba(125, 174, 224, 0.2);
+        border-radius: 50%;
+        box-shadow:
+          0 0 0 46px rgba(125, 174, 224, 0.035),
+          0 0 0 92px rgba(104, 209, 166, 0.024);
+      }
+
+      .header {
+        position: absolute;
+        z-index: 6;
+        top: 42px;
+        left: 40px;
+        right: 40px;
+        text-align: center;
+      }
+
+      h1 {
+        margin: 0;
+        color: #203b33;
+        font-size: 76px;
+        line-height: 1.08;
+        font-weight: 800;
+        letter-spacing: -4px;
+        white-space: nowrap;
+      }
+
+      .subtitle {
+        margin-top: 17px;
+        color: #667a72;
+        font-size: 34px;
+        line-height: 1.4;
+        font-weight: 580;
+      }
+
+      .running-window {
+        position: absolute;
+        z-index: 1;
+        top: 294px;
+        left: 20px;
+        width: 520px;
+        height: 1078px;
+        overflow: hidden;
+        border: 1px solid rgba(54, 76, 69, 0.15);
+        border-radius: 44px;
+        background: #f4f8fb;
+        box-shadow:
+          0 42px 88px rgba(58, 76, 68, 0.22),
+          0 12px 30px rgba(58, 76, 68, 0.11),
+          inset 0 1px 0 rgba(255, 255, 255, 0.9);
+      }
+
+      .running-window::before {
+        content: "正在专注";
+        position: absolute;
+        z-index: 4;
+        top: 24px;
+        left: 24px;
+        min-width: 172px;
+        padding: 16px 22px;
+        border-radius: 22px;
+        color: #568ac1;
+        background: rgba(237, 245, 255, 0.96);
+        box-shadow: 0 12px 28px rgba(65, 91, 116, 0.13);
+        font-size: 30px;
+        line-height: 1;
+        font-weight: 790;
+        text-align: center;
+      }
+
+      .top-mask {
+        position: absolute;
+        z-index: 3;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 82px;
+        background: linear-gradient(180deg, #f4f8fb 74%, rgba(244, 248, 251, 0));
+        pointer-events: none;
+      }
+
+      .running-window::after,
+      .pebbles-window::after {
+        content: "";
+        position: absolute;
+        z-index: 3;
+        inset: 0;
+        border-radius: inherit;
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.76);
+        pointer-events: none;
+      }
+
+      .running-shot {
+        position: absolute;
+        top: -77px;
+        left: 0;
+        display: block;
+        width: 520px;
+        height: auto;
+      }
+
+      .mode-card,
+      .metrics-card {
+        position: absolute;
+        z-index: 4;
+        left: 560px;
+        width: 500px;
+        overflow: hidden;
+        border: 1px solid rgba(58, 76, 68, 0.13);
+        border-radius: 38px;
+        background: rgba(255, 255, 255, 0.95);
+        box-shadow:
+          0 26px 58px rgba(55, 73, 65, 0.17),
+          0 8px 20px rgba(55, 73, 65, 0.08),
+          inset 0 1px 0 rgba(255, 255, 255, 1);
+        backdrop-filter: blur(18px);
+      }
+
+      .mode-card {
+        top: 294px;
+        height: 334px;
+        padding: 24px 28px 18px;
+      }
+
+      .mode-card::before,
+      .metrics-card::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 10px;
+        background: #7daee0;
+      }
+
+      .card-title {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        margin-bottom: 8px;
+        color: #284239;
+        font-size: 34px;
+        line-height: 1.1;
+        font-weight: 820;
+      }
+
+      .card-title .badge {
+        display: inline-grid;
+        place-items: center;
+        min-width: 92px;
+        height: 56px;
+        padding: 0 16px;
+        border-radius: 20px;
+        color: #568ac1;
+        background: #edf5ff;
+        font-size: 29px;
+        line-height: 1;
+        font-weight: 820;
+      }
+
+      .info-row,
+      .metric-row {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        align-items: center;
+        min-height: 75px;
+        border-top: 1px solid rgba(64, 84, 76, 0.1);
+      }
+
+      .info-label,
+      .metric-label {
+        color: #687a73;
+        font-size: 27px;
+        line-height: 1.2;
+        font-weight: 620;
+      }
+
+      .info-value,
+      .metric-value {
+        color: #568ac1;
+        font-size: 28px;
+        line-height: 1.2;
+        font-weight: 800;
+        text-align: right;
+        white-space: nowrap;
+      }
+
+      .pebbles-window {
+        position: absolute;
+        z-index: 1;
+        top: 648px;
+        left: 560px;
+        width: 500px;
+        height: 350px;
+        overflow: hidden;
+        border: 1px solid rgba(54, 76, 69, 0.15);
+        border-radius: 36px;
+        background: #f4f8fb;
+        box-shadow:
+          0 28px 60px rgba(58, 76, 68, 0.18),
+          0 8px 20px rgba(58, 76, 68, 0.09);
+      }
+
+      .pebbles-shot {
+        position: absolute;
+        top: -745px;
+        left: -20px;
+        display: block;
+        width: 540px;
+        height: auto;
+      }
+
+      .metrics-card {
+        top: 1018px;
+        height: 354px;
+        padding: 24px 28px 18px;
+      }
+
+      .metrics-card::before { background: #68d1a6; }
+
+      .metrics-card .badge {
+        color: #32976f;
+        background: #eaf9f2;
+      }
+
+      .metrics-card .metric-value { color: #2f946c; }
+
+      .flow-row {
+        position: absolute;
+        z-index: 7;
+        top: 1460px;
+        left: 20px;
+        width: 1040px;
+        height: 248px;
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 18px;
+      }
+
+      .flow-row::before {
+        content: "";
+        position: absolute;
+        z-index: -1;
+        left: 48px;
+        right: 48px;
+        bottom: -24px;
+        height: 82px;
+        border-radius: 999px;
+        background: rgba(55, 72, 65, 0.16);
+        filter: blur(30px);
+      }
+
+      .flow-card {
+        position: relative;
+        min-width: 0;
+        height: 248px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        overflow: hidden;
+        border: 1px solid rgba(61, 79, 72, 0.13);
+        border-radius: 34px;
+        background: rgba(255, 255, 255, 0.96);
+        box-shadow:
+          0 30px 62px rgba(52, 72, 63, 0.22),
+          0 9px 22px rgba(52, 72, 63, 0.12),
+          inset 0 1px 0 rgba(255, 255, 255, 1);
+        backdrop-filter: blur(18px);
+      }
+
+      .flow-card::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        bottom: 0;
+        left: 0;
+        width: 10px;
+        background: #7daee0;
+      }
+
+      .flow-card:nth-child(2)::before { background: #f27c7f; }
+      .flow-card:nth-child(3)::before { background: #68d1a6; }
+
+      .flow-key {
+        color: #2f4a41;
+        font-size: 40px;
+        line-height: 1.08;
+        font-weight: 820;
+        white-space: nowrap;
+      }
+
+      .flow-meta {
+        margin-top: 25px;
+        color: #60726b;
+        font-size: 31px;
+        line-height: 1.15;
+        font-weight: 680;
+        white-space: nowrap;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="poster">
+      <img class="background" src="../generated/bg-paper-olive-portrait-v1.png" alt="" />
+      <div class="focus-rings" aria-hidden="true"></div>
+
+      <header class="header">
+        <h1>放下屏幕，专注也被看见</h1>
+        <div class="subtitle">固定时长或自由计时，每次专注都沉淀成一颗石头。</div>
+      </header>
+
+      <section class="running-window" aria-label="离线专注进行中真机界面">
+        <img class="running-shot" src="../screenshots/raw/zh-CN/S05_focus_running_zh-CN.png" alt="离线专注进行中" />
+        <div class="top-mask" aria-hidden="true"></div>
+      </section>
+
+      <section class="mode-card" aria-label="专注方式">
+        <div class="card-title"><span class="badge">方式</span><span>按自己节奏</span></div>
+        <div class="info-row"><span class="info-label">计时方式</span><span class="info-value">固定 · 自由</span></div>
+        <div class="info-row"><span class="info-label">专注规则</span><span class="info-value">普通 · 严格</span></div>
+        <div class="info-row"><span class="info-label">完成专注</span><span class="info-value">获得积分</span></div>
+      </section>
+
+      <section class="pebbles-window" aria-label="聚沙成塔真机界面">
+        <img class="pebbles-shot" src="../screenshots/raw/zh-CN/S05_focus_pebbles_zh-CN.png" alt="本周专注鹅卵石" />
+      </section>
+
+      <section class="metrics-card" aria-label="本周专注成果">
+        <div class="card-title"><span class="badge">本周</span><span>聚沙成塔</span></div>
+        <div class="metric-row"><span class="metric-label">专注时长</span><span class="metric-value">11h 9min</span></div>
+        <div class="metric-row"><span class="metric-label">完成记录</span><span class="metric-value">21 段</span></div>
+        <div class="metric-row"><span class="metric-label">获得积分</span><span class="metric-value">+669 积分</span></div>
+      </section>
+
+      <section class="flow-row" aria-label="专注流程">
+        <article class="flow-card">
+          <div class="flow-key">设定</div>
+          <div class="flow-meta">固定 · 自由</div>
+        </article>
+        <article class="flow-card">
+          <div class="flow-key">沉浸</div>
+          <div class="flow-meta">普通 · 严格</div>
+        </article>
+        <article class="flow-card">
+          <div class="flow-key">沉淀</div>
+          <div class="flow-meta">聚沙成塔</div>
+        </article>
+      </section>
+    </main>
+  </body>
+</html>

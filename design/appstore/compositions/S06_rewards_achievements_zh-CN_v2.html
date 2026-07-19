@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Tiny Vow S06 · 丰富奖励与成就 v2</title>
+    <style>
+      * { box-sizing: border-box; }
+      html, body { width: 1080px; height: 1920px; margin: 0; overflow: hidden; }
+
+      body {
+        font-family: "Noto Sans SC", "Microsoft YaHei", sans-serif;
+        color: #263a35;
+        background: #f7f3ec;
+      }
+
+      .poster {
+        position: relative;
+        width: 1080px;
+        height: 1920px;
+        overflow: hidden;
+        isolation: isolate;
+      }
+
+      .background {
+        position: absolute;
+        inset: 0;
+        z-index: -10;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+
+      .wash {
+        position: absolute;
+        z-index: -8;
+        inset: 0;
+        background:
+          radial-gradient(circle at 14% 34%, rgba(255, 170, 154, 0.22), transparent 31%),
+          radial-gradient(circle at 85% 35%, rgba(111, 207, 170, 0.22), transparent 33%),
+          radial-gradient(circle at 50% 78%, rgba(126, 171, 230, 0.18), transparent 42%);
+      }
+
+      .header {
+        position: absolute;
+        z-index: 20;
+        top: 42px;
+        left: 34px;
+        right: 34px;
+        text-align: center;
+      }
+
+      h1 {
+        margin: 0;
+        color: #203b33;
+        font-size: 70px;
+        line-height: 1.1;
+        font-weight: 840;
+        letter-spacing: -3px;
+        white-space: nowrap;
+      }
+
+      .subtitle {
+        margin-top: 17px;
+        color: #667a72;
+        font-size: 32px;
+        line-height: 1.4;
+        font-weight: 620;
+      }
+
+      .section-title {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        padding: 0 15px 0 8px;
+      }
+
+      .section-title h2 {
+        margin: 0;
+        color: #28483e;
+        font-size: 43px;
+        line-height: 1;
+        font-weight: 820;
+        letter-spacing: -1px;
+      }
+
+      .section-title span {
+        color: #6b7e77;
+        font-size: 29px;
+        line-height: 1;
+        font-weight: 680;
+      }
+
+      .rewards {
+        position: absolute;
+        z-index: 5;
+        top: 245px;
+        left: 34px;
+        width: 1012px;
+        height: 690px;
+      }
+
+      .reward-grid {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        grid-auto-rows: 264px;
+        gap: 18px 14px;
+        margin-top: 24px;
+      }
+
+      .reward-card {
+        position: relative;
+        overflow: hidden;
+        border-radius: 34px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        border: 1px solid rgba(255,255,255,0.78);
+        box-shadow:
+          0 20px 42px rgba(53, 71, 64, 0.13),
+          0 6px 14px rgba(53, 71, 64, 0.06),
+          inset 0 1px 0 rgba(255,255,255,0.92);
+      }
+
+      .reward-card::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        background: linear-gradient(150deg, rgba(255,255,255,0.36), transparent 48%);
+        pointer-events: none;
+      }
+
+      .reward-card img {
+        position: relative;
+        z-index: 2;
+        display: block;
+        width: 154px;
+        height: 154px;
+        object-fit: contain;
+        border-radius: 31px;
+        filter: drop-shadow(0 10px 14px rgba(48, 65, 59, 0.14));
+      }
+
+      .reward-card strong {
+        position: relative;
+        z-index: 2;
+        display: block;
+        margin-top: 18px;
+        color: #345048;
+        font-size: 27px;
+        line-height: 1;
+        font-weight: 790;
+      }
+
+      .g-blue { background: linear-gradient(150deg, #f7fcff, #dcefff); }
+      .g-gold { background: linear-gradient(150deg, #fffdf5, #ffe7aa); }
+      .g-orange { background: linear-gradient(150deg, #fffaf6, #ffdfcc); }
+      .g-mint { background: linear-gradient(150deg, #f8fffc, #d7f5e9); }
+      .g-pink { background: linear-gradient(150deg, #fff9fc, #ffdfea); }
+      .g-purple { background: linear-gradient(150deg, #fcfaff, #e7defe); }
+      .g-cyan { background: linear-gradient(150deg, #f8feff, #d7f4f6); }
+      .g-lime { background: linear-gradient(150deg, #fbfff7, #e3f1c9); }
+
+      .achievements {
+        position: absolute;
+        z-index: 6;
+        top: 938px;
+        left: 34px;
+        width: 1012px;
+        height: 930px;
+      }
+
+      .achievement-grid {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        grid-auto-rows: 388px;
+        gap: 20px 14px;
+        margin-top: 25px;
+      }
+
+      .achievement-card {
+        position: relative;
+        overflow: hidden;
+        border-radius: 36px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: linear-gradient(150deg, rgba(255,255,255,0.90), rgba(245,248,251,0.66));
+        border: 1px solid rgba(255,255,255,0.76);
+        box-shadow:
+          0 22px 46px rgba(53, 71, 64, 0.13),
+          0 7px 16px rgba(53, 71, 64, 0.06),
+          inset 0 1px 0 rgba(255,255,255,0.92);
+      }
+
+      .achievement-card::before {
+        content: "";
+        position: absolute;
+        inset: 12px;
+        border-radius: 28px;
+        background: var(--aura);
+        opacity: 0.78;
+      }
+
+      .achievement-card img {
+        position: relative;
+        z-index: 2;
+        display: block;
+        width: 184px;
+        height: 184px;
+        object-fit: contain;
+        filter: drop-shadow(0 16px 20px rgba(35, 46, 45, 0.19));
+      }
+
+      .bronze { --aura: radial-gradient(circle, rgba(206, 142, 75, 0.28), transparent 69%); }
+      .silver { --aura: radial-gradient(circle, rgba(119, 151, 160, 0.24), transparent 69%); }
+      .gold { --aura: radial-gradient(circle, rgba(241, 184, 56, 0.30), transparent 69%); }
+      .diamond { --aura: radial-gradient(circle, rgba(92, 157, 235, 0.28), transparent 69%); }
+      .legendary { --aura: radial-gradient(circle, rgba(167, 84, 225, 0.28), transparent 69%); }
+
+      .reward-card:nth-child(2),
+      .reward-card:nth-child(7),
+      .achievement-card:nth-child(2),
+      .achievement-card:nth-child(7) { transform: translateY(8px); }
+
+      .reward-card:nth-child(4),
+      .reward-card:nth-child(9),
+      .achievement-card:nth-child(4),
+      .achievement-card:nth-child(9) { transform: translateY(-6px); }
+    </style>
+  </head>
+  <body>
+    <main class="poster">
+      <img class="background" src="../generated/bg-paper-olive-portrait-v1.png" alt="" />
+      <div class="wash"></div>
+
+      <header class="header">
+        <h1>让每一点改变，都有回声</h1>
+        <div class="subtitle">获得积分、兑换奖励，也解锁属于你的成就。</div>
+      </header>
+
+      <section class="rewards" aria-label="丰富的兑换奖励">
+        <div class="section-title">
+          <h2>兑换奖励</h2>
+          <span>50 枚图标，自定义你的愿望</span>
+        </div>
+        <div class="reward-grid">
+          <div class="reward-card g-blue"><img src="../../../app/src/main/res/drawable-nodpi/reward_preset_01.png" alt="加时" /><strong>加时</strong></div>
+          <div class="reward-card g-gold"><img src="../../../app/src/main/res/drawable-nodpi/reward_preset_08.png" alt="连胜保护" /><strong>连胜保护</strong></div>
+          <div class="reward-card g-orange"><img src="../../../app/src/main/res/drawable-nodpi/reward_preset_09.png" alt="双倍积分" /><strong>双倍积分</strong></div>
+          <div class="reward-card g-pink"><img src="../../../app/src/main/res/drawable-nodpi/reward_preset_13.png" alt="蛋糕" /><strong>甜点</strong></div>
+          <div class="reward-card g-cyan"><img src="../../../app/src/main/res/drawable-nodpi/reward_preset_10.png" alt="奶茶" /><strong>一杯奶茶</strong></div>
+          <div class="reward-card g-purple"><img src="../../../app/src/main/res/drawable-nodpi/reward_preset_19.png" alt="看视频" /><strong>看场电影</strong></div>
+          <div class="reward-card g-blue"><img src="../../../app/src/main/res/drawable-nodpi/reward_preset_21.png" alt="游戏" /><strong>玩会游戏</strong></div>
+          <div class="reward-card g-gold"><img src="../../../app/src/main/res/drawable-nodpi/reward_preset_23.png" alt="礼物" /><strong>一份礼物</strong></div>
+          <div class="reward-card g-purple"><img src="../../../app/src/main/res/drawable-nodpi/reward_preset_35.png" alt="音乐" /><strong>听听音乐</strong></div>
+          <div class="reward-card g-lime"><img src="../../../app/src/main/res/drawable-nodpi/reward_preset_44.png" alt="绿植" /><strong>养盆绿植</strong></div>
+        </div>
+      </section>
+
+      <section class="achievements" aria-label="丰富的成就收藏">
+        <div class="section-title">
+          <h2>解锁成就</h2>
+          <span>守约、投入、积分与连续达成</span>
+        </div>
+        <div class="achievement-grid">
+          <div class="achievement-card bronze"><img src="../../../app/src/main/res/drawable-nodpi/achievement_bronze_points.png" alt="青铜积分成就" /></div>
+          <div class="achievement-card silver"><img src="../../../app/src/main/res/drawable-nodpi/achievement_silver_control_days.png" alt="白银守约成就" /></div>
+          <div class="achievement-card gold"><img src="../../../app/src/main/res/drawable-nodpi/achievement_gold_redeem_points.png" alt="黄金兑换成就" /></div>
+          <div class="achievement-card diamond"><img src="../../../app/src/main/res/drawable-nodpi/achievement_diamond_control_streak.png" alt="钻石连续守约成就" /></div>
+          <div class="achievement-card legendary"><img src="../../../app/src/main/res/drawable-nodpi/achievement_legendary_encourage_days.png" alt="传奇投入成就" /></div>
+          <div class="achievement-card bronze"><img src="../../../app/src/main/res/drawable-nodpi/achievement_bronze_encourage_days.png" alt="青铜投入成就" /></div>
+          <div class="achievement-card silver"><img src="../../../app/src/main/res/drawable-nodpi/achievement_silver_control_streak.png" alt="白银连续守约成就" /></div>
+          <div class="achievement-card gold"><img src="../../../app/src/main/res/drawable-nodpi/achievement_gold_points.png" alt="黄金积分成就" /></div>
+          <div class="achievement-card diamond"><img src="../../../app/src/main/res/drawable-nodpi/achievement_diamond_encourage_streak.png" alt="钻石连续投入成就" /></div>
+          <div class="achievement-card legendary"><img src="../../../app/src/main/res/drawable-nodpi/achievement_legendary_redeem_points.png" alt="传奇兑换成就" /></div>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

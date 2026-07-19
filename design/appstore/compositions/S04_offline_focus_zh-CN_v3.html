@@ -1,0 +1,344 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Tiny Vow S04 · 离线专注 v3</title>
+    <style>
+      * { box-sizing: border-box; }
+
+      html,
+      body {
+        width: 1080px;
+        height: 1920px;
+        margin: 0;
+        overflow: hidden;
+      }
+
+      body {
+        font-family: "Noto Sans SC", "Microsoft YaHei", sans-serif;
+        color: #263a35;
+        background: #f7f3ec;
+      }
+
+      .poster {
+        position: relative;
+        width: 1080px;
+        height: 1920px;
+        overflow: hidden;
+        isolation: isolate;
+        background: #f7f3ec;
+      }
+
+      .background {
+        position: absolute;
+        inset: 0;
+        z-index: -5;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+
+      .focus-rings {
+        position: absolute;
+        z-index: -3;
+        top: 230px;
+        left: 270px;
+        width: 760px;
+        height: 760px;
+        border: 2px solid rgba(125, 174, 224, 0.19);
+        border-radius: 50%;
+        box-shadow:
+          0 0 0 46px rgba(125, 174, 224, 0.032),
+          0 0 0 92px rgba(104, 209, 166, 0.022);
+      }
+
+      .header {
+        position: absolute;
+        z-index: 8;
+        top: 42px;
+        left: 40px;
+        right: 40px;
+        text-align: center;
+      }
+
+      h1 {
+        margin: 0;
+        color: #203b33;
+        font-size: 76px;
+        line-height: 1.08;
+        font-weight: 820;
+        letter-spacing: -4px;
+        white-space: nowrap;
+      }
+
+      .subtitle {
+        margin-top: 17px;
+        color: #667a72;
+        font-size: 34px;
+        line-height: 1.4;
+        font-weight: 600;
+      }
+
+      .stage {
+        position: absolute;
+        top: 294px;
+        height: 1078px;
+        overflow: hidden;
+        border: 1px solid rgba(54, 76, 69, 0.15);
+        border-radius: 44px;
+        background: #f4f8fb;
+        box-shadow:
+          0 42px 88px rgba(58, 76, 68, 0.2),
+          0 12px 30px rgba(58, 76, 68, 0.1),
+          inset 0 1px 0 rgba(255, 255, 255, 0.92);
+      }
+
+      .stage::after,
+      .week-shot-window::after {
+        content: "";
+        position: absolute;
+        z-index: 4;
+        inset: 0;
+        border-radius: inherit;
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.78);
+        pointer-events: none;
+      }
+
+      .running-stage {
+        left: 20px;
+        width: 505px;
+      }
+
+      .daily-stage {
+        left: 555px;
+        width: 505px;
+        background: #f5f9fd;
+      }
+
+      .stage-label {
+        position: absolute;
+        z-index: 7;
+        top: 24px;
+        left: 24px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        min-height: 62px;
+        padding: 14px 20px;
+        border-radius: 22px;
+        font-size: 29px;
+        line-height: 1;
+        font-weight: 810;
+        box-shadow: 0 12px 28px rgba(65, 91, 116, 0.13);
+      }
+
+      .running-stage .stage-label {
+        color: #568ac1;
+        background: rgba(237, 245, 255, 0.97);
+      }
+
+      .daily-stage .stage-label {
+        color: #32976f;
+        background: rgba(234, 249, 242, 0.97);
+      }
+
+      .label-index {
+        display: inline-grid;
+        place-items: center;
+        width: 34px;
+        height: 34px;
+        border-radius: 50%;
+        color: #fff;
+        background: #568ac1;
+        font-size: 21px;
+        line-height: 1;
+        font-weight: 850;
+      }
+
+      .daily-stage .label-index {
+        background: #32976f;
+      }
+
+      .label-index span {
+        color: #fff;
+      }
+
+      .running-shot {
+        position: absolute;
+        top: -75px;
+        left: 0;
+        display: block;
+        width: 505px;
+        height: auto;
+      }
+
+      .daily-shot {
+        position: absolute;
+        top: -387px;
+        left: -72px;
+        display: block;
+        width: 650px;
+        height: auto;
+      }
+
+      .top-mask {
+        position: absolute;
+        z-index: 5;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 87px;
+        background: linear-gradient(180deg, #f4f8fb 75%, rgba(244, 248, 251, 0));
+        pointer-events: none;
+      }
+
+      .daily-stage .top-mask {
+        background: linear-gradient(180deg, #f5f9fd 75%, rgba(245, 249, 253, 0));
+      }
+
+      .flow-arrow {
+        position: absolute;
+        z-index: 9;
+        top: 774px;
+        left: 506px;
+        display: grid;
+        place-items: center;
+        width: 68px;
+        height: 68px;
+        border: 1px solid rgba(52, 136, 104, 0.2);
+        border-radius: 50%;
+        color: #3da379;
+        background: rgba(255, 255, 255, 0.96);
+        box-shadow: 0 14px 30px rgba(55, 73, 65, 0.17);
+        font-size: 40px;
+        line-height: 1;
+        font-weight: 850;
+      }
+
+      .week-result {
+        position: absolute;
+        z-index: 6;
+        top: 1420px;
+        left: 28px;
+        right: 28px;
+        height: 390px;
+        overflow: hidden;
+        border: 1px solid rgba(58, 76, 68, 0.14);
+        border-radius: 40px;
+        background: rgba(255, 255, 255, 0.96);
+        box-shadow:
+          0 26px 58px rgba(55, 73, 65, 0.16),
+          0 8px 20px rgba(55, 73, 65, 0.08),
+          inset 0 1px 0 #fff;
+      }
+
+      .week-copy {
+        position: absolute;
+        z-index: 5;
+        top: 0;
+        left: 0;
+        width: 320px;
+        height: 100%;
+        padding: 42px 24px 34px 36px;
+        background: linear-gradient(90deg, #fff 80%, rgba(255, 255, 255, 0));
+      }
+
+      .week-kicker {
+        color: #568ac1;
+        font-size: 29px;
+        line-height: 1.1;
+        font-weight: 780;
+      }
+
+      .week-title {
+        margin-top: 15px;
+        color: #264239;
+        font-size: 47px;
+        line-height: 1.12;
+        font-weight: 840;
+        letter-spacing: -2px;
+      }
+
+      .week-meta {
+        margin-top: 22px;
+        color: #667a72;
+        font-size: 29px;
+        line-height: 1.35;
+        font-weight: 600;
+      }
+
+      .week-shot-window {
+        position: absolute;
+        top: 28px;
+        left: 310px;
+        right: 26px;
+        height: 334px;
+        overflow: hidden;
+        border: 1px solid rgba(54, 76, 69, 0.11);
+        border-radius: 28px;
+        background: #f4f8fb;
+      }
+
+      .week-shot {
+        position: absolute;
+        top: -1230px;
+        left: -18px;
+        display: block;
+        width: 724px;
+        height: auto;
+      }
+
+      .closing {
+        position: absolute;
+        z-index: 8;
+        top: 1848px;
+        left: 40px;
+        right: 40px;
+        color: #526a61;
+        font-size: 30px;
+        line-height: 1.2;
+        font-weight: 650;
+        text-align: center;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="poster">
+      <img class="background" src="../generated/bg-paper-olive-portrait-v1.png" alt="" />
+      <div class="focus-rings" aria-hidden="true"></div>
+
+      <header class="header">
+        <h1>放下屏幕，专注也被看见</h1>
+        <div class="subtitle">记录专注过程，也收藏每一天真实发生的投入。</div>
+      </header>
+
+      <section class="stage running-stage" aria-label="离线专注进行中真机界面">
+        <img class="running-shot" src="../screenshots/raw/zh-CN/S05_focus_running_zh-CN.png" alt="离线专注进行中" />
+        <div class="top-mask" aria-hidden="true"></div>
+        <div class="stage-label"><span class="label-index"><span>1</span></span><span>开始专注</span></div>
+      </section>
+
+      <div class="flow-arrow" aria-hidden="true">›</div>
+
+      <section class="stage daily-stage" aria-label="日报专注收藏真机界面">
+        <img class="daily-shot" src="../screenshots/raw/zh-CN/S05_focus_daily_collection_zh-CN.jpg" alt="日报专注收藏" />
+        <div class="top-mask" aria-hidden="true"></div>
+        <div class="stage-label"><span class="label-index"><span>2</span></span><span>日报收藏</span></div>
+      </section>
+
+      <section class="week-result" aria-label="周报聚沙成塔真机界面">
+        <div class="week-copy">
+          <div class="week-kicker">持续积累</div>
+          <div class="week-title">一周<br />聚沙成塔</div>
+          <div class="week-meta">一次一颗<br />一天一瓶</div>
+        </div>
+        <div class="week-shot-window">
+          <img class="week-shot" src="../screenshots/raw/zh-CN/S05_focus_pebbles_zh-CN.png" alt="周报聚沙成塔" />
+        </div>
+      </section>
+
+      <div class="closing">固定时长或自由计时 · 普通模式或严格模式</div>
+    </main>
+  </body>
+</html>

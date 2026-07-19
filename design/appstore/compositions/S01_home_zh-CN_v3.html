@@ -1,0 +1,390 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Tiny Vow S01 · Information-rich v3</title>
+    <style>
+      * { box-sizing: border-box; }
+
+      html,
+      body {
+        width: 1080px;
+        height: 1920px;
+        margin: 0;
+        overflow: hidden;
+      }
+
+      body {
+        font-family: "Microsoft YaHei", "Noto Sans CJK SC", "PingFang SC", sans-serif;
+        color: #263a35;
+        background: #f7f3ec;
+      }
+
+      .poster {
+        position: relative;
+        width: 1080px;
+        height: 1920px;
+        overflow: hidden;
+        background: #f7f3ec;
+      }
+
+      .background {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+
+      .poster::after {
+        content: "";
+        position: absolute;
+        z-index: 10;
+        inset: 0;
+        pointer-events: none;
+        box-shadow: inset 0 0 120px rgba(65, 76, 67, 0.05);
+      }
+
+      .header {
+        position: absolute;
+        z-index: 3;
+        left: 70px;
+        right: 70px;
+        top: 48px;
+      }
+
+      .brand {
+        display: flex;
+        align-items: center;
+        gap: 14px;
+        color: #4e675e;
+        font-size: 20px;
+        font-weight: 750;
+        letter-spacing: 2.8px;
+      }
+
+      .brand-icon {
+        width: 44px;
+        height: 44px;
+        border-radius: 14px;
+        box-shadow: 0 7px 20px rgba(44, 70, 60, 0.13);
+      }
+
+      h1 {
+        margin: 22px 0 0;
+        font-size: 72px;
+        line-height: 1.1;
+        font-weight: 780;
+        letter-spacing: -3px;
+        color: #263a35;
+      }
+
+      .subtitle {
+        margin-top: 16px;
+        font-size: 27px;
+        line-height: 1.5;
+        font-weight: 520;
+        color: #667a72;
+      }
+
+      .capabilities {
+        position: absolute;
+        z-index: 4;
+        left: 70px;
+        right: 70px;
+        top: 290px;
+        display: flex;
+        gap: 12px;
+      }
+
+      .chip {
+        display: flex;
+        align-items: center;
+        gap: 9px;
+        height: 48px;
+        padding: 0 20px;
+        border: 1px solid rgba(54, 80, 69, 0.12);
+        border-radius: 24px;
+        background: rgba(255, 255, 255, 0.72);
+        box-shadow: 0 8px 22px rgba(61, 76, 68, 0.07);
+        color: #4f665e;
+        font-size: 19px;
+        font-weight: 680;
+        letter-spacing: 0.5px;
+      }
+
+      .chip-dot {
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+      }
+
+      .chip:nth-child(1) .chip-dot { background: #f27c7f; }
+      .chip:nth-child(2) .chip-dot { background: #68d1a6; }
+      .chip:nth-child(3) .chip-dot { background: #7daee0; }
+      .chip:nth-child(4) .chip-dot { background: #9aab77; }
+
+      .app-window {
+        position: absolute;
+        z-index: 2;
+        left: 90px;
+        top: 362px;
+        width: 900px;
+        height: 900px;
+        overflow: hidden;
+        border: 1px solid rgba(56, 82, 72, 0.14);
+        border-radius: 48px;
+        background: #f4f8fb;
+        box-shadow:
+          0 42px 86px rgba(61, 76, 68, 0.17),
+          0 12px 28px rgba(61, 76, 68, 0.09);
+      }
+
+      .app-window::after {
+        content: "";
+        position: absolute;
+        inset: 0;
+        border-radius: inherit;
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.7);
+        pointer-events: none;
+      }
+
+      .app-shot {
+        position: absolute;
+        left: 0;
+        top: -115px;
+        width: 900px;
+        height: auto;
+        display: block;
+      }
+
+      .explain-title {
+        position: absolute;
+        z-index: 4;
+        left: 70px;
+        top: 1300px;
+        display: flex;
+        align-items: baseline;
+        gap: 16px;
+      }
+
+      .explain-title strong {
+        color: #263a35;
+        font-size: 27px;
+        font-weight: 780;
+      }
+
+      .explain-title span {
+        color: #7d8b85;
+        font-size: 18px;
+        font-weight: 560;
+        letter-spacing: 0.6px;
+      }
+
+      .explain-grid {
+        position: absolute;
+        z-index: 4;
+        left: 62px;
+        right: 62px;
+        top: 1350px;
+        display: grid;
+        grid-template-columns: repeat(3, 1fr);
+        gap: 16px;
+      }
+
+      .explain-card {
+        position: relative;
+        height: 336px;
+        padding: 26px 24px 22px;
+        overflow: hidden;
+        border: 1px solid rgba(61, 79, 72, 0.11);
+        border-radius: 30px;
+        background: rgba(255, 255, 255, 0.86);
+        box-shadow:
+          0 18px 38px rgba(62, 77, 69, 0.1),
+          inset 0 1px 0 rgba(255, 255, 255, 0.95);
+      }
+
+      .explain-card::before {
+        content: "";
+        position: absolute;
+        left: 0;
+        right: 0;
+        top: 0;
+        height: 6px;
+      }
+
+      .explain-card.control::before { background: #f27c7f; }
+      .explain-card.encourage::before { background: #68d1a6; }
+      .explain-card.focus::before { background: #7daee0; }
+
+      .card-head {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+
+      .card-icon {
+        width: 48px;
+        height: 48px;
+        display: grid;
+        place-items: center;
+        border-radius: 16px;
+        font-size: 23px;
+        font-weight: 800;
+      }
+
+      .control .card-icon {
+        color: #d95e63;
+        background: #fff0ef;
+      }
+
+      .encourage .card-icon {
+        color: #38aa7b;
+        background: #eaf9f2;
+      }
+
+      .focus .card-icon {
+        color: #5c91cb;
+        background: #edf5ff;
+      }
+
+      .card-index {
+        color: #a4aea9;
+        font-size: 16px;
+        font-weight: 760;
+        letter-spacing: 1.8px;
+      }
+
+      .explain-card h2 {
+        margin: 20px 0 0;
+        color: #2d433b;
+        font-size: 29px;
+        line-height: 1.2;
+        font-weight: 780;
+      }
+
+      .explain-card p {
+        margin: 13px 0 0;
+        color: #71807a;
+        font-size: 19px;
+        line-height: 1.55;
+        font-weight: 520;
+      }
+
+      .card-meta {
+        position: absolute;
+        left: 24px;
+        right: 24px;
+        bottom: 24px;
+        min-height: 38px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0 12px;
+        border-radius: 14px;
+        color: #63736c;
+        background: rgba(240, 244, 241, 0.9);
+        font-size: 15px;
+        font-weight: 700;
+        letter-spacing: 0.3px;
+        white-space: nowrap;
+      }
+
+      .control .card-meta { background: #fff2f1; color: #b85a5d; }
+      .encourage .card-meta { background: #edf9f3; color: #348c69; }
+      .focus .card-meta { background: #edf5fd; color: #517fab; }
+
+      .footer {
+        position: absolute;
+        z-index: 4;
+        left: 70px;
+        right: 70px;
+        bottom: 46px;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        color: #71807a;
+        font-size: 18px;
+        font-weight: 650;
+        letter-spacing: 1.2px;
+      }
+
+      .footer-tagline {
+        color: #4f665e;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="poster">
+      <img class="background" src="../generated/bg-paper-olive-portrait-v1.png" alt="" />
+
+      <header class="header">
+        <div class="brand">
+          <img class="brand-icon" src="../../app-icon-tiny-vow-preview.png" alt="" />
+          <span>TINY VOW · 小约定</span>
+        </div>
+        <h1>和手机好好相处</h1>
+        <div class="subtitle">不是简单锁住手机，而是同时管理约定、投入与专注。</div>
+      </header>
+
+      <div class="capabilities" aria-label="核心能力">
+        <div class="chip"><span class="chip-dot"></span>温和限额</div>
+        <div class="chip"><span class="chip-dot"></span>正向积分</div>
+        <div class="chip"><span class="chip-dot"></span>离线专注</div>
+        <div class="chip"><span class="chip-dot"></span>本地记录</div>
+      </div>
+
+      <section class="app-window" aria-label="Tiny Vow 首页真实界面">
+        <img
+          class="app-shot"
+          src="../screenshots/raw/zh-CN/S01_home_overview_zh-CN.png"
+          alt="Tiny Vow 首页今日总览"
+        />
+      </section>
+
+      <div class="explain-title">
+        <strong>三种方式，一起改变使用习惯</strong>
+        <span>不是只有“少用”</span>
+      </div>
+
+      <section class="explain-grid" aria-label="功能说明">
+        <article class="explain-card control">
+          <div class="card-head">
+            <span class="card-icon">限</span>
+            <span class="card-index">01</span>
+          </div>
+          <h2>约定</h2>
+          <p>给容易刷久的 App 设置日、周或月限额，到点温和提醒。</p>
+          <div class="card-meta">日限额 · 周限额 · 月限额</div>
+        </article>
+
+        <article class="explain-card encourage">
+          <div class="card-head">
+            <span class="card-icon">+</span>
+            <span class="card-index">02</span>
+          </div>
+          <h2>投入</h2>
+          <p>阅读、学习和运动都能积累 PT，让每一次投入有回声。</p>
+          <div class="card-meta">使用时长 · 步数 · PT</div>
+        </article>
+
+        <article class="explain-card focus">
+          <div class="card-head">
+            <span class="card-icon">时</span>
+            <span class="card-index">03</span>
+          </div>
+          <h2>专注</h2>
+          <p>固定时长或自由计时，把屏幕外的努力也认真记录下来。</p>
+          <div class="card-meta">固定计时 · 自由计时</div>
+        </article>
+      </section>
+
+      <footer class="footer">
+        <span class="footer-tagline">少一点无意识，多一点真正投入</span>
+        <span>揉揉喽出品 · BY ROROLO</span>
+      </footer>
+    </main>
+  </body>
+</html>

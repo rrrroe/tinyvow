@@ -1,0 +1,400 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Tiny Vow S06 · 奖励与成就 v1</title>
+    <style>
+      * { box-sizing: border-box; }
+      html, body { width: 1080px; height: 1920px; margin: 0; overflow: hidden; }
+
+      body {
+        font-family: "Noto Sans SC", "Microsoft YaHei", sans-serif;
+        color: #263a35;
+        background: #f7f3ec;
+      }
+
+      .poster {
+        position: relative;
+        width: 1080px;
+        height: 1920px;
+        overflow: hidden;
+        isolation: isolate;
+        background: #f7f3ec;
+      }
+
+      .background {
+        position: absolute;
+        inset: 0;
+        z-index: -8;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+
+      .header {
+        position: absolute;
+        z-index: 20;
+        top: 46px;
+        left: 34px;
+        right: 34px;
+        text-align: center;
+      }
+
+      h1 {
+        margin: 0;
+        color: #203b33;
+        font-size: 72px;
+        line-height: 1.1;
+        font-weight: 830;
+        letter-spacing: -3px;
+        white-space: nowrap;
+      }
+
+      .subtitle {
+        margin-top: 18px;
+        color: #667a72;
+        font-size: 33px;
+        line-height: 1.42;
+        font-weight: 600;
+      }
+
+      .glow {
+        position: absolute;
+        z-index: -4;
+        border-radius: 50%;
+        filter: blur(6px);
+      }
+
+      .glow-mint {
+        top: 250px;
+        left: 250px;
+        width: 580px;
+        height: 580px;
+        background: radial-gradient(circle, rgba(102, 211, 169, 0.20), rgba(102, 211, 169, 0) 70%);
+      }
+
+      .glow-gold {
+        top: 1020px;
+        left: 110px;
+        width: 860px;
+        height: 760px;
+        background: radial-gradient(circle, rgba(243, 185, 75, 0.17), rgba(243, 185, 75, 0) 72%);
+      }
+
+      .trail {
+        position: absolute;
+        z-index: -2;
+        top: 470px;
+        left: 537px;
+        width: 6px;
+        height: 1050px;
+        border-radius: 99px;
+        background: linear-gradient(
+          to bottom,
+          rgba(93, 199, 161, 0),
+          rgba(93, 199, 161, 0.64) 18%,
+          rgba(116, 173, 230, 0.55) 56%,
+          rgba(235, 172, 56, 0.62) 84%,
+          rgba(235, 172, 56, 0)
+        );
+      }
+
+      .trail-dot {
+        position: absolute;
+        z-index: -1;
+        border-radius: 50%;
+        background: #fff;
+        box-shadow: 0 8px 18px rgba(72, 99, 88, 0.18);
+      }
+
+      .dot-1 { top: 750px; left: 526px; width: 28px; height: 28px; border: 7px solid #76d4b2; }
+      .dot-2 { top: 1120px; left: 527px; width: 26px; height: 26px; border: 7px solid #7fb0e1; }
+      .dot-3 { top: 1470px; left: 526px; width: 28px; height: 28px; border: 7px solid #efbd54; }
+
+      .stage-label {
+        position: absolute;
+        z-index: 12;
+        color: #38554b;
+        font-size: 37px;
+        line-height: 1;
+        font-weight: 780;
+        letter-spacing: -1px;
+      }
+
+      .points-label { top: 287px; left: 0; right: 0; text-align: center; }
+      .rewards-label { top: 760px; left: 74px; }
+      .achievements-label { top: 1280px; right: 70px; }
+
+      .points-core {
+        position: absolute;
+        z-index: 10;
+        top: 340px;
+        left: 347px;
+        width: 386px;
+        height: 386px;
+        border-radius: 50%;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        color: #28584a;
+        background:
+          radial-gradient(circle at 35% 28%, rgba(255,255,255,0.98), rgba(238,252,246,0.96) 38%, rgba(184,236,215,0.94) 100%);
+        border: 3px solid rgba(74, 178, 139, 0.30);
+        box-shadow:
+          0 42px 90px rgba(52, 114, 91, 0.20),
+          0 14px 30px rgba(52, 114, 91, 0.10),
+          inset 0 0 0 16px rgba(255,255,255,0.48);
+      }
+
+      .points-core::before,
+      .points-core::after {
+        content: "";
+        position: absolute;
+        border-radius: 50%;
+        border: 2px solid rgba(100, 203, 164, 0.25);
+      }
+
+      .points-core::before { inset: -34px; }
+      .points-core::after { inset: -70px; border-color: rgba(100, 203, 164, 0.12); }
+
+      .points-number {
+        font-size: 112px;
+        line-height: 0.95;
+        font-weight: 860;
+        letter-spacing: -6px;
+      }
+
+      .points-unit {
+        margin-top: 20px;
+        padding: 10px 27px 12px;
+        border-radius: 999px;
+        color: #fff;
+        background: #56bd97;
+        font-size: 34px;
+        line-height: 1;
+        font-weight: 760;
+        box-shadow: 0 10px 22px rgba(52, 147, 112, 0.22);
+      }
+
+      .spark {
+        position: absolute;
+        z-index: 11;
+        color: #f3b83f;
+        font-weight: 900;
+        text-shadow: 0 6px 16px rgba(224, 157, 34, 0.20);
+      }
+
+      .spark-a { top: 390px; left: 270px; font-size: 54px; transform: rotate(-18deg); }
+      .spark-b { top: 585px; right: 256px; font-size: 38px; transform: rotate(14deg); }
+      .spark-c { top: 330px; right: 310px; font-size: 30px; }
+
+      .reward-cluster {
+        position: absolute;
+        z-index: 8;
+        top: 800px;
+        left: 40px;
+        width: 1000px;
+        height: 470px;
+      }
+
+      .reward-cluster::before {
+        content: "";
+        position: absolute;
+        z-index: -2;
+        top: 18px;
+        left: 38px;
+        width: 924px;
+        height: 392px;
+        border-radius: 50%;
+        background: linear-gradient(115deg, rgba(94, 183, 231, 0.15), rgba(255, 190, 74, 0.17) 52%, rgba(109, 212, 172, 0.16));
+        filter: blur(18px);
+      }
+
+      .icon-card {
+        position: absolute;
+        width: 260px;
+        height: 294px;
+        padding: 28px 28px 20px;
+        border-radius: 40px;
+        background: linear-gradient(145deg, rgba(255,255,255,0.98), rgba(245,250,248,0.90));
+        border: 1px solid rgba(75, 94, 86, 0.11);
+        box-shadow: 0 26px 54px rgba(57, 78, 69, 0.16), 0 8px 18px rgba(57, 78, 69, 0.07);
+        text-align: center;
+      }
+
+      .icon-card img {
+        display: block;
+        width: 198px;
+        height: 198px;
+        margin: 0 auto;
+        object-fit: contain;
+        border-radius: 38px;
+      }
+
+      .icon-card span {
+        display: block;
+        margin-top: 16px;
+        color: #415b52;
+        font-size: 32px;
+        line-height: 1;
+        font-weight: 750;
+      }
+
+      .icon-card.small {
+        z-index: 1;
+        width: 174px;
+        height: 174px;
+        padding: 20px;
+        border-radius: 34px;
+        box-shadow: 0 18px 40px rgba(57, 78, 69, 0.13), 0 5px 14px rgba(57, 78, 69, 0.06);
+      }
+
+      .icon-card.small img {
+        width: 134px;
+        height: 134px;
+        border-radius: 28px;
+      }
+
+      .tone-sky { background: linear-gradient(145deg, #ffffff, #eaf6ff); }
+      .tone-mint { background: linear-gradient(145deg, #ffffff, #e9fbf4); }
+      .tone-gold { background: linear-gradient(145deg, #ffffff, #fff3d8); }
+      .tone-peach { background: linear-gradient(145deg, #ffffff, #fff0e8); }
+
+      .reward-small-a { top: 16px; left: 20px; transform: rotate(-7deg); }
+      .reward-small-b { top: -6px; left: 270px; transform: rotate(-2deg); }
+      .reward-small-c { top: -5px; right: 270px; transform: rotate(2deg); }
+      .reward-small-d { top: 18px; right: 18px; transform: rotate(7deg); }
+      .reward-a { z-index: 4; top: 160px; left: 31px; transform: rotate(-5deg); }
+      .reward-b { z-index: 5; top: 135px; left: 370px; transform: rotate(0deg); }
+      .reward-c { z-index: 4; top: 160px; right: 31px; transform: rotate(5deg); }
+
+      .achievement-cluster {
+        position: absolute;
+        z-index: 9;
+        top: 1322px;
+        left: 28px;
+        width: 1024px;
+        height: 560px;
+      }
+
+      .achievement-cluster::before {
+        content: "";
+        position: absolute;
+        z-index: -3;
+        left: 44px;
+        right: 44px;
+        top: 32px;
+        bottom: 18px;
+        border-radius: 50%;
+        background: radial-gradient(ellipse at center, rgba(116, 169, 231, 0.14), rgba(234, 176, 61, 0.12) 45%, rgba(119, 205, 170, 0.05) 68%, rgba(255,255,255,0) 75%);
+      }
+
+      .badge {
+        position: absolute;
+        display: block;
+        object-fit: contain;
+        filter: drop-shadow(0 24px 26px rgba(50, 60, 58, 0.20));
+      }
+
+      .badge-mini {
+        z-index: 1;
+        width: 160px;
+        height: 160px;
+        opacity: 0.93;
+        filter: drop-shadow(0 16px 20px rgba(50, 60, 58, 0.16));
+      }
+
+      .badge-mini-a { left: 75px; top: 40px; transform: rotate(-9deg); }
+      .badge-mini-b { left: 276px; top: 2px; transform: rotate(-4deg); }
+      .badge-mini-c { right: 278px; top: 0; transform: rotate(4deg); }
+      .badge-mini-d { right: 72px; top: 42px; transform: rotate(9deg); }
+
+      .badge-bronze { z-index: 3; left: 0; bottom: 28px; width: 208px; height: 208px; transform: rotate(-7deg); }
+      .badge-gold { z-index: 4; left: 220px; bottom: 48px; width: 235px; height: 235px; transform: rotate(-3deg); }
+      .badge-diamond { z-index: 5; left: 462px; bottom: 65px; width: 275px; height: 275px; transform: rotate(2deg); }
+      .badge-legendary { z-index: 6; right: -2px; bottom: 88px; width: 314px; height: 314px; transform: rotate(5deg); }
+
+      .tier-line {
+        position: absolute;
+        z-index: -1;
+        left: 65px;
+        right: 68px;
+        bottom: 110px;
+        height: 118px;
+        border-bottom: 6px solid rgba(225, 164, 47, 0.36);
+        transform: rotate(-4.5deg);
+        border-radius: 0 0 50% 50%;
+      }
+
+    </style>
+  </head>
+  <body>
+    <main class="poster">
+      <img class="background" src="../generated/bg-paper-olive-portrait-v1.png" alt="" />
+      <div class="glow glow-mint"></div>
+      <div class="glow glow-gold"></div>
+      <div class="trail"></div>
+      <div class="trail-dot dot-1"></div>
+      <div class="trail-dot dot-2"></div>
+      <div class="trail-dot dot-3"></div>
+
+      <header class="header">
+        <h1>让每一点改变，都有回声</h1>
+        <div class="subtitle">获得积分、兑换奖励，也解锁属于你的成就。</div>
+      </header>
+
+      <div class="stage-label points-label">获得积分</div>
+      <section class="points-core" aria-label="获得 190 积分">
+        <div class="points-number">+190</div>
+        <div class="points-unit">积分</div>
+      </section>
+      <div class="spark spark-a">✦</div>
+      <div class="spark spark-b">✦</div>
+      <div class="spark spark-c">✦</div>
+
+      <div class="stage-label rewards-label">兑换奖励</div>
+      <section class="reward-cluster" aria-label="奖励图标">
+        <div class="icon-card small tone-peach reward-small-a">
+          <img src="../../../app/src/main/res/drawable-nodpi/reward_preset_02.png" alt="休息奖励" />
+        </div>
+        <div class="icon-card small tone-mint reward-small-b">
+          <img src="../../../app/src/main/res/drawable-nodpi/reward_preset_05.png" alt="临时解锁" />
+        </div>
+        <div class="icon-card small tone-peach reward-small-c">
+          <img src="../../../app/src/main/res/drawable-nodpi/reward_preset_10.png" alt="自定义奖励" />
+        </div>
+        <div class="icon-card small tone-sky reward-small-d">
+          <img src="../../../app/src/main/res/drawable-nodpi/reward_preset_04.png" alt="周期奖励" />
+        </div>
+        <div class="icon-card tone-sky reward-a">
+          <img src="../../../app/src/main/res/drawable-nodpi/reward_preset_01.png" alt="加时奖励" />
+          <span>加时奖励</span>
+        </div>
+        <div class="icon-card tone-gold reward-b">
+          <img src="../../../app/src/main/res/drawable-nodpi/reward_preset_08.png" alt="连胜保护" />
+          <span>连胜保护</span>
+        </div>
+        <div class="icon-card tone-peach reward-c">
+          <img src="../../../app/src/main/res/drawable-nodpi/reward_preset_09.png" alt="双倍积分" />
+          <span>双倍积分</span>
+        </div>
+      </section>
+
+      <div class="stage-label achievements-label">解锁成就</div>
+      <section class="achievement-cluster" aria-label="逐级解锁成就">
+        <div class="tier-line"></div>
+        <img class="badge badge-mini badge-mini-a" src="../../../app/src/main/res/drawable-nodpi/achievement_silver_control_days.png" alt="白银成就" />
+        <img class="badge badge-mini badge-mini-b" src="../../../app/src/main/res/drawable-nodpi/achievement_gold_points.png" alt="黄金积分成就" />
+        <img class="badge badge-mini badge-mini-c" src="../../../app/src/main/res/drawable-nodpi/achievement_diamond_encourage_streak.png" alt="钻石投入成就" />
+        <img class="badge badge-mini badge-mini-d" src="../../../app/src/main/res/drawable-nodpi/achievement_legendary_control_streak.png" alt="传奇守约成就" />
+        <img class="badge badge-bronze" src="../../../app/src/main/res/drawable-nodpi/achievement_bronze_points.png" alt="青铜成就" />
+        <img class="badge badge-gold" src="../../../app/src/main/res/drawable-nodpi/achievement_gold_redeem_points.png" alt="黄金成就" />
+        <img class="badge badge-diamond" src="../../../app/src/main/res/drawable-nodpi/achievement_diamond_control_streak.png" alt="钻石成就" />
+        <img class="badge badge-legendary" src="../../../app/src/main/res/drawable-nodpi/achievement_legendary_encourage_days.png" alt="传奇成就" />
+      </section>
+
+    </main>
+  </body>
+</html>

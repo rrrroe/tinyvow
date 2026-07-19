@@ -1,0 +1,298 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Tiny Vow S05 · 手机使用追踪 v2</title>
+    <style>
+      * { box-sizing: border-box; }
+      html, body { width: 1080px; height: 1920px; margin: 0; overflow: hidden; }
+
+      body {
+        font-family: "Noto Sans SC", "Microsoft YaHei", sans-serif;
+        color: #263a35;
+        background: #f7f3ec;
+      }
+
+      .poster {
+        position: relative;
+        width: 1080px;
+        height: 1920px;
+        overflow: hidden;
+        isolation: isolate;
+        background: #f7f3ec;
+      }
+
+      .background {
+        position: absolute;
+        inset: 0;
+        z-index: -5;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+
+      .data-orbit {
+        position: absolute;
+        z-index: -3;
+        top: 220px;
+        left: 185px;
+        width: 870px;
+        height: 870px;
+        border: 2px solid rgba(125, 174, 224, 0.19);
+        border-radius: 50%;
+        box-shadow:
+          0 0 0 50px rgba(125, 174, 224, 0.032),
+          0 0 0 100px rgba(104, 209, 166, 0.022);
+      }
+
+      .header {
+        position: absolute;
+        z-index: 20;
+        top: 40px;
+        left: 34px;
+        right: 34px;
+        text-align: center;
+      }
+
+      h1 {
+        margin: 0;
+        color: #203b33;
+        font-size: 74px;
+        line-height: 1.08;
+        font-weight: 830;
+        letter-spacing: -4px;
+        white-space: nowrap;
+      }
+
+      .subtitle {
+        margin-top: 17px;
+        color: #667a72;
+        font-size: 33px;
+        line-height: 1.42;
+        font-weight: 600;
+      }
+
+      .report-card {
+        position: absolute;
+        overflow: hidden;
+        border: 1px solid rgba(54, 76, 69, 0.16);
+        border-radius: 40px;
+        background: #f4f8fb;
+        box-shadow:
+          0 35px 76px rgba(55, 73, 65, 0.22),
+          0 11px 26px rgba(55, 73, 65, 0.11),
+          inset 0 1px 0 rgba(255, 255, 255, 0.96);
+        transform-origin: center center;
+      }
+
+      .report-card::after {
+        content: "";
+        position: absolute;
+        z-index: 6;
+        inset: 0;
+        border-radius: inherit;
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.82);
+        pointer-events: none;
+      }
+
+      .report-label {
+        position: absolute;
+        z-index: 10;
+        top: 18px;
+        left: 18px;
+        display: inline-flex;
+        align-items: center;
+        min-height: 58px;
+        padding: 13px 19px;
+        border-radius: 21px;
+        color: #34584d;
+        background: rgba(255, 255, 255, 0.96);
+        box-shadow: 0 12px 26px rgba(55, 73, 65, 0.14);
+        font-size: 28px;
+        line-height: 1;
+        font-weight: 840;
+      }
+
+      .key-card {
+        z-index: 2;
+        top: 298px;
+        left: 22px;
+        width: 600px;
+        height: 585px;
+        transform: rotate(-2.2deg);
+      }
+
+      .scatter-card {
+        z-index: 6;
+        top: 330px;
+        left: 475px;
+        width: 585px;
+        height: 540px;
+        transform: rotate(2.2deg);
+      }
+
+      .points-card {
+        z-index: 5;
+        top: 826px;
+        left: 30px;
+        width: 600px;
+        height: 500px;
+        transform: rotate(-1.8deg);
+      }
+
+      .heat-card {
+        z-index: 8;
+        top: 838px;
+        left: 460px;
+        width: 600px;
+        height: 510px;
+        transform: rotate(2deg);
+      }
+
+      .behavior-card {
+        z-index: 12;
+        top: 1286px;
+        left: 120px;
+        width: 840px;
+        height: 390px;
+        transform: rotate(-0.8deg);
+      }
+
+      .key-shot,
+      .scatter-shot,
+      .points-shot,
+      .heat-shot,
+      .behavior-shot {
+        position: absolute;
+        display: block;
+        height: auto;
+      }
+
+      .key-shot {
+        top: -143px;
+        left: 0;
+        width: 600px;
+      }
+
+      .scatter-shot {
+        top: -630px;
+        left: -7px;
+        width: 598px;
+      }
+
+      .points-shot {
+        top: -124px;
+        left: 0;
+        width: 600px;
+      }
+
+      .heat-shot {
+        top: -497px;
+        left: 0;
+        width: 600px;
+      }
+
+      .behavior-shot {
+        top: -745px;
+        left: 0;
+        width: 840px;
+      }
+
+      .summary-card {
+        position: absolute;
+        z-index: 16;
+        top: 1705px;
+        left: 28px;
+        right: 28px;
+        height: 170px;
+        display: grid;
+        grid-template-columns: 310px 1fr;
+        align-items: center;
+        overflow: hidden;
+        border: 1px solid rgba(58, 76, 68, 0.14);
+        border-radius: 40px;
+        background: rgba(255, 255, 255, 0.97);
+        box-shadow:
+          0 26px 58px rgba(55, 73, 65, 0.18),
+          0 8px 20px rgba(55, 73, 65, 0.08),
+          inset 0 1px 0 #fff;
+      }
+
+      .summary-title {
+        padding-left: 36px;
+        color: #264239;
+        font-size: 46px;
+        line-height: 1.05;
+        font-weight: 860;
+        letter-spacing: -2px;
+      }
+
+      .summary-copy {
+        padding: 0 28px 0 10px;
+        border-left: 2px solid rgba(86, 138, 193, 0.17);
+      }
+
+      .summary-copy strong {
+        display: block;
+        color: #568ac1;
+        font-size: 31px;
+        line-height: 1.2;
+        font-weight: 820;
+      }
+
+      .summary-copy span {
+        display: block;
+        margin-top: 13px;
+        color: #667a72;
+        font-size: 27px;
+        line-height: 1.3;
+        font-weight: 620;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="poster">
+      <img class="background" src="../generated/bg-paper-olive-portrait-v1.png" alt="" />
+      <div class="data-orbit" aria-hidden="true"></div>
+
+      <header class="header">
+        <h1>手机怎么用，每天都有迹可循</h1>
+        <div class="subtitle">从当天结构到一周积分，用不同报表看清真实使用。</div>
+      </header>
+
+      <section class="report-card key-card" aria-label="日报关键数据">
+        <img class="key-shot" src="../screenshots/raw/zh-CN/S06_daily_report_zh-CN.png" alt="日报关键数据" />
+        <div class="report-label">关键数据</div>
+      </section>
+
+      <section class="report-card scatter-card" aria-label="日报行为散点">
+        <img class="scatter-shot" src="../screenshots/raw/zh-CN/S06_daily_behavior_map_zh-CN.png" alt="日报行为散点" />
+        <div class="report-label">日报 · 行为散点</div>
+      </section>
+
+      <section class="report-card points-card" aria-label="周报积分轨迹">
+        <img class="points-shot" src="../screenshots/raw/zh-CN/S06_weekly_points_trajectory_zh-CN.png" alt="周报积分轨迹" />
+        <div class="report-label">周报 · 积分轨迹</div>
+      </section>
+
+      <section class="report-card heat-card" aria-label="日报时段热力">
+        <img class="heat-shot" src="../screenshots/raw/zh-CN/S06_daily_time_heatmap_zh-CN.png" alt="日报时段热力" />
+        <div class="report-label">日报 · 时段热力</div>
+      </section>
+
+      <section class="report-card behavior-card" aria-label="日报行为图谱，不包含九宫格">
+        <img class="behavior-shot" src="../screenshots/raw/zh-CN/S06_daily_behavior_map_zh-CN.png" alt="日报行为图谱" />
+        <div class="report-label">行为图谱 · 不只看时长</div>
+      </section>
+
+      <section class="summary-card" aria-label="丰富报表总结">
+        <div class="summary-title">丰富<br />报表</div>
+        <div class="summary-copy">
+          <strong>结构、散点、积分、热力与行为图谱</strong>
+          <span>从一次使用，到一天与一周的变化，都有对应视角。</span>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

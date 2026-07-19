@@ -1,0 +1,357 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Tiny Vow S02 · Limits and effort v2</title>
+    <style>
+      * { box-sizing: border-box; }
+
+      html,
+      body {
+        width: 1080px;
+        height: 1920px;
+        margin: 0;
+        overflow: hidden;
+      }
+
+      body {
+        font-family: "Noto Sans SC", "Microsoft YaHei", sans-serif;
+        color: #263a35;
+        background: #f7f3ec;
+      }
+
+      .poster {
+        position: relative;
+        width: 1080px;
+        height: 1920px;
+        overflow: hidden;
+        isolation: isolate;
+        background: #f7f3ec;
+      }
+
+      .background {
+        position: absolute;
+        inset: 0;
+        z-index: -4;
+        width: 100%;
+        height: 100%;
+        object-fit: cover;
+      }
+
+      .header {
+        position: absolute;
+        z-index: 5;
+        top: 42px;
+        left: 44px;
+        right: 44px;
+        text-align: center;
+      }
+
+      h1 {
+        margin: 0;
+        color: #203b33;
+        font-size: 70px;
+        line-height: 1.08;
+        font-weight: 800;
+        letter-spacing: -4px;
+        white-space: normal;
+      }
+
+      .subtitle {
+        margin-top: 17px;
+        color: #667a72;
+        font-size: 35px;
+        line-height: 1.4;
+        font-weight: 580;
+        letter-spacing: 0.1px;
+      }
+
+      .ui-grid {
+        position: absolute;
+        z-index: 1;
+        top: 286px;
+        left: 20px;
+        right: 20px;
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 20px;
+      }
+
+      .ui-window {
+        position: relative;
+        height: 720px;
+        overflow: hidden;
+        border: 1px solid rgba(54, 76, 69, 0.15);
+        border-radius: 44px;
+        background: #f4f8fb;
+        box-shadow:
+          0 34px 72px rgba(58, 76, 68, 0.2),
+          0 10px 25px rgba(58, 76, 68, 0.11),
+          inset 0 1px 0 rgba(255, 255, 255, 0.9);
+      }
+
+      .ui-window::before {
+        content: "";
+        position: absolute;
+        z-index: 3;
+        top: 30px;
+        left: 0;
+        width: 10px;
+        height: 116px;
+        border-radius: 0 999px 999px 0;
+      }
+
+      .ui-window.control::before { background: #f27c7f; }
+      .ui-window.encourage::before { background: #68d1a6; }
+
+      .ui-window::after {
+        content: "";
+        position: absolute;
+        z-index: 2;
+        inset: 0;
+        border-radius: inherit;
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.72);
+        pointer-events: none;
+      }
+
+      .home-shot {
+        position: absolute;
+        top: -1502px;
+        display: block;
+        width: 1134px;
+        height: auto;
+      }
+
+      .control .home-shot { left: -42px; }
+      .encourage .home-shot { left: -583px; }
+
+      .mechanism-grid {
+        position: absolute;
+        z-index: 4;
+        top: 1035px;
+        left: 20px;
+        right: 20px;
+        display: grid;
+        grid-template-columns: repeat(2, 1fr);
+        gap: 20px;
+      }
+
+      .mechanism-card {
+        position: relative;
+        height: 454px;
+        padding: 32px 30px 28px;
+        overflow: hidden;
+        border: 1px solid rgba(58, 76, 68, 0.13);
+        border-radius: 38px;
+        background: rgba(255, 255, 255, 0.95);
+        box-shadow:
+          0 24px 55px rgba(55, 73, 65, 0.16),
+          0 8px 18px rgba(55, 73, 65, 0.08),
+          inset 0 1px 0 rgba(255, 255, 255, 1);
+        backdrop-filter: blur(18px);
+      }
+
+      .mechanism-card::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        height: 10px;
+      }
+
+      .mechanism-card.control::before { background: #f27c7f; }
+      .mechanism-card.encourage::before { background: #68d1a6; }
+
+      .mechanism-title {
+        display: flex;
+        align-items: center;
+        gap: 11px;
+        margin-bottom: 20px;
+        color: #284239;
+        font-size: 34px;
+        line-height: 1.1;
+        font-weight: 820;
+        letter-spacing: -1px;
+      }
+
+      .mechanism-title .badge {
+        display: inline-grid;
+        place-items: center;
+        min-width: 92px;
+        height: 62px;
+        padding: 0 16px;
+        border-radius: 20px;
+        font-size: 28px;
+        font-weight: 820;
+      }
+
+      .control .badge { color: #cf5b5f; background: #fff0ef; }
+      .encourage .badge { color: #32976f; background: #eaf9f2; }
+
+      .mechanism-row {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        align-items: center;
+        min-height: 96px;
+        border-top: 1px solid rgba(64, 84, 76, 0.1);
+      }
+
+      .mechanism-label {
+        color: #687a73;
+        font-size: 29px;
+        line-height: 1.2;
+        font-weight: 620;
+      }
+
+      .mechanism-value {
+        color: #2d463d;
+        font-size: 31px;
+        line-height: 1.2;
+        font-weight: 790;
+        text-align: right;
+        white-space: nowrap;
+      }
+
+      .control .mechanism-value { color: #ce5b60; }
+      .encourage .mechanism-value { color: #2f946c; }
+
+      .result-band {
+        position: absolute;
+        z-index: 5;
+        left: 20px;
+        right: 20px;
+        top: 1520px;
+        height: 264px;
+        display: grid;
+        grid-template-columns: 1fr 92px 1fr;
+        align-items: stretch;
+        overflow: hidden;
+        border: 1px solid rgba(55, 74, 66, 0.13);
+        border-radius: 42px;
+        background: rgba(255, 255, 255, 0.94);
+        box-shadow:
+          0 28px 62px rgba(54, 73, 64, 0.18),
+          0 8px 20px rgba(54, 73, 64, 0.09),
+          inset 0 1px 0 rgba(255, 255, 255, 1);
+      }
+
+      .result-side {
+        display: flex;
+        flex-direction: column;
+        justify-content: center;
+        padding: 26px 34px;
+      }
+
+      .result-side.control {
+        align-items: flex-start;
+        background: linear-gradient(90deg, rgba(255, 238, 237, 0.95), rgba(255, 255, 255, 0));
+      }
+
+      .result-side.encourage {
+        align-items: flex-end;
+        text-align: right;
+        background: linear-gradient(270deg, rgba(233, 249, 241, 0.96), rgba(255, 255, 255, 0));
+      }
+
+      .result-kicker {
+        font-size: 29px;
+        line-height: 1.15;
+        font-weight: 720;
+      }
+
+      .result-side.control .result-kicker { color: #c75a5e; }
+      .result-side.encourage .result-kicker { color: #32936c; }
+
+      .result-main {
+        margin-top: 17px;
+        color: #284239;
+        font-size: 37px;
+        line-height: 1.2;
+        font-weight: 820;
+        letter-spacing: -1px;
+        white-space: nowrap;
+      }
+
+      .balance {
+        position: relative;
+        display: grid;
+        place-items: center;
+      }
+
+      .balance::before {
+        content: "";
+        position: absolute;
+        top: 40px;
+        bottom: 40px;
+        left: 50%;
+        width: 1px;
+        background: rgba(61, 81, 72, 0.14);
+      }
+
+      .balance-mark {
+        position: relative;
+        z-index: 1;
+        display: grid;
+        place-items: center;
+        width: 66px;
+        height: 66px;
+        border-radius: 50%;
+        color: #4d6960;
+        background: #fff;
+        box-shadow: 0 8px 22px rgba(55, 73, 65, 0.15);
+        font-size: 38px;
+        line-height: 1;
+        font-weight: 760;
+      }
+    </style>
+  </head>
+  <body>
+    <main class="poster">
+      <img class="background" src="../generated/bg-paper-olive-portrait-v1.png" alt="" />
+
+      <header class="header">
+        <h1>Limit distractions.<br />Reward what matters.</h1>
+        <div class="subtitle">Share limits across apps and earn points for meaningful use.</div>
+      </header>
+
+      <section class="ui-grid" aria-label="Vow and focus groups on the home screen">
+        <div class="ui-window control">
+          <img class="home-shot" src="../screenshots/edited/en/S01_home_overview_en_localized.png" alt="Vow groups" />
+        </div>
+        <div class="ui-window encourage">
+          <img class="home-shot" src="../screenshots/edited/en/S01_home_overview_en_localized.png" alt="Focus groups" />
+        </div>
+      </section>
+
+      <section class="mechanism-grid" aria-label="How vows and effort work">
+        <article class="mechanism-card control">
+          <div class="mechanism-title"><span class="badge">Vow</span><span>Reduce distractions</span></div>
+          <div class="mechanism-row"><span class="mechanism-label">Apps</span><span class="mechanism-value">One shared group</span></div>
+          <div class="mechanism-row"><span class="mechanism-label">Usage</span><span class="mechanism-value">Counted together</span></div>
+          <div class="mechanism-row"><span class="mechanism-label">Period</span><span class="mechanism-value">Day · Week · Month</span></div>
+        </article>
+
+        <article class="mechanism-card encourage">
+          <div class="mechanism-title"><span class="badge">Effort</span><span>Build momentum</span></div>
+          <div class="mechanism-row"><span class="mechanism-label">Purpose</span><span class="mechanism-value">Read · Learn</span></div>
+          <div class="mechanism-row"><span class="mechanism-label">Time</span><span class="mechanism-value">Keep earning points</span></div>
+          <div class="mechanism-row"><span class="mechanism-label">Goal</span><span class="mechanism-value">Unlock a bonus</span></div>
+        </article>
+      </section>
+
+      <section class="result-band" aria-label="Less distraction and more meaningful effort">
+        <div class="result-side control">
+          <div class="result-kicker">Less</div>
+          <div class="result-main">Mindless scrolling</div>
+        </div>
+        <div class="balance"><span class="balance-mark">↔</span></div>
+        <div class="result-side encourage">
+          <div class="result-kicker">More</div>
+          <div class="result-main">Meaningful effort</div>
+        </div>
+      </section>
+    </main>
+  </body>
+</html>

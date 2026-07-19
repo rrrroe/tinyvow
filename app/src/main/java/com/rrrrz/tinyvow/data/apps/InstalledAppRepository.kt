@@ -3,15 +3,24 @@ package com.rrrrz.tinyvow.data.apps
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.app.usage.UsageStatsManager
 import android.os.Build
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.util.Calendar
+import java.util.Locale
 
 class InstalledAppRepository(
     private val context: Context,
 ) {
+    private val chinesePackageManager: PackageManager by lazy {
+        localizedPackageManager(Locale.SIMPLIFIED_CHINESE)
+    }
+    private val englishPackageManager: PackageManager by lazy {
+        localizedPackageManager(Locale.ENGLISH)
+    }
+
     suspend fun getLaunchableApps(): List<ManagedApp> = withContext(Dispatchers.Default) {
         val packageManager = context.packageManager
         val launchIntent = Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER)
@@ -24,6 +33,8 @@ class InstalledAppRepository(
             @Suppress("DEPRECATION")
             packageManager.queryIntentActivities(launchIntent, 0)
         }
+        val chineseLaunchableNames = loadLaunchableNames(chinesePackageManager, launchIntent)
+        val englishLaunchableNames = loadLaunchableNames(englishPackageManager, launchIntent)
 
         resolvedActivities
             .mapNotNull { resolveInfo ->
@@ -40,6 +51,10 @@ class InstalledAppRepository(
                 ManagedApp(
                     packageName = packageName,
                     appName = appName,
+                    appNameZh = chineseLaunchableNames[packageName]
+                        ?: loadAppLabel(chinesePackageManager, packageName),
+                    appNameEn = englishLaunchableNames[packageName]
+                        ?: loadAppLabel(englishPackageManager, packageName),
                 )
             }
             .distinctBy { it.packageName }
@@ -72,6 +87,8 @@ class InstalledAppRepository(
             keySelector = { it.activityInfo?.packageName ?: "" },
             valueTransform = { it.loadLabel(packageManager).toString() }
         )
+        val chineseLaunchableNames = loadLaunchableNames(chinesePackageManager, launchIntent)
+        val englishLaunchableNames = loadLaunchableNames(englishPackageManager, launchIntent)
 
         // Step 3: 只合并可启动应用和 UsageStats 已出现过的应用，避免使用 QUERY_ALL_PACKAGES。
         val scopedPackageNames = (launchablePackageNames + usageStats.keys)
@@ -90,6 +107,10 @@ class InstalledAppRepository(
                 ManagedApp(
                     packageName = packageName,
                     appName = appName,
+                    appNameZh = chineseLaunchableNames[packageName]
+                        ?: loadAppLabel(chinesePackageManager, packageName),
+                    appNameEn = englishLaunchableNames[packageName]
+                        ?: loadAppLabel(englishPackageManager, packageName),
                     isLaunchable = launchablePackageNames.contains(packageName),
                     usageTimeInMs = totalTime
                 )
@@ -119,6 +140,36 @@ class InstalledAppRepository(
             }
             appInfo.loadLabel(packageManager).toString().takeIf { it.isNotBlank() }
         }.getOrNull()
+    }
+
+    private fun loadLaunchableNames(
+        packageManager: PackageManager,
+        launchIntent: Intent,
+    ): Map<String, String> {
+        val activities = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            packageManager.queryIntentActivities(
+                launchIntent,
+                PackageManager.ResolveInfoFlags.of(0),
+            )
+        } else {
+            @Suppress("DEPRECATION")
+            packageManager.queryIntentActivities(launchIntent, 0)
+        }
+        return activities.mapNotNull { resolveInfo ->
+            val packageName = resolveInfo.activityInfo?.packageName ?: return@mapNotNull null
+            val label = resolveInfo.loadLabel(packageManager)
+                ?.toString()
+                ?.takeIf { it.isNotBlank() }
+                ?: return@mapNotNull null
+            packageName to label
+        }.toMap()
+    }
+
+    private fun localizedPackageManager(locale: Locale): PackageManager {
+        val configuration = Configuration(context.resources.configuration).apply {
+            setLocale(locale)
+        }
+        return context.createConfigurationContext(configuration).packageManager
     }
 
     companion object {
