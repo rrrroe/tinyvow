@@ -3725,7 +3725,7 @@ fun HomeRoute(
     }
 }
 
-private const val PRIVACY_POLICY_URL = "https://rrrroe.github.io/tinyvow/privacy.html"
+private const val PRIVACY_POLICY_URL = "https://tinyvow.rorolo.com/privacy/"
 
 private fun defaultBackupFileName(): String =
     "tinyvow-local-backup-${System.currentTimeMillis()}.zip"
