@@ -118,4 +118,15 @@ $g.Dispose()
 Save-Png $daily 'S05_focus_daily_collection_en_localized.png'
 $daily.Dispose()
 
+# Friday Time Marks: app labels come from the device and may stay Chinese even while the UI is English.
+$dailyTrace = Open-EditableBitmap 'S06_daily_time_trace_friday_en.png'
+$g = New-Graphics $dailyTrace
+Paint-Text $g 'Bilibili' ([System.Drawing.RectangleF]::new(137, 2112, 155, 54)) $white $muted 27 ([System.Drawing.FontStyle]::Regular)
+Paint-Text $g 'Amap' ([System.Drawing.RectangleF]::new(494, 2112, 132, 54)) $white $muted 27 ([System.Drawing.FontStyle]::Regular)
+Paint-Text $g 'Tiny Vow' ([System.Drawing.RectangleF]::new(137, 2180, 165, 54)) $white $muted 27 ([System.Drawing.FontStyle]::Regular)
+Paint-Text $g 'WeChat' ([System.Drawing.RectangleF]::new(494, 2180, 150, 54)) $white $muted 27 ([System.Drawing.FontStyle]::Regular)
+$g.Dispose()
+Save-Png $dailyTrace 'S06_daily_time_trace_friday_en_localized.png'
+$dailyTrace.Dispose()
+
 Write-Output "Localized screenshots written to $outputRoot"

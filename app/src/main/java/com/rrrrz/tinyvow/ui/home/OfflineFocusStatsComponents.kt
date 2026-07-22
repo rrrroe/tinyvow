@@ -1153,16 +1153,17 @@ private fun DailyFocusBottleDetailLayout(data: OfflineFocusSectionData) {
             ).first()
         }
     val textures = rememberFocusPebbleTextures()
+    val bottleMinHeight = remember(visuals) { dailyFocusPebbleBottleMinHeight(visuals) }
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(
-            modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min).heightIn(min = 64.dp),
+            modifier = Modifier.fillMaxWidth().height(IntrinsicSize.Min).heightIn(min = bottleMinHeight),
             horizontalArrangement = Arrangement.spacedBy(14.dp),
             verticalAlignment = Alignment.Top,
         ) {
             DailyFocusPebbleBottle(
                 visuals = visuals,
                 pebbleTextures = textures,
-                modifier = Modifier.width(42.dp).fillMaxHeight(),
+                modifier = Modifier.width(DAILY_FOCUS_BOTTLE_WIDTH_DP.dp).fillMaxHeight(),
             )
             Column(
                 modifier = Modifier.weight(1f),
@@ -1174,6 +1175,34 @@ private fun DailyFocusBottleDetailLayout(data: OfflineFocusSectionData) {
             }
         }
     }
+}
+
+private const val DAILY_FOCUS_BOTTLE_WIDTH_DP = 42f
+private const val DAILY_FOCUS_BOTTLE_SOURCE_WIDTH = 252
+private const val DAILY_FOCUS_BOTTLE_TOP_SOURCE_HEIGHT = 150
+private const val DAILY_FOCUS_BOTTLE_BOTTOM_SOURCE_HEIGHT = 60
+private const val DAILY_FOCUS_BOTTLE_INNER_TOP_DP = 12f
+private const val DAILY_FOCUS_BOTTLE_INNER_BOTTOM_DP = 9f
+private const val DAILY_FOCUS_BOTTLE_MIN_HEIGHT_DP = 64f
+private const val DAILY_FOCUS_BOTTLE_FIT_SLACK_DP = 2f
+
+private fun dailyFocusPebbleBottleMinHeight(visuals: List<WeeklyFocusPebbleVisual>): Dp {
+    val rawStackHeightDp =
+        (
+            visuals.sumOf { visual ->
+                ((6.4f + visual.durationWeight * 14.4f) * visual.sizeScale).toDouble()
+            }.toFloat() - visuals.dropLast(1).sumOf { it.overlapDp.toDouble() }.toFloat()
+        ).coerceAtLeast(0f)
+    val bottleChromeHeightDp =
+        DAILY_FOCUS_BOTTLE_WIDTH_DP *
+            (DAILY_FOCUS_BOTTLE_TOP_SOURCE_HEIGHT + DAILY_FOCUS_BOTTLE_BOTTOM_SOURCE_HEIGHT) /
+            DAILY_FOCUS_BOTTLE_SOURCE_WIDTH.toFloat() +
+            DAILY_FOCUS_BOTTLE_INNER_TOP_DP +
+            DAILY_FOCUS_BOTTLE_INNER_BOTTOM_DP
+    return maxOf(
+        DAILY_FOCUS_BOTTLE_MIN_HEIGHT_DP,
+        rawStackHeightDp + bottleChromeHeightDp + DAILY_FOCUS_BOTTLE_FIT_SLACK_DP,
+    ).dp
 }
 
 @Composable
@@ -1244,11 +1273,11 @@ private fun DailyFocusPebbleBottleBackdrop(modifier: Modifier = Modifier) {
     val artwork = ImageBitmap.imageResource(R.drawable.focus_pebble_jars_background)
     Canvas(modifier = modifier) {
         val sourceLeft = 828
-        val sourceWidth = 252
+        val sourceWidth = DAILY_FOCUS_BOTTLE_SOURCE_WIDTH
         val sourceTop = 80
-        val sourceMiddleTop = 230
+        val sourceMiddleTop = sourceTop + DAILY_FOCUS_BOTTLE_TOP_SOURCE_HEIGHT
         val sourceBottomTop = 700
-        val sourceBottom = 760
+        val sourceBottom = sourceBottomTop + DAILY_FOCUS_BOTTLE_BOTTOM_SOURCE_HEIGHT
         val horizontalScale = size.width / sourceWidth.toFloat()
         val topHeight = ((sourceMiddleTop - sourceTop) * horizontalScale).coerceAtMost(size.height)
         val bottomHeight =
@@ -1281,13 +1310,15 @@ private fun DailyFocusPebbleBottleCanvas(
     modifier: Modifier = Modifier,
 ) {
     Canvas(modifier = modifier) {
-        val sourceWidth = 252f
-        val topHeight = (150f * size.width / sourceWidth).coerceAtMost(size.height)
-        val bottomHeight = (60f * size.width / sourceWidth).coerceAtMost((size.height - topHeight).coerceAtLeast(0f))
+        val sourceWidth = DAILY_FOCUS_BOTTLE_SOURCE_WIDTH.toFloat()
+        val topHeight = (DAILY_FOCUS_BOTTLE_TOP_SOURCE_HEIGHT * size.width / sourceWidth).coerceAtMost(size.height)
+        val bottomHeight =
+            (DAILY_FOCUS_BOTTLE_BOTTOM_SOURCE_HEIGHT * size.width / sourceWidth)
+                .coerceAtMost((size.height - topHeight).coerceAtLeast(0f))
         val innerLeft = size.width * 0.19f
         val innerRight = size.width * 0.81f
-        val innerTop = topHeight + 12.dp.toPx()
-        val innerBottom = size.height - bottomHeight - 9.dp.toPx()
+        val innerTop = topHeight + DAILY_FOCUS_BOTTLE_INNER_TOP_DP.dp.toPx()
+        val innerBottom = size.height - bottomHeight - DAILY_FOCUS_BOTTLE_INNER_BOTTOM_DP.dp.toPx()
         val maxPebbleWidth = size.width * 0.46f
         val stones =
             visuals.map { visual ->

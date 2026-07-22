@@ -126,6 +126,15 @@ interface PointLedgerDao {
 
     @Query(
         """
+        SELECT *
+        FROM point_ledger
+        ORDER BY occurred_at DESC, created_at DESC
+        """
+    )
+    fun observeAllEntries(): Flow<List<PointLedgerEntity>>
+
+    @Query(
+        """
         SELECT
             ledger_date AS ledgerDate,
             COALESCE(SUM(CASE WHEN delta_points > 0 THEN delta_points ELSE 0 END), 0) AS earnedPoints,

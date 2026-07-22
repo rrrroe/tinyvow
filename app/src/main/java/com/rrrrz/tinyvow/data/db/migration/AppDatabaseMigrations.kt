@@ -1238,6 +1238,14 @@ object AppDatabaseMigrations {
             }
         }
 
+    val MIGRATION_32_33 =
+        object : Migration(32, 33) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `point_ledger` ADD COLUMN `source_package_name` TEXT")
+                db.execSQL("ALTER TABLE `point_ledger` ADD COLUMN `usage_duration_millis` INTEGER")
+            }
+        }
+
     val ALL: Array<Migration> = arrayOf(
         MIGRATION_9_10,
         MIGRATION_10_11,
@@ -1262,5 +1270,6 @@ object AppDatabaseMigrations {
         MIGRATION_29_30,
         MIGRATION_30_31,
         MIGRATION_31_32,
+        MIGRATION_32_33,
     )
 }

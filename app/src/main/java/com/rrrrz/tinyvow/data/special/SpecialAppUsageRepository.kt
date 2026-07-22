@@ -783,6 +783,8 @@ class SpecialAppUsageRepository(
                         occurredAt = now,
                         group = group,
                         sourceRefId = "special:${WEREAD_PROVIDER.name}:${group.id}:$todayString:$currentRemoteUsage",
+                        sourcePackageName = WEREAD_PACKAGE_NAME,
+                        usageDurationMillis = deltaUsage,
                         note = "WeRead remote usage earn",
                     )
                     pointCreditDao.upsert(

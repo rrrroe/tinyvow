@@ -6,7 +6,6 @@ import com.rrrrz.tinyvow.data.server.BackendSessionResponse
 import com.rrrrz.tinyvow.data.server.BackendSubscriptionStore
 import com.rrrrz.tinyvow.data.server.TinyVowBackendApi
 import com.rrrrz.tinyvow.data.server.TinyVowBackendException
-import java.io.ByteArrayOutputStream
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -144,26 +143,13 @@ class BackendAccountRepository(
         runCatching {
             val currentInstallId = requireInstallId()
             val session = ensureSession(currentInstallId)
-            val contentType = contentResolver.getType(uri) ?: "image/jpeg"
-            val bytes = contentResolver.openInputStream(uri)?.use { input ->
-                val output = ByteArrayOutputStream()
-                val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-                var total = 0
-                while (true) {
-                    val read = input.read(buffer)
-                    if (read < 0) break
-                    total += read
-                    require(total <= MAX_AVATAR_BYTES) { "avatar_too_large" }
-                    output.write(buffer, 0, read)
-                }
-                output.toByteArray()
-            } ?: error("avatar_unavailable")
+            val avatar = AvatarImagePreparer.prepare(contentResolver, uri)
             val avatarUrl = retryUnauthorized(currentInstallId, session.accessToken) { accessToken ->
                 api.uploadAccountAvatar(
                     accessToken = accessToken,
-                    bytes = bytes,
-                    contentType = contentType,
-                    fileName = "avatar.${extensionFor(contentType)}",
+                    bytes = avatar.bytes,
+                    contentType = avatar.contentType,
+                    fileName = "avatar.${avatar.extension}",
                 )
             }
             val next = requireNotNull(_account.value).copy(avatarUrl = avatarUrl)
@@ -244,14 +230,4 @@ class BackendAccountRepository(
     private fun requireInstallId(): String =
         installId?.takeIf { it.isNotBlank() } ?: error("account_repository_not_initialized")
 
-    private fun extensionFor(contentType: String): String =
-        when (contentType.lowercase()) {
-            "image/png" -> "png"
-            "image/webp" -> "webp"
-            else -> "jpg"
-        }
-
-    private companion object {
-        const val MAX_AVATAR_BYTES = 2 * 1024 * 1024
-    }
 }

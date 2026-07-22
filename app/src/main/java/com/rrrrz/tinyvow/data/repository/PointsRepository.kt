@@ -30,6 +30,8 @@ class PointsRepository(
     suspend fun recordUsageEarn(
         group: AppGroupEntity,
         deltaPoints: Double,
+        sourcePackageName: String,
+        usageDurationMillis: Long,
         occurredAt: Long = System.currentTimeMillis(),
     ) {
         record(
@@ -37,6 +39,8 @@ class PointsRepository(
             entryType = PointLedgerEntryType.USAGE_EARN,
             occurredAt = occurredAt,
             group = group,
+            sourcePackageName = sourcePackageName,
+            usageDurationMillis = usageDurationMillis,
         )
     }
 
@@ -88,6 +92,8 @@ class PointsRepository(
         reward: RedemptionEntity? = null,
         rewardTitle: String? = null,
         sourceRefId: String? = null,
+        sourcePackageName: String? = null,
+        usageDurationMillis: Long? = null,
         note: String = "",
     ) {
         if (deltaPoints == 0.0) return
@@ -110,6 +116,8 @@ class PointsRepository(
                     rewardId = reward?.id,
                     rewardTitleSnapshot = rewardTitle ?: reward?.title,
                     sourceRefId = sourceRefId,
+                    sourcePackageName = sourcePackageName,
+                    usageDurationMillis = usageDurationMillis,
                     note = note,
                     createdAt = System.currentTimeMillis(),
                 )

@@ -479,6 +479,31 @@ Get-Content -Raw -Encoding UTF8 AGENTS.md
   - `googlePlayDebug/googlePlayRelease` 应显示基础版本，例如 `1.0.0`。
   - 两个渠道的 `VERSION_CODE` 应一致，除非用户明确要求独立版本线。
 
+## 应用商店宣传图定稿基线
+
+- 宣传图当前唯一有效总规范是 `design/appstore/CURRENT_GENERATION_SPEC.md`；开始商店图、网站宣传图或截图本地化任务前必须先读该文件。
+- 当前已经定稿并应继续使用的是 S01–S07。旧版本只保留作设计过程记录，不得因为文件名较短、修改时间较新或 README 旧段落而回退使用。
+- 当前中文定稿构图与成图：
+  - S01 首页总览 v7：`design/appstore/compositions/S01_home_zh-CN_v7.html`；`design/appstore/exports/cn-stores/cn-store_01_home_zh-CN_1080x1920_v7.png`。
+  - S02 约定与投入 v2：`design/appstore/compositions/S02_control_encourage_zh-CN_v2.html`；`design/appstore/exports/cn-stores/cn-store_02_control_encourage_zh-CN_1080x1920_v2.png`。
+  - S03 温和阻断 v1：`design/appstore/compositions/S03_block_overlay_zh-CN_v1.html`；`design/appstore/exports/cn-stores/cn-store_03_block_overlay_zh-CN_1080x1920_v1.png`。
+  - S04 离线专注 v4：`design/appstore/compositions/S04_offline_focus_zh-CN_v4.html`；`design/appstore/exports/cn-stores/cn-store_04_offline_focus_zh-CN_1080x1920_v4.png`。
+  - S05 手机使用追踪 v3：`design/appstore/compositions/S05_phone_usage_tracking_zh-CN_v3.html`；`design/appstore/exports/cn-stores/cn-store_05_phone_usage_tracking_zh-CN_1080x1920_v3.png`。
+  - S06 奖励与成就 v3：`design/appstore/compositions/S06_rewards_achievements_zh-CN_v3.html`；`design/appstore/exports/cn-stores/cn-store_06_rewards_achievements_zh-CN_1080x1920_v3.png`。
+  - S07 产品特性 v2：`design/appstore/compositions/S07_product_characteristics_zh-CN_v2.html`；`design/appstore/exports/cn-stores/cn-store_07_product_characteristics_zh-CN_1080x1920_v2.png`。
+- 当前英文定稿构图与 Google Play 成图：
+  - S01 v7：`design/appstore/compositions/S01_home_en_v7.html`；`design/appstore/exports/google-play/google-play_01_home_en_1080x1920_v7.png`。
+  - S02 v2：`design/appstore/compositions/S02_control_encourage_en_v2.html`；`design/appstore/exports/google-play/google-play_02_control_encourage_en_1080x1920_v2.png`。
+  - S03 v1：`design/appstore/compositions/S03_block_overlay_en_v1.html`；`design/appstore/exports/google-play/google-play_03_block_overlay_en_1080x1920_v1.png`。
+  - S04 v4：`design/appstore/compositions/S04_offline_focus_en_v4.html`；`design/appstore/exports/google-play/google-play_04_offline_focus_en_1080x1920_v4.png`。
+  - S05 v3：`design/appstore/compositions/S05_phone_usage_tracking_en_v3.html`；`design/appstore/exports/google-play/google-play_05_phone_usage_tracking_en_1080x1920_v3.png`。
+  - S06 v3：`design/appstore/compositions/S06_rewards_achievements_en_v3.html`；`design/appstore/exports/google-play/google-play_06_rewards_achievements_en_1080x1920_v3.png`。
+  - S07 v2：`design/appstore/compositions/S07_product_characteristics_en_v2.html`；`design/appstore/exports/google-play/google-play_07_product_characteristics_en_1080x1920_v2.png`。
+- 英文真机截图优先使用 `design/appstore/screenshots/raw/en/`；宣传图中需要把中文演示分组名、专注分类名改成英文时，只生成 `design/appstore/screenshots/edited/en/` 营销副本，并通过 `design/appstore/scripts/localize_en_screenshots.ps1` 复现。不要修改应用真实数据，也不要覆盖 `raw/en` 原图。
+- 所有定稿都必须保留 `1080 × 1920` 成图和 `360 × 640` 手机预览。验收以手机预览可读为准：大标题、核心标签和报表自有标题必须能辨认，禁止重新加入顶部眉题、底部小字或密集说明。
+- S05 固定使用关键数据、周报行为散点、周报积分轨迹、周五日报时光刻痕、周报时光刻痕五张卡；行为图谱不显示九宫格。S06 固定上三行兑换、下三行成就，六行等高等距。S07 固定四张等规格卡片。
+- 不宣传步数投入或步数积分；当前不使用月报、年报。不要生成虚假 App UI，不要用旧稿替换上述定稿。
+
 ## 优先阅读文件
 
 处理相关任务前优先看这些文件：

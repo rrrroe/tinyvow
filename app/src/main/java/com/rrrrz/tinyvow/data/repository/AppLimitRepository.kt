@@ -37,6 +37,7 @@ import com.rrrrz.tinyvow.data.db.StreakShieldPendingDao
 import com.rrrrz.tinyvow.data.db.StreakShieldPendingEntity
 import com.rrrrz.tinyvow.data.db.StreakShieldPendingStatus
 import com.rrrrz.tinyvow.data.db.StreakShieldTarget
+import com.rrrrz.tinyvow.data.notification.TinyVowNotifier
 import com.rrrrz.tinyvow.data.settings.ManagedAppPreferences
 import com.rrrrz.tinyvow.data.special.SpecialAppUsageRepository
 import com.rrrrz.tinyvow.data.special.WEREAD_PACKAGE_NAME
@@ -211,8 +212,11 @@ class AppLimitRepository(
     private val rewardActionMutex = Mutex()
     private val zoneId = ZoneId.systemDefault()
 
-    private val _newAchievementsAction = MutableSharedFlow<AchievementEntity>()
-    val newAchievementsAction: SharedFlow<AchievementEntity> = _newAchievementsAction.asSharedFlow()
+    /**
+     * Achievement checks run from several repositories and services. Keep their UI event stream
+     * process-wide so the active app shell can observe unlocks regardless of which path found it.
+     */
+    val newAchievementsAction: SharedFlow<AchievementEntity> = achievementUnlockEvents.asSharedFlow()
 
     fun getAllGroupsWithApps(): Flow<List<AppGroupWithApps>> =
         combine(
@@ -918,8 +922,14 @@ class AppLimitRepository(
                             else -> false
                         }
                     if (shouldUnlock) {
-                        achievementDao.unlockAchievement(achievement.id, now)
-                        _newAchievementsAction.emit(achievement.copy(isUnlocked = true, unlockedAt = now))
+                        // Only the caller that changed the row may announce the unlock. This avoids
+                        // duplicate notifications when two background paths check at the same time.
+                        if (achievementDao.unlockAchievement(achievement.id, now) == 1) {
+                            val unlockedAchievement = achievement.copy(isUnlocked = true, unlockedAt = now)
+                            TinyVowNotifier(context.applicationContext)
+                                .notifyAchievementUnlocked(unlockedAchievement)
+                            achievementUnlockEvents.emit(unlockedAchievement)
+                        }
                     }
                 } catch (_: Exception) {
                 }
@@ -1373,5 +1383,9 @@ class AppLimitRepository(
         seed("LEGEND_CTRL_STREAK", "Yearbound Oath", "Complete every control group for 365 days in a row", """{"type":"control_streak","value":365}""", AchievementTier.LEGENDARY, "🔱")
         seed("LEGEND_ENC_DAYS", "Sunlit Courtyard", "Meet encouragement goals for 1,000 total days", """{"type":"encourage_days","value":1000}""", AchievementTier.LEGENDARY, "🌈")
         seed("LEGEND_ENC_STREAK", "Everlasting Radiance", "Meet encouragement goals for 365 days in a row", """{"type":"encourage_streak","value":365}""", AchievementTier.LEGENDARY, "⏳")
+    }
+
+    private companion object {
+        val achievementUnlockEvents = MutableSharedFlow<AchievementEntity>(extraBufferCapacity = 1)
     }
 }

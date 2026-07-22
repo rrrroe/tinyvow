@@ -1,7 +1,8 @@
 # S01 宣传图生成规范
 
-> 当前确认基线：S01 v7，2026-07-18  
-> 适用输出：Google Play、国内 Android 应用商店中文首图
+> 当前确认基线：S01 v7，2026-07-19  
+> 适用输出：Google Play、国内 Android 应用商店中英文首图  
+> 全套共同规则以 `CURRENT_GENERATION_SPEC.md` 为准，本文件只补充 S01 的精确几何参数。
 
 ## 1. 固定成图规则
 
@@ -13,7 +14,7 @@
 - 关键宣传信息不得低于 29 px。只允许真机 UI 内部文字随截图等比缩小。
 - 顶部不重复放产品小字、应用图标或品牌图标；商店详情页已经展示产品名和 App 图标。
 - 底部不放品牌署名、隐私说明等小字。需要表达的卖点必须进入大标题或标签。
-- App 界面必须使用真实真机截图，不生成、不重绘、不修改 UI 内容。
+- App 界面必须使用真实真机截图，不生成或重绘 UI。英文营销副本只允许对用户自定义分组名做确定性文字覆盖，副本存入 `screenshots/edited/en/`，不得覆盖原图或修改应用数据。
 
 ## 2. S01 v7 布局
 
@@ -69,10 +70,11 @@ Create a premium 9:16 portrait background plate for a calm digital wellbeing mob
 
 ## 6. 导出与检查
 
-1. 用 `compositions/S01_home_zh-CN_v7.html` 以 `1080 × 1920` 视口导出 PNG。
+1. 用 `compositions/S01_home_zh-CN_v7.html` 和 `compositions/S01_home_en_v7.html` 以 `1080 × 1920` 视口导出 PNG。
 2. 输出到：
    - `exports/google-play/google-play_01_home_zh-CN_1080x1920_v7.png`
    - `exports/cn-stores/cn-store_01_home_zh-CN_1080x1920_v7.png`
+   - `exports/google-play/google-play_01_home_en_1080x1920_v7.png`
 3. 检查两张图尺寸、哈希和视觉内容一致。
 4. 额外生成 `360 × 640` 缩略预览，确认主标题以及“温和限额 / 正向积累 / 离线专注”仍可辨认。
 5. 检查状态栏已裁掉；底部导航保留在原截图中但位于宣传画布外，成图底边不出现真机框底部圆角或导航栏。

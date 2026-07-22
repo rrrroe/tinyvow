@@ -17,6 +17,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Edit
@@ -54,6 +55,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.platform.LocalContext
 import com.rrrrz.tinyvow.data.db.GroupType
 import com.rrrrz.tinyvow.data.db.LimitPeriod
+import com.rrrrz.tinyvow.data.db.PointLedgerEntity
 import com.rrrrz.tinyvow.data.db.ActiveRewardEffectEntity
 import com.rrrrz.tinyvow.data.db.RedemptionEntity
 import com.rrrrz.tinyvow.data.db.RedemptionHistoryEntity
@@ -108,6 +110,7 @@ private val RewardFilledFieldShape = RoundedCornerShape(16.dp)
 @Composable
 fun RedeemScreen(
     userPoints: Double,
+    pointLedgerEntries: List<PointLedgerEntity>,
     storeItems: List<RewardStoreItem>,
     groups: List<AppGroupWithApps>,
     onPurchase: (RedemptionEntity) -> Unit,
@@ -119,6 +122,7 @@ fun RedeemScreen(
     onGuardAction: (GuardedAction, () -> Unit) -> Unit,
 ) {
     var showConfigPage by remember { mutableStateOf(false) }
+    var showPointsHistoryPage by remember { mutableStateOf(false) }
     var showAddDialog by remember { mutableStateOf(false) }
     var editingReward by remember { mutableStateOf<RedemptionEntity?>(null) }
     var archivingReward by remember { mutableStateOf<RedemptionEntity?>(null) }
@@ -145,7 +149,14 @@ fun RedeemScreen(
         }
     }
 
-    if (showConfigPage) {
+    if (showPointsHistoryPage) {
+        PointHistoryScreen(
+            userPoints = userPoints,
+            entries = pointLedgerEntries,
+            groups = groups,
+            onBack = { showPointsHistoryPage = false },
+        )
+    } else if (showConfigPage) {
         RewardConfigScreen(
             storeItems = storeItems,
             customRewards = customRewards,
@@ -188,7 +199,12 @@ fun RedeemScreen(
                 ),
                 verticalArrangement = Arrangement.spacedBy(TinyVowSpacing.CardGap),
             ) {
-                item { CompactPointsSummaryCard(userPoints = userPoints) }
+                item {
+                    CompactPointsSummaryCard(
+                        userPoints = userPoints,
+                        onShowHistory = { showPointsHistoryPage = true },
+                    )
+                }
 
                 if (primaryItems.isNotEmpty()) {
                     item { RewardSectionTitle(title = AppText.t("redeem_store_group_more_time")) }
@@ -702,10 +718,16 @@ private fun InventorySubButton(
 }
 
 @Composable
-private fun CompactPointsSummaryCard(userPoints: Double) {
+private fun CompactPointsSummaryCard(
+    userPoints: Double,
+    onShowHistory: () -> Unit,
+) {
     val themeColors = LocalThemeColors.current
     TinyVowCard(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(role = Role.Button, onClick = onShowHistory)
+            .semantics { contentDescription = AppText.t("point_history_open") },
         shape = RoundedCornerShape(TinyVowRadius.Card),
     ) {
         Row(
@@ -740,6 +762,11 @@ private fun CompactPointsSummaryCard(userPoints: Double) {
                     color = themeColors.inkStrong,
                 )
             }
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.ArrowForward,
+                contentDescription = null,
+                tint = themeColors.inkMuted,
+            )
         }
     }
 }

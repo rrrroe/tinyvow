@@ -1,69 +1,26 @@
 # Tiny Vow 宣传图设计与实机截图方案
 
-> 状态：第一版方案，2026-07-18  
+> 状态：S01–S07 中英文商店图已完成，2026-07-19  
 > 适用渠道：`tinyvow.rorolo.com`、Google Play、国内 Android 应用商店  
 > 品牌：中文「揉揉喽」、英文 `Rorolo`；产品名「小约定 / Tiny Vow」
 
-## 当前制作进度
+## 当前交付基线
 
-- [x] 真机原图采集：中文 30 张、英文 20 张；主体素材为 `1080 × 2400` PNG，阻断页与日报专注收藏为用户补充的 `576 × 1280` JPG。
-- [x] 商店核心双语页已覆盖：S01–S08（首页、约定、阻断、投入、专注、日报/周报、奖励/成就、本地数据）。
-- [x] 网站代表页已覆盖：数据来源总览、超我模式、主题、会员、签到。
-- [ ] 桌面小组件：本轮不改动用户桌面，待有干净演示桌面时补拍。
-- [ ] 账号中心：当前设备含真实账号信息，不进入宣传图库；待专用演示账号后补拍。
-- [x] 月报、年报：因当前历史数据不足，按产品方决定不采集、不进入本轮宣传图。
-- [x] S01 中文真机截图：`screenshots/raw/zh-CN/S01_home_overview_zh-CN.png`
-- [x] S01 v1（保留对比）：`compositions/S01_home_zh-CN.html`
-- [x] S01 v2 推荐背景：`generated/bg-deep-forest-editorial-v2.png`
-- [x] S01 v2 推荐合成稿：`compositions/S01_home_zh-CN_v2.html`
-- [x] S01 v2 Google Play 导出：`exports/google-play/google-play_01_home_zh-CN_1080x1920_v2.png`
-- [x] S01 v2 国内商店导出：`exports/cn-stores/cn-store_01_home_zh-CN_1080x1920_v2.png`
-- [x] S01 v3 信息增强版（当前推荐）：`compositions/S01_home_zh-CN_v3.html`
-- [x] S01 v3 Google Play 导出：`exports/google-play/google-play_01_home_zh-CN_1080x1920_v3.png`
-- [x] S01 v3 国内商店导出：`exports/cn-stores/cn-store_01_home_zh-CN_1080x1920_v3.png`
-- [x] S01 v4 手机可读版（当前推荐）：`compositions/S01_home_zh-CN_v4.html`
-- [x] S01 v4 Google Play 导出：`exports/google-play/google-play_01_home_zh-CN_1080x1920_v4.png`
-- [x] S01 v4 国内商店导出：`exports/cn-stores/cn-store_01_home_zh-CN_1080x1920_v4.png`
-- [x] S01 v5 完整真机图 + 标签版（当前推荐）：`compositions/S01_home_zh-CN_v5.html`
-- [x] S01 v5 Google Play 导出：`exports/google-play/google-play_01_home_zh-CN_1080x1920_v5.png`
-- [x] S01 v5 国内商店导出：`exports/cn-stores/cn-store_01_home_zh-CN_1080x1920_v5.png`
-- [x] S01 v6 确认版：`compositions/S01_home_zh-CN_v6.html`
-- [x] S01 v6 Google Play 导出：`exports/google-play/google-play_01_home_zh-CN_1080x1920_v6.png`
-- [x] S01 v6 国内商店导出：`exports/cn-stores/cn-store_01_home_zh-CN_1080x1920_v6.png`
-- [x] S01 v7 居中截图 + 横向悬浮标签版（当前推荐）：`compositions/S01_home_zh-CN_v7.html`
-- [x] S01 v7 Google Play 导出：`exports/google-play/google-play_01_home_zh-CN_1080x1920_v7.png`
-- [x] S01 v7 国内商店导出：`exports/cn-stores/cn-store_01_home_zh-CN_1080x1920_v7.png`
-- [x] S01 固定规则与提示词：`S01_GENERATION_SPEC.md`
-- [x] S04 离线专注 v3：`compositions/S04_offline_focus_zh-CN_v3.html`
-- [x] S04 中文商店导出：`exports/cn-stores/cn-store_04_offline_focus_zh-CN_1080x1920_v3.png`
-- [x] S04 手机缩略预览：`exports/cn-stores/cn-store_04_offline_focus_zh-CN_360x640_preview_v3.png`
-- [x] S04 v4 斜向错位叠放版（当前推荐）：`compositions/S04_offline_focus_zh-CN_v4.html`
-- [x] S04 v4 中文商店导出：`exports/cn-stores/cn-store_04_offline_focus_zh-CN_1080x1920_v4.png`
-- [x] S04 v4 手机缩略预览：`exports/cn-stores/cn-store_04_offline_focus_zh-CN_360x640_preview_v4.png`
-- [x] S05 手机使用追踪 v1：`compositions/S05_phone_usage_tracking_zh-CN_v1.html`
-- [x] S05 中文商店导出：`exports/cn-stores/cn-store_05_phone_usage_tracking_zh-CN_1080x1920_v1.png`
-- [x] S05 手机缩略预览：`exports/cn-stores/cn-store_05_phone_usage_tracking_zh-CN_360x640_preview_v1.png`
-- [x] S05 v2 五张报表卡片版（当前推荐）：`compositions/S05_phone_usage_tracking_zh-CN_v2.html`
-- [x] S05 v2 中文商店导出：`exports/cn-stores/cn-store_05_phone_usage_tracking_zh-CN_1080x1920_v2.png`
-- [x] S05 v2 手机缩略预览：`exports/cn-stores/cn-store_05_phone_usage_tracking_zh-CN_360x640_preview_v2.png`
-- [x] S05 v3 自带标题五卡版（当前推荐）：`compositions/S05_phone_usage_tracking_zh-CN_v3.html`
-- [x] S05 v3 中文商店导出：`exports/cn-stores/cn-store_05_phone_usage_tracking_zh-CN_1080x1920_v3.png`
-- [x] S05 v3 手机缩略预览：`exports/cn-stores/cn-store_05_phone_usage_tracking_zh-CN_360x640_preview_v3.png`
-- [x] S06 奖励与成就纯图标版：`compositions/S06_rewards_achievements_zh-CN_v1.html`
-- [x] S06 中文商店导出：`exports/cn-stores/cn-store_06_rewards_achievements_zh-CN_1080x1920_v1.png`
-- [x] S06 手机缩略预览：`exports/cn-stores/cn-store_06_rewards_achievements_zh-CN_360x640_preview_v1.png`
-- [x] S06 v2 四排高密度图标版（当前推荐）：`compositions/S06_rewards_achievements_zh-CN_v2.html`
-- [x] S06 v2 中文商店导出：`exports/cn-stores/cn-store_06_rewards_achievements_zh-CN_1080x1920_v2.png`
-- [x] S06 v2 手机缩略预览：`exports/cn-stores/cn-store_06_rewards_achievements_zh-CN_360x640_preview_v2.png`
-- [x] S06 v3 横向错位轨道版（当前推荐）：`compositions/S06_rewards_achievements_zh-CN_v3.html`
-- [x] S06 v3 中文商店导出：`exports/cn-stores/cn-store_06_rewards_achievements_zh-CN_1080x1920_v3.png`
-- [x] S06 v3 手机缩略预览：`exports/cn-stores/cn-store_06_rewards_achievements_zh-CN_360x640_preview_v3.png`
-- [x] S07 产品特性总览 v1：`compositions/S07_product_characteristics_zh-CN_v1.html`
-- [x] S07 中文商店导出：`exports/cn-stores/cn-store_07_product_characteristics_zh-CN_1080x1920_v1.png`
-- [x] S07 手机缩略预览：`exports/cn-stores/cn-store_07_product_characteristics_zh-CN_360x640_preview_v1.png`
-- [x] S07 v2 四维等规格结构版（当前推荐）：`compositions/S07_product_characteristics_zh-CN_v2.html`
-- [x] S07 v2 中文商店导出：`exports/cn-stores/cn-store_07_product_characteristics_zh-CN_1080x1920_v2.png`
-- [x] S07 v2 手机缩略预览：`exports/cn-stores/cn-store_07_product_characteristics_zh-CN_360x640_preview_v2.png`
+当前唯一有效规则和提示词见 [`CURRENT_GENERATION_SPEC.md`](CURRENT_GENERATION_SPEC.md)。旧构图与下面的早期方案保留作过程记录，不再作为当前推荐。
+
+- [x] S01 首页总览：中文 v7 / 英文 v7。
+- [x] S02 约定与投入：中文 v2 / 英文 v2。
+- [x] S03 温和阻断：中文 v1 / 英文 v1。
+- [x] S04 离线专注：中文 v4 / 英文 v4。
+- [x] S05 手机使用追踪：中文 v3 / 英文 v3；英文版已补截关键报表素材。
+- [x] S06 奖励与成就：中文 v3 / 英文 v3。
+- [x] S07 产品特性：中文 v2 / 英文 v2。
+- [x] 英文真机营销副本：`screenshots/edited/en/`，由 `scripts/localize_en_screenshots.ps1` 生成。
+- [x] Google Play 英文成图：`exports/google-play/google-play_01...07_*_en_1080x1920_*.png`。
+- [x] 英文手机缩略预览：与成图同目录，文件名以 `_preview_360x640.png` 结尾。
+- [x] 月报、年报因数据不足不进入当前宣传图。
+
+下面内容为历史设计记录。
 
 ### S07 v2 设计说明
 

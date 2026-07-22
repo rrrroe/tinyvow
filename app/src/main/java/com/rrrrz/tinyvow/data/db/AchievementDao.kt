@@ -52,7 +52,7 @@ interface AchievementDao {
     }
 
     @Query("UPDATE achievements SET is_unlocked = 1, unlocked_at = :now WHERE id = :id")
-    suspend fun unlockAchievement(id: String, now: Long)
+    suspend fun unlockAchievement(id: String, now: Long): Int
 
     @Query("SELECT * FROM achievements WHERE is_unlocked = 0")
     suspend fun getLockedAchievements(): List<AchievementEntity>

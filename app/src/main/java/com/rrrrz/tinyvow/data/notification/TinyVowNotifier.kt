@@ -15,6 +15,7 @@ import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 import com.rrrrz.tinyvow.MainActivity
 import com.rrrrz.tinyvow.R
+import com.rrrrz.tinyvow.data.db.AchievementEntity
 import com.rrrrz.tinyvow.data.reminder.EncourageProgressReminder
 import com.rrrrz.tinyvow.i18n.AppText
 import java.util.Locale
@@ -37,6 +38,14 @@ class TinyVowNotifier(
             description = textContext.getString(R.string.notification_channel_desc)
         }
         notificationManager.createNotificationChannel(channel)
+        val achievementChannel = NotificationChannel(
+            ACHIEVEMENT_CHANNEL_ID,
+            textContext.getString(R.string.notification_achievement_channel_name),
+            NotificationManager.IMPORTANCE_DEFAULT,
+        ).apply {
+            description = textContext.getString(R.string.notification_achievement_channel_desc)
+        }
+        notificationManager.createNotificationChannel(achievementChannel)
     }
 
     fun notifyLimitExceeded(
@@ -169,6 +178,38 @@ class TinyVowNotifier(
         postNotification(ENCOURAGE_COMPLETED_NOTIFICATION_BASE_ID + groupId.hashCode(), notification)
     }
 
+    fun notifyAchievementUnlocked(achievement: AchievementEntity) {
+        ensureChannel()
+        val textContext = AppText.localizedContext(context)
+        val title = achievement.localizedTitle()
+        val description = achievement.localizedDescription()
+        val pendingIntent = PendingIntent.getActivity(
+            context,
+            ACHIEVEMENT_NOTIFICATION_BASE_ID + achievement.id.hashCode(),
+            Intent(context, MainActivity::class.java),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        val notification = NotificationCompat.Builder(context, ACHIEVEMENT_CHANNEL_ID)
+            .setSmallIcon(R.mipmap.ic_launcher)
+            .setContentTitle(textContext.getString(R.string.notification_achievement_title, title))
+            .setContentText(description)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(description))
+            .setContentIntent(pendingIntent)
+            .setAutoCancel(true)
+            .build()
+        postNotification(ACHIEVEMENT_NOTIFICATION_BASE_ID + achievement.id.hashCode(), notification)
+    }
+
+    private fun AchievementEntity.localizedTitle(): String {
+        val key = "achievement_${id.lowercase()}_title"
+        return AppText.t(key).takeUnless { it == key } ?: title
+    }
+
+    private fun AchievementEntity.localizedDescription(): String {
+        val key = "achievement_${id.lowercase()}_desc"
+        return AppText.t(key).takeUnless { it == key } ?: description
+    }
+
     private fun randomEncourageProgressText(
         textContext: Context,
         remainingMinutes: Int,
@@ -204,7 +245,9 @@ class TinyVowNotifier(
 
     companion object {
         const val CHANNEL_ID = "daily_limit_alerts"
+        const val ACHIEVEMENT_CHANNEL_ID = "achievement_unlocks"
         private const val ENCOURAGE_INCOMPLETE_NOTIFICATION_ID = 20_240_501
         private const val ENCOURAGE_COMPLETED_NOTIFICATION_BASE_ID = 20_240_600
+        private const val ACHIEVEMENT_NOTIFICATION_BASE_ID = 20_240_700
     }
 }

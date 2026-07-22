@@ -124,7 +124,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import androidx.compose.ui.window.Popup
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -239,6 +238,7 @@ import com.rrrrz.tinyvow.data.usage.UsageRepository
 import com.rrrrz.tinyvow.data.db.EncourageMetric
 import com.rrrrz.tinyvow.data.db.GroupType
 import com.rrrrz.tinyvow.data.db.LimitPeriod
+import com.rrrrz.tinyvow.data.db.PointLedgerEntity
 import com.rrrrz.tinyvow.data.db.AchievementEntity
 import com.rrrrz.tinyvow.data.db.AchievementTier
 import com.rrrrz.tinyvow.data.db.ActiveRewardEffectEntity
@@ -505,6 +505,7 @@ private data class HomeHistoryOverviewUiState(
 @Composable
 fun RewardsHome(
     userPoints: Double,
+    pointLedgerEntries: List<PointLedgerEntity>,
     achievements: List<AchievementEntity>,
     achievementProgress: AchievementProgress,
     storeItems: List<RewardStoreItem>,
@@ -536,6 +537,7 @@ fun RewardsHome(
             RewardsSection.STORE -> {
                 RedeemScreen(
                     userPoints = userPoints,
+                    pointLedgerEntries = pointLedgerEntries,
                     storeItems = storeItems,
                     groups = groups,
                     onPurchase = onPurchaseReward,
@@ -954,6 +956,8 @@ fun HomeRoute(
         collectNullableAsStateWithLifecycle(dailyArchiveRepository.getRecentArchives(limit = 3650), lifecycle)
     val historicalArchives = historicalArchivesLoaded.orEmpty()
     val pointDailyStats by database.pointLedgerDao().observeDailyStats()
+        .collectAsStateWithLifecycle(initialValue = emptyList(), lifecycle = lifecycle)
+    val pointLedgerEntries by database.pointLedgerDao().observeAllEntries()
         .collectAsStateWithLifecycle(initialValue = emptyList(), lifecycle = lifecycle)
     val pointSpendRecords by database.pointLedgerDao().observeSpendRecords()
         .collectAsStateWithLifecycle(initialValue = emptyList(), lifecycle = lifecycle)
@@ -1538,18 +1542,9 @@ fun HomeRoute(
     }
 
     var newlyUnlockedAchievement by remember { mutableStateOf<AchievementEntity?>(null) }
-    val presentAchievementBanner: (AchievementEntity) -> Unit = { achievement ->
-        coroutineScope.launch {
-            newlyUnlockedAchievement = achievement
-            kotlinx.coroutines.delay(5000)
-            if (newlyUnlockedAchievement?.id == achievement.id) {
-                newlyUnlockedAchievement = null
-            }
-        }
-    }
     LaunchedEffect(Unit) {
         appLimitRepository.newAchievementsAction.collectLatest { achievement ->
-            presentAchievementBanner(achievement)
+            newlyUnlockedAchievement = achievement
         }
     }
 
@@ -1938,6 +1933,7 @@ fun HomeRoute(
                     ) {
                         RewardsHome(
                             userPoints = userPoints,
+                            pointLedgerEntries = pointLedgerEntries,
                             achievements = achievements,
                             achievementProgress = achievementProgress,
                             storeItems = storeRewardItems,
@@ -3230,11 +3226,9 @@ fun HomeRoute(
                                     snackbarHostState.showSnackbar(AppText.t("lab_achievement_test_unavailable"))
                                     return@launch
                                 }
-                                presentAchievementBanner(
-                                    sampleAchievement.copy(
-                                        isUnlocked = true,
-                                        unlockedAt = System.currentTimeMillis(),
-                                    )
+                                newlyUnlockedAchievement = sampleAchievement.copy(
+                                    isUnlocked = true,
+                                    unlockedAt = System.currentTimeMillis(),
                                 )
                             }
                         },
@@ -3640,19 +3634,17 @@ fun HomeRoute(
         )
     }
 
-        // Achievement unlock banner.
-        AnimatedVisibility(
-            visible = newlyUnlockedAchievement != null,
-            enter = slideInVertically(initialOffsetY = { -it }) + fadeIn(),
-            exit = slideOutVertically(targetOffsetY = { -it }) + fadeOut(),
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            newlyUnlockedAchievement?.let { achievement ->
-                Popup(alignment = Alignment.TopCenter) {
-                    AchievementNotificationBanner(achievement)
-                }
-            }
-        }
+    newlyUnlockedAchievement?.let { achievement ->
+        AchievementUnlockDialog(
+            achievement = achievement,
+            onDismiss = { newlyUnlockedAchievement = null },
+            onViewAchievements = {
+                newlyUnlockedAchievement = null
+                rewardsSection = RewardsSection.ACHIEVEMENTS
+                currentScreen = Screen.REWARDS
+            },
+        )
+    }
 
         pendingSensitiveDisclosure?.let { disclosure ->
         SensitivePermissionDisclosureDialog(
@@ -3785,26 +3777,12 @@ private fun android.content.Context.copyContactEmail() {
 }
 
 @Composable
-fun AchievementNotificationBanner(achievement: AchievementEntity) {
+private fun AchievementUnlockDialog(
+    achievement: AchievementEntity,
+    onDismiss: () -> Unit,
+    onViewAchievements: () -> Unit,
+) {
     val themeColors = LocalThemeColors.current
-    val tierGradient = when (achievement.tier) {
-        AchievementTier.LEGENDARY -> listOf(
-            themeColors.control, themeColors.base, themeColors.encourage, themeColors.control
-        )
-        AchievementTier.DIAMOND -> listOf(
-            themeColors.base, themeColors.baseContainer, themeColors.encourageContainer, themeColors.base
-        )
-        AchievementTier.GOLD -> listOf(
-            themeColors.encourage, themeColors.encourageContainer, themeColors.base, themeColors.encourage
-        )
-        AchievementTier.SILVER -> listOf(
-            themeColors.base, themeColors.baseContainer, themeColors.base
-        )
-        else -> listOf(
-            themeColors.control, themeColors.controlContainer, themeColors.control
-        )
-    }
-
     val tierLabel = when (achievement.tier) {
         AchievementTier.LEGENDARY -> AppText.t("home_legendary_achievement_unlocked")
         AchievementTier.DIAMOND -> AppText.t("home_diamond_achievement_unlocked")
@@ -3813,103 +3791,61 @@ fun AchievementNotificationBanner(achievement: AchievementEntity) {
         else -> AppText.t("home_bronze_achievement_unlocked")
     }
     
-    val infiniteTransition = rememberInfiniteTransition(label = "banner_shine")
-    val shineOffset by infiniteTransition.animateFloat(
-        initialValue = -100f,
-        targetValue = 1000f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(2000, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "shine_offset"
-    )
-    
-    val pulse by infiniteTransition.animateFloat(
-        initialValue = 0.98f,
-        targetValue = 1.02f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(800, easing = FastOutSlowInEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "pulse"
-    )
-    
-    var isReady by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) { isReady = true }
-    
-    val bounceScale by animateFloatAsState(
-        targetValue = if (isReady) 1f else 0.5f,
-        animationSpec = spring(dampingRatio = 0.5f, stiffness = Spring.StiffnessMedium),
-        label = "banner_bounce"
-    )
-
-    Surface(
-        modifier = Modifier
-            .padding(16.dp)
-            .fillMaxWidth(0.94f)
-            .wrapContentHeight()
-            .padding(top = 24.dp)
-            .graphicsLayer { 
-                scaleX = bounceScale * (if (achievement.tier >= AchievementTier.GOLD) pulse else 1f)
-                scaleY = bounceScale * (if (achievement.tier >= AchievementTier.GOLD) pulse else 1f)
-            },
-        shape = RoundedCornerShape(20.dp),
-        color = MaterialTheme.colorScheme.surface,
-        tonalElevation = 8.dp,
-        shadowElevation = 12.dp
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .wrapContentHeight()
-                .clip(RoundedCornerShape(20.dp))
+    Dialog(onDismissRequest = onDismiss) {
+        TinyVowCard(
+            modifier = Modifier.fillMaxWidth(),
+            color = MaterialTheme.colorScheme.surface,
+            shadowElevation = TinyVowElevation.FeaturedCard,
+            tonalElevation = TinyVowElevation.FeaturedCard,
         ) {
-            // Achievement shine sweep effect.
-            Canvas(modifier = Modifier.matchParentSize()) {
-                if (achievement.tier >= AchievementTier.GOLD) {
-                    drawRect(
-                        brush = Brush.linearGradient(
-                            colors = tierGradient,
-                            start = Offset(shineOffset, 0f),
-                            end = Offset(shineOffset + 150f, 150f)
-                        ),
-                        alpha = 0.15f
-                    )
-                }
-            }
-            
-            Row(
-                modifier = Modifier.padding(16.dp),
-                verticalAlignment = Alignment.CenterVertically
+            Column(
+                modifier = Modifier.padding(
+                    horizontal = TinyVowSpacing.CardHorizontal,
+                    vertical = TinyVowSpacing.CardVertical,
+                ),
+                horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 AchievementBadge(
                     achievement = achievement,
-                    modifier = Modifier.size(56.dp),
+                    modifier = Modifier.size(72.dp),
                     animated = true,
                 )
-                Spacer(modifier = Modifier.width(16.dp))
-                Column {
-                    Text(
-                        tierLabel,
-                        style = MaterialTheme.typography.labelLarge,
-                        color = tierGradient.first()
-                    )
-                    Text(
-                        achievement.localizedAchievementTitle(),
-                        style = MaterialTheme.typography.titleMedium,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        achievement.localizedAchievementDescription(),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
+                Spacer(modifier = Modifier.height(TinyVowSpacing.CardGap))
+                Text(
+                    tierLabel,
+                    style = MaterialTheme.typography.labelLarge,
+                    color = themeColors.encourage,
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    achievement.localizedAchievementTitle(),
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    textAlign = TextAlign.Center,
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    achievement.localizedAchievementDescription(),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                )
+                Spacer(modifier = Modifier.height(TinyVowSpacing.SectionGap))
+                TinyVowButton(
+                    text = AppText.t("achievement_unlock_view_action"),
+                    onClick = onViewAchievements,
+                    modifier = Modifier.fillMaxWidth(),
+                    tone = TinyVowButtonTone.Primary,
+                )
+                Spacer(modifier = Modifier.height(TinyVowSpacing.CardGap))
+                TinyVowButton(
+                    text = AppText.t("achievement_unlock_dismiss_action"),
+                    onClick = onDismiss,
+                    modifier = Modifier.fillMaxWidth(),
+                )
             }
         }
     }
-
 }
 
 private fun AchievementEntity.localizedAchievementTitle(): String {

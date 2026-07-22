@@ -571,7 +571,12 @@ class AppLimitAccessibilityService : AccessibilityService() {
                     val pointsMultiplier = currentEncouragePointsMultiplier(group.id, nowMillis)
                     // 基础每分钟积分
                     val pointsEarned = calculateUsageEarnedPoints(durationMs, group.pointsPerMinute) * pointsMultiplier
-                    pointsRepository.recordUsageEarn(group, pointsEarned)
+                    pointsRepository.recordUsageEarn(
+                        group = group,
+                        deltaPoints = pointsEarned,
+                        sourcePackageName = packageName,
+                        usageDurationMillis = durationMs,
+                    )
                     
                     // 检查是否达成今日目标大奖
                     checkAndGrantBonus(group, pointsMultiplier)
