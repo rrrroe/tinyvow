@@ -33,6 +33,11 @@ data class BackendPaymentLaunch(
     val orderString: String,
 )
 
+data class BackendLegacyActivationClaim(
+    val status: String,
+    val entitlement: ProEntitlementState,
+)
+
 class TinyVowBackendException(
     val statusCode: Int,
     val errorCode: String,
@@ -68,6 +73,15 @@ interface TinyVowBackendApi {
     ): String?
     suspend fun deleteAccountAvatar(accessToken: String): String?
     suspend fun redeemActivationCode(accessToken: String, code: String): ProEntitlementState
+    suspend fun claimLegacyActivation(
+        accessToken: String,
+        localUserId: String,
+        codeIds: Set<String>,
+        activeCodeId: String,
+        activatedAtMillis: Long,
+        expiresAtMillis: Long,
+        codeProof: String? = null,
+    ): BackendLegacyActivationClaim
     suspend fun deleteAccount(accessToken: String)
     suspend fun createPaymentOrder(
         accessToken: String,
@@ -265,6 +279,36 @@ class HttpTinyVowBackendApi(
             body = JSONObject().put("code", code),
         )
         return JSONObject(response).getJSONObject("entitlement").toEntitlementState()
+    }
+
+    override suspend fun claimLegacyActivation(
+        accessToken: String,
+        localUserId: String,
+        codeIds: Set<String>,
+        activeCodeId: String,
+        activatedAtMillis: Long,
+        expiresAtMillis: Long,
+        codeProof: String?,
+    ): BackendLegacyActivationClaim {
+        val body = JSONObject()
+            .put("localUserId", localUserId)
+            .put("codeIds", JSONArray(codeIds.sorted()))
+            .put("activeCodeId", activeCodeId)
+            .put("activatedAt", Instant.ofEpochMilli(activatedAtMillis).toString())
+            .put("expiresAt", Instant.ofEpochMilli(expiresAtMillis).toString())
+        codeProof?.takeIf { it.isNotBlank() }?.let { body.put("code", it) }
+        val response = JSONObject(
+            request(
+                method = "POST",
+                path = "/v1/activation-codes/claim-legacy",
+                accessToken = accessToken,
+                body = body,
+            ),
+        )
+        return BackendLegacyActivationClaim(
+            status = response.getString("status"),
+            entitlement = response.getJSONObject("entitlement").toEntitlementState(),
+        )
     }
 
     override suspend fun deleteAccount(accessToken: String) {

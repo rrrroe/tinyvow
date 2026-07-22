@@ -98,6 +98,11 @@ data class LocalActivationRecord(
     }
 }
 
+data class LegacyActivationClaimSnapshot(
+    val record: LocalActivationRecord,
+    val usedCodeIds: Set<String>,
+)
+
 internal fun requireActivation(condition: Boolean, messageKey: String) {
     if (!condition) throw ActivationCodeException(messageKey)
 }

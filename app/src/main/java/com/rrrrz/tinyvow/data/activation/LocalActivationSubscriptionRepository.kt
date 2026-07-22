@@ -55,6 +55,15 @@ class LocalActivationSubscriptionRepository(
         )
     }
 
+    suspend fun legacyClaimSnapshot(): LegacyActivationClaimSnapshot? {
+        val preferences = context.activationDataStore.data.first()
+        val record = LocalActivationRecord.fromJsonString(preferences[Keys.activationJson]) ?: return null
+        return LegacyActivationClaimSnapshot(
+            record = record,
+            usedCodeIds = preferences[Keys.usedCodeIds].orEmpty(),
+        )
+    }
+
     suspend fun activate(userId: String, code: String): Result<ProEntitlementState> =
         mutex.withLock {
             runCatching {

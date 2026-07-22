@@ -69,9 +69,12 @@ class ChinaSubscriptionRepository(
             if (code.trim().startsWith(BACKEND_ACTIVATION_PREFIX, ignoreCase = true)) {
                 activateBackend(userId, code)
             } else {
-                localRepository.activate(userId, code).onSuccess {
+                val result = localRepository.activate(userId, code)
+                if (result.isSuccess) {
                     updateEffectiveEntitlement()
-                }.map { _entitlement.value }
+                    claimLegacyActivationIfEligible(codeProof = code)
+                }
+                result.map { _entitlement.value }
             }
         }
 
@@ -88,7 +91,13 @@ class ChinaSubscriptionRepository(
             return@withLock productsResult.map { Unit }
         }
 
-        val paymentAccessToken = recoverPendingPayment(snapshot.accessToken, snapshot.installId)
+        var paymentAccessToken = recoverPendingPayment(snapshot.accessToken, snapshot.installId)
+        if (snapshot.account?.isRegistered == true) {
+            paymentAccessToken = claimLegacyActivationIfEligible(
+                accessToken = paymentAccessToken,
+                installId = snapshot.installId,
+            )
+        }
         refreshBackendEntitlement(paymentAccessToken, snapshot.installId)
             .onSuccess { next ->
                 backendEntitlement = next
@@ -249,6 +258,57 @@ class ChinaSubscriptionRepository(
             val renewed = authenticate(installId)
             renewed.entitlement
         }
+    }
+
+    private suspend fun claimLegacyActivationIfEligible(
+        accessToken: String? = null,
+        installId: String? = null,
+        codeProof: String? = null,
+    ): String {
+        val stored = store.load() ?: return accessToken.orEmpty()
+        if (stored.account?.isRegistered != true) return accessToken ?: stored.accessToken
+        val claim = localRepository.legacyClaimSnapshot() ?: return accessToken ?: stored.accessToken
+        if (claim.record.expiresAtMillis <= nowMillis()) return accessToken ?: stored.accessToken
+
+        var currentAccessToken = accessToken ?: stored.accessToken
+        val currentInstallId = installId ?: stored.installId
+        val response = try {
+            api.claimLegacyActivation(
+                accessToken = currentAccessToken,
+                localUserId = claim.record.userId,
+                codeIds = claim.usedCodeIds.ifEmpty { setOf(claim.record.codeId) },
+                activeCodeId = claim.record.codeId,
+                activatedAtMillis = claim.record.activatedAtMillis,
+                expiresAtMillis = claim.record.expiresAtMillis,
+                codeProof = codeProof,
+            )
+        } catch (error: TinyVowBackendException) {
+            if (error.statusCode == 401) {
+                val renewed = authenticate(currentInstallId)
+                currentAccessToken = renewed.accessToken
+                runCatching {
+                    api.claimLegacyActivation(
+                        accessToken = currentAccessToken,
+                        localUserId = claim.record.userId,
+                        codeIds = claim.usedCodeIds.ifEmpty { setOf(claim.record.codeId) },
+                        activeCodeId = claim.record.codeId,
+                        activatedAtMillis = claim.record.activatedAtMillis,
+                        expiresAtMillis = claim.record.expiresAtMillis,
+                        codeProof = codeProof,
+                    )
+                }.getOrNull()
+            } else {
+                null
+            }
+        } catch (_: Exception) {
+            null
+        }
+        response?.let { claimed ->
+            backendEntitlement = claimed.entitlement
+            store.saveEntitlement(claimed.entitlement)
+            updateEffectiveEntitlement()
+        }
+        return currentAccessToken
     }
 
     private suspend fun recoverPendingPayment(
