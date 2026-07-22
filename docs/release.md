@@ -22,7 +22,7 @@
 - 当前渠道名固定使用 `cn` 和 `googleplay`。
 - 国内版可直接运行 `.\tools\package-china-release.ps1`。
 - 需要同时整理国内 APK 和 Google Play AAB 时运行 `.\tools\package-release-artifacts.ps1`。
-- `.\tools\package-china-release.ps1` 在 APK 签名、包名和版本校验通过后，会自动发布 `tinyvow.rorolo.com`：同步 APK、官网版本信息和仓库内宣传素材，构建验证后上传到独立版本目录并原子切换。
+- `.\tools\package-china-release.ps1` 在 APK 签名、包名和版本校验通过后，会自动发布 `tinyvow.rorolo.com`：同步 APK、官网版本信息，以及 `design/appstore/exports/cn-stores/` 中当前定稿的 S01–S07 宣传图，构建验证后上传到独立版本目录并原子切换。
 - 官网发布默认不可跳过，避免“已打包但官网仍下载旧 APK”。只有明确的故障排查或离线归档场景才可传入 `-SkipWebsitePublish`；该参数不会自动补发官网。
 
 ## 签名注意事项
