@@ -3299,7 +3299,7 @@ private fun SharePosterDownloadFooter() {
                 contentAlignment = Alignment.CenterEnd,
             ) {
                 Image(
-                    painter = painterResource(id = R.drawable.pgyer_download_qr),
+                    painter = painterResource(id = R.drawable.tinyvow_website_qr),
                     contentDescription = null,
                     modifier = Modifier.size(54.dp),
                 )
