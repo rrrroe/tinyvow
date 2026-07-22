@@ -22,6 +22,8 @@
 - 当前渠道名固定使用 `cn` 和 `googleplay`。
 - 国内版可直接运行 `.\tools\package-china-release.ps1`。
 - 需要同时整理国内 APK 和 Google Play AAB 时运行 `.\tools\package-release-artifacts.ps1`。
+- `.\tools\package-china-release.ps1` 在 APK 签名、包名和版本校验通过后，会自动发布 `tinyvow.rorolo.com`：同步 APK、官网版本信息和仓库内宣传素材，构建验证后上传到独立版本目录并原子切换。
+- 官网发布默认不可跳过，避免“已打包但官网仍下载旧 APK”。只有明确的故障排查或离线归档场景才可传入 `-SkipWebsitePublish`；该参数不会自动补发官网。
 
 ## 签名注意事项
 
@@ -74,6 +76,11 @@
 10. 打开应用“我的”页，确认版本信息行：
    - 国内版：`{TINYVOW_VERSION_NAME}-cn`、构建 `{TINYVOW_VERSION_CODE}`、国内版。
    - Google Play 版：`{TINYVOW_VERSION_NAME}`、构建 `{TINYVOW_VERSION_CODE}`、Google Play。
+
+11. 国内 APK 自动发布完成后，确认命令输出中的官网健康检查通过：
+    - 首页下载链接指向新的 `tinyvow-cn-{versionName}-vc{versionCode}-release.apk`。
+    - `/downloads/tinyvow-cn-{versionName}-vc{versionCode}-release.apk` 返回 `200`。
+    - 输出的 SHA-256 与 `dist/` 中 APK 的 SHA-256 一致。
 
 ## Git 标签
 

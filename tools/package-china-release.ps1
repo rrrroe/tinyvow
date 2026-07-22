@@ -1,6 +1,8 @@
 param(
     [string]$SigningProperties = "release-signing\tinyvow-cn-release.properties",
-    [string]$OutputApk = ""
+    [string]$OutputApk = "",
+    [string]$WebsiteDirectory = "",
+    [switch]$SkipWebsitePublish
 )
 
 $ErrorActionPreference = "Stop"
@@ -159,3 +161,22 @@ if ($badgingText -notmatch "versionName='$([regex]::Escape($chinaVersionName))'"
 }
 
 Write-Host "China release APK ready: $OutputApk"
+
+if (!$SkipWebsitePublish) {
+    if ([string]::IsNullOrWhiteSpace($WebsiteDirectory)) {
+        $WebsiteDirectory = Join-Path (Split-Path -Parent $root) "tinyvow-site"
+    }
+
+    $websitePublishScript = Join-Path $WebsiteDirectory "scripts\publish-release.ps1"
+    if (!(Test-Path $websitePublishScript)) {
+        throw "Website publish script not found: $websitePublishScript"
+    }
+
+    & $websitePublishScript `
+        -ApkPath (Resolve-Path $OutputApk) `
+        -Version $versionName `
+        -VersionCode ([int]$versionCode)
+    if ($LASTEXITCODE -ne 0) {
+        throw "Website publish failed; the verified APK remains at $OutputApk and the website release was not completed."
+    }
+}
