@@ -22,8 +22,11 @@
 - 当前渠道名固定使用 `cn` 和 `googleplay`。
 - 国内版可直接运行 `.\tools\package-china-release.ps1`。
 - 需要同时整理国内 APK 和 Google Play AAB 时运行 `.\tools\package-release-artifacts.ps1`。
-- `.\tools\package-china-release.ps1` 在 APK 签名、包名和版本校验通过后，会自动发布 `tinyvow.rorolo.com`：同步 APK、官网版本信息，以及 `design/appstore/exports/cn-stores/` 中当前定稿的 S01–S07 宣传图，构建验证后上传到独立版本目录并原子切换。
-- 官网发布默认不可跳过，避免“已打包但官网仍下载旧 APK”。只有明确的故障排查或离线归档场景才可传入 `-SkipWebsitePublish`；该参数不会自动补发官网。
+- `.\tools\package-china-release.ps1` 和 `.\tools\package-release-artifacts.ps1` 默认只在本地生成、签名、校验并归档发布产物，不改变官网、Sites 或其他生产环境。
+- 只有用户明确要求“发布国内版”或“发布官网”后，才可传入 `-PublishWebsite`。该参数会把 APK、官网版本信息、`design/appstore/exports/cn-stores/` 中当前定稿的 S01–S07 宣传图和 `design/tinyvow-website-qr.png` 同步到官网仓库，构建验证后原子发布到 `tinyvow.rorolo.com`。
+- 官网仓库同时配置了 Sites。由 Agent 执行官网发布时，官方域名成功后还必须把完全相同的已验证源码发布到 `.openai/hosting.json` 对应的 Sites 生产项目；不需要再次向用户确认。两个目标都成功后才能报告官网发布完成。
+- `-PublishWebsite` 不授权也不触发后端部署。后端只有在用户明确要求“发布后端”时才单独部署。
+- 双渠道命令带 `-PublishWebsite` 时，必须先完成国内 APK 和 Google Play AAB 两个本地产物，再开始官网发布，避免 AAB 构建失败但官网已经提前切换。
 
 ## 签名注意事项
 
@@ -63,10 +66,16 @@
    .\tools\package-release-artifacts.ps1
    ```
 
-8. 只发布国内版时构建 release APK：
+8. 只生成国内版 release APK 并留在本地：
 
    ```powershell
    .\tools\package-china-release.ps1
+   ```
+
+   用户已经明确要求发布国内版时运行：
+
+   ```powershell
+   .\tools\package-china-release.ps1 -PublishWebsite
    ```
 
 9. 检查 `dist/` 里的最终归档名：
@@ -77,10 +86,11 @@
    - 国内版：`{TINYVOW_VERSION_NAME}-cn`、构建 `{TINYVOW_VERSION_CODE}`、国内版。
    - Google Play 版：`{TINYVOW_VERSION_NAME}`、构建 `{TINYVOW_VERSION_CODE}`、Google Play。
 
-11. 国内 APK 自动发布完成后，确认命令输出中的官网健康检查通过：
+11. 明确发布国内版并完成官网双目标发布后，确认：
     - 首页下载链接指向新的 `tinyvow-cn-{versionName}-vc{versionCode}-release.apk`。
     - `/downloads/tinyvow-cn-{versionName}-vc{versionCode}-release.apk` 返回 `200`。
     - 输出的 SHA-256 与 `dist/` 中 APK 的 SHA-256 一致。
+    - 官方域名 `tinyvow.rorolo.com` 与 Sites 生产版本都来自同一份已验证源码并部署成功。
 
 ## Git 标签
 

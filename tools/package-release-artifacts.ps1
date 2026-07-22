@@ -1,5 +1,7 @@
 param(
-    [string]$DistDir = "dist"
+    [string]$DistDir = "dist",
+    [string]$WebsiteDirectory = "",
+    [switch]$PublishWebsite
 )
 
 $ErrorActionPreference = "Stop"
@@ -52,6 +54,25 @@ if (!(Test-Path $bundleOutput)) {
 }
 
 Copy-Item -Force $bundleOutput $googlePlayArchive
+
+if ($PublishWebsite) {
+    if ([string]::IsNullOrWhiteSpace($WebsiteDirectory)) {
+        $WebsiteDirectory = Join-Path (Split-Path -Parent $root) "tinyvow-site"
+    }
+
+    $websitePublishScript = Join-Path $WebsiteDirectory "scripts\publish-release.ps1"
+    if (!(Test-Path $websitePublishScript)) {
+        throw "Website publish script not found: $websitePublishScript"
+    }
+
+    & $websitePublishScript `
+        -ApkPath (Resolve-Path $chinaArchive) `
+        -Version $versionName `
+        -VersionCode ([int]$versionCode)
+    if ($LASTEXITCODE -ne 0) {
+        throw "Website publish failed; both verified release artifacts remain in $resolvedDistDir."
+    }
+}
 
 Write-Host "Release artifacts ready:"
 Write-Host "  China APK: $chinaArchive"

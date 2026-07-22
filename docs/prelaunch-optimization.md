@@ -20,6 +20,7 @@
 - 打正式归档产物：
   - 国内版 APK：`.\tools\package-china-release.ps1`
   - 国内 APK + Google Play AAB 双渠道归档：`.\tools\package-release-artifacts.ps1`
+- 上述命令默认只生成本地产物，不发布官网。只有用户明确要求发布后，才使用 `-PublishWebsite`，并完成官方域名与 Sites 两个官网目标。
 - 检查 `dist/` 文件名、包名、版本号和签名校验输出，确认国内版没有 Play Billing / Google 登录相关权限和组件。
 - 在干净真机上安装 release 包，至少手动验证：
   - 首次启动、引导、首页和“我的”页版本信息。
