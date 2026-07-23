@@ -1768,15 +1768,65 @@ internal fun VersionInfoPage(
                 value = versionName,
             )
         }
-        MeSettingsCard(title = AppText.t("me_changelog")) {
-            Text(
-                text = AppText.t("me_changelog_empty"),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
+        versionReleaseNotes().forEach { release ->
+            MeSettingsCard(
+                title = AppText.t(
+                    "me_changelog_version_title",
+                    release.version,
+                    release.publishedAt,
+                ),
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    release.notes.forEach { note ->
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            verticalAlignment = Alignment.Top,
+                        ) {
+                            Text(
+                                text = "•",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = LocalThemeColors.current.base,
+                            )
+                            Text(
+                                text = note,
+                                modifier = Modifier.weight(1f),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
+                }
+            }
         }
     }
 }
+
+private data class VersionReleaseNotes(
+    val version: String,
+    val publishedAt: String,
+    val notes: List<String>,
+)
+
+private fun versionReleaseNotes(): List<VersionReleaseNotes> =
+    listOf(
+        "1.3.1" to ("2026-07-23" to "me_changelog_131_notes"),
+        "1.3.0" to ("2026-07-19" to "me_changelog_130_notes"),
+        "1.2.0" to ("2026-07-13" to "me_changelog_120_notes"),
+        "1.1.1" to ("2026-07-11" to "me_changelog_111_notes"),
+        "1.1.0" to ("2026-07-09" to "me_changelog_110_notes"),
+        "1.0.4" to ("2026-06-28" to "me_changelog_104_notes"),
+        "1.0.3" to ("2026-06-27" to "me_changelog_103_notes"),
+        "1.0.2" to ("2026-06-24" to "me_changelog_102_notes"),
+        "1.0.1" to ("2026-05-30" to "me_changelog_101_notes"),
+        "1.0.0" to ("2026-05-18" to "me_changelog_100_notes"),
+    ).map { (version, details) ->
+        VersionReleaseNotes(
+            version = version,
+            publishedAt = details.first,
+            notes = AppText.t(details.second).lines().filter(String::isNotBlank),
+        )
+    }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
