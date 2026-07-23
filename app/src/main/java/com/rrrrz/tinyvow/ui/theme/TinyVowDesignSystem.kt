@@ -282,6 +282,7 @@ fun TinyVowMetricTile(
     modifier: Modifier = Modifier,
     color: Color = LocalThemeColors.current.base,
     subtitle: String? = null,
+    compact: Boolean = false,
 ) {
     val themeColors = LocalThemeColors.current
     Surface(
@@ -307,7 +308,7 @@ fun TinyVowMetricTile(
             )
             Text(
                 text = value,
-                style = MaterialTheme.typography.titleLarge,
+                style = if (compact) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleLarge,
                 fontWeight = FontWeight.Bold,
                 color = color,
                 maxLines = 1,

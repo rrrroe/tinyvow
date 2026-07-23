@@ -15,6 +15,7 @@ import com.rrrrz.tinyvow.data.db.AppDatabase
 import com.rrrrz.tinyvow.data.db.OfflineFocusSessionStatus
 import com.rrrrz.tinyvow.data.repository.OfflineFocusRepository
 import com.rrrrz.tinyvow.data.repository.OfflineFocusSession
+import com.rrrrz.tinyvow.data.repository.elapsedDurationMillisAt
 import com.rrrrz.tinyvow.data.settings.ManagedAppPreferences
 import com.rrrrz.tinyvow.i18n.AppText
 import java.util.Locale
@@ -130,13 +131,7 @@ class OfflineFocusWidgetProvider : AppWidgetProvider() {
             nowMillis: Long = System.currentTimeMillis(),
             elapsedRealtime: Long = SystemClock.elapsedRealtime(),
         ) {
-            val referenceNow =
-                if (session.status == OfflineFocusSessionStatus.PAUSED) {
-                    session.pausedAt ?: nowMillis
-                } else {
-                    nowMillis
-                }
-            val elapsed = (referenceNow - session.startedAt).coerceAtLeast(0L)
+            val elapsed = session.elapsedDurationMillisAt(nowMillis)
             val finite = session.plannedDurationMillis > 0L
             val displayedMillis =
                 if (finite) {

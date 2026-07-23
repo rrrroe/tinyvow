@@ -2028,6 +2028,7 @@
     <string name="stats_rhythm_strip_title">Attention trace</string>
     <string name="stats_rhythm_active_hours">%1$d active hours</string>
     <string name="stats_rhythm_legend_idle">Blank time</string>
+    <string name="offline_focus_rhythm_legend_paused">Paused</string>
     <string name="stats_rhythm_legend_night">Night</string>
     <string name="stats_rhythm_top_app">Top app</string>
     <string name="stats_rhythm_no_top_app">No top app</string>

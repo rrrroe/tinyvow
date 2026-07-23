@@ -55,10 +55,34 @@ data class OfflineFocusSession(
     val violationPackageName: String? = null,
     val startedAt: Long,
     val pausedAt: Long?,
+    val resumedAt: Long? = null,
+    val pauseIntervals: List<OfflineFocusPauseInterval> = emptyList(),
     val completedAt: Long?,
     val abandonedAt: Long?,
     val pointsAwarded: Double,
 )
+
+data class OfflineFocusPauseInterval(
+    val startMillis: Long,
+    val endMillis: Long,
+)
+
+fun OfflineFocusSession.elapsedDurationMillisAt(nowMillis: Long): Long {
+    val elapsed =
+        when (status) {
+            OfflineFocusSessionStatus.PAUSED -> actualDurationMillis
+            OfflineFocusSessionStatus.RUNNING -> {
+                val activeSegmentStart = resumedAt ?: startedAt
+                actualDurationMillis + (nowMillis - activeSegmentStart).coerceAtLeast(0L)
+            }
+            else -> actualDurationMillis
+        }
+    return if (plannedDurationMillis <= 0L) {
+        elapsed.coerceAtLeast(0L)
+    } else {
+        elapsed.coerceIn(0L, plannedDurationMillis)
+    }
+}
 
 data class OfflineFocusCategorySummary(
     val categoryName: String,
@@ -256,10 +280,11 @@ class OfflineFocusRepository(
         nowMillis: Long = System.currentTimeMillis(),
     ): OfflineFocusSession? {
         return withContext(Dispatchers.IO) {
-            val current = sessionDao.getById(sessionId) ?: return@withContext null
-            if (current.status != OfflineFocusSessionStatus.RUNNING && current.status != OfflineFocusSessionStatus.PAUSED) {
-                return@withContext toSession(current)
+            val stored = sessionDao.getById(sessionId) ?: return@withContext null
+            if (stored.status != OfflineFocusSessionStatus.RUNNING && stored.status != OfflineFocusSessionStatus.PAUSED) {
+                return@withContext toSession(stored)
             }
+            val current = closeOpenPauseInterval(stored, nowMillis)
             val actualMillis = elapsedMillis(current, nowMillis)
             val updated =
                 current.copy(
@@ -308,14 +333,14 @@ class OfflineFocusRepository(
                 return@withContext toSession(current)
             }
             val pausedAt = current.pausedAt ?: nowMillis
-            val pausedDuration = (nowMillis - pausedAt).coerceAtLeast(0L)
+            val pauseIntervalsJson = appendPauseInterval(current.pauseIntervalsJson, pausedAt, nowMillis)
             val updated =
                 current.copy(
                     status = OfflineFocusSessionStatus.RUNNING,
-                    startedAt = current.startedAt + pausedDuration,
                     pausedAt = null,
                     pauseReason = null,
                     resumedAt = nowMillis,
+                    pauseIntervalsJson = pauseIntervalsJson,
                     updatedAt = nowMillis,
                 )
             sessionDao.update(updated)
@@ -370,13 +395,15 @@ class OfflineFocusRepository(
                     val normalizedMinutes = minutesEarlier.coerceIn(0, maxEarlierMinutes)
                     val adjustedEndAt = endAt - normalizedMinutes * MINUTE_MILLIS
                     val adjustedActualMillis =
-                        (adjustedEndAt - current.startedAt)
+                        activeDurationThrough(current, adjustedEndAt)
                             .coerceIn(MINUTE_MILLIS, current.plannedDurationMillis.coerceAtLeast(MINUTE_MILLIS))
+                    val adjustedPauseIntervalsJson = trimPauseIntervals(current.pauseIntervalsJson, adjustedEndAt)
                     if (isBelowThresholdAbandoned) {
                         val adjusted =
                             current.copy(
                                 actualDurationMillis = adjustedActualMillis,
                                 abandonedAt = adjustedEndAt,
+                                pauseIntervalsJson = adjustedPauseIntervalsJson,
                                 pointsAwarded = 0.0,
                                 updatedAt = System.currentTimeMillis(),
                             )
@@ -437,6 +464,7 @@ class OfflineFocusRepository(
                             actualDurationMillis = adjustedActualMillis,
                             status = OfflineFocusSessionStatus.SETTLED,
                             completedAt = adjustedEndAt,
+                            pauseIntervalsJson = adjustedPauseIntervalsJson,
                             pointsAwarded = adjustedPoints,
                             settledLedgerId = ledgerId,
                             updatedAt = System.currentTimeMillis(),
@@ -484,9 +512,10 @@ class OfflineFocusRepository(
             }
             when (current.focusMode) {
                 OfflineFocusMode.STRICT -> {
-                    val actualMillis = elapsedMillis(current, nowMillis)
+                    val interrupted = closeOpenPauseInterval(current, nowMillis)
+                    val actualMillis = elapsedMillis(interrupted, nowMillis)
                     sessionDao.update(
-                        current.copy(
+                        interrupted.copy(
                             actualDurationMillis = actualMillis,
                             status = OfflineFocusSessionStatus.ABANDONED,
                             abandonedReason = OfflineFocusAbandonReason.STRICT_VIOLATION,
@@ -937,7 +966,8 @@ class OfflineFocusRepository(
             val dailyCap = preferences.getOfflineFocusDailyPointCapOnce().toDouble()
             val result =
                 database.withTransaction {
-                    val current = sessionDao.getById(sessionId) ?: return@withTransaction null
+                    val stored = sessionDao.getById(sessionId) ?: return@withTransaction null
+                    val current = closeOpenPauseInterval(stored, nowMillis)
                     if (current.status != OfflineFocusSessionStatus.RUNNING && current.status != OfflineFocusSessionStatus.PAUSED) {
                         return@withTransaction OfflineFocusFinishResult(
                             session = current,
@@ -1050,20 +1080,94 @@ class OfflineFocusRepository(
         session: OfflineFocusSessionEntity,
         nowMillis: Long,
     ): Long {
-        val referenceNow =
-            if (session.status == OfflineFocusSessionStatus.PAUSED) {
-                session.pausedAt ?: nowMillis
-            } else {
-                nowMillis
+        val elapsed =
+            when (session.status) {
+                OfflineFocusSessionStatus.PAUSED -> session.actualDurationMillis
+                OfflineFocusSessionStatus.RUNNING -> {
+                    val activeSegmentStart = session.resumedAt ?: session.startedAt
+                    session.actualDurationMillis + (nowMillis - activeSegmentStart).coerceAtLeast(0L)
+                }
+                else -> session.actualDurationMillis
             }
-        val end = maxOf(referenceNow, session.startedAt)
-        val elapsed = (end - session.startedAt).coerceAtLeast(0L)
         return if (session.plannedDurationMillis <= 0L) {
-            elapsed
+            elapsed.coerceAtLeast(0L)
         } else {
-            elapsed.coerceAtMost(session.plannedDurationMillis)
+            elapsed.coerceIn(0L, session.plannedDurationMillis)
         }
     }
+
+    private fun closeOpenPauseInterval(
+        session: OfflineFocusSessionEntity,
+        endMillis: Long,
+    ): OfflineFocusSessionEntity {
+        if (session.status != OfflineFocusSessionStatus.PAUSED) return session
+        val startMillis = session.pausedAt ?: return session
+        return session.copy(
+            pauseIntervalsJson = appendPauseInterval(session.pauseIntervalsJson, startMillis, endMillis),
+        )
+    }
+
+    private fun appendPauseInterval(
+        json: String,
+        startMillis: Long,
+        endMillis: Long,
+    ): String {
+        if (endMillis <= startMillis) return json
+        val intervals = parsePauseIntervals(json).toMutableList()
+        intervals += OfflineFocusPauseInterval(startMillis = startMillis, endMillis = endMillis)
+        return encodePauseIntervals(intervals)
+    }
+
+    private fun encodePauseIntervals(intervals: List<OfflineFocusPauseInterval>): String =
+        JSONArray().apply {
+            intervals.forEach { interval ->
+                put(JSONArray().put(interval.startMillis).put(interval.endMillis))
+            }
+        }.toString()
+
+    private fun trimPauseIntervals(
+        json: String,
+        endMillis: Long,
+    ): String =
+        encodePauseIntervals(
+            parsePauseIntervals(json).mapNotNull { interval ->
+                val clippedEnd = minOf(interval.endMillis, endMillis)
+                if (clippedEnd <= interval.startMillis) {
+                    null
+                } else {
+                    interval.copy(endMillis = clippedEnd)
+                }
+            },
+        )
+
+    private fun activeDurationThrough(
+        session: OfflineFocusSessionEntity,
+        endMillis: Long,
+    ): Long {
+        val boundedEnd = maxOf(endMillis, session.startedAt)
+        val pausedMillis =
+            parsePauseIntervals(session.pauseIntervalsJson).sumOf { interval ->
+                val clippedStart = maxOf(interval.startMillis, session.startedAt)
+                val clippedEnd = minOf(interval.endMillis, boundedEnd)
+                (clippedEnd - clippedStart).coerceAtLeast(0L)
+            }
+        return ((boundedEnd - session.startedAt) - pausedMillis).coerceAtLeast(0L)
+    }
+
+    private fun parsePauseIntervals(json: String): List<OfflineFocusPauseInterval> =
+        runCatching {
+            val array = JSONArray(json)
+            buildList {
+                for (index in 0 until array.length()) {
+                    val item = array.optJSONArray(index) ?: continue
+                    val startMillis = item.optLong(0, -1L)
+                    val endMillis = item.optLong(1, -1L)
+                    if (startMillis >= 0L && endMillis > startMillis) {
+                        add(OfflineFocusPauseInterval(startMillis, endMillis))
+                    }
+                }
+            }
+        }.getOrDefault(emptyList())
 
     private fun buildSummary(
         sessions: List<OfflineFocusSessionEntity>,
@@ -1130,13 +1234,19 @@ class OfflineFocusRepository(
         val duration = session.actualDurationMillis.coerceAtLeast(0L)
         if (duration == 0L) return 0L
         if (windowStartMillis == null || windowEndMillis == null) return duration
-        val actualEnd =
-            (session.completedAt ?: session.abandonedAt ?: (session.startedAt + duration))
-                .coerceAtMost(session.startedAt + duration)
-        val actualStart = actualEnd - duration
+        val pauseIntervals = parsePauseIntervals(session.pauseIntervalsJson)
+        val actualEnd = session.completedAt ?: session.abandonedAt ?: (session.startedAt + duration)
+        val actualStart = if (pauseIntervals.isEmpty()) actualEnd - duration else session.startedAt
         val clippedStart = maxOf(actualStart, windowStartMillis)
         val clippedEnd = minOf(actualEnd, windowEndMillis)
-        return (clippedEnd - clippedStart).coerceAtLeast(0L)
+        val pausedMillis =
+            pauseIntervals.sumOf { pause ->
+                val pauseStart = maxOf(pause.startMillis, clippedStart)
+                val pauseEnd = minOf(pause.endMillis, clippedEnd)
+                (pauseEnd - pauseStart).coerceAtLeast(0L)
+            }
+        return ((clippedEnd - clippedStart).coerceAtLeast(0L) - pausedMillis)
+            .coerceIn(0L, duration)
     }
 
     private fun toCategory(entity: OfflineFocusCategoryEntity): OfflineFocusCategory =
@@ -1171,6 +1281,8 @@ class OfflineFocusRepository(
             violationPackageName = entity.violationPackageName,
             startedAt = entity.startedAt,
             pausedAt = entity.pausedAt,
+            resumedAt = entity.resumedAt,
+            pauseIntervals = parsePauseIntervals(entity.pauseIntervalsJson),
             completedAt = entity.completedAt,
             abandonedAt = entity.abandonedAt,
             pointsAwarded = entity.pointsAwarded,

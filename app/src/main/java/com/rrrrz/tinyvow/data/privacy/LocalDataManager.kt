@@ -350,7 +350,7 @@ class LocalDataManager(
             LocalDataTable("lock_screen_timer_app_days", "Local trusted lock-screen timer durations for monitored apps."),
             LocalDataTable("lock_screen_timer_app_segments", "Local trusted lock-screen intervals used to merge timer activity with foreground usage without double counting."),
             LocalDataTable("offline_focus_categories", "Local focus types, colors, icons, point rates, sort order, and archive state."),
-            LocalDataTable("offline_focus_sessions", "Local focus timer sessions, mode, duration snapshots, and awarded points."),
+            LocalDataTable("offline_focus_sessions", "Local focus timer sessions, mode, duration and pause snapshots, and awarded points."),
             LocalDataTable("protection_events", "Local Super Mode and guarded-setting change history."),
             LocalDataTable("daily_checkins", "Local daily check-in records and granted buffer item references."),
         )

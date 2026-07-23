@@ -98,6 +98,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -1063,7 +1064,7 @@ fun HomeRoute(
     var rewardsSection by remember { mutableStateOf(RewardsSection.STORE) }
     var hasPlayedHomeOverviewDataReveal by rememberSaveable { mutableStateOf(false) }
     var homeOverviewRuntimeState by remember { mutableStateOf(HomeOverviewRuntimeState()) }
-    var homeAppIconCache by remember { mutableStateOf<Map<String, Drawable>>(emptyMap()) }
+    val homeAppIconCache = remember { mutableStateMapOf<String, Drawable>() }
     LaunchedEffect(offlineFocusDetailRequestToken) {
         if (offlineFocusDetailRequestToken > 0) {
             currentScreen = Screen.HOME
@@ -1686,7 +1687,9 @@ fun HomeRoute(
                         activeBonusMinutesByGroup = activeBonusMinutesByGroup,
                         appIconCache = homeAppIconCache,
                         onAppIconLoaded = { packageName, icon ->
-                            homeAppIconCache = homeAppIconCache + (packageName to icon)
+                            if (!homeAppIconCache.containsKey(packageName)) {
+                                homeAppIconCache[packageName] = icon
+                            }
                         },
                         userPoints = userPoints,
                         todayPoints = todayPoints,
@@ -4210,9 +4213,10 @@ fun HomeScreen(
             overviewState.battleActions,
             usageAccessGranted,
             accessibilityServiceEnabled,
+            dismissedPermissionPrompts,
         ) {
             buildList {
-                if (!usageAccessGranted) {
+                if (!usageAccessGranted && PermissionPromptIds.USAGE_ACCESS !in dismissedPermissionPrompts) {
                     add(
                         HomeBattleAction(
                             type = HomeBattleActionType.PERMISSION_USAGE,
@@ -4222,7 +4226,10 @@ fun HomeScreen(
                             progress = 0f,
                         ),
                     )
-                } else if (!accessibilityServiceEnabled) {
+                } else if (
+                    !accessibilityServiceEnabled &&
+                    PermissionPromptIds.ACCESSIBILITY !in dismissedPermissionPrompts
+                ) {
                     add(
                         HomeBattleAction(
                             type = HomeBattleActionType.PERMISSION_ACCESSIBILITY,
@@ -5776,7 +5783,7 @@ private fun HomeOverviewDetailSheet(
                 Text(
                     text = title,
                     modifier = Modifier.weight(1f),
-                    style = MaterialTheme.typography.titleLarge,
+                    style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = themeColors.inkStrong,
                     maxLines = 1,
@@ -5808,7 +5815,7 @@ private fun HomeOverviewDetailSheet(
                 )
                 Text(
                     text = heroValue,
-                    style = MaterialTheme.typography.displaySmall,
+                    style = MaterialTheme.typography.headlineMedium,
                     fontWeight = FontWeight.Bold,
                     color = themeColors.inkStrong,
                 )
@@ -5829,12 +5836,14 @@ private fun HomeOverviewDetailSheet(
                         label = AppText.t("home_overview_detail_control_streak"),
                         value = AppText.t("home_overview_detail_days_value", state.control.streakDays),
                         color = accent,
+                        compact = true,
                         modifier = Modifier.weight(1f),
                     )
                     TinyVowMetricTile(
                         label = AppText.t("home_overview_detail_total_saved"),
                         value = AppText.t("home_value_minutes", state.history.totalSavedMinutes.toString()),
                         color = accent,
+                        compact = true,
                         modifier = Modifier.weight(1f),
                     )
                 } else {
@@ -5842,12 +5851,14 @@ private fun HomeOverviewDetailSheet(
                         label = AppText.t("home_overview_detail_encourage_streak"),
                         value = AppText.t("home_overview_detail_days_value", state.encourage.streakDays),
                         color = accent,
+                        compact = true,
                         modifier = Modifier.weight(1f),
                     )
                     TinyVowMetricTile(
                         label = AppText.t("home_overview_detail_current_balance"),
                         value = AppText.t("home_overview_detail_points_value", formatHomePointValue(state.history.currentPoints)),
                         color = accent,
+                        compact = true,
                         modifier = Modifier.weight(1f),
                     )
                 }
@@ -7308,8 +7319,8 @@ private fun HomeOverviewWingPanel(
                     Text(
                         text = title,
                         style = MaterialTheme.typography.titleMedium.copy(
-                            fontSize = if (compact) 17.sp else 18.sp,
-                            lineHeight = if (compact) 20.sp else 21.sp,
+                            fontSize = if (compact) 15.sp else 16.sp,
+                            lineHeight = if (compact) 18.sp else 19.sp,
                         ),
                         fontWeight = FontWeight.Bold,
                         color = contentColor,
@@ -7326,8 +7337,8 @@ private fun HomeOverviewWingPanel(
                 Text(
                     text = label,
                     style = MaterialTheme.typography.labelMedium.copy(
-                        fontSize = if (compact) 11.sp else 12.sp,
-                        lineHeight = 15.sp,
+                        fontSize = if (compact) 10.5.sp else 11.sp,
+                        lineHeight = 14.sp,
                     ),
                     color = contentColor.copy(alpha = 0.66f),
                     textAlign = textAlign,
@@ -7403,9 +7414,9 @@ private fun HomeOverviewWingMainMetric(
             text = value,
             style =
                 if (compact) {
-                    MaterialTheme.typography.headlineMedium.copy(fontSize = 30.sp, lineHeight = 34.sp)
+                    MaterialTheme.typography.headlineMedium.copy(fontSize = 28.sp, lineHeight = 32.sp)
                 } else {
-                    MaterialTheme.typography.headlineLarge.copy(fontSize = 34.sp, lineHeight = 38.sp)
+                    MaterialTheme.typography.headlineLarge.copy(fontSize = 30.sp, lineHeight = 34.sp)
                 },
             fontWeight = FontWeight.ExtraBold,
             color = contentColor,
@@ -7415,8 +7426,8 @@ private fun HomeOverviewWingMainMetric(
         Text(
             text = unit,
             style = MaterialTheme.typography.labelLarge.copy(
-                fontSize = if (compact) 11.5.sp else 12.5.sp,
-                lineHeight = 15.sp,
+                fontSize = if (compact) 10.5.sp else 11.5.sp,
+                lineHeight = 14.sp,
             ),
             fontWeight = FontWeight.SemiBold,
             color = contentColor.copy(alpha = 0.72f),
@@ -7454,8 +7465,8 @@ private fun HomeOverviewWingPill(
         text = homeOverviewEmphasizedNumberText(text, contentColor),
         modifier = Modifier.fillMaxWidth(),
         style = MaterialTheme.typography.labelMedium.copy(
-            fontSize = 11.5.sp,
-            lineHeight = 16.sp,
+            fontSize = 10.5.sp,
+            lineHeight = 15.sp,
         ),
         fontWeight = FontWeight.Medium,
         color = contentColor.copy(alpha = 0.68f),
@@ -7512,8 +7523,8 @@ private fun HomeOverviewWingMiniMetric(
         Text(
             text = label,
             style = MaterialTheme.typography.labelSmall.copy(
-                fontSize = 10.5.sp,
-                lineHeight = 14.sp,
+                fontSize = 10.sp,
+                lineHeight = 13.sp,
             ),
             color = contentColor.copy(alpha = 0.58f),
             textAlign = textAlign,
@@ -7524,8 +7535,8 @@ private fun HomeOverviewWingMiniMetric(
         Text(
             text = "$value $unit",
             style = MaterialTheme.typography.labelLarge.copy(
-                fontSize = 13.sp,
-                lineHeight = 17.sp,
+                fontSize = 12.sp,
+                lineHeight = 16.sp,
             ),
             fontWeight = FontWeight.Bold,
             color = contentColor.copy(alpha = 0.88f),
@@ -7717,7 +7728,6 @@ private fun HomeOverviewSplitCards(
                         Text(
                             text = AppText.t("home_commitment_panel"),
                             style = MaterialTheme.typography.titleMedium.copy(
-                                fontSize = 18.sp,
                                 fontWeight = FontWeight.ExtraBold
                             ),
                             color = Color.White
@@ -7731,7 +7741,6 @@ private fun HomeOverviewSplitCards(
                         Text(
                             text = AppText.t("home_saved_today"),
                             style = MaterialTheme.typography.labelSmall.copy(
-                                fontSize = 13.sp,
                                 fontWeight = FontWeight.SemiBold
                             ),
                             color = Color.White.copy(alpha = 0.70f)
@@ -7741,8 +7750,7 @@ private fun HomeOverviewSplitCards(
                         ) {
                             Text(
                                 text = state.control.todaySavedMinutes.toString(),
-                                style = MaterialTheme.typography.displaySmall.copy(
-                                    fontSize = 36.sp,
+                                style = MaterialTheme.typography.headlineMedium.copy(
                                     fontWeight = FontWeight.ExtraBold,
                                     letterSpacing = 0.sp
                                 ),
@@ -7752,7 +7760,6 @@ private fun HomeOverviewSplitCards(
                             Text(
                                 text = AppText.t("group_minutes"),
                                 style = MaterialTheme.typography.labelSmall.copy(
-                                    fontSize = 13.sp,
                                     fontWeight = FontWeight.Bold
                                 ),
                                 color = Color.White.copy(alpha = 0.80f),
@@ -7821,7 +7828,6 @@ private fun HomeOverviewSplitCards(
                         Text(
                             text = AppText.t("home_encouragement_panel"),
                             style = MaterialTheme.typography.titleMedium.copy(
-                                fontSize = 18.sp,
                                 fontWeight = FontWeight.ExtraBold
                             ),
                             color = Color.White
@@ -7838,7 +7844,6 @@ private fun HomeOverviewSplitCards(
                                 AppText.t("home_earned_today_with_badge", it)
                             } ?: AppText.t("home_earned_today"),
                             style = MaterialTheme.typography.labelSmall.copy(
-                                fontSize = 13.sp,
                                 fontWeight = FontWeight.SemiBold
                             ),
                             color = Color.White.copy(alpha = 0.70f)
@@ -7850,7 +7855,6 @@ private fun HomeOverviewSplitCards(
                             Text(
                                 text = AppText.t("group_points"),
                                 style = MaterialTheme.typography.labelSmall.copy(
-                                    fontSize = 13.sp,
                                     fontWeight = FontWeight.Bold
                                 ),
                                 color = Color.White.copy(alpha = 0.80f),
@@ -7859,8 +7863,7 @@ private fun HomeOverviewSplitCards(
                             Spacer(modifier = Modifier.width(3.dp))
                             Text(
                                 text = formatHomePointWholeValue(state.encourage.todayEarnedPoints),
-                                style = MaterialTheme.typography.displaySmall.copy(
-                                    fontSize = 36.sp,
+                                style = MaterialTheme.typography.headlineMedium.copy(
                                     fontWeight = FontWeight.ExtraBold,
                                     letterSpacing = 0.sp
                                 ),
@@ -7934,7 +7937,6 @@ private fun HomeOverviewSplitPill(
         Text(
             text = text,
             style = MaterialTheme.typography.labelSmall.copy(
-                fontSize = 12.sp,
                 fontWeight = FontWeight.Bold
             ),
             color = Color.White.copy(alpha = 0.90f),
@@ -7962,7 +7964,6 @@ private fun HomeHistoryMetricSplit(
         Text(
             text = label,
             style = MaterialTheme.typography.labelSmall.copy(
-                fontSize = 12.sp,
                 fontWeight = FontWeight.SemiBold,
                 letterSpacing = 0.2.sp
             ),
@@ -7980,7 +7981,6 @@ private fun HomeHistoryMetricSplit(
                 Text(
                     text = unit,
                     style = MaterialTheme.typography.labelSmall.copy(
-                        fontSize = 12.sp,
                         fontWeight = FontWeight.Bold
                     ),
                     color = Color.White.copy(alpha = 0.85f),
@@ -7989,8 +7989,7 @@ private fun HomeHistoryMetricSplit(
                 Spacer(modifier = Modifier.width(2.dp))
                 Text(
                     text = value,
-                    style = MaterialTheme.typography.labelSmall.copy(
-                        fontSize = 15.sp,
+                    style = MaterialTheme.typography.labelLarge.copy(
                         fontWeight = FontWeight.ExtraBold
                     ),
                     color = Color.White,
@@ -7999,8 +7998,7 @@ private fun HomeHistoryMetricSplit(
             } else {
                 Text(
                     text = value,
-                    style = MaterialTheme.typography.labelSmall.copy(
-                        fontSize = 15.sp,
+                    style = MaterialTheme.typography.labelLarge.copy(
                         fontWeight = FontWeight.ExtraBold
                     ),
                     color = Color.White,
@@ -8010,7 +8008,6 @@ private fun HomeHistoryMetricSplit(
                 Text(
                     text = unit,
                     style = MaterialTheme.typography.labelSmall.copy(
-                        fontSize = 12.sp,
                         fontWeight = FontWeight.Bold
                     ),
                     color = Color.White.copy(alpha = 0.85f),

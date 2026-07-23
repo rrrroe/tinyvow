@@ -2,6 +2,7 @@ package com.rrrrz.tinyvow.ui.home
 
 import com.rrrrz.tinyvow.data.db.OfflineFocusSessionStatus
 import com.rrrrz.tinyvow.data.repository.OfflineFocusCategorySummary
+import com.rrrrz.tinyvow.data.repository.OfflineFocusPauseInterval
 import com.rrrrz.tinyvow.data.repository.OfflineFocusSession
 import com.rrrrz.tinyvow.data.repository.OfflineFocusTodaySummary
 import org.junit.Assert.assertEquals
@@ -56,6 +57,48 @@ class OfflineFocusReportBuildersTest {
         assertEquals(26 * MINUTE, section.sessions.first().durationMillis)
         assertEquals("Writing", section.categories[1].categoryName)
         assertEquals(20 * MINUTE, section.categories[1].totalMillis)
+    }
+
+    @Test
+    fun pausedFocusKeepsOneSessionAndShowsTheRealPauseGap() {
+        val session =
+            OfflineFocusSession(
+                id = "reading",
+                categoryId = "reading",
+                categoryName = "Reading",
+                iconKey = "reading",
+                colorArgb = 0xFF3F7CAC.toInt(),
+                plannedDurationMillis = 25 * MINUTE,
+                actualDurationMillis = 25 * MINUTE,
+                status = OfflineFocusSessionStatus.SETTLED,
+                startedAt = 10 * MINUTE,
+                pausedAt = null,
+                resumedAt = 20 * MINUTE,
+                pauseIntervals = listOf(OfflineFocusPauseInterval(15 * MINUTE, 20 * MINUTE)),
+                completedAt = 40 * MINUTE,
+                abandonedAt = null,
+                pointsAwarded = 25.0,
+            )
+        val summary =
+            OfflineFocusTodaySummary(
+                totalMillis = 25 * MINUTE,
+                completedCount = 1,
+                pointsAwarded = 25.0,
+                sessions = listOf(session),
+                categories = emptyList(),
+            )
+
+        val section = buildOfflineFocusSectionData(summary, 0L, HOUR)
+
+        assertEquals(1, section.completedCount)
+        assertEquals(1, section.sessions.size)
+        assertEquals(10 * MINUTE, section.sessions.single().startMillis)
+        assertEquals(40 * MINUTE, section.sessions.single().endMillis)
+        assertEquals(25 * MINUTE, section.sessions.single().durationMillis)
+        assertEquals(1, section.sessions.single().pauseIntervals.size)
+        assertEquals(15 * MINUTE, section.sessions.single().pauseIntervals.single().startMillis)
+        assertEquals(20 * MINUTE, section.sessions.single().pauseIntervals.single().endMillis)
+        assertEquals(1, section.interruptionCount)
     }
 
     private fun session(

@@ -101,6 +101,8 @@ data class OfflineFocusSessionEntity(
     val pausedAt: Long? = null,
     @ColumnInfo(name = "resumed_at")
     val resumedAt: Long? = null,
+    @ColumnInfo(name = "pause_intervals_json")
+    val pauseIntervalsJson: String = "[]",
     @ColumnInfo(name = "completed_at")
     val completedAt: Long? = null,
     @ColumnInfo(name = "abandoned_at")

@@ -1246,6 +1246,15 @@ object AppDatabaseMigrations {
             }
         }
 
+    val MIGRATION_33_34 =
+        object : Migration(33, 34) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE `offline_focus_sessions` ADD COLUMN `pause_intervals_json` TEXT NOT NULL DEFAULT '[]'"
+                )
+            }
+        }
+
     val ALL: Array<Migration> = arrayOf(
         MIGRATION_9_10,
         MIGRATION_10_11,
@@ -1271,5 +1280,6 @@ object AppDatabaseMigrations {
         MIGRATION_30_31,
         MIGRATION_31_32,
         MIGRATION_32_33,
+        MIGRATION_33_34,
     )
 }

@@ -40,6 +40,7 @@ class AppDatabaseMigrationTest {
         assertTrue(indexExists("index_point_ledger_source_ref_id"))
         assertTrue(indexExists("index_block_events_group_id_event_date"))
         assertTrue(columnExists("group_app_cross_ref", "sort_order"))
+        assertTrue(columnExists("offline_focus_sessions", "pause_intervals_json"))
         assertTrue(tableRowCount("daily_app_archives") == 0)
         assertEquals(0, intValue("SELECT sort_order FROM app_groups WHERE id = 'control-new'"))
         assertEquals(1, intValue("SELECT sort_order FROM app_groups WHERE id = 'control-old'"))

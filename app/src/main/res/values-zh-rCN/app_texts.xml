@@ -2028,6 +2028,7 @@
     <string name="stats_rhythm_strip_title">注意力足迹</string>
     <string name="stats_rhythm_active_hours">%1$d 个活跃小时</string>
     <string name="stats_rhythm_legend_idle">空白时段</string>
+    <string name="offline_focus_rhythm_legend_paused">暂停</string>
     <string name="stats_rhythm_legend_night">夜间</string>
     <string name="stats_rhythm_top_app">头部应用</string>
     <string name="stats_rhythm_no_top_app">暂无头部应用</string>

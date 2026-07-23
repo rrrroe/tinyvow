@@ -316,6 +316,12 @@ internal data class OfflineFocusTimelineItem(
     val endMillis: Long,
     val durationMillis: Long,
     val pointsAwarded: Double,
+    val pauseIntervals: List<OfflineFocusTimelinePause> = emptyList(),
+)
+
+internal data class OfflineFocusTimelinePause(
+    val startMillis: Long,
+    val endMillis: Long,
 )
 
 internal data class OfflineFocusCategoryBreakdown(

@@ -2267,13 +2267,30 @@ internal fun buildOfflineFocusSectionData(
             .filter { it.completedAt != null && it.actualDurationMillis > 0L }
             .mapNotNull { session ->
                 val durationMillis = session.actualDurationMillis.coerceAtLeast(0L)
-                val actualEndMillis =
-                    (session.completedAt ?: (session.startedAt + durationMillis))
-                        .coerceAtMost(session.startedAt + durationMillis)
-                val actualStartMillis = actualEndMillis - durationMillis
+                val actualEndMillis = session.completedAt ?: (session.startedAt + durationMillis)
+                val actualStartMillis =
+                    if (session.pauseIntervals.isEmpty()) {
+                        actualEndMillis - durationMillis
+                    } else {
+                        session.startedAt
+                    }
                 val clippedStartMillis = maxOf(actualStartMillis, dayStartMillis)
                 val clippedEndMillis = minOf(actualEndMillis, dayEndMillis)
-                val clippedDurationMillis = (clippedEndMillis - clippedStartMillis).coerceAtLeast(0L)
+                val clippedPauses =
+                    session.pauseIntervals.mapNotNull { pause ->
+                        val startMillis = maxOf(pause.startMillis, clippedStartMillis)
+                        val endMillis = minOf(pause.endMillis, clippedEndMillis)
+                        if (endMillis <= startMillis) {
+                            null
+                        } else {
+                            OfflineFocusTimelinePause(startMillis, endMillis)
+                        }
+                    }
+                val clippedDurationMillis =
+                    (
+                        (clippedEndMillis - clippedStartMillis).coerceAtLeast(0L) -
+                            clippedPauses.sumOf { it.endMillis - it.startMillis }
+                    ).coerceAtLeast(0L)
                 if (clippedDurationMillis <= 0L) return@mapNotNull null
                 OfflineFocusTimelineItem(
                     categoryName = session.categoryName,
@@ -2283,6 +2300,7 @@ internal fun buildOfflineFocusSectionData(
                     startMillis = clippedStartMillis,
                     endMillis = clippedEndMillis,
                     durationMillis = clippedDurationMillis,
+                    pauseIntervals = clippedPauses,
                     pointsAwarded =
                         if ((session.completedAt ?: 0L) in dayStartMillis until dayEndMillis) {
                             session.pointsAwarded
@@ -2295,6 +2313,9 @@ internal fun buildOfflineFocusSectionData(
     val interruptedSessions =
         summary.sessions.filter { session ->
             session.abandonedAt != null ||
+                session.pauseIntervals.any { pause ->
+                    pause.startMillis < dayEndMillis && pause.endMillis > dayStartMillis
+                } ||
                 session.pauseReason != null ||
                 session.violationPackageName != null
         }

@@ -10,9 +10,8 @@ import android.graphics.drawable.ColorDrawable
 import android.graphics.drawable.Drawable
 import android.view.Window
 import android.view.WindowManager
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
@@ -79,12 +78,10 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.delay
 import androidx.compose.runtime.LaunchedEffect
 import kotlinx.coroutines.withContext
 import androidx.compose.ui.Alignment
@@ -97,15 +94,12 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.drawIntoCanvas
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.painter.Painter
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.layout.boundsInRoot
-import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
@@ -1149,7 +1143,7 @@ private fun GroupDetailHeader(
             }
             Text(
                 text = groupData.group.name,
-                style = MaterialTheme.typography.titleLarge,
+                style = MaterialTheme.typography.titleMedium,
                 color = themeColors.inkStrong,
                 fontWeight = FontWeight.Bold,
                 maxLines = 1,
@@ -1220,7 +1214,7 @@ private fun GroupDetailSummaryCard(
                     )
                     Text(
                         text = primaryValue,
-                        style = MaterialTheme.typography.headlineSmall,
+                        style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold,
                         color = accent,
                         maxLines = 1,
@@ -1247,12 +1241,14 @@ private fun GroupDetailSummaryCard(
                     label = if (isStepGroup) AppText.t("group_step_target_label") else AppText.t("group_target_limit_label"),
                     value = targetValue,
                     color = accent,
+                    compact = true,
                     modifier = Modifier.weight(1f),
                 )
                 TinyVowMetricTile(
                     label = AppText.t("group_today_usage"),
                     value = if (isStepGroup) AppText.t("group_step_count_value", todayStepCount) else formatUsageDuration(todayUsageMillis),
                     color = accent,
+                    compact = true,
                     modifier = Modifier.weight(1f),
                 )
             }
@@ -1674,6 +1670,7 @@ private fun DetailMetricGrid(
                         label = label,
                         value = value,
                         color = accent,
+                        compact = true,
                         modifier = Modifier.weight(1f),
                     )
                 }
@@ -1943,14 +1940,13 @@ private fun GroupEditDialog(
     val appCountAllowed = ProFeatureGate.canSaveGroupApps(isProActive, savedPackageCount)
     val canSave = canSaveBase && appCountAllowed
 
-    val filteredApps = remember(installedApps, excludedPackages, showOnlyUsedInSevenDays, selectedPackages, searchQuery) {
+    val filteredApps = remember(installedApps, excludedPackages, showOnlyUsedInSevenDays, searchQuery) {
         installedApps
             .asSequence()
             .filterNot { it.packageName in excludedPackages }
             .filter {
                 !showOnlyUsedInSevenDays ||
-                    it.usageTimeInMs > 60_000L ||
-                    it.packageName in selectedPackages
+                    it.usageTimeInMs > 60_000L
             }
             .filter {
                 if (searchQuery.isBlank()) {
@@ -2182,24 +2178,6 @@ private fun GroupEditDialog(
     }
 }
 
-private enum class AppIconArea {
-    SELECTED,
-    AVAILABLE,
-}
-
-private data class AppIconPositionKey(
-    val packageName: String,
-    val area: AppIconArea,
-)
-
-private data class AppIconMoveRequest(
-    val packageName: String,
-    val appName: String,
-    val icon: Drawable?,
-    val startBounds: Rect,
-    val targetArea: AppIconArea,
-)
-
 @Composable
 private fun AppSelectionGrid(
     selectedPackages: List<String>,
@@ -2214,192 +2192,81 @@ private fun AppSelectionGrid(
     onMove: (String, Int) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val appsByPackage = remember(installedApps) { installedApps.associateBy { it.packageName } }
-    val iconBounds = remember { mutableStateMapOf<AppIconPositionKey, Rect>() }
-    val moveProgress = remember { Animatable(1f) }
-    var containerBounds by remember { mutableStateOf<Rect?>(null) }
-    var moveRequest by remember { mutableStateOf<AppIconMoveRequest?>(null) }
     val selectedSet = remember(selectedPackages) { selectedPackages.toSet() }
-    val availableApps = remember(filteredApps, selectedSet) {
-        filteredApps.filterNot { it.packageName in selectedSet }
-    }
-    val targetBounds = moveRequest?.let { request ->
-        iconBounds[AppIconPositionKey(request.packageName, request.targetArea)]
-    }
-
-    LaunchedEffect(moveRequest, targetBounds) {
-        val request = moveRequest ?: return@LaunchedEffect
-        val destination = targetBounds ?: return@LaunchedEffect
-        moveProgress.snapTo(0f)
-        moveProgress.animateTo(
-            targetValue = 1f,
-            animationSpec = spring(
-                dampingRatio = 0.78f,
-                stiffness = Spring.StiffnessMedium,
-            ),
+    Column(
+        modifier = modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        SelectedAppsRow(
+            selectedPackages = selectedPackages,
+            installedApps = installedApps,
+            appIconCache = appIconCache,
+            onIconLoaded = onIconLoaded,
+            accent = accent,
+            onRemove = onRemove,
+            onMove = onMove,
         )
-        if (moveRequest == request) {
-            moveRequest = null
-        }
-    }
 
-    LaunchedEffect(moveRequest) {
-        val request = moveRequest ?: return@LaunchedEffect
-        delay(250)
-        val destination = iconBounds[AppIconPositionKey(request.packageName, request.targetArea)]
-        if (moveRequest == request && destination == null) {
-            moveRequest = null
-        }
-    }
+        HorizontalDivider(color = accent.copy(alpha = 0.24f))
+        Text(
+            text = AppText.t(
+                "pro_group_app_limit_status",
+                selectedPackages.size,
+                appLimit,
+            ),
+            style = MaterialTheme.typography.bodySmall,
+            color = if (selectedPackages.size > appLimit) {
+                MaterialTheme.colorScheme.error
+            } else {
+                MaterialTheme.colorScheme.onSurfaceVariant
+            },
+        )
 
-    fun beginMove(
-        packageName: String,
-        sourceArea: AppIconArea,
-        targetArea: AppIconArea,
-        commit: () -> Unit,
-    ) {
-        val start = iconBounds[AppIconPositionKey(packageName, sourceArea)]
-        iconBounds.remove(AppIconPositionKey(packageName, targetArea))
-        moveRequest = start?.let {
-            AppIconMoveRequest(
-                packageName = packageName,
-                appName = appsByPackage[packageName]?.appName ?: packageName.substringAfterLast('.'),
-                icon = appIconCache[packageName],
-                startBounds = it,
-                targetArea = targetArea,
-            )
-        }
-        commit()
-    }
-
-    fun recordIconBounds(
-        packageName: String,
-        area: AppIconArea,
-        bounds: Rect,
-    ) {
-        val key = AppIconPositionKey(packageName, area)
-        if (iconBounds[key] != bounds) {
-            iconBounds[key] = bounds
-        }
-    }
-
-    Box(
-        modifier = modifier.onGloballyPositioned { coordinates ->
-            val bounds = coordinates.boundsInRoot()
-            if (containerBounds != bounds) {
-                containerBounds = bounds
+        if (filteredApps.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+                contentAlignment = Alignment.Center,
+            ) {
+                Text(
+                    text = AppText.t("group_available_apps_empty"),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.outline,
+                    textAlign = TextAlign.Center,
+                )
             }
-        },
-    ) {
-        Column(
-            modifier = Modifier.fillMaxSize(),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
-        ) {
-            SelectedAppsRow(
-                selectedPackages = selectedPackages,
-                installedApps = installedApps,
-                appIconCache = appIconCache,
-                onIconLoaded = onIconLoaded,
-                accent = accent,
-                hiddenPackageName = moveRequest?.packageName,
-                onIconPositioned = { packageName, bounds ->
-                    recordIconBounds(packageName, AppIconArea.SELECTED, bounds)
-                },
-                onRemove = { packageName ->
-                    beginMove(
-                        packageName = packageName,
-                        sourceArea = AppIconArea.SELECTED,
-                        targetArea = AppIconArea.AVAILABLE,
-                    ) {
-                        onRemove(packageName)
-                    }
-                },
-                onMove = onMove,
-            )
-
-            HorizontalDivider(color = accent.copy(alpha = 0.24f))
-            Text(
-                text = AppText.t(
-                    "pro_group_app_limit_status",
-                    selectedPackages.size,
-                    appLimit,
-                ),
-                style = MaterialTheme.typography.bodySmall,
-                color = if (selectedPackages.size > appLimit) {
-                    MaterialTheme.colorScheme.error
-                } else {
-                    MaterialTheme.colorScheme.onSurfaceVariant
-                },
-            )
-
-            if (availableApps.isEmpty()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Text(
-                        text = AppText.t("group_available_apps_empty"),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.outline,
-                        textAlign = TextAlign.Center,
+        } else {
+            // Keep every visible app in a stable grid. Selection only changes this tile's
+            // visual state, so a large list is never removed/reinserted or globally measured.
+            LazyVerticalGrid(
+                columns = GridCells.Adaptive(minSize = 54.dp),
+                modifier = Modifier.weight(1f),
+                contentPadding = PaddingValues(bottom = 56.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                gridItems(
+                    items = filteredApps,
+                    key = { it.packageName },
+                ) { app ->
+                    val selected = app.packageName in selectedSet
+                    AvailableAppGridItem(
+                        app = app,
+                        icon = appIconCache[app.packageName],
+                        onIconLoaded = onIconLoaded,
+                        accent = accent,
+                        selected = selected,
+                        onClick = {
+                            if (selected) {
+                                onRemove(app.packageName)
+                            } else {
+                                onSelect(app.packageName)
+                            }
+                        },
                     )
                 }
-            } else {
-                LazyVerticalGrid(
-                    columns = GridCells.Adaptive(minSize = 54.dp),
-                    modifier = Modifier.weight(1f),
-                    contentPadding = PaddingValues(bottom = 56.dp),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    gridItems(
-                        items = availableApps,
-                        key = { it.packageName },
-                    ) { app ->
-                        AvailableAppGridItem(
-                            app = app,
-                            icon = appIconCache[app.packageName],
-                            onIconLoaded = onIconLoaded,
-                            accent = accent,
-                            hidden = app.packageName == moveRequest?.packageName,
-                            iconModifier = Modifier.onGloballyPositioned { coordinates ->
-                                recordIconBounds(
-                                    app.packageName,
-                                    AppIconArea.AVAILABLE,
-                                    coordinates.boundsInRoot(),
-                                )
-                            },
-                            onClick = {
-                                if (selectedPackages.size >= appLimit) {
-                                    onSelect(app.packageName)
-                                } else {
-                                    beginMove(
-                                        packageName = app.packageName,
-                                        sourceArea = AppIconArea.AVAILABLE,
-                                        targetArea = AppIconArea.SELECTED,
-                                    ) {
-                                        onSelect(app.packageName)
-                                    }
-                                }
-                            },
-                        )
-                    }
-                }
             }
-        }
-
-        val request = moveRequest
-        val container = containerBounds
-        if (request != null && container != null) {
-            MovingAppIcon(
-                request = request,
-                targetBounds = targetBounds ?: request.startBounds,
-                containerBounds = container,
-                progress = { moveProgress.value },
-                accent = accent,
-            )
         }
     }
 }
@@ -2411,8 +2278,6 @@ private fun SelectedAppsRow(
     appIconCache: Map<String, Drawable>,
     onIconLoaded: (String, Drawable) -> Unit,
     accent: Color,
-    hiddenPackageName: String?,
-    onIconPositioned: (String, Rect) -> Unit,
     onRemove: (String) -> Unit,
     onMove: (String, Int) -> Unit,
 ) {
@@ -2448,13 +2313,6 @@ private fun SelectedAppsRow(
                             accent = accent,
                             onRemove = { onRemove(packageName) },
                             onMove = { direction -> onMove(packageName, direction) },
-                            modifier = Modifier
-                                .onGloballyPositioned { coordinates ->
-                                    onIconPositioned(packageName, coordinates.boundsInRoot())
-                                }
-                                .graphicsLayer {
-                                    alpha = if (packageName == hiddenPackageName) 0f else 1f
-                                },
                         )
                     }
                 }
@@ -2478,8 +2336,7 @@ private fun AvailableAppGridItem(
     icon: Drawable?,
     onIconLoaded: (String, Drawable) -> Unit,
     accent: Color,
-    hidden: Boolean,
-    iconModifier: Modifier,
+    selected: Boolean,
     onClick: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -2497,11 +2354,13 @@ private fun AvailableAppGridItem(
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .graphicsLayer { alpha = if (hidden) 0f else 1f }
             .clip(RoundedCornerShape(14.dp))
             .clickable(onClick = onClick)
             .semantics {
-                contentDescription = AppText.t("group_available_app_select", app.appName)
+                contentDescription = AppText.t(
+                    if (selected) "group_selected_app_remove" else "group_available_app_select",
+                    app.appName,
+                )
             }
             .padding(2.dp),
         contentAlignment = Alignment.Center,
@@ -2510,64 +2369,8 @@ private fun AvailableAppGridItem(
             app = app,
             icon = icon,
             accent = accent,
-            modifier = iconModifier,
+            selected = selected,
         )
-    }
-}
-
-@Composable
-private fun MovingAppIcon(
-    request: AppIconMoveRequest,
-    targetBounds: Rect,
-    containerBounds: Rect,
-    progress: () -> Float,
-    accent: Color,
-) {
-    val density = LocalDensity.current
-    val baseSize = 50.dp
-    val baseSizePx = with(density) { baseSize.toPx() }
-    val start = request.startBounds
-    val startX = start.left - containerBounds.left
-    val startY = start.top - containerBounds.top
-    val targetX = targetBounds.left - containerBounds.left
-    val targetY = targetBounds.top - containerBounds.top
-
-    Surface(
-        modifier = Modifier
-            .size(baseSize)
-            .graphicsLayer {
-                val fraction = progress()
-                val currentX = startX + (targetX - startX) * fraction
-                val currentY = startY + (targetY - startY) * fraction
-                val currentWidth = start.width + (targetBounds.width - start.width) * fraction
-                val currentHeight = start.height + (targetBounds.height - start.height) * fraction
-                translationX = currentX
-                translationY = currentY
-                scaleX = currentWidth / baseSizePx
-                scaleY = currentHeight / baseSizePx
-                transformOrigin = androidx.compose.ui.graphics.TransformOrigin(0f, 0f)
-            }
-            .zIndex(10f),
-        shape = RoundedCornerShape(15.dp),
-        color = accent.copy(alpha = 0.12f),
-        border = BorderStroke(1.dp, accent.copy(alpha = 0.24f)),
-    ) {
-        request.icon?.let { icon ->
-            Image(
-                painter = rememberStableDrawablePainter(icon),
-                contentDescription = null,
-                modifier = Modifier.padding(6.dp),
-            )
-        } ?: run {
-            Box(contentAlignment = Alignment.Center) {
-                Text(
-                    text = request.appName.firstOrNull()?.uppercaseChar()?.toString().orEmpty(),
-                    style = MaterialTheme.typography.titleSmall,
-                    color = accent,
-                    fontWeight = FontWeight.Bold,
-                )
-            }
-        }
     }
 }
 
@@ -2576,27 +2379,70 @@ private fun AvailableAppIconSurface(
     app: ManagedApp,
     icon: Drawable?,
     accent: Color,
+    selected: Boolean,
     modifier: Modifier = Modifier,
 ) {
+    val selectionProgress by animateFloatAsState(
+        targetValue = if (selected) 1f else 0f,
+        animationSpec = tween(durationMillis = 120),
+        label = "group-app-selection",
+    )
     Surface(
         modifier = modifier.size(50.dp),
         shape = RoundedCornerShape(15.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.48f),
-        border = BorderStroke(1.dp, accent.copy(alpha = 0.12f)),
+        color = if (selected) accent.copy(alpha = 0.14f) else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.48f),
+        border = BorderStroke(1.dp, accent.copy(alpha = if (selected) 0.62f else 0.12f)),
     ) {
-        icon?.let { drawable ->
-            Image(
-                painter = rememberStableDrawablePainter(drawable),
-                contentDescription = null,
-                modifier = Modifier.padding(6.dp),
-            )
-        } ?: run {
-            Box(contentAlignment = Alignment.Center) {
-                Text(
-                    text = app.appName.firstOrNull()?.uppercaseChar()?.toString().orEmpty(),
-                    style = MaterialTheme.typography.titleSmall,
-                    color = accent,
-                    fontWeight = FontWeight.Bold,
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center,
+        ) {
+            val iconModifier = Modifier
+                .fillMaxSize()
+                .padding(6.dp)
+                .graphicsLayer {
+                    val scale = 1f - (selectionProgress * 0.06f)
+                    scaleX = scale
+                    scaleY = scale
+                }
+            icon?.let { drawable ->
+                Image(
+                    painter = rememberStableDrawablePainter(drawable),
+                    contentDescription = null,
+                    modifier = iconModifier,
+                )
+            } ?: run {
+                Box(
+                    modifier = iconModifier,
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Text(
+                        text = app.appName.firstOrNull()?.uppercaseChar()?.toString().orEmpty(),
+                        style = MaterialTheme.typography.titleSmall,
+                        color = accent,
+                        fontWeight = FontWeight.Bold,
+                    )
+                }
+            }
+
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(2.dp)
+                    .size(16.dp)
+                    .graphicsLayer {
+                        alpha = selectionProgress
+                        scaleX = selectionProgress
+                        scaleY = selectionProgress
+                    }
+                    .background(accent, CircleShape),
+                contentAlignment = Alignment.Center,
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Check,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(11.dp),
                 )
             }
         }

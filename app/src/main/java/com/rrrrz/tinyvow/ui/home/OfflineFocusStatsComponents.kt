@@ -1060,6 +1060,7 @@ private fun OfflineFocusPomodoroCanvas(data: OfflineFocusSectionData) {
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     val rail = MaterialTheme.colorScheme.surfaceContainerLow
     val outline = MaterialTheme.colorScheme.outlineVariant
+    val paused = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.22f)
     Canvas(
         modifier =
             Modifier
@@ -1098,19 +1099,47 @@ private fun OfflineFocusPomodoroCanvas(data: OfflineFocusSectionData) {
             val minWidth = 16.dp.toPx()
             val width = (rawRight - left).coerceAtLeast(minWidth).coerceAtMost(size.width - left - horizontalPadding)
             val color = Color(session.colorArgb)
-            drawRoundRect(
-                color = color,
-                topLeft = Offset(left, trackTop + 5.dp.toPx()),
-                size = Size(width, trackHeight - 10.dp.toPx()),
-                cornerRadius = CornerRadius(999f, 999f),
-            )
+            val wallDuration = (session.endMillis - session.startMillis).coerceAtLeast(1L)
+            val activeSegments = offlineFocusActiveSegments(session)
+            if (session.pauseIntervals.isNotEmpty()) {
+                drawRoundRect(
+                    color = paused,
+                    topLeft = Offset(left, trackTop + 5.dp.toPx()),
+                    size = Size(width, trackHeight - 10.dp.toPx()),
+                    cornerRadius = CornerRadius(999f, 999f),
+                )
+            }
+            val activePixelSegments =
+                activeSegments.map { segment ->
+                    val segmentLeft =
+                        left + width * (segment.startMillis - session.startMillis).toFloat() / wallDuration.toFloat()
+                    val segmentRight =
+                        left + width * (segment.endMillis - session.startMillis).toFloat() / wallDuration.toFloat()
+                    segmentLeft to segmentRight
+                }
+            activePixelSegments.forEach { (segmentLeft, segmentRight) ->
+                val segmentWidth = (segmentRight - segmentLeft).coerceAtLeast(0f)
+                if (segmentWidth > 0f) {
+                    drawRoundRect(
+                        color = color,
+                        topLeft = Offset(segmentLeft, trackTop + 5.dp.toPx()),
+                        size = Size(segmentWidth, trackHeight - 10.dp.toPx()),
+                        cornerRadius = CornerRadius(999f, 999f),
+                    )
+                }
+            }
             val dotCount = (session.durationMillis / 25.minutesMillis()).toInt().coerceIn(1, 6)
             val dotRadius = 3.2.dp.toPx()
             val dotGap = 8.dp.toPx()
             val dotStart = left + 10.dp.toPx()
             repeat(dotCount) { dotIndex ->
                 val x = dotStart + dotIndex * dotGap
-                if (x < left + width - dotRadius) {
+                if (
+                    x < left + width - dotRadius &&
+                    activePixelSegments.any { (segmentLeft, segmentRight) ->
+                        x - dotRadius >= segmentLeft && x + dotRadius <= segmentRight
+                    }
+                ) {
                     drawCircle(
                         color = Color.White.copy(alpha = 0.88f),
                         radius = dotRadius,
@@ -1118,6 +1147,31 @@ private fun OfflineFocusPomodoroCanvas(data: OfflineFocusSectionData) {
                     )
                 }
             }
+        }
+    }
+}
+
+private data class OfflineFocusActiveSegment(
+    val startMillis: Long,
+    val endMillis: Long,
+)
+
+private fun offlineFocusActiveSegments(session: OfflineFocusTimelineItem): List<OfflineFocusActiveSegment> {
+    if (session.pauseIntervals.isEmpty()) {
+        return listOf(OfflineFocusActiveSegment(session.startMillis, session.endMillis))
+    }
+    return buildList {
+        var cursor = session.startMillis
+        session.pauseIntervals.sortedBy { it.startMillis }.forEach { pause ->
+            val pauseStart = pause.startMillis.coerceIn(session.startMillis, session.endMillis)
+            val pauseEnd = pause.endMillis.coerceIn(session.startMillis, session.endMillis)
+            if (pauseStart > cursor) {
+                add(OfflineFocusActiveSegment(cursor, pauseStart))
+            }
+            cursor = maxOf(cursor, pauseEnd)
+        }
+        if (cursor < session.endMillis) {
+            add(OfflineFocusActiveSegment(cursor, session.endMillis))
         }
     }
 }
@@ -1428,6 +1482,13 @@ private fun OfflineFocusRhythmProfileStrip(
                         customIconPath = category.customIconPath,
                     )
                 }
+                if (data.sessions.any { it.pauseIntervals.isNotEmpty() }) {
+                    OfflineFocusRhythmLegendPill(
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.22f),
+                        label = AppText.t("offline_focus_rhythm_legend_paused"),
+                        borderColor = MaterialTheme.colorScheme.outlineVariant,
+                    )
+                }
                 OfflineFocusRhythmLegendPill(
                     color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.32f),
                     label = AppText.t("stats_rhythm_legend_idle"),
@@ -1495,7 +1556,8 @@ private fun OfflineFocusRhythmHeatGrid(
     showCellIcons: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    val sessionMarks = remember(data) { buildOfflineFocusRhythmSessionMarks(data) }
+    val pauseColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.22f)
+    val sessionMarks = remember(data, pauseColor) { buildOfflineFocusRhythmSessionMarks(data, pauseColor) }
     val emptyCellColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.32f)
     Layout(
         modifier = modifier,
@@ -1512,7 +1574,7 @@ private fun OfflineFocusRhythmHeatGrid(
             sessionMarks.forEach { mark ->
                 OfflineFocusRhythmEnergyBar(
                     mark = mark,
-                    showIcon = showCellIcons,
+                    showIcon = showCellIcons && !mark.isPaused,
                 )
             }
         },
@@ -1769,6 +1831,15 @@ private data class OfflineFocusRhythmSessionMark(
     val iconKey: String,
     val customIconPath: String?,
     val color: Color,
+    val isPaused: Boolean = false,
+)
+
+private data class OfflineFocusRhythmSourceSegment(
+    val session: OfflineFocusTimelineItem,
+    val startMillis: Long,
+    val endMillis: Long,
+    val color: Color,
+    val isPaused: Boolean,
 )
 
 private data class OfflineFocusRhythmInsight(
@@ -1793,9 +1864,12 @@ private fun buildOfflineFocusRhythmCells(data: OfflineFocusSectionData): List<Of
         val sliceEnd = sliceStart + OFFLINE_FOCUS_RHYTHM_CELL_MILLIS
         val dominant =
             data.sessions
-                .mapNotNull { session ->
+                .flatMap { session ->
+                    offlineFocusActiveSegments(session).map { segment -> session to segment }
+                }
+                .mapNotNull { (session, segment) ->
                     val overlap =
-                        (minOf(session.endMillis, sliceEnd) - maxOf(session.startMillis, sliceStart))
+                        (minOf(segment.endMillis, sliceEnd) - maxOf(segment.startMillis, sliceStart))
                             .coerceAtLeast(0L)
                     if (overlap <= 0L) null else session to overlap
                 }
@@ -1811,10 +1885,36 @@ private fun buildOfflineFocusRhythmCells(data: OfflineFocusSectionData): List<Of
         )
     }
 
-private fun buildOfflineFocusRhythmSessionMarks(data: OfflineFocusSectionData): List<OfflineFocusRhythmSessionMark> =
+private fun buildOfflineFocusRhythmSessionMarks(
+    data: OfflineFocusSectionData,
+    pauseColor: Color,
+): List<OfflineFocusRhythmSessionMark> =
     data.sessions.flatMap { session ->
-        val startMillis = session.startMillis.coerceIn(data.dayStartMillis, data.dayEndMillis)
-        val endMillis = session.endMillis.coerceIn(data.dayStartMillis, data.dayEndMillis)
+        val active =
+            offlineFocusActiveSegments(session).map { segment ->
+                OfflineFocusRhythmSourceSegment(
+                    session = session,
+                    startMillis = segment.startMillis,
+                    endMillis = segment.endMillis,
+                    color = Color(session.colorArgb),
+                    isPaused = false,
+                )
+            }
+        val pauses =
+            session.pauseIntervals.map { pause ->
+                OfflineFocusRhythmSourceSegment(
+                    session = session,
+                    startMillis = pause.startMillis,
+                    endMillis = pause.endMillis,
+                    color = pauseColor,
+                    isPaused = true,
+                )
+            }
+        active + pauses
+    }.flatMap { source ->
+        val session = source.session
+        val startMillis = source.startMillis.coerceIn(data.dayStartMillis, data.dayEndMillis)
+        val endMillis = source.endMillis.coerceIn(data.dayStartMillis, data.dayEndMillis)
         if (endMillis <= startMillis) return@flatMap emptyList()
         val firstHour = (((startMillis - data.dayStartMillis) / OfflineFocusRhythmHourMillis).toInt()).coerceIn(0, 23)
         val lastHour = (((endMillis - 1L - data.dayStartMillis) / OfflineFocusRhythmHourMillis).toInt()).coerceIn(0, 23)
@@ -1832,7 +1932,8 @@ private fun buildOfflineFocusRhythmSessionMarks(data: OfflineFocusSectionData): 
                     categoryName = session.categoryName,
                     iconKey = session.iconKey,
                     customIconPath = session.customIconPath,
-                    color = Color(session.colorArgb),
+                    color = source.color,
+                    isPaused = source.isPaused,
                 )
             }
         }
@@ -1862,13 +1963,13 @@ private fun DrawScope.drawOfflineFocusRhythmBaseGrid(
         val y = mark.firstSlot * (cellSize + gap)
         val height = offlineFocusRhythmMarkHeight(mark, cellSize.roundToInt(), gap.roundToInt())
         drawRoundRect(
-            color = mark.color.copy(alpha = 0.88f),
+            color = mark.color.copy(alpha = if (mark.isPaused) 0.22f else 0.88f),
             topLeft = Offset(x, y),
             size = Size(cellSize, height.toFloat()),
             cornerRadius = CornerRadius(4.dp.toPx(), 4.dp.toPx()),
         )
         drawRoundRect(
-            color = mark.color.copy(alpha = 0.32f),
+            color = mark.color.copy(alpha = if (mark.isPaused) 0.18f else 0.32f),
             topLeft = Offset(x, y),
             size = Size(cellSize, height.toFloat()),
             cornerRadius = CornerRadius(4.dp.toPx(), 4.dp.toPx()),
@@ -1930,6 +2031,7 @@ private const val OFFLINE_FOCUS_RHYTHM_CELL_MILLIS = 5L * 60_000L
 
 @Composable
 private fun OfflineFocusTimelineBar(data: OfflineFocusSectionData) {
+    val pauseColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.22f)
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(
             text = AppText.t("offline_focus_timeline"),
@@ -1952,12 +2054,31 @@ private fun OfflineFocusTimelineBar(data: OfflineFocusSectionData) {
                 val left = size.width * startRatio
                 val right = size.width * endRatio
                 val width = (right - left).coerceAtLeast(minWidth)
-                drawRoundRect(
-                    color = Color(session.colorArgb),
-                    topLeft = Offset(left.coerceAtMost(size.width - minWidth), 0f),
-                    size = Size(width.coerceAtMost(size.width - left), size.height),
-                    cornerRadius = CornerRadius(size.height / 2f, size.height / 2f),
-                )
+                val barLeft = left.coerceAtMost(size.width - minWidth)
+                val barWidth = width.coerceAtMost(size.width - barLeft)
+                val wallDuration = (session.endMillis - session.startMillis).coerceAtLeast(1L)
+                if (session.pauseIntervals.isNotEmpty()) {
+                    drawRoundRect(
+                        color = pauseColor,
+                        topLeft = Offset(barLeft, 0f),
+                        size = Size(barWidth, size.height),
+                        cornerRadius = CornerRadius(size.height / 2f, size.height / 2f),
+                    )
+                }
+                offlineFocusActiveSegments(session).forEach { segment ->
+                    val segmentLeft =
+                        barLeft + barWidth * (segment.startMillis - session.startMillis).toFloat() / wallDuration.toFloat()
+                    val segmentRight =
+                        barLeft + barWidth * (segment.endMillis - session.startMillis).toFloat() / wallDuration.toFloat()
+                    if (segmentRight > segmentLeft) {
+                        drawRoundRect(
+                            color = Color(session.colorArgb),
+                            topLeft = Offset(segmentLeft, 0f),
+                            size = Size(segmentRight - segmentLeft, size.height),
+                            cornerRadius = CornerRadius(size.height / 2f, size.height / 2f),
+                        )
+                    }
+                }
             }
         }
     }

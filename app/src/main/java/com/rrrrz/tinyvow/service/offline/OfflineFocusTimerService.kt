@@ -26,6 +26,7 @@ import com.rrrrz.tinyvow.data.db.OfflineFocusPauseReason
 import com.rrrrz.tinyvow.data.db.OfflineFocusSessionStatus
 import com.rrrrz.tinyvow.data.repository.OfflineFocusRepository
 import com.rrrrz.tinyvow.data.repository.OfflineFocusSession
+import com.rrrrz.tinyvow.data.repository.elapsedDurationMillisAt
 import com.rrrrz.tinyvow.data.settings.ManagedAppPreferences
 import com.rrrrz.tinyvow.i18n.AppText
 import com.rrrrz.tinyvow.widget.OfflineFocusWidgetProvider
@@ -185,8 +186,7 @@ class OfflineFocusTimerService : Service() {
                     }
                     updateScreenReceiver(sessionId)
                     if (session.status == OfflineFocusSessionStatus.PAUSED) {
-                        val pausedAt = session.pausedAt ?: System.currentTimeMillis()
-                        val elapsed = (pausedAt - session.startedAt).coerceAtLeast(0L)
+                        val elapsed = session.elapsedDurationMillisAt(System.currentTimeMillis())
                         val remaining = remainingMillis(session.plannedDurationMillis, elapsed)
                         startForeground(
                             NOTIFICATION_ID,
@@ -207,7 +207,7 @@ class OfflineFocusTimerService : Service() {
                         continue
                     }
                     val now = System.currentTimeMillis()
-                    val elapsed = (now - session.startedAt).coerceAtLeast(0L)
+                    val elapsed = session.elapsedDurationMillisAt(now)
                     val remaining = remainingMillis(session.plannedDurationMillis, elapsed)
                     startForeground(
                         NOTIFICATION_ID,

@@ -78,6 +78,7 @@ import com.rrrrz.tinyvow.data.db.OfflineFocusPauseReason
 import com.rrrrz.tinyvow.data.repository.OfflineFocusCategory
 import com.rrrrz.tinyvow.data.repository.OfflineFocusSession
 import com.rrrrz.tinyvow.data.repository.OfflineFocusTodaySummary
+import com.rrrrz.tinyvow.data.repository.elapsedDurationMillisAt
 import com.rrrrz.tinyvow.data.settings.ManagedAppPreferences
 import com.rrrrz.tinyvow.data.settings.OfflineFocusCategoryDefaults
 import com.rrrrz.tinyvow.i18n.AppText
@@ -444,7 +445,7 @@ private fun OfflineFocusTodayDetailSheet(
                 Text(
                     text = AppText.t("offline_focus_today_detail_title"),
                     modifier = Modifier.weight(1f),
-                    style = MaterialTheme.typography.titleLarge,
+                    style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.Bold,
                     color = themeColors.inkStrong,
                     maxLines = 1,
@@ -471,7 +472,7 @@ private fun OfflineFocusTodayDetailSheet(
             ) {
                 Text(
                     text = AppText.t("offline_focus_today_minutes_value", totalMinutes),
-                    style = MaterialTheme.typography.displaySmall,
+                    style = MaterialTheme.typography.headlineMedium,
                     fontWeight = FontWeight.Bold,
                     color = themeColors.inkStrong,
                 )
@@ -496,18 +497,21 @@ private fun OfflineFocusTodayDetailSheet(
                     label = AppText.t("offline_focus_today_summary_minutes"),
                     value = AppText.t("offline_focus_today_minutes_value", totalMinutes),
                     color = accent,
+                    compact = true,
                     modifier = Modifier.weight(1f),
                 )
                 TinyVowMetricTile(
                     label = AppText.t("offline_focus_today_summary_sessions"),
                     value = AppText.t("offline_focus_today_sessions_value", summary.completedCount),
                     color = accent,
+                    compact = true,
                     modifier = Modifier.weight(1f),
                 )
                 TinyVowMetricTile(
                     label = AppText.t("offline_focus_today_summary_points"),
                     value = AppText.t("offline_focus_today_points_value", summary.pointsAwarded.roundToInt()),
                     color = accent,
+                    compact = true,
                     modifier = Modifier.weight(1f),
                 )
             }
@@ -682,13 +686,7 @@ private fun OfflineFocusRunningProgressIcon(
             delay(1_000L)
         }
     }
-    val referenceNow =
-        if (session.status == OfflineFocusSessionStatus.PAUSED) {
-            session.pausedAt ?: now
-        } else {
-            now
-        }
-    val elapsed = (referenceNow - session.startedAt).coerceAtLeast(0L)
+    val elapsed = session.elapsedDurationMillisAt(now)
     val progress =
         if (session.plannedDurationMillis <= 0L) {
             0f
@@ -740,13 +738,7 @@ private fun OfflineFocusRunningSummary(
             delay(1_000L)
         }
     }
-    val referenceNow =
-        if (session.status == OfflineFocusSessionStatus.PAUSED) {
-            session.pausedAt ?: now
-        } else {
-            now
-        }
-    val elapsed = (referenceNow - session.startedAt).coerceAtLeast(0L)
+    val elapsed = session.elapsedDurationMillisAt(now)
     Column(
         modifier = modifier,
         verticalArrangement = Arrangement.spacedBy(3.dp),
@@ -804,13 +796,7 @@ private fun OfflineFocusActiveDetailSheet(
         }
     }
     val isPaused = session.status == OfflineFocusSessionStatus.PAUSED
-    val referenceNow =
-        if (isPaused) {
-            session.pausedAt ?: now
-        } else {
-            now
-        }
-    val elapsed = (referenceNow - session.startedAt).coerceAtLeast(0L)
+    val elapsed = session.elapsedDurationMillisAt(now)
     val remaining =
         if (session.plannedDurationMillis <= 0L) null else (session.plannedDurationMillis - elapsed).coerceAtLeast(0L)
     val accent = Color(session.colorArgb)
@@ -885,7 +871,7 @@ private fun OfflineFocusActiveDetailSheet(
                         )
                         Text(
                             text = session.categoryName,
-                            style = MaterialTheme.typography.titleLarge,
+                            style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurface,
                             textAlign = TextAlign.Center,
@@ -916,12 +902,14 @@ private fun OfflineFocusActiveDetailSheet(
                                 label = AppText.t("offline_focus_active_elapsed"),
                                 value = formatCountdown(elapsed),
                                 color = accent,
+                                compact = true,
                                 modifier = Modifier.weight(1f),
                             )
                             TinyVowMetricTile(
                                 label = AppText.t("offline_focus_active_remaining"),
                                 value = remaining?.let(::formatCountdown) ?: AppText.t("offline_focus_unlimited"),
                                 color = accent,
+                                compact = true,
                                 modifier = Modifier.weight(1f),
                             )
                         }
@@ -933,6 +921,7 @@ private fun OfflineFocusActiveDetailSheet(
                                 label = AppText.t("offline_focus_completed_metric_mode"),
                                 value = modeLabel,
                                 color = MaterialTheme.colorScheme.primary,
+                                compact = true,
                                 modifier = Modifier.weight(1f),
                             )
                             TinyVowMetricTile(
@@ -944,6 +933,7 @@ private fun OfflineFocusActiveDetailSheet(
                                         formatCountdown(session.plannedDurationMillis)
                                     },
                                 color = accent,
+                                compact = true,
                                 modifier = Modifier.weight(1f),
                             )
                         }
