@@ -20,3 +20,4 @@ tools/activation/*.class
 release-signing/
 dist/
 .codex-remote-attachments/
+tools/__pycache__/
