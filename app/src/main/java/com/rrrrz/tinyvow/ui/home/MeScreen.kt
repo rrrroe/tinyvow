@@ -2060,6 +2060,7 @@ private fun subscriptionPriceSummary(
 ): String =
     when {
         isActive -> AppText.t("me_unlocked")
+        isLocalActivationEnabled && BuildConfig.STORE_CHANNEL == "global" -> AppText.t("pro_price_global_summary")
         isLocalActivationEnabled -> AppText.t("pro_price_china_summary")
         offers.size > 1 -> AppText.t("me_subscription_options_count", offers.size)
         offers.size == 1 -> offers.first().price
@@ -2106,9 +2107,10 @@ internal fun ProMembershipPage(
     onActivateProCode: (String) -> Unit,
 ) {
     val isActive = entitlement.status == ProEntitlementStatus.ACTIVE
+    val isGlobalBeta = BuildConfig.STORE_CHANNEL == "global"
     val showSubscriptionActions = isPlayBillingEnabled && !isLocalActivationEnabled
-    val plans = proPricePlans(offers, isLocalActivationEnabled)
-    val directChinaPaymentAvailable = isLocalActivationEnabled && plans.any { it.offer != null }
+    val plans = proPricePlans(offers, isLocalActivationEnabled, isGlobalBeta)
+    val directChinaPaymentAvailable = isLocalActivationEnabled && !isGlobalBeta && plans.any { it.offer != null }
     var showPurchaseContactDialog by remember { mutableStateOf(false) }
 
     MeDetailPageScaffold(
@@ -2141,10 +2143,10 @@ internal fun ProMembershipPage(
 
         MeSettingsCard(title = AppText.t("pro_price_title")) {
             Text(
-                text = if (isLocalActivationEnabled) {
-                    AppText.t("pro_price_china_description")
-                } else {
-                    AppText.t("pro_price_global_description")
+                text = when {
+                    isGlobalBeta -> AppText.t("pro_price_global_description")
+                    isLocalActivationEnabled -> AppText.t("pro_price_china_description")
+                    else -> AppText.t("pro_price_global_description")
                 },
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -2162,7 +2164,13 @@ internal fun ProMembershipPage(
                     },
                 )
             }
-            if (!directChinaPaymentAvailable) {
+            if (isGlobalBeta) {
+                Text(
+                    text = AppText.t("pro_price_global_payment_unavailable"),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            } else if (!directChinaPaymentAvailable) {
                 Button(
                     onClick = { showPurchaseContactDialog = true },
                     modifier = Modifier.fillMaxWidth(),
@@ -2364,7 +2372,32 @@ private fun ProPurchaseContactRow(
     }
 }
 
-private fun proPricePlans(offers: List<SubscriptionOffer>, isLocalActivationEnabled: Boolean): List<ProPricePlan> {
+private fun proPricePlans(
+    offers: List<SubscriptionOffer>,
+    isLocalActivationEnabled: Boolean,
+    isGlobalBeta: Boolean,
+): List<ProPricePlan> {
+    if (isGlobalBeta) {
+        return listOf(
+            ProPricePlan(
+                title = AppText.t("pro_price_monthly"),
+                price = AppText.t("pro_price_global_monthly"),
+                note = AppText.t("pro_price_global_monthly_note"),
+            ),
+            ProPricePlan(
+                title = AppText.t("pro_price_yearly"),
+                price = AppText.t("pro_price_global_yearly"),
+                note = AppText.t("pro_price_global_yearly_note"),
+                highlighted = true,
+            ),
+            ProPricePlan(
+                title = AppText.t("pro_price_lifetime"),
+                price = AppText.t("pro_price_global_lifetime"),
+                note = AppText.t("pro_price_global_lifetime_note"),
+            ),
+        )
+    }
+
     if (isLocalActivationEnabled) {
         val monthlyOffer = offers.firstOrNull { it.productId == "tinyvow_pro_monthly" }
         val yearlyOffer = offers.firstOrNull { it.productId == "tinyvow_pro_yearly" }

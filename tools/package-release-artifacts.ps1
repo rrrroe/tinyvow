@@ -31,29 +31,23 @@ function Get-GradleProperty {
 }
 
 $versionName = Get-GradleProperty -Name "TINYVOW_VERSION_NAME"
-$versionCode = Get-GradleProperty -Name "TINYVOW_VERSION_CODE"
+$chinaVersionCode = Get-GradleProperty -Name "TINYVOW_VERSION_CODE"
+$playVersionCode = Get-GradleProperty -Name "TINYVOW_PLAY_VERSION_CODE"
 $resolvedDistDir = Join-Path $root $DistDir
 New-Item -ItemType Directory -Force -Path $resolvedDistDir | Out-Null
 
-$chinaArchive = Join-Path $resolvedDistDir "tinyvow-cn-$versionName-vc$versionCode-release.apk"
-$googlePlayArchive = Join-Path $resolvedDistDir "tinyvow-googleplay-$versionName-vc$versionCode-release.aab"
+$chinaArchive = Join-Path $resolvedDistDir "tinyvow-cn-$versionName-vc$chinaVersionCode-release.apk"
+$googlePlayArchive = Join-Path $resolvedDistDir "tinyvow-googleplay-$versionName-vc$playVersionCode-release.aab"
 
 & (Join-Path $root "tools\package-china-release.ps1") -OutputApk $chinaArchive
 if ($LASTEXITCODE -ne 0) {
     throw "China release packaging failed."
 }
 
-& .\gradlew.bat :app:bundleGooglePlayRelease
+& (Join-Path $root "tools\package-play-release.ps1") -OutputAab $googlePlayArchive
 if ($LASTEXITCODE -ne 0) {
-    throw "bundleGooglePlayRelease failed."
+    throw "Google Play release packaging failed."
 }
-
-$bundleOutput = Join-Path $root "app\build\outputs\bundle\googlePlayRelease\app-googlePlay-release.aab"
-if (!(Test-Path $bundleOutput)) {
-    throw "Google Play release bundle not found: $bundleOutput"
-}
-
-Copy-Item -Force $bundleOutput $googlePlayArchive
 
 if ($PublishWebsite) {
     if ([string]::IsNullOrWhiteSpace($WebsiteDirectory)) {
@@ -68,7 +62,7 @@ if ($PublishWebsite) {
     & $websitePublishScript `
         -ApkPath (Resolve-Path $chinaArchive) `
         -Version $versionName `
-        -VersionCode ([int]$versionCode)
+        -VersionCode ([int]$chinaVersionCode)
     if ($LASTEXITCODE -ne 0) {
         throw "Website publish failed; both verified release artifacts remain in $resolvedDistDir."
     }

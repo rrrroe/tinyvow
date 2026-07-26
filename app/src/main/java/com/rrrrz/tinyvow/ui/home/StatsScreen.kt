@@ -2,9 +2,12 @@ package com.rrrrz.tinyvow.ui.home
 
 import com.rrrrz.tinyvow.i18n.AppText
 
+import android.Manifest
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Bitmap
+import android.os.Build
 import android.provider.Settings
 import android.widget.Toast
 import androidx.compose.animation.Crossfade
@@ -17,6 +20,8 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
@@ -128,6 +133,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.window.Popup
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.core.content.ContextCompat
 import androidx.compose.ui.window.PopupProperties
 import androidx.compose.ui.zIndex
 import coil.compose.AsyncImage
@@ -181,7 +187,7 @@ import kotlin.math.roundToInt
 import kotlin.math.roundToLong
 
 private const val STAT_CHART_ANIMATIONS_ENABLED = false
-private const val SharePosterMinExportWidthPx = 2880f
+private const val SharePosterMinExportWidthPx = 2160f
 private const val SharePosterMaxExportScale = 4f
 private val ReportTopControlHeight = 36.dp
 private val ReportNavigatorArrowSize = 24.dp
@@ -2909,6 +2915,7 @@ private fun ReportPageSharePreviewDialog(
         }
     }
     var isSharing by remember { mutableStateOf(false) }
+    var saveAfterPermissionGrant by remember { mutableStateOf(false) }
 
     fun updateSelectedModules(modules: List<SharePosterModule>) {
         selectedModules = modules
@@ -2920,12 +2927,62 @@ private fun ReportPageSharePreviewDialog(
         }
     }
 
+    suspend fun captureCurrentPreview(): Bitmap = graphicsLayer.toImageBitmap().asAndroidBitmap()
+
+    fun saveCurrentPreview() {
+        if (isSharing) return
+        scope.launch {
+            isSharing = true
+            runCatching {
+                val bitmap = captureCurrentPreview()
+                withContext(Dispatchers.IO) {
+                    saveReportBitmap(context = context, bitmap = bitmap)
+                }
+            }.onSuccess {
+                Toast.makeText(
+                    context,
+                    AppText.t("stats_share_image_saved"),
+                    Toast.LENGTH_SHORT,
+                ).show()
+            }.onFailure {
+                Toast.makeText(
+                    context,
+                    AppText.t("stats_failed_to_save_share_image"),
+                    Toast.LENGTH_SHORT,
+                ).show()
+            }
+            isSharing = false
+        }
+    }
+    val storagePermissionLauncher =
+        rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            if (granted && saveAfterPermissionGrant) {
+                saveCurrentPreview()
+            } else if (saveAfterPermissionGrant) {
+                Toast.makeText(context, AppText.t("stats_save_image_permission_denied"), Toast.LENGTH_SHORT).show()
+            }
+            saveAfterPermissionGrant = false
+        }
+
+    fun requestSaveCurrentPreview() {
+        if (
+            Build.VERSION.SDK_INT < Build.VERSION_CODES.Q &&
+            ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_EXTERNAL_STORAGE) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            saveAfterPermissionGrant = true
+            storagePermissionLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+        } else {
+            saveCurrentPreview()
+        }
+    }
+
     fun shareCurrentPreview() {
         if (isSharing) return
         scope.launch {
             isSharing = true
             runCatching {
-                val bitmap = graphicsLayer.toImageBitmap().asAndroidBitmap()
+                val bitmap = captureCurrentPreview()
                 shareReportBitmap(context = context, bitmap = bitmap)
             }.onFailure { error ->
                 Toast.makeText(
@@ -3074,6 +3131,11 @@ private fun ReportPageSharePreviewDialog(
                     TinyVowButton(
                         text = AppText.t("group_close"),
                         onClick = onDismiss,
+                        enabled = !isSharing,
+                    )
+                    TinyVowButton(
+                        text = AppText.t("group_save"),
+                        onClick = { requestSaveCurrentPreview() },
                         enabled = !isSharing,
                     )
                     TinyVowButton(

@@ -61,5 +61,9 @@ data class AppGroupEntity(
     val lastBonusAt: Long = 0,
 
     @ColumnInfo(name = "sort_order")
-    val sortOrder: Int = 0
+    val sortOrder: Int = 0,
+
+    /** One bit per local clock hour. A set bit means the CONTROL group is unavailable then. */
+    @ColumnInfo(name = "blocked_hours_mask")
+    val blockedHoursMask: Long = 0L,
 )

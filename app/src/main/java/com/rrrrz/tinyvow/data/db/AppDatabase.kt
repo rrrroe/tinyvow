@@ -42,7 +42,7 @@ import com.rrrrz.tinyvow.data.db.migration.AppDatabaseMigrations
         OfflineFocusCategoryEntity::class,
         OfflineFocusSessionEntity::class,
     ],
-    version = 34,
+    version = 35,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -108,6 +108,7 @@ abstract class AppDatabase : RoomDatabase() {
         val MIGRATION_31_32 = AppDatabaseMigrations.MIGRATION_31_32
         val MIGRATION_32_33 = AppDatabaseMigrations.MIGRATION_32_33
         val MIGRATION_33_34 = AppDatabaseMigrations.MIGRATION_33_34
+        val MIGRATION_34_35 = AppDatabaseMigrations.MIGRATION_34_35
 
         @Volatile
         private var INSTANCE: AppDatabase? = null

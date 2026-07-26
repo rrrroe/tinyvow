@@ -1,6 +1,6 @@
 # Google Play 发布清单
 
-最后检查日期：2026-05-31
+最后检查日期：2026-07-23
 
 上架前整体优化优先级见 `docs/prelaunch-optimization.md`；本文件只聚焦 Google Play 提审材料。
 
@@ -10,7 +10,16 @@
 - 账号删除 URL：`https://tinyvow.rorolo.com/account-delete/`
 - 订阅取消入口：应用内打开 Google Play 订阅管理页，商品 ID 为 `tinyvow_pro`。
 - 支持/联系邮箱：`rrrr.zhao@qq.com`
-- 微信：`rourourenren222`
+- 英文公开联系渠道：`https://x.com/roroloxxx`
+
+## Play App Signing
+
+- 建档和导入步骤见 `docs/google-play-signing-setup.md`。
+- application ID：`com.rorolo.tinyvow`。
+- App signing certificate SHA-256：`D02A49C08D6AACCB8561A3FAB5D57B60B05B5D32FF6E69FE9678728007DD503B`。
+- Upload certificate SHA-256：`C7E7AA5719160CFD60635DB4032C54A97E2F6301378FEE275C5BAE6F59ECFAC0`。
+- Play Console 必须导入现有 Global App Signing key，不得让 Google 自动生成另一把 App signing key。
+- 首个 Play AAB 的 versionCode 必须高于官网已分发的 Global APK。
 
 ## 数据安全表单草稿
 
@@ -41,7 +50,9 @@
 ## 发布前冒烟检查
 
 - 在干净设备上安装 release 构建。
-- 确认 Google Play 版包名是 `com.rrrrz.tinyvow`，版本名不带 `-cn` 后缀。
+- 确认 Google Play 版包名是 `com.rorolo.tinyvow`，版本名不带 `-cn` 后缀。
+- 先安装官网 Global APK，再从 Internal testing 不卸载更新到更高 versionCode，确认本地数据保留。
+- 确认 Play 分发 APK 的签名证书与官网 Global APK 相同，且不是 Upload 证书。
 - 确认首次启动在未授权使用情况访问、未开启无障碍服务时仍可正常使用。
 - 确认打开使用情况访问设置前会出现显著披露。
 - 确认打开无障碍设置前会出现显著披露。

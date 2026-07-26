@@ -40,7 +40,7 @@
 
 ## 渠道和权益规则
 
-- `googlePlay` 使用包名 `com.rrrrz.tinyvow`，包含 Google 登录、Play Billing 和 Play 订阅管理，版本名使用基础 `TINYVOW_VERSION_NAME`。
+- `googlePlay` 使用包名 `com.rorolo.tinyvow`，包含 Google 登录、Play Billing 和 Play 订阅管理，版本名使用基础 `TINYVOW_VERSION_NAME`。
 - `china` 使用包名 `com.rrrrz.tinyvow.cn`，走本地激活，不应触发 Google 登录或 Play Billing 流程，版本名自动追加 `-cn`。
 - UI 应通过 `ProEntitlementState.isProActive` 和 `ProFeatureGate` 判断权益，不要直接散落判断 Play Billing 或本地激活细节。
 - 免费用户已有超额数据不删除、不迁移、不裁剪；但超出当前权益上限的分组、兑换、主题只能展示，不能继续编辑或保存。

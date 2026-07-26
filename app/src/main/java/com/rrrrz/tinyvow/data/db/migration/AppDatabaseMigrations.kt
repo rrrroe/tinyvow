@@ -1255,6 +1255,13 @@ object AppDatabaseMigrations {
             }
         }
 
+    val MIGRATION_34_35 =
+        object : Migration(34, 35) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE `app_groups` ADD COLUMN `blocked_hours_mask` INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
     val ALL: Array<Migration> = arrayOf(
         MIGRATION_9_10,
         MIGRATION_10_11,
@@ -1281,5 +1288,6 @@ object AppDatabaseMigrations {
         MIGRATION_31_32,
         MIGRATION_32_33,
         MIGRATION_33_34,
+        MIGRATION_34_35,
     )
 }

@@ -1,6 +1,7 @@
 package com.rrrrz.tinyvow.ui.home
 
 import com.rrrrz.tinyvow.i18n.AppText
+import com.rrrrz.tinyvow.domain.limit.BlockedHourSchedule
 
 import android.app.Activity
 import android.content.Context
@@ -205,6 +206,7 @@ fun GroupDashboard(
         type: GroupType,
         period: LimitPeriod,
         pts: Double,
+        blockedHoursMask: Long,
         pkgs: List<String>
     ) -> Unit,
     onDeleteGroup: (id: String) -> Unit,
@@ -344,10 +346,10 @@ fun GroupDashboard(
             isProActive = isProActive,
             onShowProUpsell = onShowProUpsell,
             onDismiss = { showDialog = false },
-            onSave = { name, limit, type, period, points, packages ->
+            onSave = { name, limit, type, period, points, blockedHoursMask, packages ->
                 val saveAction = editingGroup?.let { GuardedAction.EDIT_GROUP }
                 val saveBlock = {
-                    onSaveGroup(editingGroup?.group?.id, name, limit, type, period, points, packages)
+                    onSaveGroup(editingGroup?.group?.id, name, limit, type, period, points, blockedHoursMask, packages)
                     showDialog = false
                 }
                 if (saveAction == null) {
@@ -1887,7 +1889,7 @@ private fun GroupEditDialog(
     isProActive: Boolean,
     onShowProUpsell: (ProUpsellSource) -> Unit,
     onDismiss: () -> Unit,
-    onSave: (String, Int, GroupType, LimitPeriod, Double, List<String>) -> Unit,
+    onSave: (String, Int, GroupType, LimitPeriod, Double, Long, List<String>) -> Unit,
     onDelete: () -> Unit
 ) {
     val context = LocalContext.current
@@ -1924,6 +1926,8 @@ private fun GroupEditDialog(
     var selectedPeriod by remember(group) {
         mutableStateOf(group?.group?.limitPeriod ?: LimitPeriod.DAILY)
     }
+    var blockedHoursMask by remember(group) { mutableStateOf(group?.group?.blockedHoursMask ?: 0L) }
+    var showBlockedHours by remember(group) { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
     var showOnlyUsedInSevenDays by remember { mutableStateOf(true) }
     var selectedPackages by remember(group) {
@@ -2022,6 +2026,7 @@ private fun GroupEditDialog(
                                 forcedType,
                                 selectedPeriod,
                                 points,
+                                if (forcedType == GroupType.CONTROL) blockedHoursMask else 0L,
                                 selectedPackages.toList(),
                             )
                         },
@@ -2096,6 +2101,59 @@ private fun GroupEditDialog(
                             textAlign = TextAlign.End,
                             accent = editAccent,
                         )
+                    }
+                }
+
+                if (forcedType == GroupType.CONTROL) {
+                    CompactFilterButton(
+                        text =
+                            if (BlockedHourSchedule.count(blockedHoursMask) == 0) {
+                                AppText.t("group_blocked_hours_none")
+                            } else {
+                                AppText.t("group_blocked_hours_selected", BlockedHourSchedule.count(blockedHoursMask))
+                            },
+                        selected = showBlockedHours || blockedHoursMask != 0L,
+                        onClick = { showBlockedHours = !showBlockedHours },
+                        accent = editAccent,
+                    )
+                    if (showBlockedHours) {
+                        Text(
+                            text = AppText.t("group_blocked_hours_hint"),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = themeColors.inkMuted,
+                            modifier = Modifier.padding(horizontal = 4.dp),
+                        )
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            repeat(4) { row ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                ) {
+                                    repeat(6) { column ->
+                                        val hour = row * 6 + column
+                                        val selected = BlockedHourSchedule.isBlocked(blockedHoursMask, hour)
+                                        Surface(
+                                            modifier = Modifier.weight(1f),
+                                            shape = RoundedCornerShape(TinyVowRadius.Control),
+                                            color = if (selected) editAccent.copy(alpha = 0.16f) else themeColors.surfaceSoft,
+                                            border = BorderStroke(
+                                                1.dp,
+                                                if (selected) editAccent.copy(alpha = 0.52f) else themeColors.borderSoft,
+                                            ),
+                                            onClick = { blockedHoursMask = BlockedHourSchedule.toggle(blockedHoursMask, hour) },
+                                        ) {
+                                            Text(
+                                                text = String.format(java.util.Locale.getDefault(), "%02d", hour),
+                                                style = MaterialTheme.typography.labelMedium,
+                                                color = if (selected) editAccent else themeColors.ink,
+                                                textAlign = TextAlign.Center,
+                                                modifier = Modifier.padding(vertical = 9.dp),
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
 

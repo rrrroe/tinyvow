@@ -94,10 +94,17 @@ class SuperModeController(
         return SuperModeWindowUpdateResult.Success
     }
 
-    suspend fun resetWithRecovery(answer: String): SuperModeRecoveryResult {
+    suspend fun resetWithRecovery(
+        answer: String,
+        isProActive: Boolean,
+    ): SuperModeRecoveryResult {
         val storedState = preferences.getSuperModeStateOnce()
-        if (!buildStatus(storedState, isProActive = false).isConfigured) {
+        val status = buildStatus(storedState, isProActive)
+        if (!status.isConfigured) {
             return SuperModeRecoveryResult.NotConfigured
+        }
+        if (!status.isEnabled || !status.isActive) {
+            return SuperModeRecoveryResult.SessionRequired
         }
         val salt = storedState.recoveryAnswerSalt ?: return SuperModeRecoveryResult.NotConfigured
         val hash = storedState.recoveryAnswerHash ?: return SuperModeRecoveryResult.NotConfigured

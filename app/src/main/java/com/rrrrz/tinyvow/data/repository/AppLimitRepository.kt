@@ -243,6 +243,7 @@ class AppLimitRepository(
         type: GroupType,
         limitPeriod: LimitPeriod,
         pointsPerMinute: Double,
+        blockedHoursMask: Long = 0L,
     ): String =
         withContext(Dispatchers.IO) {
             val groupId = id ?: UUID.randomUUID().toString()
@@ -262,6 +263,7 @@ class AppLimitRepository(
                     isDeleted = existing?.isDeleted ?: false,
                     lastBonusAt = existing?.lastBonusAt ?: 0L,
                     sortOrder = sortOrder,
+                    blockedHoursMask = if (type == GroupType.CONTROL) blockedHoursMask else 0L,
                 ),
             )
             groupId

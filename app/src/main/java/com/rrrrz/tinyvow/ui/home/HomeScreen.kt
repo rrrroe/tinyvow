@@ -690,6 +690,7 @@ private fun groupProtectionSnapshot(group: AppGroupWithApps): String =
         period = group.group.limitPeriod,
         limitMinutes = group.group.limitMinutes,
         pointsPerMinute = group.group.pointsPerMinute,
+        blockedHoursMask = group.group.blockedHoursMask,
         packageCount = group.packageNames.size,
     )
 
@@ -699,6 +700,7 @@ private fun groupProtectionSnapshot(
     period: LimitPeriod,
     limitMinutes: Int,
     pointsPerMinute: Double,
+    blockedHoursMask: Long,
     packageCount: Int,
 ): String =
     JSONObject()
@@ -707,6 +709,7 @@ private fun groupProtectionSnapshot(
         .put("period", period.name)
         .put("limitMinutes", limitMinutes)
         .put("pointsPerMinute", pointsPerMinute)
+        .put("blockedHoursMask", blockedHoursMask)
         .put("packageCount", packageCount)
         .toString()
 
@@ -1238,6 +1241,38 @@ fun HomeRoute(
         pendingSuperModeRequest = PendingSuperModeRequest(message = message, onAllowed = onAllowed)
         superModePasswordError = null
         showSuperModePasswordDialog = true
+    }
+
+    fun updateSuperModeProtection(enabled: Boolean) {
+        coroutineScope.launch {
+            preferences.setSuperModeEnabled(enabled)
+            recordProtectionEvent(
+                eventType = if (enabled) {
+                    ProtectionEventType.SUPER_MODE_ENABLED
+                } else {
+                    ProtectionEventType.SUPER_MODE_DISABLED
+                },
+                titleKey = if (enabled) {
+                    "protection_event_title_super_mode_enabled"
+                } else {
+                    "protection_event_title_super_mode_disabled"
+                },
+                messageKey = if (enabled) {
+                    "protection_event_message_super_mode_enabled"
+                } else {
+                    "protection_event_message_super_mode_disabled"
+                },
+                withinWindow = superModeStatus.isAvailableNow,
+                protectionEnabled = enabled,
+            )
+            snackbarHostState.showSnackbar(
+                if (enabled) {
+                    AppText.t("super_mode_enabled_success")
+                } else {
+                    AppText.t("super_mode_disabled_toggle_success")
+                }
+            )
+        }
     }
 
     fun runWithSuperModeGuard(
@@ -1871,7 +1906,7 @@ fun HomeRoute(
                                 preferences.setStepPointsRewardThreshold(threshold)
                             }
                         },
-                        onSaveGroup = { id, name, limit, type, period, pts, pkgs ->
+                        onSaveGroup = { id, name, limit, type, period, pts, blockedHoursMask, pkgs ->
                             coroutineScope.launch {
                                 val existingGroup = id?.let { groupId ->
                                     groupsWithApps.firstOrNull { it.group.id == groupId }
@@ -1885,6 +1920,7 @@ fun HomeRoute(
                                         type = type,
                                         limitPeriod = period,
                                         pointsPerMinute = pts,
+                                        blockedHoursMask = blockedHoursMask,
                                     )
                                 appLimitRepository.updateGroupApps(groupId, pkgs)
                                 if (id != null) {
@@ -1896,7 +1932,7 @@ fun HomeRoute(
                                         targetId = groupId,
                                         targetLabel = name,
                                         beforeJson = previousGroup?.let(::groupProtectionSnapshot),
-                                        afterJson = groupProtectionSnapshot(name, type, period, limit, pts, pkgs.size),
+                                        afterJson = groupProtectionSnapshot(name, type, period, limit, pts, blockedHoursMask, pkgs.size),
                                     )
                                     superModeController.touch(proEntitlement.isProActive)
                                 }
@@ -3014,44 +3050,16 @@ fun HomeRoute(
                             showSuperModeCredentialDialog = true
                         },
                         onSetEnabled = { enabled ->
-                            coroutineScope.launch {
-                                preferences.setSuperModeEnabled(enabled)
-                                recordProtectionEvent(
-                                    eventType = if (enabled) {
-                                        ProtectionEventType.SUPER_MODE_ENABLED
-                                    } else {
-                                        ProtectionEventType.SUPER_MODE_DISABLED
-                                    },
-                                    titleKey = if (enabled) {
-                                        "protection_event_title_super_mode_enabled"
-                                    } else {
-                                        "protection_event_title_super_mode_disabled"
-                                    },
-                                    messageKey = if (enabled) {
-                                        "protection_event_message_super_mode_enabled"
-                                    } else {
-                                        "protection_event_message_super_mode_disabled"
-                                    },
-                                    withinWindow = superModeStatus.isAvailableNow,
-                                    protectionEnabled = enabled,
-                                )
-                                snackbarHostState.showSnackbar(
-                                    if (enabled) {
-                                        AppText.t("super_mode_enabled_success")
-                                    } else {
-                                        AppText.t("super_mode_disabled_toggle_success")
-                                    }
-                                )
+                            if (enabled) {
+                                updateSuperModeProtection(true)
+                            } else {
+                                requestSuperModeSession(AppText.t("super_mode_enter_to_disable")) {
+                                    updateSuperModeProtection(false)
+                                }
                             }
                         },
                         onEnter = {
                             requestSuperModeSession(AppText.t("super_mode_enter_for_settings"))
-                        },
-                        onExit = {
-                            coroutineScope.launch {
-                                superModeController.exit(SuperModeExitReason.MANUAL)
-                                snackbarHostState.showSnackbar(AppText.t("super_mode_exit_success"))
-                            }
                         },
                         onEditCredentials = {
                             requestSuperModeSession(AppText.t("super_mode_enter_to_edit_credentials")) {
@@ -3072,8 +3080,10 @@ fun HomeRoute(
                             }
                         },
                         onRecoveryReset = {
-                            superModeRecoveryError = null
-                            showSuperModeRecoveryDialog = true
+                            requestSuperModeSession(AppText.t("super_mode_enter_to_reset")) {
+                                superModeRecoveryError = null
+                                showSuperModeRecoveryDialog = true
+                            }
                         },
                         onDisable = {
                             requestSuperModeSession(AppText.t("super_mode_enter_to_disable")) {
@@ -3461,7 +3471,12 @@ fun HomeRoute(
             onDismiss = { showSuperModeRecoveryDialog = false },
             onConfirm = { answer ->
                 coroutineScope.launch {
-                    when (superModeController.resetWithRecovery(answer)) {
+                    when (
+                        superModeController.resetWithRecovery(
+                            answer = answer,
+                            isProActive = proEntitlement.isProActive,
+                        )
+                    ) {
                         SuperModeRecoveryResult.Success -> {
                             showSuperModeRecoveryDialog = false
                             recordProtectionEvent(
@@ -3477,6 +3492,10 @@ fun HomeRoute(
                         }
                         SuperModeRecoveryResult.NotConfigured -> {
                             showSuperModeRecoveryDialog = false
+                        }
+                        SuperModeRecoveryResult.SessionRequired -> {
+                            showSuperModeRecoveryDialog = false
+                            snackbarHostState.showSnackbar(AppText.t("super_mode_session_required"))
                         }
                     }
                 }
@@ -3993,6 +4012,7 @@ fun HomeScreen(
         type: GroupType,
         period: LimitPeriod,
         pts: Double,
+        blockedHoursMask: Long,
         pkgs: List<String>,
     ) -> Unit,
     onDeleteGroup: (id: String) -> Unit,
@@ -11054,7 +11074,7 @@ private fun HomeScreenPreviewDenied() {
             onOpenPermissionDiagnostics = {},
             onSetAutoStartDismissed = {},
             onDismissPermissionPrompts = {},
-            onSaveGroup = { _, _, _, _, _, _, _ -> },
+            onSaveGroup = { _, _, _, _, _, _, _, _ -> },
             onDeleteGroup = {},
             onGuardAction = { _, block -> block() },
             isProActive = false,
@@ -11120,7 +11140,7 @@ private fun HomeScreenPreviewGranted() {
             onOpenPermissionDiagnostics = {},
             onSetAutoStartDismissed = {},
             onDismissPermissionPrompts = {},
-            onSaveGroup = { _, _, _, _, _, _, _ -> },
+            onSaveGroup = { _, _, _, _, _, _, _, _ -> },
             onDeleteGroup = {},
             onGuardAction = { _, block -> block() },
             isProActive = true,

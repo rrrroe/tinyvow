@@ -8,6 +8,7 @@ import com.rrrrz.tinyvow.data.db.LimitPeriod
 import com.rrrrz.tinyvow.data.db.RewardType
 import com.rrrrz.tinyvow.data.repository.parseRewardPayload
 import com.rrrrz.tinyvow.data.usage.MergedUsageRepository
+import java.time.ZonedDateTime
 
 /**
  * 多分组交叉短板效应评估器 (升级版：支持周期时长与加时包)
@@ -38,6 +39,17 @@ class GroupLimitEnforcer(context: Context) {
         val groups = groupDao.getGroupsByIdsSync(groupIds).filter { it.type == GroupType.CONTROL }
 
         for (group in groups) {
+            if (BlockedHourSchedule.isBlocked(group.blockedHoursMask, ZonedDateTime.now().hour)) {
+                return GroupExceededResult(
+                    groupName = group.name,
+                    groupId = group.id,
+                    groupType = group.type,
+                    limitMinutes = group.limitMinutes,
+                    totalUsedMillis = 0L,
+                    exceededMillis = 0L,
+                    reason = GroupBlockReason.SCHEDULE,
+                )
+            }
             val activeEffects = activeRewardEffectDao.getActiveForGroup(group.id, currentTimeMillis)
             val hasPeriodPass = activeEffects.any { it.effectType == RewardType.PERIOD_PASS }
             if (ControlGroupLimitPolicy.shouldBypass(hasPeriodPass)) {
@@ -64,6 +76,7 @@ class GroupLimitEnforcer(context: Context) {
                     limitMinutes = group.limitMinutes + (bonusMillis / 60_000).toInt(),
                     totalUsedMillis = totalUsedMillis,
                     exceededMillis = decision.exceededMillis,
+                    reason = GroupBlockReason.LIMIT,
                 )
             }
         }
@@ -118,5 +131,11 @@ data class GroupExceededResult(
     val groupType: GroupType,
     val limitMinutes: Int,
     val totalUsedMillis: Long,
-    val exceededMillis: Long
+    val exceededMillis: Long,
+    val reason: GroupBlockReason = GroupBlockReason.LIMIT,
 )
+
+enum class GroupBlockReason {
+    LIMIT,
+    SCHEDULE,
+}

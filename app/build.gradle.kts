@@ -22,6 +22,26 @@ val tinyVowVersionCode = providers.gradleProperty("TINYVOW_VERSION_CODE")
         }
     }
     ?: error("TINYVOW_VERSION_CODE must be a positive integer.")
+val tinyVowGlobalVersionCode = providers.gradleProperty("TINYVOW_GLOBAL_VERSION_CODE")
+    .orElse((tinyVowVersionCode + 1).toString())
+    .get()
+    .toIntOrNull()
+    ?.also {
+        require(it > 0) {
+            "TINYVOW_GLOBAL_VERSION_CODE must be a positive integer."
+        }
+    }
+    ?: error("TINYVOW_GLOBAL_VERSION_CODE must be a positive integer.")
+val tinyVowPlayVersionCode = providers.gradleProperty("TINYVOW_PLAY_VERSION_CODE")
+    .orElse((tinyVowGlobalVersionCode + 1).toString())
+    .get()
+    .toIntOrNull()
+    ?.also {
+        require(it > tinyVowGlobalVersionCode) {
+            "TINYVOW_PLAY_VERSION_CODE must be greater than TINYVOW_GLOBAL_VERSION_CODE."
+        }
+    }
+    ?: error("TINYVOW_PLAY_VERSION_CODE must be a positive integer.")
 val googleWebClientId = providers.gradleProperty("TINYVOW_GOOGLE_WEB_CLIENT_ID").orElse("").get()
 val defaultActivationPublicKeyBase64 =
     "MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAvgPRg7yuYzmB0zJOm818Eo0eRZKZmBKcZoNlmu2+IYORRDPcQjYMTNfN9P6VbXisyHFMK5AGUydFLBug+vhP5jeI6+DJjt1Dp5Szd/jysKljEGAQBu2ebIGWWhDwVDIdOZ1YHPQK3HkIRN9TQiwPpK9JdLJPuUEFbdXOVZgLTYITugjb5PoUdT6rX/HU5YQy+VzsgKWTUmdkRzQ1WBR6Oo90W2YqWbHu8ykbWI5vq+Bny13348C4yDSsnqDu6/SeBLR5jwn3WemUgpNCWbQAJ6dJ/BEs5MzDAofqEGw2BxivUrOvyHbyuCAP6H622Rv9XGzyvXt6Fx48afhRTTjV8QIDAQAB"
@@ -57,6 +77,46 @@ val chinaSigningProperties = mutableMapOf<String, String>().apply {
 val hasChinaSigningConfig = listOf("storeFile", "storePassword", "keyAlias", "keyPassword").all {
     !chinaSigningProperties[it].isNullOrBlank()
 }
+val globalSigningPropertiesFile = rootProject.layout.projectDirectory
+    .file("release-signing/tinyvow-global-app-signing.properties")
+    .asFile
+val globalSigningProperties = mutableMapOf<String, String>().apply {
+    if (globalSigningPropertiesFile.isFile) {
+        globalSigningPropertiesFile.forEachLine { line ->
+            val separator = line.indexOf('=')
+            if (separator > 0) {
+                val key = line.substring(0, separator).trim()
+                val value = line.substring(separator + 1).trim()
+                if (key.isNotEmpty()) {
+                    put(key, value)
+                }
+            }
+        }
+    }
+}
+val hasGlobalSigningConfig = listOf("storeFile", "storePassword", "keyAlias", "keyPassword").all {
+    !globalSigningProperties[it].isNullOrBlank()
+}
+val playUploadSigningPropertiesFile = rootProject.layout.projectDirectory
+    .file("release-signing/tinyvow-play-upload.properties")
+    .asFile
+val playUploadSigningProperties = mutableMapOf<String, String>().apply {
+    if (playUploadSigningPropertiesFile.isFile) {
+        playUploadSigningPropertiesFile.forEachLine { line ->
+            val separator = line.indexOf('=')
+            if (separator > 0) {
+                val key = line.substring(0, separator).trim()
+                val value = line.substring(separator + 1).trim()
+                if (key.isNotEmpty()) {
+                    put(key, value)
+                }
+            }
+        }
+    }
+}
+val hasPlayUploadSigningConfig = listOf("storeFile", "storePassword", "keyAlias", "keyPassword").all {
+    !playUploadSigningProperties[it].isNullOrBlank()
+}
 
 android {
     namespace = "com.rrrrz.tinyvow"
@@ -90,14 +150,47 @@ android {
                 keyPassword = chinaSigningProperties.getValue("keyPassword")
             }
         }
+        if (hasGlobalSigningConfig) {
+            create("globalAppSigning") {
+                storeFile = file(globalSigningProperties.getValue("storeFile"))
+                storePassword = globalSigningProperties.getValue("storePassword")
+                keyAlias = globalSigningProperties.getValue("keyAlias")
+                keyPassword = globalSigningProperties.getValue("keyPassword")
+            }
+        }
+        if (hasPlayUploadSigningConfig) {
+            create("playUpload") {
+                storeFile = file(playUploadSigningProperties.getValue("storeFile"))
+                storePassword = playUploadSigningProperties.getValue("storePassword")
+                keyAlias = playUploadSigningProperties.getValue("keyAlias")
+                keyPassword = playUploadSigningProperties.getValue("keyPassword")
+            }
+        }
     }
 
     flavorDimensions += "store"
 
     productFlavors {
+        create("global") {
+            dimension = "store"
+            applicationId = "com.rorolo.tinyvow"
+            versionCode = tinyVowGlobalVersionCode
+            buildConfigField("String", "STORE_CHANNEL", "\"global\"")
+            buildConfigField("Boolean", "ENABLE_GOOGLE_LOGIN", "false")
+            buildConfigField("Boolean", "ENABLE_PLAY_BILLING", "false")
+            buildConfigField("Boolean", "ENABLE_LOCAL_ACTIVATION", "true")
+            buildConfigField("String", "ACTIVATION_PUBLIC_KEY_BASE64", "\"$activationPublicKeyBase64\"")
+            buildConfigField("String", "TINYVOW_BACKEND_BASE_URL", "\"https://api.tinyvow.rorolo.com\"")
+            resValue("string", "accessibility_settings_activity", "com.rrrrz.tinyvow.MainActivity")
+            if (hasGlobalSigningConfig) {
+                signingConfig = signingConfigs.getByName("globalAppSigning")
+            }
+        }
+
         create("googlePlay") {
             dimension = "store"
-            applicationId = "com.rrrrz.tinyvow"
+            applicationId = "com.rorolo.tinyvow"
+            versionCode = tinyVowPlayVersionCode
             buildConfigField("String", "STORE_CHANNEL", "\"google_play\"")
             buildConfigField("Boolean", "ENABLE_GOOGLE_LOGIN", "true")
             buildConfigField("Boolean", "ENABLE_PLAY_BILLING", "true")
@@ -105,6 +198,9 @@ android {
             buildConfigField("String", "ACTIVATION_PUBLIC_KEY_BASE64", "\"\"")
             buildConfigField("String", "TINYVOW_BACKEND_BASE_URL", "\"\"")
             resValue("string", "accessibility_settings_activity", "com.rrrrz.tinyvow.MainActivity")
+            if (hasPlayUploadSigningConfig) {
+                signingConfig = signingConfigs.getByName("playUpload")
+            }
         }
 
         create("china") {
@@ -125,6 +221,11 @@ android {
     }
 
     buildTypes {
+        // Keep the established China development workflow: chinaDebug must be
+        // signed by the same China key as chinaRelease so it can update a
+        // locally installed China release without clearing local-first data.
+        // Global and Google Play release artifacts keep their flavor-specific
+        // signing configurations below.
         debug {
             if (hasChinaSigningConfig) {
                 signingConfig = signingConfigs.getByName("chinaShared")
@@ -133,9 +234,6 @@ android {
 
         release {
             isMinifyEnabled = true
-            if (hasChinaSigningConfig) {
-                signingConfig = signingConfigs.getByName("chinaShared")
-            }
             // AppText resolves many localized strings dynamically by key. Resource shrinking
             // can remove those strings because they are not all referenced as R.string.*.
             isShrinkResources = false
@@ -208,5 +306,6 @@ dependencies {
     implementation(libs.material.color.utilities)
     implementation(libs.androidx.health.connect.client)
     "chinaImplementation"("com.alipay.sdk:alipaysdk-android:15.8.42")
+    "globalImplementation"("com.alipay.sdk:alipaysdk-android:15.8.42")
     ksp(libs.androidx.room.compiler)
 }

@@ -6,8 +6,8 @@
 
 ## 当前结论
 
-- 当前版本来源是 `gradle.properties`：`TINYVOW_VERSION_NAME=1.3.0`、`TINYVOW_VERSION_CODE=9`。
-- Google Play 渠道包名是 `com.rrrrz.tinyvow`，国内渠道包名是 `com.rrrrz.tinyvow.cn`。
+- 当前版本来源是 `gradle.properties`：`TINYVOW_VERSION_NAME=1.3.2`、China vc11、Global vc12、Play vc13。
+- Global Beta 与 Google Play 包名是 `com.rorolo.tinyvow`，China 包名是 `com.rrrrz.tinyvow.cn`。
 - release 产物必须归档到 `dist/`，命名为 `tinyvow-{channel}-{versionName}-vc{versionCode}-release.{apk|aab}`。
 - 核心发布风险不在单一代码点，而在权限披露、无障碍审核说明、订阅商品配置、真机 release 验证和商店资料一致性。
 
@@ -19,6 +19,8 @@
   - 需要安装验证时运行 `.\gradlew.bat installDefaultDebug`
 - 打正式归档产物：
   - 国内版 APK：`.\tools\package-china-release.ps1`
+  - Global Beta APK：`.\tools\package-global-release.ps1`
+  - Google Play AAB：`.\tools\package-play-release.ps1`
   - 国内 APK + Google Play AAB 双渠道归档：`.\tools\package-release-artifacts.ps1`
 - 上述命令默认只生成本地产物，不发布官网。只有用户明确要求发布后，才使用 `-PublishWebsite`，并完成官方域名与 Sites 两个官网目标。
 - 检查 `dist/` 文件名、包名、版本号和签名校验输出，确认国内版没有 Play Billing / Google 登录相关权限和组件。
@@ -32,6 +34,8 @@
   - 主题切换、语言切换、重启后状态保留。
   - 本地数据导出、可恢复备份导入、清理本地数据、删除账号；备份 zip 不应包含微信读书 Key 明文。
 - Google Play 提审前确认：
+  - 按 `docs/google-play-signing-setup.md` 导入 Global App Signing key，核对 App signing 与 Upload 两张证书指纹。
+  - 在 Internal testing 完成一次 Global APK 到 Play 版本的不卸载升级，并确认本地数据保留。
   - `docs/privacy.html` 和 `docs/account-delete.html` 已发布到 Play Console 填写的真实 URL。
   - Play Console 已配置 `tinyvow_pro` 订阅、base plan、价格、测试账号、取消/宽限期等设置。
   - Data safety 表单、Accessibility API 声明、敏感权限说明与应用内 disclosure 和 `docs/google-play-release-checklist.md` 保持一致。

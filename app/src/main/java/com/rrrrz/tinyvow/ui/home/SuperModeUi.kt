@@ -137,7 +137,6 @@ fun SuperModeSettingsSheet(
     onConfigure: () -> Unit,
     onSetEnabled: (Boolean) -> Unit,
     onEnter: () -> Unit,
-    onExit: () -> Unit,
     onEditCredentials: () -> Unit,
     onEditWindow: () -> Unit,
     onRecoveryReset: () -> Unit,
@@ -255,14 +254,7 @@ fun SuperModeSettingsSheet(
                     ) {
                         Text(AppText.t("super_mode_enable_action"))
                     }
-                } else if (status.isActive) {
-                    Button(
-                        onClick = onExit,
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Text(AppText.t("super_mode_exit_action"))
-                    }
-                } else {
+                } else if (!status.isActive) {
                     Button(
                         onClick = onEnter,
                         modifier = Modifier.fillMaxWidth(),

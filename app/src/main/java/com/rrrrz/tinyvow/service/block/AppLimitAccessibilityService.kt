@@ -41,6 +41,7 @@ import com.rrrrz.tinyvow.data.special.SpecialAppUsageRepository
 import com.rrrrz.tinyvow.data.special.WEREAD_PACKAGE_NAME
 import com.rrrrz.tinyvow.data.usage.MergedUsageRepository
 import com.rrrrz.tinyvow.domain.limit.GroupExceededResult
+import com.rrrrz.tinyvow.domain.limit.GroupBlockReason
 import com.rrrrz.tinyvow.domain.limit.GroupLimitEnforcer
 import com.rrrrz.tinyvow.ui.theme.DefaultThemeSeed
 import com.rrrrz.tinyvow.ui.theme.resolveThemeSeed
@@ -224,6 +225,16 @@ class AppLimitAccessibilityService : AccessibilityService() {
                 if (currentPackage != null) {
                     try {
                         handlePointsAccumulation(currentPackage, SystemClock.elapsedRealtime())
+                        // A foreground app can cross an unavailable-hour boundary without
+                        // producing another window event, so re-evaluate it once per minute.
+                        if (isDeviceInteractive() && !isDeviceLocked()) {
+                            eventChannel.trySend(
+                                EventPayload(
+                                    packageName = currentPackage,
+                                    eventType = AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED,
+                                ),
+                            )
+                        }
                     } catch (e: Exception) {
                         if (BuildConfig.DEBUG) {
                             Log.e(TAG, "Error in periodic points ticker", e)
@@ -286,7 +297,8 @@ class AppLimitAccessibilityService : AccessibilityService() {
         encourageAppsCache = encourageGroupsForOverlay
         fastBlockCache[packageName] = Pair(result, blockNow)
         val hasEmergencyUnlock =
-            database.rewardInventoryDao().sumQuantityByRewardType(RewardType.EMERGENCY_UNLOCK) > 0 &&
+            result.reason == GroupBlockReason.LIMIT &&
+                database.rewardInventoryDao().sumQuantityByRewardType(RewardType.EMERGENCY_UNLOCK) > 0 &&
                 emergencyUnlockConsumedPackage != packageName
 
         withContext(Dispatchers.Main) {
@@ -297,6 +309,7 @@ class AppLimitAccessibilityService : AccessibilityService() {
                     groupId = result.groupId,
                     groupName = result.groupName,
                     exceededMillis = result.exceededMillis,
+                    reason = result.reason,
                     encourageGroups = encourageGroupsForOverlay,
                     canUseEmergencyUnlock = hasEmergencyUnlock,
                 )
@@ -490,8 +503,10 @@ class AppLimitAccessibilityService : AccessibilityService() {
                 groupId = fastBlock.first.groupId,
                 groupName = fastBlock.first.groupName,
                 exceededMillis = fastBlock.first.exceededMillis,
+                reason = fastBlock.first.reason,
                 encourageGroups = encourageAppsCache,
-                canUseEmergencyUnlock = emergencyUnlockConsumedPackage != packageName,
+                canUseEmergencyUnlock =
+                    fastBlock.first.reason == GroupBlockReason.LIMIT && emergencyUnlockConsumedPackage != packageName,
             )
         }
 
@@ -739,6 +754,7 @@ class AppLimitAccessibilityService : AccessibilityService() {
         groupId: String,
         groupName: String,
         exceededMillis: Long,
+        reason: GroupBlockReason = GroupBlockReason.LIMIT,
         encourageGroups: List<EncourageGroupCache>,
         canUseEmergencyUnlock: Boolean,
     ) {
@@ -815,7 +831,12 @@ class AppLimitAccessibilityService : AccessibilityService() {
         }
 
         val body = android.widget.TextView(this).apply {
-            text = AppText.t("accessibility_you_have_used_value_today_over_by_value", groupName, exceededText)
+            text =
+                if (reason == GroupBlockReason.SCHEDULE) {
+                    AppText.t("accessibility_group_unavailable_now", groupName)
+                } else {
+                    AppText.t("accessibility_you_have_used_value_today_over_by_value", groupName, exceededText)
+                }
             textSize = 15f
             setLineSpacing(dp(3).toFloat(), 1.15f)
             setTextColor(palette.onSurfaceVariant)
@@ -858,6 +879,7 @@ class AppLimitAccessibilityService : AccessibilityService() {
                                         groupId = reevaluated.groupId,
                                         groupName = reevaluated.groupName,
                                         exceededMillis = reevaluated.exceededMillis,
+                                        reason = reevaluated.reason,
                                         encourageGroups = encourageAppsCache,
                                         canUseEmergencyUnlock = false,
                                     )

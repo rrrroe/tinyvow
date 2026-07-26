@@ -70,6 +70,8 @@ sealed interface SuperModeRecoveryResult {
 
     data object NotConfigured : SuperModeRecoveryResult
 
+    data object SessionRequired : SuperModeRecoveryResult
+
     data object IncorrectAnswer : SuperModeRecoveryResult
 }
 
